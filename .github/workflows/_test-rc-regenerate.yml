@@ -19,10 +19,9 @@ env:
 
 jobs:
   test:
-    # ubuntu-latest cross-compiles all platforms fine. The macOS ad-hoc codesign
-    # of the darwin binaries is skipped here (release-build.sh warns and
-    # continues without codesign) — the real release runs on macos-latest.
-    runs-on: ubuntu-latest
+    # macos-latest so `codesign` is available to ad-hoc sign the darwin binaries,
+    # matching the real release runner. Go cross-compiles linux/windows fine here.
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
