@@ -110,11 +110,30 @@ jobs:
       - name: Build all platform binaries
         run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
 
-      - name: Verify built binary version
+      - name: Verify stamped version
         env:
           EXPECTED: ${{ steps.version.outputs.version }}
         run: |
-          # Pick the binary for this runner's OS/arch out of the npm packages.
+          echo "Built from module : ${MODULE_DIR:-root}"
+          echo "Expected version  : $EXPECTED"
+          fail=0
+
+          # 1) All six package.json versions (wrapper + 5 platform packages) must
+          #    equal the resolved version — these are what get published to npm.
+          for pj in npm/cli/package.json npm/cli-*/package.json; do
+            v="$(jq -r '.version' "$pj")"
+            echo "  $pj -> $v"
+            [ "$v" = "$EXPECTED" ] || { echo "    MISMATCH (expected $EXPECTED)" >&2; fail=1; }
+          done
+
+          # 2) The wrapper's optionalDependencies pins must also match, or an
+          #    install would resolve mismatched platform packages.
+          echo "  wrapper optionalDependencies:"
+          jq -r '.optionalDependencies | to_entries[] | "    \(.key) -> \(.value)"' npm/cli/package.json
+          jq -e --arg v "$EXPECTED" '.optionalDependencies | to_entries | all(.value == $v)' \
+            npm/cli/package.json >/dev/null || { echo "    optionalDependencies MISMATCH" >&2; fail=1; }
+
+          # 3) The built native binary reports the same version (ldflags stamp).
           case "$(uname -s)-$(uname -m)" in
             Darwin-arm64)  bin=npm/cli-darwin-arm64/bin/orq ;;
             Darwin-x86_64) bin=npm/cli-darwin-x64/bin/orq ;;
@@ -122,10 +141,9 @@ jobs:
             Linux-aarch64) bin=npm/cli-linux-arm64/bin/orq ;;
             *) echo "unsupported runner: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
           esac
-          echo "Built from module : ${MODULE_DIR:-root}"
-          echo "Expected version  : $EXPECTED"
           got="$("$bin" --version)"
-          echo "Binary reports    : $got"
-          # ldflags stamps -X main.version=$EXPECTED, so --version must contain it.
-          echo "$got" | grep -qF "$EXPECTED" || { echo "VERSION MISMATCH" >&2; exit 1; }
-          echo "OK: binary version matches"
+          echo "  binary ($bin) -> $got"
+          echo "$got" | grep -qF "$EXPECTED" || { echo "    binary VERSION MISMATCH" >&2; fail=1; }
+
+          [ "$fail" -eq 0 ] || { echo "version stamp check FAILED" >&2; exit 1; }
+          echo "OK: package.json + binary all report $EXPECTED"
