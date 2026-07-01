@@ -43,11 +43,11 @@ orq agents --help
 ### Run a grouped command
 
 ```sh
-orq agents a2a
+orq agents create
 ```
 
 ### Use the raw escape hatch
 
 ```sh
-orq request get /v2/agents/a2a
+orq request get /v2/agents
 ```

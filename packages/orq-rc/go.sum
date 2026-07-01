@@ -58,8 +58,8 @@ github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32 h1:W6apQkHrMkS0Muv8G/TipAy
 github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32/go.mod h1:9wM+0iRr9ahx58uYLpLIr5fm8diHn0JbqRycJi6w0Ms=
 github.com/olekukonko/tablewriter v0.0.0-20180912035003-be2c049b30cc h1:rQ1O4ZLYR2xXHXgBCCfIIGnuZ0lidMQw2S5n1oOv+Wg=
 github.com/olekukonko/tablewriter v0.0.0-20180912035003-be2c049b30cc/go.mod h1:vsDQFd/mU46D+Z4whnwzcISnGGzXWMclvtLoiIKAKIo=
-github.com/orq-ai/bartolo v0.2.0 h1:IvIHOk6afYfRZdEIlJJT3jzE/TZuDs+92pcnR5Yxctc=
-github.com/orq-ai/bartolo v0.2.0/go.mod h1:lK/GNrTYj5CpRzW60V+QZ2gXO6T23N+VsbrRBorSoME=
+github.com/orq-ai/bartolo v0.4.3 h1:KS0/qG6kesvBWyzMKiPOhvFAp+S06tSdDbZP80gRXi8=
+github.com/orq-ai/bartolo v0.4.3/go.mod h1:Q5EPoVWEPWTYJuCyoK/mOO9BTFMu1aCVZbw973DdoDA=
 github.com/pelletier/go-toml v1.2.0 h1:T5zMGML61Wp+FlcbWjRDT7yAxhJNAiPPLOFECq181zc=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=

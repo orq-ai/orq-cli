@@ -111,9 +111,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           workdir="${MODULE_DIR:-.}"
-          # bartolo generate overwrites README.md with the generated API doc;
-          # the repo keeps a curated README.md, so restore it (no-op if the
-          # module doesn't track one) and never stage it.
+          # bartolo 0.4.3 writes the generated API doc to README.generated.md and
+          # leaves the curated README.md alone. Keep this defensive restore in
+          # case an older generator clobbers README.md, and never stage README.*.
           git checkout -- "$workdir/README.md" 2>/dev/null || true
           # Stage only generator outputs + their dependency manifests.
           git add "$workdir/cli/generated" "$workdir/examples" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
