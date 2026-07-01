@@ -26,7 +26,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a prompt",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `display_name` (string, required)\n- `metadata` (object)\n- `path` (string, required)\n- `prompt` (object, required)\n\nRequired fields: `display_name`, `path`, `prompt`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `display_name` (string, required)\n- `metadata` (object)\n- `path` (string, required)\n- `prompt` (object, required)\n\nRequired fields: `display_name`, `path`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,16 +37,34 @@ func registerpromptsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string-nullable",
+							Description: "The prompt’s description, meant to be displayable in the UI. Use this field to optionally store a long form explanation of the prompt for your own purpose",
+						},
+						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "The prompt’s name, meant to be displayable in the UI.",
 						},
 						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
 							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "json",
+							Description: "Prompt configuration with model and messages.",
 						},
 					},
 				)
@@ -70,16 +88,34 @@ func registerpromptsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string-nullable",
+					Description: "The prompt’s description, meant to be displayable in the UI. Use this field to optionally store a long form explanation of the prompt for your own purpose",
+				},
+				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "The prompt’s name, meant to be displayable in the UI.",
 				},
 				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
 					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "json",
+					Description: "Prompt configuration with model and messages.",
 				},
 			},
 		)
@@ -278,7 +314,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a prompt",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `created` (string)\n- `created_by_id` (string | null)\n- `description` (string | null)\n- `display_name` (string)\n- `domain_id` (string)\n- `metadata` (object)\n- `owner` (string)\n- `path` (string)\n- ... and 3 more fields\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `created` (string)\n- `created_by_id` (string | null)\n- `description` (string | null)\n- `display_name` (string)\n- `domain_id` (string)\n- `metadata` (object)\n- `owner` (string)\n- `path` (string)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -295,6 +331,18 @@ func registerpromptsCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "created_by_id",
+							FlagName:    "created-by-id",
+							Type:        "string-nullable",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string-nullable",
+							Description: "The prompt’s description, meant to be displayable in the UI. Use this field to optionally store a long form explanation of the prompt for your own purpose",
+						},
+						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
@@ -304,6 +352,12 @@ func registerpromptsCommands(root *cobra.Command) {
 							Name:        "domain_id",
 							FlagName:    "domain-id",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -319,9 +373,21 @@ func registerpromptsCommands(root *cobra.Command) {
 							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "json",
+							Description: "Prompt configuration with model and messages. Use this to update the prompt.",
+						},
+						{
 							Name:        "updated",
 							FlagName:    "updated",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "updated_by_id",
+							FlagName:    "updated-by-id",
+							Type:        "string-nullable",
 							Description: "",
 						},
 					},
@@ -352,6 +418,18 @@ func registerpromptsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "created_by_id",
+					FlagName:    "created-by-id",
+					Type:        "string-nullable",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string-nullable",
+					Description: "The prompt’s description, meant to be displayable in the UI. Use this field to optionally store a long form explanation of the prompt for your own purpose",
+				},
+				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
@@ -361,6 +439,12 @@ func registerpromptsCommands(root *cobra.Command) {
 					Name:        "domain_id",
 					FlagName:    "domain-id",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
 					Description: "",
 				},
 				{
@@ -376,9 +460,21 @@ func registerpromptsCommands(root *cobra.Command) {
 					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "json",
+					Description: "Prompt configuration with model and messages. Use this to update the prompt.",
+				},
+				{
 					Name:        "updated",
 					FlagName:    "updated",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "updated_by_id",
+					FlagName:    "updated-by-id",
+					Type:        "string-nullable",
 					Description: "",
 				},
 			},

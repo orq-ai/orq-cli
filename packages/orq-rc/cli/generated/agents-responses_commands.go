@@ -26,7 +26,7 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Initiates an agent conversation and returns a complete response. This endpoint manages the full lifecycle of an agent interaction, from receiving the initial message through all processing steps until completion. Supports synchronous execution (waits for completion) and asynchronous execution (returns immediately with task ID). The response includes all messages exchanged, tool calls made, and token usage statistics. Ideal for request-response patterns where you need the complete interaction result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `configuration` (object)\n- `contact` (object)\n- `conversation` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- ... and 5 more fields\n\nRequired fields: `message`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Initiates an agent conversation and returns a complete response. This endpoint manages the full lifecycle of an agent interaction, from receiving the initial message through all processing steps until completion. Supports synchronous execution (waits for completion) and asynchronous execution (returns immediately with task ID). The response includes all messages exchanged, tool calls made, and token usage statistics. Ideal for request-response patterns where you need the complete interaction result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `configuration` (object)\n- `contact` (object)\n- `conversation` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- ... and 5 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -43,10 +43,57 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 							Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
 						},
 						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
+							Description: "Configuration options for the agent invocation",
+						},
+						{
+							Name:        "contact",
+							FlagName:    "contact",
+							Type:        "json",
+							Description: "@deprecated Use identity instead. Information about the contact making the request.",
+						},
+						{
+							Name:        "conversation",
+							FlagName:    "conversation",
+							Type:        "json",
+							Description: "Conversation context for chat studio integration",
+						},
+						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "json",
+							Description: "The A2A message to send to the agent (user input or tool results)",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 						},
 						{
 							Name:        "stream",
@@ -59,6 +106,18 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 							FlagName:    "task-id",
 							Type:        "string",
 							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "Thread information to group related requests",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 						},
 					},
 				)
@@ -88,10 +147,57 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 					Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
 				},
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "Configuration options for the agent invocation",
+				},
+				{
+					Name:        "contact",
+					FlagName:    "contact",
+					Type:        "json",
+					Description: "@deprecated Use identity instead. Information about the contact making the request.",
+				},
+				{
+					Name:        "conversation",
+					FlagName:    "conversation",
+					Type:        "json",
+					Description: "Conversation context for chat studio integration",
+				},
+				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "json",
+					Description: "The A2A message to send to the agent (user input or tool results)",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 				},
 				{
 					Name:        "stream",
@@ -104,6 +210,18 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 					FlagName:    "task-id",
 					Type:        "string",
 					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "Thread information to group related requests",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 				},
 			},
 		)

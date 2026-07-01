@@ -67,7 +67,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 7 more fields\n\nRequired fields: `key`, `path`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -76,7 +76,110 @@ func registerevalsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "categorical_labels",
+							FlagName:    "categorical-labels",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "categories",
+							FlagName:    "categories",
+							Type:        "string-slice",
+							Description: "",
+						},
+						{
+							Name:        "code",
+							FlagName:    "code",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "dataset_id",
+							FlagName:    "dataset-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "guardrail_config",
+							FlagName:    "guardrail-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "jury",
+							FlagName:    "jury",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "mode",
+							FlagName:    "mode",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"single",
+							},
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "output_type",
+							FlagName:    "output-type",
+							Type:        "enum-string",
+							Description: "The type of output expected from the evaluator",
+							Enum: []string{
+								"boolean",
+								"categorical",
+								"number",
+								"string",
+							},
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "repetitions",
+							FlagName:    "repetitions",
+							Type:        "int64-nullable",
+							Description: "",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"llm_eval",
+							},
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -96,7 +199,110 @@ func registerevalsCommands(root *cobra.Command) {
 		evalsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "categorical_labels",
+					FlagName:    "categorical-labels",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "categories",
+					FlagName:    "categories",
+					Type:        "string-slice",
+					Description: "",
+				},
+				{
+					Name:        "code",
+					FlagName:    "code",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "dataset_id",
+					FlagName:    "dataset-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "guardrail_config",
+					FlagName:    "guardrail-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "jury",
+					FlagName:    "jury",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "mode",
+					FlagName:    "mode",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"single",
+					},
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "output_type",
+					FlagName:    "output-type",
+					Type:        "enum-string",
+					Description: "The type of output expected from the evaluator",
+					Enum: []string{
+						"boolean",
+						"categorical",
+						"number",
+						"string",
+					},
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "repetitions",
+					FlagName:    "repetitions",
+					Type:        "int64-nullable",
+					Description: "",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"llm_eval",
+					},
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -149,7 +355,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke id",
 			Short:   "Invoke a Custom Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -159,6 +365,12 @@ func registerevalsCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "messages",
+							FlagName:    "messages",
+							Type:        "json",
+							Description: "The messages used to generate the output, without the last user message",
+						},
 						{
 							Name:        "model",
 							FlagName:    "model",
@@ -183,6 +395,12 @@ func registerevalsCommands(root *cobra.Command) {
 							Type:        "string",
 							Description: "The reference used to compare the output",
 						},
+						{
+							Name:        "retrievals",
+							FlagName:    "retrievals",
+							Type:        "string-slice",
+							Description: "Knowledge base retrievals",
+						},
 					},
 				)
 				if err != nil {
@@ -204,6 +422,12 @@ func registerevalsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "messages",
+					FlagName:    "messages",
+					Type:        "json",
+					Description: "The messages used to generate the output, without the last user message",
+				},
 				{
 					Name:        "model",
 					FlagName:    "model",
@@ -227,6 +451,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "reference",
 					Type:        "string",
 					Description: "The reference used to compare the output",
+				},
+				{
+					Name:        "retrievals",
+					FlagName:    "retrievals",
+					Type:        "string-slice",
+					Description: "Knowledge base retrievals",
 				},
 			},
 		)
@@ -285,7 +515,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- `key` (string)\n- ... and 13 more fields\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- `key` (string)\n- ... and 13 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -296,6 +526,18 @@ func registerevalsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "categorical_labels",
+							FlagName:    "categorical-labels",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "categories",
+							FlagName:    "categories",
+							Type:        "string-slice",
+							Description: "",
+						},
+						{
 							Name:        "code",
 							FlagName:    "code",
 							Type:        "string",
@@ -305,6 +547,24 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "guardrail_config",
+							FlagName:    "guardrail-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "headers",
+							FlagName:    "headers",
+							Type:        "string-map",
+							Description: "",
+						},
+						{
+							Name:        "jury",
+							FlagName:    "jury",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -322,8 +582,12 @@ func registerevalsCommands(root *cobra.Command) {
 						{
 							Name:        "mode",
 							FlagName:    "mode",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"single",
+								"jury",
+							},
 						},
 						{
 							Name:        "model",
@@ -342,6 +606,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "path",
 							Type:        "string",
 							Description: "Project path. Optional on update — uses existing project if omitted.",
+						},
+						{
+							Name:        "payload",
+							FlagName:    "payload",
+							Type:        "string-map",
+							Description: "",
 						},
 						{
 							Name:        "prompt",
@@ -382,8 +652,13 @@ func registerevalsCommands(root *cobra.Command) {
 						{
 							Name:        "versionIncrement",
 							FlagName:    "version-increment",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"major",
+								"minor",
+								"patch",
+							},
 						},
 					},
 				)
@@ -407,6 +682,18 @@ func registerevalsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "categorical_labels",
+					FlagName:    "categorical-labels",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "categories",
+					FlagName:    "categories",
+					Type:        "string-slice",
+					Description: "",
+				},
+				{
 					Name:        "code",
 					FlagName:    "code",
 					Type:        "string",
@@ -416,6 +703,24 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "guardrail_config",
+					FlagName:    "guardrail-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "headers",
+					FlagName:    "headers",
+					Type:        "string-map",
+					Description: "",
+				},
+				{
+					Name:        "jury",
+					FlagName:    "jury",
+					Type:        "json",
 					Description: "",
 				},
 				{
@@ -433,8 +738,12 @@ func registerevalsCommands(root *cobra.Command) {
 				{
 					Name:        "mode",
 					FlagName:    "mode",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"single",
+						"jury",
+					},
 				},
 				{
 					Name:        "model",
@@ -453,6 +762,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "path",
 					Type:        "string",
 					Description: "Project path. Optional on update — uses existing project if omitted.",
+				},
+				{
+					Name:        "payload",
+					FlagName:    "payload",
+					Type:        "string-map",
+					Description: "",
 				},
 				{
 					Name:        "prompt",
@@ -493,8 +808,13 @@ func registerevalsCommands(root *cobra.Command) {
 				{
 					Name:        "versionIncrement",
 					FlagName:    "version-increment",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"major",
+						"minor",
+						"patch",
+					},
 				},
 			},
 		)

@@ -26,7 +26,7 @@ func registerspeechCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create speech",
-			Long:    bartolocli.Markdown("Generates audio from the input text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallbacks` (array)\n- `input` (string, required)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- `response_format` (string)\n- `retry` (object)\n- ... and 3 more fields\n\nRequired fields: `input`, `model`, `voice`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Generates audio from the input text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `fallbacks` (array)\n- `input` (string, required)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- `response_format` (string)\n- `retry` (object)\n- ... and 3 more fields\n\nRequired fields: `input`, `model`, `voice`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,10 +37,22 @@ func registerspeechCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
 							Name:        "input",
 							FlagName:    "input",
 							Type:        "string",
 							Description: "The text to generate audio for. The maximum length is 4096 characters",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
 						},
 						{
 							Name:        "model",
@@ -55,16 +67,42 @@ func registerspeechCommands(root *cobra.Command) {
 							Description: "The name to display on the trace. If not specified, the default system name will be used.",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "response_format",
 							FlagName:    "response-format",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The format to audio in. Supported formats are `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`. If a format is provided but not supported by the provider, the response will be in the default format. When the provided format is not supported by the provider, the response will be in the default format.",
+							Enum: []string{
+								"mp3",
+								"opus",
+								"aac",
+								"flac",
+								"wav",
+								"pcm",
+							},
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
 						},
 						{
 							Name:        "speed",
 							FlagName:    "speed",
 							Type:        "float64",
 							Description: "The speed of the generated audio.",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 						},
 						{
 							Name:        "voice",
@@ -94,10 +132,22 @@ func registerspeechCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
 					Name:        "input",
 					FlagName:    "input",
 					Type:        "string",
 					Description: "The text to generate audio for. The maximum length is 4096 characters",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
 				},
 				{
 					Name:        "model",
@@ -112,16 +162,42 @@ func registerspeechCommands(root *cobra.Command) {
 					Description: "The name to display on the trace. If not specified, the default system name will be used.",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "response_format",
 					FlagName:    "response-format",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The format to audio in. Supported formats are `mp3`, `opus`, `aac`, `flac`, `wav`, and `pcm`. If a format is provided but not supported by the provider, the response will be in the default format. When the provided format is not supported by the provider, the response will be in the default format.",
+					Enum: []string{
+						"mp3",
+						"opus",
+						"aac",
+						"flac",
+						"wav",
+						"pcm",
+					},
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
 				},
 				{
 					Name:        "speed",
 					FlagName:    "speed",
 					Type:        "float64",
 					Description: "The speed of the generated audio.",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 				},
 				{
 					Name:        "voice",

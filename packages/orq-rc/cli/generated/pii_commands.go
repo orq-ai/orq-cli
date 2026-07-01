@@ -26,7 +26,7 @@ func registerpiiCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "detect",
 			Short:   "Detect PII",
-			Long:    bartolocli.Markdown("Reports whether the supplied text contains personally identifiable information, optionally with a per-type entity breakdown.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `include_entities` (boolean)\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Reports whether the supplied text contains personally identifiable information, optionally with a per-type entity breakdown.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `include_entities` (boolean)\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -124,7 +124,7 @@ func registerpiiCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "redact",
 			Short:   "Redact PII",
-			Long:    bartolocli.Markdown("Replaces detected PII with placeholders and returns the reverse mapping needed to restore the original text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Replaces detected PII with placeholders and returns the reverse mapping needed to restore the original text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -210,7 +210,7 @@ func registerpiiCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "restore",
 			Short:   "Restore redacted text",
-			Long:    bartolocli.Markdown("Reverses a redaction, substituting placeholders back to their original values using the mapping returned by Redact.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `mappings` (object)\n- `redacted_text` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Reverses a redaction, substituting placeholders back to their original values using the mapping returned by Redact.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `mappings` (object)\n- `redacted_text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -220,6 +220,12 @@ func registerpiiCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "mappings",
+							FlagName:    "mappings",
+							Type:        "string-map",
+							Description: "Placeholder-to-original mapping produced by Redact.",
+						},
 						{
 							Name:        "redacted_text",
 							FlagName:    "redacted-text",
@@ -247,6 +253,12 @@ func registerpiiCommands(root *cobra.Command) {
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "mappings",
+					FlagName:    "mappings",
+					Type:        "string-map",
+					Description: "Placeholder-to-original mapping produced by Redact.",
+				},
 				{
 					Name:        "redacted_text",
 					FlagName:    "redacted-text",

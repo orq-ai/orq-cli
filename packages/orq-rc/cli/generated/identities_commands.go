@@ -26,7 +26,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an identity",
-			Long:    bartolocli.Markdown("Creates a new identity with a unique external_id. If an identity with the same external_id already exists, the operation will fail.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `external_id` (string, required)\n- `metadata` (object)\n- `tags` (array)\n\nRequired fields: `external_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new identity with a unique external_id. If an identity with the same external_id already exists, the operation will fail.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `external_id` (string, required)\n- `metadata` (object)\n- `tags` (array)\n\nRequired fields: `external_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -59,6 +59,18 @@ func registeridentitiesCommands(root *cobra.Command) {
 							FlagName:    "external-id",
 							Type:        "string",
 							Description: "Customer-provided stable identifier for this identity. Must be unique\n within the workspace.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "Custom JSON metadata stored with the identity.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Free-form labels used to organize and filter identities.",
 						},
 					},
 				)
@@ -104,6 +116,18 @@ func registeridentitiesCommands(root *cobra.Command) {
 					FlagName:    "external-id",
 					Type:        "string",
 					Description: "Customer-provided stable identifier for this identity. Must be unique\n within the workspace.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "Custom JSON metadata stored with the identity.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Free-form labels used to organize and filter identities.",
 				},
 			},
 		)
@@ -238,7 +262,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an identity",
-			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -265,6 +289,18 @@ func registeridentitiesCommands(root *cobra.Command) {
 							FlagName:    "email",
 							Type:        "string",
 							Description: "New email address. Omit to keep the current email.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "Replacement custom JSON metadata.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Replacement tag list. Leave empty to clear tags.",
 						},
 					},
 				)
@@ -304,6 +340,18 @@ func registeridentitiesCommands(root *cobra.Command) {
 					FlagName:    "email",
 					Type:        "string",
 					Description: "New email address. Omit to keep the current email.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "Replacement custom JSON metadata.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Replacement tag list. Leave empty to clear tags.",
 				},
 			},
 		)

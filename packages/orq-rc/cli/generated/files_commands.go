@@ -167,7 +167,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update file-id",
 			Short:   "Update a file",
-			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -229,7 +229,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "upload",
 			Short:   "Upload a file",
-			Long:    bartolocli.Markdown("Files are used to upload documents that can be used with features like Deployments.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string, required)\n- `content_type` (string)\n- `filename` (string, required)\n- `project_id` (string)\n- `purpose` (string)\n\nRequired fields: `content`, `filename`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Files are used to upload documents that can be used with features like Deployments.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string, required)\n- `content_type` (string)\n- `filename` (string, required)\n- `project_id` (string)\n- `purpose` (string)\n\nRequired fields: `content`, `filename`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -266,8 +266,14 @@ func registerfilesCommands(root *cobra.Command) {
 						{
 							Name:        "purpose",
 							FlagName:    "purpose",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"FILE_PURPOSE_UNSPECIFIED",
+								"FILE_PURPOSE_RETRIEVAL",
+								"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
+								"FILE_PURPOSE_BATCH",
+							},
 						},
 					},
 				)
@@ -317,8 +323,14 @@ func registerfilesCommands(root *cobra.Command) {
 				{
 					Name:        "purpose",
 					FlagName:    "purpose",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"FILE_PURPOSE_UNSPECIFIED",
+						"FILE_PURPOSE_RETRIEVAL",
+						"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
+						"FILE_PURPOSE_BATCH",
+					},
 				},
 			},
 		)

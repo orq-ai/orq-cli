@@ -26,7 +26,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string)\n- `product` (string)\n- `property` (string, required)\n- `trace_id` (string, required)\n- `value` (anyOf, required)\n\nRequired fields: `property`, `trace_id`, `value`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string)\n- `product` (string)\n- `property` (string, required)\n- `trace_id` (string, required)\n- `value` (anyOf, required)\n\nRequired fields: `property`, `trace_id`, `value`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -45,8 +45,27 @@ func registerfeedbackCommands(root *cobra.Command) {
 						{
 							Name:        "product",
 							FlagName:    "product",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"remoteconfigs",
+								"deployments",
+								"experiments",
+								"playgrounds",
+								"spreadsheets",
+								"spreadsheet_run",
+								"llm_evaluator",
+								"knowledge",
+								"router",
+								"workflows",
+								"external_events",
+								"agents",
+								"memory-stores",
+								"generic",
+								"evaluators",
+								"otel",
+								"ai-chat",
+							},
 						},
 						{
 							Name:        "property",
@@ -59,6 +78,12 @@ func registerfeedbackCommands(root *cobra.Command) {
 							FlagName:    "trace-id",
 							Type:        "string",
 							Description: "The id returned by the [`get_config`](https://docs.orq.ai/reference/deployments/get-config) or [`invoke`](https://docs.orq.ai/reference/deployments/invoke) endpoints",
+						},
+						{
+							Name:        "value",
+							FlagName:    "value",
+							Type:        "json",
+							Description: "The feedback value. For single selection of multiple choice, the value should be an array of strings. For `correction`, the value should be a string.",
 						},
 					},
 				)
@@ -90,8 +115,27 @@ func registerfeedbackCommands(root *cobra.Command) {
 				{
 					Name:        "product",
 					FlagName:    "product",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"remoteconfigs",
+						"deployments",
+						"experiments",
+						"playgrounds",
+						"spreadsheets",
+						"spreadsheet_run",
+						"llm_evaluator",
+						"knowledge",
+						"router",
+						"workflows",
+						"external_events",
+						"agents",
+						"memory-stores",
+						"generic",
+						"evaluators",
+						"otel",
+						"ai-chat",
+					},
 				},
 				{
 					Name:        "property",
@@ -104,6 +148,12 @@ func registerfeedbackCommands(root *cobra.Command) {
 					FlagName:    "trace-id",
 					Type:        "string",
 					Description: "The id returned by the [`get_config`](https://docs.orq.ai/reference/deployments/get-config) or [`invoke`](https://docs.orq.ai/reference/deployments/invoke) endpoints",
+				},
+				{
+					Name:        "value",
+					FlagName:    "value",
+					Type:        "json",
+					Description: "The feedback value. For single selection of multiple choice, the value should be an array of strings. For `correction`, the value should be a string.",
 				},
 			},
 		)
@@ -124,7 +174,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete",
 			Short:   "Delete",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `product` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `product`, `trace_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `product` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `product`, `trace_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -143,8 +193,27 @@ func registerfeedbackCommands(root *cobra.Command) {
 						{
 							Name:        "product",
 							FlagName:    "product",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"remoteconfigs",
+								"deployments",
+								"experiments",
+								"playgrounds",
+								"spreadsheets",
+								"spreadsheet_run",
+								"llm_evaluator",
+								"knowledge",
+								"router",
+								"workflows",
+								"external_events",
+								"agents",
+								"memory-stores",
+								"generic",
+								"evaluators",
+								"otel",
+								"ai-chat",
+							},
 						},
 						{
 							Name:        "trace_id",
@@ -182,8 +251,27 @@ func registerfeedbackCommands(root *cobra.Command) {
 				{
 					Name:        "product",
 					FlagName:    "product",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"remoteconfigs",
+						"deployments",
+						"experiments",
+						"playgrounds",
+						"spreadsheets",
+						"spreadsheet_run",
+						"llm_evaluator",
+						"knowledge",
+						"router",
+						"workflows",
+						"external_events",
+						"agents",
+						"memory-stores",
+						"generic",
+						"evaluators",
+						"otel",
+						"ai-chat",
+					},
 				},
 				{
 					Name:        "trace_id",
@@ -210,7 +298,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "evaluation",
 			Short:   "Evaluation",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluation_type` (string, required)\n- `explanation` (string)\n- `human_review_id` (string)\n- `id` (string, required)\n- `reviewed_at` (string)\n- `source` (string)\n- `trace_id` (string, required)\n- `type` (string, required)\n- ... and 2 more fields\n\nRequired fields: `evaluation_type`, `id`, `trace_id`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -219,7 +307,78 @@ func registerfeedbackCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "evaluation_type",
+							FlagName:    "evaluation-type",
+							Type:        "enum-string",
+							Description: "The type of evaluation",
+							Enum: []string{
+								"human_review",
+							},
+						},
+						{
+							Name:        "explanation",
+							FlagName:    "explanation",
+							Type:        "string",
+							Description: "Optional free-text explanation of the value",
+						},
+						{
+							Name:        "human_review_id",
+							FlagName:    "human-review-id",
+							Type:        "string",
+							Description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema.",
+						},
+						{
+							Name:        "id",
+							FlagName:    "id",
+							Type:        "string",
+							Description: "The unique identifier of the human evaluation",
+						},
+						{
+							Name:        "reviewed_at",
+							FlagName:    "reviewed-at",
+							Type:        "string",
+							Description: "Deprecated. The date and time the item was reviewed",
+						},
+						{
+							Name:        "source",
+							FlagName:    "source",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"orq",
+								"external",
+							},
+						},
+						{
+							Name:        "trace_id",
+							FlagName:    "trace-id",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"string",
+							},
+						},
+						{
+							Name:        "value",
+							FlagName:    "value",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "values",
+							FlagName:    "values",
+							Type:        "string-slice",
+							Description: "",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -239,7 +398,78 @@ func registerfeedbackCommands(root *cobra.Command) {
 		feedbackCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "evaluation_type",
+					FlagName:    "evaluation-type",
+					Type:        "enum-string",
+					Description: "The type of evaluation",
+					Enum: []string{
+						"human_review",
+					},
+				},
+				{
+					Name:        "explanation",
+					FlagName:    "explanation",
+					Type:        "string",
+					Description: "Optional free-text explanation of the value",
+				},
+				{
+					Name:        "human_review_id",
+					FlagName:    "human-review-id",
+					Type:        "string",
+					Description: "The unique identifier of the human review. Omitted on corrections, which inherit the parent evaluator output schema.",
+				},
+				{
+					Name:        "id",
+					FlagName:    "id",
+					Type:        "string",
+					Description: "The unique identifier of the human evaluation",
+				},
+				{
+					Name:        "reviewed_at",
+					FlagName:    "reviewed-at",
+					Type:        "string",
+					Description: "Deprecated. The date and time the item was reviewed",
+				},
+				{
+					Name:        "source",
+					FlagName:    "source",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"orq",
+						"external",
+					},
+				},
+				{
+					Name:        "trace_id",
+					FlagName:    "trace-id",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"string",
+					},
+				},
+				{
+					Name:        "value",
+					FlagName:    "value",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "values",
+					FlagName:    "values",
+					Type:        "string-slice",
+					Description: "",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -258,7 +488,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "evaluation-remove",
 			Short:   "Evaluation Remove",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `trace_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `trace_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {

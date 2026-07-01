@@ -26,7 +26,7 @@ func registerocrCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "ocr",
 			Short:   "Ocr",
-			Long:    bartolocli.Markdown("Extracts text content while maintaining document structure and hierarchy\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `document` (anyOf, required)\n- `model` (string, required)\n- `ocr_settings` (object)\n- `pages` (array | null)\n\nRequired fields: `document`, `model`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Extracts text content while maintaining document structure and hierarchy\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `document` (anyOf, required)\n- `model` (string, required)\n- `ocr_settings` (object)\n- `pages` (array | null)\n\nRequired fields: `document`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,10 +37,28 @@ func registerocrCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "document",
+							FlagName:    "document",
+							Type:        "json",
+							Description: "Document to run OCR on. Can be a DocumentURLChunk or ImageURLChunk.",
+						},
+						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
 							Description: "ID of the model to use for OCR.",
+						},
+						{
+							Name:        "ocr_settings",
+							FlagName:    "ocr-settings",
+							Type:        "json",
+							Description: "Optional settings for the OCR run",
+						},
+						{
+							Name:        "pages",
+							FlagName:    "pages",
+							Type:        "int64-slice",
+							Description: "Specific pages to process. Can be a single number, range, or list. Starts from 0. Null for all pages.",
 						},
 					},
 				)
@@ -64,10 +82,28 @@ func registerocrCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "document",
+					FlagName:    "document",
+					Type:        "json",
+					Description: "Document to run OCR on. Can be a DocumentURLChunk or ImageURLChunk.",
+				},
+				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
 					Description: "ID of the model to use for OCR.",
+				},
+				{
+					Name:        "ocr_settings",
+					FlagName:    "ocr-settings",
+					Type:        "json",
+					Description: "Optional settings for the OCR run",
+				},
+				{
+					Name:        "pages",
+					FlagName:    "pages",
+					Type:        "int64-slice",
+					Description: "Specific pages to process. Can be a single number, range, or list. Starts from 0. Null for all pages.",
 				},
 			},
 		)

@@ -26,7 +26,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create trace-id span-id",
 			Short:   "Annotate a span",
-			Long:    bartolocli.Markdown("Attach one or more annotations to a specific span. A standard annotation references a human review by key and supplies a value. A correction references an existing evaluator output by parent_annotation_id and supplies the corrected value, validated against that evaluator's output schema.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `annotations` (array, required)\n- `metadata` (object)\n\nRequired fields: `annotations`"),
+			Long:    bartolocli.Markdown("Attach one or more annotations to a specific span. A standard annotation references a human review by key and supplies a value. A correction references an existing evaluator output by parent_annotation_id and supplies the corrected value, validated against that evaluator's output schema.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `annotations` (array, required)\n- `metadata` (object)\n\nRequired fields: `annotations`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -35,7 +35,20 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "annotations",
+							FlagName:    "annotations",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -55,7 +68,20 @@ func registertracesCommands(root *cobra.Command) {
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "annotations",
+					FlagName:    "annotations",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -74,7 +100,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete trace-id span-id",
 			Short:   "Remove an annotation from a span",
-			Long:    bartolocli.Markdown("Remove one or more annotations from a specific span by their evaluator keys, or remove corrections by the eval ids of their parent annotations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `keys` (array)\n- `metadata` (object)\n- `parent_annotation_ids` (array)"),
+			Long:    bartolocli.Markdown("Remove one or more annotations from a specific span by their evaluator keys, or remove corrections by the eval ids of their parent annotations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `keys` (array)\n- `metadata` (object)\n- `parent_annotation_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -83,7 +109,26 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "keys",
+							FlagName:    "keys",
+							Type:        "string-slice",
+							Description: "Unique keys of the reviews to remove",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "parent_annotation_ids",
+							FlagName:    "parent-annotation-ids",
+							Type:        "string-slice",
+							Description: "Eval ids whose corrections should be removed",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -103,7 +148,26 @@ func registertracesCommands(root *cobra.Command) {
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "keys",
+					FlagName:    "keys",
+					Type:        "string-slice",
+					Description: "Unique keys of the reviews to remove",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "parent_annotation_ids",
+					FlagName:    "parent-annotation-ids",
+					Type:        "string-slice",
+					Description: "Eval ids whose corrections should be removed",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

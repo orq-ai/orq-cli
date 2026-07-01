@@ -23,17 +23,17 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key expression: @at 2026-05-01T09:00:00Z, payload.input: @file, type: once\n"
+		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
 
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
 			Short:   "Create schedule",
-			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a recurring or one-off cadence. The minimum firing interval is 1 hour for `cron` and `interval`; `once` schedules are exempt.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `expression`, `payload`, `type`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a recurring or one-off cadence. The minimum firing interval is 1 hour for `cron` and `interval`; `once` schedules are exempt.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{
-					"expression: @at 2026-05-01T09:00:00Z, payload.input: @file, type: once",
+					"agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
@@ -53,10 +53,21 @@ func registerschedulesCommands(root *cobra.Command) {
 							Description: "Schedule expression. Examples: cron '0 0 9 * * mon-fri' (9am UTC weekdays), interval '@every 1h', once '@at 2026-05-01T09:00:00Z'. Minimum firing cadence is 1 hour for cron and interval.",
 						},
 						{
+							Name:        "payload",
+							FlagName:    "payload",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "type",
 							FlagName:    "type",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Schedule type. cron uses 6-field cron expressions; interval uses @every <duration>; once uses @at <RFC3339-UTC>.",
+							Enum: []string{
+								"cron",
+								"once",
+								"interval",
+							},
 						},
 					},
 				)
@@ -92,10 +103,21 @@ func registerschedulesCommands(root *cobra.Command) {
 					Description: "Schedule expression. Examples: cron '0 0 9 * * mon-fri' (9am UTC weekdays), interval '@every 1h', once '@at 2026-05-01T09:00:00Z'. Minimum firing cadence is 1 hour for cron and interval.",
 				},
 				{
+					Name:        "payload",
+					FlagName:    "payload",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "type",
 					FlagName:    "type",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Schedule type. cron uses 6-field cron expressions; interval uses @every <duration>; once uses @at <RFC3339-UTC>.",
+					Enum: []string{
+						"cron",
+						"once",
+						"interval",
+					},
 				},
 			},
 		)
@@ -254,7 +276,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
 			Short:   "Update schedule",
-			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) re-publishes the NATS schedule and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) re-publishes the NATS schedule and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -285,10 +307,21 @@ func registerschedulesCommands(root *cobra.Command) {
 							Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
 						},
 						{
+							Name:        "payload",
+							FlagName:    "payload",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "type",
 							FlagName:    "type",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Change the schedule type. Changing type or expression resets the NATS schedule and bumps generation.",
+							Enum: []string{
+								"cron",
+								"once",
+								"interval",
+							},
 						},
 					},
 				)
@@ -330,10 +363,21 @@ func registerschedulesCommands(root *cobra.Command) {
 					Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
 				},
 				{
+					Name:        "payload",
+					FlagName:    "payload",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "type",
 					FlagName:    "type",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Change the schedule type. Changing type or expression resets the NATS schedule and bumps generation.",
+					Enum: []string{
+						"cron",
+						"once",
+						"interval",
+					},
 				},
 			},
 		)

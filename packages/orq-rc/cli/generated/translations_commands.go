@@ -26,7 +26,7 @@ func registertranslationsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create translation",
-			Long:    bartolocli.Markdown("\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `diarize` (boolean)\n- `enable_logging` (boolean)\n- `fallbacks` (array)\n- `file` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `num_speakers` (number)\n- ... and 8 more fields\n\nRequired fields: `model`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `diarize` (boolean)\n- `enable_logging` (boolean)\n- `fallbacks` (array)\n- `file` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `num_speakers` (number)\n- ... and 8 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -49,10 +49,22 @@ func registertranslationsCommands(root *cobra.Command) {
 							Description: "When enable_logging is set to false, zero retention mode is used. This disables history features like request stitching and is only available to enterprise customers.",
 						},
 						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
 							Name:        "file",
 							FlagName:    "file",
 							Type:        "string",
 							Description: "The audio file object (not file name) to transcribe, in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
 						},
 						{
 							Name:        "model",
@@ -73,6 +85,12 @@ func registertranslationsCommands(root *cobra.Command) {
 							Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "string",
@@ -81,8 +99,21 @@ func registertranslationsCommands(root *cobra.Command) {
 						{
 							Name:        "response_format",
 							FlagName:    "response-format",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The format of the transcript output, in one of these options: json, text, srt, verbose_json, or vtt.",
+							Enum: []string{
+								"json",
+								"text",
+								"srt",
+								"verbose_json",
+								"vtt",
+							},
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
 						},
 						{
 							Name:        "tag_audio_events",
@@ -97,10 +128,21 @@ func registertranslationsCommands(root *cobra.Command) {
 							Description: "The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability to automatically increase the temperature until certain thresholds are hit.",
 						},
 						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+						},
+						{
 							Name:        "timestamps_granularity",
 							FlagName:    "timestamps-granularity",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The granularity of the timestamps in the transcription. Word provides word-level timestamps and character provides character-level timestamps per word.",
+							Enum: []string{
+								"none",
+								"word",
+								"character",
+							},
 						},
 					},
 				)
@@ -136,10 +178,22 @@ func registertranslationsCommands(root *cobra.Command) {
 					Description: "When enable_logging is set to false, zero retention mode is used. This disables history features like request stitching and is only available to enterprise customers.",
 				},
 				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
 					Name:        "file",
 					FlagName:    "file",
 					Type:        "string",
 					Description: "The audio file object (not file name) to transcribe, in one of these formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
 				},
 				{
 					Name:        "model",
@@ -160,6 +214,12 @@ func registertranslationsCommands(root *cobra.Command) {
 					Description: "The maximum amount of speakers talking in the uploaded file. Helps with predicting who speaks when, the maximum is 32. ",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "string",
@@ -168,8 +228,21 @@ func registertranslationsCommands(root *cobra.Command) {
 				{
 					Name:        "response_format",
 					FlagName:    "response-format",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The format of the transcript output, in one of these options: json, text, srt, verbose_json, or vtt.",
+					Enum: []string{
+						"json",
+						"text",
+						"srt",
+						"verbose_json",
+						"vtt",
+					},
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
 				},
 				{
 					Name:        "tag_audio_events",
@@ -184,10 +257,21 @@ func registertranslationsCommands(root *cobra.Command) {
 					Description: "The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic. If set to 0, the model will use log probability to automatically increase the temperature until certain thresholds are hit.",
 				},
 				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+				},
+				{
 					Name:        "timestamps_granularity",
 					FlagName:    "timestamps-granularity",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The granularity of the timestamps in the transcription. Word provides word-level timestamps and character provides character-level timestamps per word.",
+					Enum: []string{
+						"none",
+						"word",
+						"character",
+					},
 				},
 			},
 		)

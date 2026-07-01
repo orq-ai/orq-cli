@@ -26,7 +26,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new project",
-			Long:    bartolocli.Markdown("Creates a project in the current workspace. Projects are workspace-level containers for resources such as skills, deployments, datasets, rules, and related team access.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string, required)\n- `teams` (array)\n\nRequired fields: `name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a project in the current workspace. Projects are workspace-level containers for resources such as skills, deployments, datasets, rules, and related team access.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string, required)\n- `teams` (array)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -47,6 +47,12 @@ func registerprojectsCommands(root *cobra.Command) {
 							FlagName:    "name",
 							Type:        "string",
 							Description: "Project name. Names must be non-empty and at most 128 characters.",
+						},
+						{
+							Name:        "teams",
+							FlagName:    "teams",
+							Type:        "string-slice",
+							Description: "Team identifiers to associate with the project.",
 						},
 					},
 				)
@@ -80,6 +86,12 @@ func registerprojectsCommands(root *cobra.Command) {
 					FlagName:    "name",
 					Type:        "string",
 					Description: "Project name. Names must be non-empty and at most 128 characters.",
+				},
+				{
+					Name:        "teams",
+					FlagName:    "teams",
+					Type:        "string-slice",
+					Description: "Team identifiers to associate with the project.",
 				},
 			},
 		)
@@ -206,7 +218,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update project-id",
 			Short:   "Update a project",
-			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -227,6 +239,12 @@ func registerprojectsCommands(root *cobra.Command) {
 							FlagName:    "name",
 							Type:        "string",
 							Description: "New project name. Omit to keep the current name.",
+						},
+						{
+							Name:        "teams",
+							FlagName:    "teams",
+							Type:        "string-slice",
+							Description: "Replacement list of team identifiers associated with the project.\n Leave empty to remove all team associations.",
 						},
 					},
 				)
@@ -260,6 +278,12 @@ func registerprojectsCommands(root *cobra.Command) {
 					FlagName:    "name",
 					Type:        "string",
 					Description: "New project name. Omit to keep the current name.",
+				},
+				{
+					Name:        "teams",
+					FlagName:    "teams",
+					Type:        "string-slice",
+					Description: "Replacement list of team identifiers associated with the project.\n Leave empty to remove all team associations.",
 				},
 			},
 		)
