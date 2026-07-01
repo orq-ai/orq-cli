@@ -109,3 +109,23 @@ jobs:
 
       - name: Build all platform binaries
         run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
+
+      - name: Verify built binary version
+        env:
+          EXPECTED: ${{ steps.version.outputs.version }}
+        run: |
+          # Pick the binary for this runner's OS/arch out of the npm packages.
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64)  bin=npm/cli-darwin-arm64/bin/orq ;;
+            Darwin-x86_64) bin=npm/cli-darwin-x64/bin/orq ;;
+            Linux-x86_64)  bin=npm/cli-linux-x64/bin/orq ;;
+            Linux-aarch64) bin=npm/cli-linux-arm64/bin/orq ;;
+            *) echo "unsupported runner: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+          esac
+          echo "Built from module : ${MODULE_DIR:-root}"
+          echo "Expected version  : $EXPECTED"
+          got="$("$bin" --version)"
+          echo "Binary reports    : $got"
+          # ldflags stamps -X main.version=$EXPECTED, so --version must contain it.
+          echo "$got" | grep -qF "$EXPECTED" || { echo "VERSION MISMATCH" >&2; exit 1; }
+          echo "OK: binary version matches"
