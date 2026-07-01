@@ -21,5 +21,4 @@ jobs:
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
-      module_dir: ''
       npm_dist_tag: latest
