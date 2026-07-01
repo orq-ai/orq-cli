@@ -26,7 +26,7 @@ func registerrerankCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create rerank",
-			Long:    bartolocli.Markdown("Rerank a list of documents based on their relevance to a query.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `documents` (array, required)\n- `fallbacks` (array)\n- `filename` (string | null)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `documents`, `model`, `query`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Rerank a list of documents based on their relevance to a query.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `documents` (array, required)\n- `fallbacks` (array)\n- `filename` (string | null)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `documents`, `model`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -36,6 +36,36 @@ func registerrerankCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "documents",
+							FlagName:    "documents",
+							Type:        "string-slice",
+							Description: "A list of texts that will be compared to the `query`. For optimal performance we recommend against sending more than 1,000 documents in a single request.",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
+							Name:        "filename",
+							FlagName:    "filename",
+							Type:        "string-nullable",
+							Description: "The filename of the document to rerank",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
+						},
 						{
 							Name:        "model",
 							FlagName:    "model",
@@ -49,10 +79,34 @@ func registerrerankCommands(root *cobra.Command) {
 							Description: "The name to display on the trace. If not specified, the default system name will be used.",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+						},
+						{
 							Name:        "query",
 							FlagName:    "query",
 							Type:        "string",
 							Description: "The search query",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 						},
 						{
 							Name:        "top_n",
@@ -82,6 +136,36 @@ func registerrerankCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "documents",
+					FlagName:    "documents",
+					Type:        "string-slice",
+					Description: "A list of texts that will be compared to the `query`. For optimal performance we recommend against sending more than 1,000 documents in a single request.",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
+					Name:        "filename",
+					FlagName:    "filename",
+					Type:        "string-nullable",
+					Description: "The filename of the document to rerank",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
+				},
+				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
@@ -94,10 +178,34 @@ func registerrerankCommands(root *cobra.Command) {
 					Description: "The name to display on the trace. If not specified, the default system name will be used.",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+				},
+				{
 					Name:        "query",
 					FlagName:    "query",
 					Type:        "string",
 					Description: "The search query",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 				},
 				{
 					Name:        "top_n",

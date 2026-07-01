@@ -26,7 +26,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create guardrail rule",
-			Long:    bartolocli.Markdown("Creates a new guardrail rule with expression, guardrails configuration, and timeout settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array | null)\n- `project_id` (string)\n- `timeout` (integer)\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new guardrail rule with expression, guardrails configuration, and timeout settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array | null)\n- `project_id` (string)\n- `timeout` (integer)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -53,6 +53,18 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "expression",
+							FlagName:    "expression",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -104,6 +116,18 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "expression",
+					FlagName:    "expression",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
 					Description: "",
 				},
 				{
@@ -286,7 +310,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update guardrail-rule-id",
 			Short:   "Update guardrail rule",
-			Long:    bartolocli.Markdown("Partially updates an existing guardrail rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `timeout` (integer)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Partially updates an existing guardrail rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `timeout` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -313,6 +337,18 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "expression",
+							FlagName:    "expression",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -358,6 +394,18 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "expression",
+					FlagName:    "expression",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
 					Description: "",
 				},
 				{

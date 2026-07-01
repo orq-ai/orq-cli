@@ -26,7 +26,7 @@ func registerreportingCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query reporting metrics",
-			Long:    bartolocli.Markdown("Returns time-series analytics for AI usage, cost, latency, evaluator results, and guardrail outcomes. Select a metric and time range, break results down by supported dimensions, apply filters, and optionally include totals for the full range.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `from` (string, required)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `limit` (integer)\n- `metric` (string, required)\n- `time_zone` (string)\n- ... and 1 more fields\n\nRequired fields: `from`, `metric`, `to`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Returns time-series analytics for AI usage, cost, latency, evaluator results, and guardrail outcomes. Select a metric and time range, break results down by supported dimensions, apply filters, and optionally include totals for the full range.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `from` (string, required)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `limit` (integer)\n- `metric` (string, required)\n- `time_zone` (string)\n- ... and 1 more fields\n\nRequired fields: `from`, `metric`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,6 +37,12 @@ func registerreportingCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "filters",
+							FlagName:    "filters",
+							Type:        "json",
+							Description: "Up to 20 allowlisted predicates combined with AND.",
+						},
+						{
 							Name:        "from",
 							FlagName:    "from",
 							Type:        "string",
@@ -45,8 +51,20 @@ func registerreportingCommands(root *cobra.Command) {
 						{
 							Name:        "grain",
 							FlagName:    "grain",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Requested bucket grain. Use `auto` or omit the field to let the server choose based on the requested range.",
+							Enum: []string{
+								"auto",
+								"minute",
+								"hour",
+								"day",
+							},
+						},
+						{
+							Name:        "group_by",
+							FlagName:    "group-by",
+							Type:        "string-slice",
+							Description: "Reporting dimensions to break down by. Valid dimensions depend on the selected metric.",
 						},
 						{
 							Name:        "include_totals",
@@ -63,8 +81,24 @@ func registerreportingCommands(root *cobra.Command) {
 						{
 							Name:        "metric",
 							FlagName:    "metric",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Catalogue metric to query.",
+							Enum: []string{
+								"genai.requests",
+								"genai.tokens",
+								"genai.cost",
+								"genai.errors",
+								"genai.latency.p50",
+								"genai.latency.p95",
+								"genai.latency.p99",
+								"genai.evaluator.runs",
+								"genai.evaluator.pass_rate",
+								"genai.evaluator.score.avg",
+								"genai.guardrail.runs",
+								"genai.guardrail.block_rate",
+								"genai.guardrail.triggered",
+								"genai.usage",
+							},
 						},
 						{
 							Name:        "time_zone",
@@ -100,6 +134,12 @@ func registerreportingCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "filters",
+					FlagName:    "filters",
+					Type:        "json",
+					Description: "Up to 20 allowlisted predicates combined with AND.",
+				},
+				{
 					Name:        "from",
 					FlagName:    "from",
 					Type:        "string",
@@ -108,8 +148,20 @@ func registerreportingCommands(root *cobra.Command) {
 				{
 					Name:        "grain",
 					FlagName:    "grain",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Requested bucket grain. Use `auto` or omit the field to let the server choose based on the requested range.",
+					Enum: []string{
+						"auto",
+						"minute",
+						"hour",
+						"day",
+					},
+				},
+				{
+					Name:        "group_by",
+					FlagName:    "group-by",
+					Type:        "string-slice",
+					Description: "Reporting dimensions to break down by. Valid dimensions depend on the selected metric.",
 				},
 				{
 					Name:        "include_totals",
@@ -126,8 +178,24 @@ func registerreportingCommands(root *cobra.Command) {
 				{
 					Name:        "metric",
 					FlagName:    "metric",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Catalogue metric to query.",
+					Enum: []string{
+						"genai.requests",
+						"genai.tokens",
+						"genai.cost",
+						"genai.errors",
+						"genai.latency.p50",
+						"genai.latency.p95",
+						"genai.latency.p99",
+						"genai.evaluator.runs",
+						"genai.evaluator.pass_rate",
+						"genai.evaluator.score.avg",
+						"genai.guardrail.runs",
+						"genai.guardrail.block_rate",
+						"genai.guardrail.triggered",
+						"genai.usage",
+					},
 				},
 				{
 					Name:        "time_zone",

@@ -26,7 +26,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new management key",
-			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string)\n\nRequired fields: `name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -36,6 +36,12 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "access",
+							FlagName:    "access",
+							Type:        "json",
+							Description: "Per-domain access map. Required when `permission_mode` =\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`. See `ManagementKey.access`\n for the catalog of valid keys (Domain.id) and AccessLevel string\n values, or fetch the live catalog via the capability catalog\n endpoint.",
+						},
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
@@ -51,8 +57,14 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
+								"MANAGEMENT_PERMISSION_MODE_ALL",
+								"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
+								"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
+							},
 						},
 					},
 				)
@@ -76,6 +88,12 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "access",
+					FlagName:    "access",
+					Type:        "json",
+					Description: "Per-domain access map. Required when `permission_mode` =\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`. See `ManagementKey.access`\n for the catalog of valid keys (Domain.id) and AccessLevel string\n values, or fetch the live catalog via the capability catalog\n endpoint.",
+				},
+				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
 					Type:        "string",
@@ -90,8 +108,14 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
+						"MANAGEMENT_PERMISSION_MODE_ALL",
+						"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
+						"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
+					},
 				},
 			},
 		)
@@ -255,7 +279,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update management-key-id",
 			Short:   "Update a management key",
-			Long:    bartolocli.Markdown("Updates mutable fields of a management key: display name, status (active / disabled / revoked), permission mode and access map, and expiry. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `status` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates mutable fields of a management key: display name, status (active / disabled / revoked), permission mode and access map, and expiry. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -265,6 +289,12 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "access",
+							FlagName:    "access",
+							Type:        "json",
+							Description: "Replacement access map. Required when changing to\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide\n an empty map to clear.",
+						},
 						{
 							Name:        "clear_expires_at",
 							FlagName:    "clear-expires-at",
@@ -286,14 +316,26 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
+								"MANAGEMENT_PERMISSION_MODE_ALL",
+								"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
+								"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
+							},
 						},
 						{
 							Name:        "status",
 							FlagName:    "status",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
+								"MANAGEMENT_KEY_STATUS_ACTIVE",
+								"MANAGEMENT_KEY_STATUS_DISABLED",
+								"MANAGEMENT_KEY_STATUS_REVOKED",
+							},
 						},
 					},
 				)
@@ -317,6 +359,12 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "access",
+					FlagName:    "access",
+					Type:        "json",
+					Description: "Replacement access map. Required when changing to\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide\n an empty map to clear.",
+				},
+				{
 					Name:        "clear_expires_at",
 					FlagName:    "clear-expires-at",
 					Type:        "bool",
@@ -337,14 +385,26 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
+						"MANAGEMENT_PERMISSION_MODE_ALL",
+						"MANAGEMENT_PERMISSION_MODE_RESTRICTED",
+						"MANAGEMENT_PERMISSION_MODE_READ_ONLY",
+					},
 				},
 				{
 					Name:        "status",
 					FlagName:    "status",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
+						"MANAGEMENT_KEY_STATUS_ACTIVE",
+						"MANAGEMENT_KEY_STATUS_DISABLED",
+						"MANAGEMENT_KEY_STATUS_REVOKED",
+					},
 				},
 			},
 		)

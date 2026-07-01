@@ -26,7 +26,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "check-display-name-availability",
 			Short:   "Check skill display name availability",
-			Long:    bartolocli.Markdown("Checks whether a display name is available within the workspace. Returns the `conflicting_skill_id` when the name is taken. Pass `skill_id` to exclude a skill from the check, useful when renaming.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `skill_id` (string)\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Checks whether a display name is available within the workspace. Returns the `conflicting_skill_id` when the name is taken. Pass `skill_id` to exclude a skill from the check, useful when renaming.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `skill_id` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -100,7 +100,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new skill",
-			Long:    bartolocli.Markdown("Creates a reusable skill in the workspace. Skills store instructions, metadata, and an optional project location so teams can standardize repeatable AI workflows.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a reusable skill in the workspace. Skills store instructions, metadata, and an optional project location so teams can standardize repeatable AI workflows.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -139,6 +139,12 @@ func registerskillsCommands(root *cobra.Command) {
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "Project that should contain the skill.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Free-form labels for organizing the skill.",
 						},
 					},
 				)
@@ -190,6 +196,12 @@ func registerskillsCommands(root *cobra.Command) {
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "Project that should contain the skill.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Free-form labels for organizing the skill.",
 				},
 			},
 		)
@@ -316,7 +328,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update skill-id",
 			Short:   "Update a skill",
-			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted optional fields keep their current values. Repeated fields such as `tags` replace the existing collection when provided.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted optional fields keep their current values. Repeated fields such as `tags` replace the existing collection when provided.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -355,6 +367,12 @@ func registerskillsCommands(root *cobra.Command) {
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "New containing project. Omit to keep the current project.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Replacement tag list. Leave empty to clear tags.",
 						},
 					},
 				)
@@ -406,6 +424,12 @@ func registerskillsCommands(root *cobra.Command) {
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "New containing project. Omit to keep the current project.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Replacement tag list. Leave empty to clear tags.",
 				},
 			},
 		)

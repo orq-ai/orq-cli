@@ -26,7 +26,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "check",
 			Short:   "Check budget enforcement",
-			Long:    bartolocli.Markdown("Internal endpoint used by the gateway to resolve applicable budgets and check enforcement gates for a request. Returns allowed/rejected status with dimension info for rate-limit headers.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key_id` (string)\n- `headers` (object)\n- `identity_external_id` (string)\n- `metadata` (object)\n- `model_id` (string)\n- `project_id` (string)\n- `provider` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Internal endpoint used by the gateway to resolve applicable budgets and check enforcement gates for a request. Returns allowed/rejected status with dimension info for rate-limit headers.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key_id` (string)\n- `headers` (object)\n- `identity_external_id` (string)\n- `metadata` (object)\n- `model_id` (string)\n- `project_id` (string)\n- `provider` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -43,10 +43,22 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Description: "API key that issued the request (if any).",
 						},
 						{
+							Name:        "headers",
+							FlagName:    "headers",
+							Type:        "string-map",
+							Description: "Request headers (lowercase keys) forwarded for dynamic-budget\n matching (`headers[\"x-env\"] == \"prod\"`).",
+						},
+						{
 							Name:        "identity_external_id",
 							FlagName:    "identity-external-id",
 							Type:        "string",
 							Description: "Identity external id for contact-scoped budgets (if any).",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "Request metadata forwarded for dynamic-budget matching\n (`metadata.team == \"ml\"`). Free-form JSON object from the request\n body's `metadata` field.",
 						},
 						{
 							Name:        "model_id",
@@ -94,10 +106,22 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Description: "API key that issued the request (if any).",
 				},
 				{
+					Name:        "headers",
+					FlagName:    "headers",
+					Type:        "string-map",
+					Description: "Request headers (lowercase keys) forwarded for dynamic-budget\n matching (`headers[\"x-env\"] == \"prod\"`).",
+				},
+				{
 					Name:        "identity_external_id",
 					FlagName:    "identity-external-id",
 					Type:        "string",
 					Description: "Identity external id for contact-scoped budgets (if any).",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "Request metadata forwarded for dynamic-budget matching\n (`metadata.team == \"ml\"`). Free-form JSON object from the request\n body's `metadata` field.",
 				},
 				{
 					Name:        "model_id",
@@ -136,7 +160,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new budget",
-			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -157,6 +181,30 @@ func registerbudgetsCommands(root *cobra.Command) {
 							FlagName:    "is-active",
 							Type:        "bool",
 							Description: "Whether the budget should be active immediately. Defaults to true\n when omitted (handler enforces).",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget; the handler enforces that invariant.",
+						},
+						{
+							Name:        "match",
+							FlagName:    "match",
+							Type:        "json",
+							Description: "Raw CEL matching expression for dynamic budgets (e.g.\n `metadata.team == \"ml\" && provider == \"openai\"`). Validated via\n CEL parse at write time. Mutually exclusive with `scope`.",
+						},
+						{
+							Name:        "rate_limit",
+							FlagName:    "rate-limit",
+							Type:        "json",
+							Description: "Optional rate limit.",
+						},
+						{
+							Name:        "scope",
+							FlagName:    "scope",
+							Type:        "json",
+							Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set; the handler enforces that invariant.",
 						},
 					},
 				)
@@ -190,6 +238,30 @@ func registerbudgetsCommands(root *cobra.Command) {
 					FlagName:    "is-active",
 					Type:        "bool",
 					Description: "Whether the budget should be active immediately. Defaults to true\n when omitted (handler enforces).",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "At least one of amount / token_limit / rate_limit.requests_per_minute\n must be provided on the budget; the handler enforces that invariant.",
+				},
+				{
+					Name:        "match",
+					FlagName:    "match",
+					Type:        "json",
+					Description: "Raw CEL matching expression for dynamic budgets (e.g.\n `metadata.team == \"ml\" && provider == \"openai\"`). Validated via\n CEL parse at write time. Mutually exclusive with `scope`.",
+				},
+				{
+					Name:        "rate_limit",
+					FlagName:    "rate-limit",
+					Type:        "json",
+					Description: "Optional rate limit.",
+				},
+				{
+					Name:        "scope",
+					FlagName:    "scope",
+					Type:        "json",
+					Description: "Structured scope. Mutually exclusive with `match`: provide a scope\n for the six canonical kinds (the server derives the matching CEL),\n or provide `match` for a dynamic budget. Exactly one of the two\n must be set; the handler enforces that invariant.",
 				},
 			},
 		)
@@ -404,7 +476,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update budget-id",
 			Short:   "Update a budget",
-			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -431,6 +503,24 @@ func registerbudgetsCommands(root *cobra.Command) {
 							FlagName:    "is-active",
 							Type:        "bool",
 							Description: "New active state. Omit to keep current.",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "New limits. Omit to keep current.",
+						},
+						{
+							Name:        "match",
+							FlagName:    "match",
+							Type:        "json",
+							Description: "New matching expression. Only valid for dynamic budgets (no\n structured scope) — the scope of a scoped budget is immutable, so\n its derived expression is too. Validated via CEL parse.",
+						},
+						{
+							Name:        "rate_limit",
+							FlagName:    "rate-limit",
+							Type:        "json",
+							Description: "New rate limit. Omit to keep current.",
 						},
 					},
 				)
@@ -470,6 +560,24 @@ func registerbudgetsCommands(root *cobra.Command) {
 					FlagName:    "is-active",
 					Type:        "bool",
 					Description: "New active state. Omit to keep current.",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "New limits. Omit to keep current.",
+				},
+				{
+					Name:        "match",
+					FlagName:    "match",
+					Type:        "json",
+					Description: "New matching expression. Only valid for dynamic budgets (no\n structured scope) — the scope of a scoped budget is immutable, so\n its derived expression is too. Validated via CEL parse.",
+				},
+				{
+					Name:        "rate_limit",
+					FlagName:    "rate-limit",
+					Type:        "json",
+					Description: "New rate limit. Omit to keep current.",
 				},
 			},
 		)

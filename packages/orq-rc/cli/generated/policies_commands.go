@@ -26,7 +26,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create policy",
-			Long:    bartolocli.Markdown("Creates a new router policy with model configuration, evaluators, retry settings, and limits.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `evaluators` (array | null)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new router policy with model configuration, evaluators, retry settings, and limits.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `evaluators` (array | null)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -56,10 +56,34 @@ func registerpoliciesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "evaluators",
+							FlagName:    "evaluators",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "models_config",
+							FlagName:    "models-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+						},
+						{
+							Name:        "retry_config",
+							FlagName:    "retry-config",
+							Type:        "json",
+							Description: "",
 						},
 						{
 							Name:        "timeout",
@@ -107,10 +131,34 @@ func registerpoliciesCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "evaluators",
+					FlagName:    "evaluators",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "models_config",
+					FlagName:    "models-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+				},
+				{
+					Name:        "retry_config",
+					FlagName:    "retry-config",
+					Type:        "json",
+					Description: "",
 				},
 				{
 					Name:        "timeout",
@@ -247,7 +295,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update policy-id",
 			Short:   "Update policy",
-			Long:    bartolocli.Markdown("Partially updates an existing policy. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `evaluators` (array)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Partially updates an existing policy. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `evaluators` (array)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -277,10 +325,34 @@ func registerpoliciesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "evaluators",
+							FlagName:    "evaluators",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "models_config",
+							FlagName:    "models-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "Optional project ID to assign the policy to.",
+						},
+						{
+							Name:        "retry_config",
+							FlagName:    "retry-config",
+							Type:        "json",
+							Description: "",
 						},
 						{
 							Name:        "timeout",
@@ -328,10 +400,34 @@ func registerpoliciesCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "evaluators",
+					FlagName:    "evaluators",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "models_config",
+					FlagName:    "models-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "Optional project ID to assign the policy to.",
+				},
+				{
+					Name:        "retry_config",
+					FlagName:    "retry-config",
+					Type:        "json",
+					Description: "",
 				},
 				{
 					Name:        "timeout",

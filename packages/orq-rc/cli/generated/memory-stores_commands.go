@@ -26,7 +26,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create memory store",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `embedding_config` (object, required)\n- `key` (string, required)\n- `path` (string, required)\n- `ttl` (number | null)\n\nRequired fields: `description`, `embedding_config`, `key`, `path`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `embedding_config` (object, required)\n- `key` (string, required)\n- `path` (string, required)\n- `ttl` (number | null)\n\nRequired fields: `description`, `embedding_config`, `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -43,6 +43,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
 						},
 						{
+							Name:        "embedding_config",
+							FlagName:    "embedding-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
@@ -53,6 +59,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							FlagName:    "path",
 							Type:        "string",
 							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "ttl",
+							FlagName:    "ttl",
+							Type:        "float64-nullable",
+							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 						},
 					},
 				)
@@ -82,6 +94,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
 				},
 				{
+					Name:        "embedding_config",
+					FlagName:    "embedding-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
@@ -92,6 +110,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					FlagName:    "path",
 					Type:        "string",
 					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "ttl",
+					FlagName:    "ttl",
+					Type:        "float64-nullable",
+					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 				},
 			},
 		)
@@ -112,7 +136,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-document memory-store-key memory-entity-id",
 			Short:   "Create a new memory document",
-			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -122,6 +146,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+						},
 						{
 							Name:        "text",
 							FlagName:    "text",
@@ -150,6 +180,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+				},
+				{
 					Name:        "text",
 					FlagName:    "text",
 					Type:        "string",
@@ -174,7 +210,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-memory memory-store-key",
 			Short:   "Create a new memory",
-			Long:    bartolocli.Markdown("Creates a new memory in the specified memory store.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entity_id` (string, required)\n\nRequired fields: `entity_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new memory in the specified memory store.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entity_id` (string, required)\n\nRequired fields: `entity_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -560,7 +596,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update memory-store-key",
 			Short:   "Update memory store",
-			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `ttl` (number | null)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `ttl` (number | null)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -581,6 +617,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							FlagName:    "path",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "ttl",
+							FlagName:    "ttl",
+							Type:        "float64-nullable",
+							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 						},
 					},
 				)
@@ -615,6 +657,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Type:        "string",
 					Description: "",
 				},
+				{
+					Name:        "ttl",
+					FlagName:    "ttl",
+					Type:        "float64-nullable",
+					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+				},
 			},
 		)
 
@@ -634,7 +682,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-document memory-store-key memory-entity-id document-id",
 			Short:   "Update a specific memory document",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -644,6 +692,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+						},
 						{
 							Name:        "text",
 							FlagName:    "text",
@@ -672,6 +726,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+				},
+				{
 					Name:        "text",
 					FlagName:    "text",
 					Type:        "string",
@@ -696,7 +756,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-memory memory-store-key memory-entity-id",
 			Short:   "Update a specific memory",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)"),
+			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -705,7 +765,14 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -725,7 +792,14 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

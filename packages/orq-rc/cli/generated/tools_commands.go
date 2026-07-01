@@ -26,7 +26,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create tool",
-			Long:    bartolocli.Markdown("Creates a new tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("Creates a new tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string, required)\n- `discovery_variables` (object)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string, required)\n- ... and 4 more fields\n\nRequired fields: `description`, `key`, `path`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -35,7 +35,89 @@ func registertoolsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "code_tool",
+							FlagName:    "code-tool",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
+						},
+						{
+							Name:        "discovery_variables",
+							FlagName:    "discovery-variables",
+							Type:        "string-map",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "The name of the tool as it will be displayed in the UI. This is optional and if not provided, the `key` will be used.",
+						},
+						{
+							Name:        "function",
+							FlagName:    "function",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "http",
+							FlagName:    "http",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "json_schema",
+							FlagName:    "json-schema",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "Unique key of the tool as it will be displayed in the UI",
+						},
+						{
+							Name:        "mcp",
+							FlagName:    "mcp",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "status",
+							FlagName:    "status",
+							Type:        "enum-string",
+							Description: "The status of the tool. `Live` is the latest version of the tool. `Draft` is a version that is not yet published. `Pending` is a version that is pending approval. `Published` is a version that was live and has been replaced by a new version.",
+							Enum: []string{
+								"live",
+								"draft",
+								"pending",
+								"published",
+							},
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"function",
+							},
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -55,7 +137,89 @@ func registertoolsCommands(root *cobra.Command) {
 		toolsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "code_tool",
+					FlagName:    "code-tool",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
+				},
+				{
+					Name:        "discovery_variables",
+					FlagName:    "discovery-variables",
+					Type:        "string-map",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "The name of the tool as it will be displayed in the UI. This is optional and if not provided, the `key` will be used.",
+				},
+				{
+					Name:        "function",
+					FlagName:    "function",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "http",
+					FlagName:    "http",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "json_schema",
+					FlagName:    "json-schema",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "Unique key of the tool as it will be displayed in the UI",
+				},
+				{
+					Name:        "mcp",
+					FlagName:    "mcp",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "status",
+					FlagName:    "status",
+					Type:        "enum-string",
+					Description: "The status of the tool. `Live` is the latest version of the tool. `Draft` is a version that is not yet published. `Pending` is a version that is pending approval. `Published` is a version that was live and has been replaced by a new version.",
+					Enum: []string{
+						"live",
+						"draft",
+						"pending",
+						"published",
+					},
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"function",
+					},
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -252,7 +416,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update tool-id",
 			Short:   "Update tool",
-			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string)\n- `discovery_variables` (object)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string)\n- ... and 6 more fields\n\nRequired fields: `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -261,7 +425,106 @@ func registertoolsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "code_tool",
+							FlagName:    "code-tool",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
+						},
+						{
+							Name:        "discovery_variables",
+							FlagName:    "discovery-variables",
+							Type:        "string-map",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "The name of the tool as it will be displayed in the UI. This is optional and if not provided, the `key` will be used.",
+						},
+						{
+							Name:        "function",
+							FlagName:    "function",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "http",
+							FlagName:    "http",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "json_schema",
+							FlagName:    "json-schema",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "Unique key of the tool as it will be displayed in the UI",
+						},
+						{
+							Name:        "mcp",
+							FlagName:    "mcp",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "status",
+							FlagName:    "status",
+							Type:        "enum-string",
+							Description: "The status of the tool. `Live` is the latest version of the tool. `Draft` is a version that is not yet published. `Pending` is a version that is pending approval. `Published` is a version that was live and has been replaced by a new version.",
+							Enum: []string{
+								"live",
+								"draft",
+								"pending",
+								"published",
+							},
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"function",
+							},
+						},
+						{
+							Name:        "versionDescription",
+							FlagName:    "version-description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "versionIncrement",
+							FlagName:    "version-increment",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"major",
+								"minor",
+								"patch",
+							},
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -281,7 +544,106 @@ func registertoolsCommands(root *cobra.Command) {
 		toolsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "code_tool",
+					FlagName:    "code-tool",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
+				},
+				{
+					Name:        "discovery_variables",
+					FlagName:    "discovery-variables",
+					Type:        "string-map",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "The name of the tool as it will be displayed in the UI. This is optional and if not provided, the `key` will be used.",
+				},
+				{
+					Name:        "function",
+					FlagName:    "function",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "http",
+					FlagName:    "http",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "json_schema",
+					FlagName:    "json-schema",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "Unique key of the tool as it will be displayed in the UI",
+				},
+				{
+					Name:        "mcp",
+					FlagName:    "mcp",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "status",
+					FlagName:    "status",
+					Type:        "enum-string",
+					Description: "The status of the tool. `Live` is the latest version of the tool. `Draft` is a version that is not yet published. `Pending` is a version that is pending approval. `Published` is a version that was live and has been replaced by a new version.",
+					Enum: []string{
+						"live",
+						"draft",
+						"pending",
+						"published",
+					},
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"function",
+					},
+				},
+				{
+					Name:        "versionDescription",
+					FlagName:    "version-description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "versionIncrement",
+					FlagName:    "version-increment",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"major",
+						"minor",
+						"patch",
+					},
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

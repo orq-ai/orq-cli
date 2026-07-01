@@ -26,7 +26,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create routing rule",
-			Long:    bartolocli.Markdown("Creates a new routing rule with expression, models configuration, and priority settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n- `project_id` (string)\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new routing rule with expression, models configuration, and priority settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n- `project_id` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -53,6 +53,18 @@ func registerroutingRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "expression",
+							FlagName:    "expression",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "models_config",
+							FlagName:    "models-config",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -104,6 +116,18 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "expression",
+					FlagName:    "expression",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "models_config",
+					FlagName:    "models-config",
+					Type:        "json",
 					Description: "",
 				},
 				{
@@ -285,7 +309,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update routing-rule-id",
 			Short:   "Update routing rule",
-			Long:    bartolocli.Markdown("Partially updates an existing routing rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Partially updates an existing routing rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -312,6 +336,18 @@ func registerroutingRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "expression",
+							FlagName:    "expression",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "models_config",
+							FlagName:    "models-config",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -357,6 +393,18 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "expression",
+					FlagName:    "expression",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "models_config",
+					FlagName:    "models-config",
+					Type:        "json",
 					Description: "",
 				},
 				{

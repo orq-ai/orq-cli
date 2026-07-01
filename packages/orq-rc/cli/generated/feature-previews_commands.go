@@ -61,7 +61,7 @@ func registerfeaturePreviewsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "toggle slug",
 			Short:   "Toggle feature preview",
-			Long:    bartolocli.Markdown("Toggles a single feature preview on/off for the current user and\n returns its new state.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Toggles a single feature preview on/off for the current user and\n returns its new state.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),

@@ -26,7 +26,7 @@ func registermoderationsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create moderation",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf, required)\n- `model` (string, required)\n\nRequired fields: `input`, `model`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `input` (anyOf, required)\n- `model` (string, required)\n\nRequired fields: `input`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -36,6 +36,12 @@ func registermoderationsCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "input",
+							FlagName:    "input",
+							Type:        "json",
+							Description: "Input (or inputs) to classify. Can be a single string, an array of strings, or an array of multi-modal input objects similar to other models.",
+						},
 						{
 							Name:        "model",
 							FlagName:    "model",
@@ -63,6 +69,12 @@ func registermoderationsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "input",
+					FlagName:    "input",
+					Type:        "json",
+					Description: "Input (or inputs) to classify. Can be a single string, an array of strings, or an array of multi-modal input objects similar to other models.",
+				},
 				{
 					Name:        "model",
 					FlagName:    "model",

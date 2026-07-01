@@ -26,7 +26,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 26 more fields\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 26 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,16 +37,58 @@ func registerresponsesCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "cache_control",
+							FlagName:    "cache-control",
+							Type:        "json",
+							Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
+						},
+						{
+							Name:        "conversation",
+							FlagName:    "conversation",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Fallback models to try if the primary model fails. Each entry specifies a model in provider/model format.",
+						},
+						{
 							Name:        "frequency_penalty",
 							FlagName:    "frequency-penalty",
 							Type:        "float64",
 							Description: "Penalize new tokens based on their frequency in the text so far. Between -2.0 and 2.0.",
 						},
 						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
+							Description: "Guardrails to evaluate the request against.",
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "input",
+							FlagName:    "input",
+							Type:        "json",
+							Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
+						},
+						{
 							Name:        "instructions",
 							FlagName:    "instructions",
 							Type:        "string",
 							Description: "System prompt / instructions for the model.",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "",
 						},
 						{
 							Name:        "max_output_tokens",
@@ -61,6 +103,18 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Maximum number of tool call rounds in the agentic loop.",
 						},
 						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+						},
+						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
@@ -71,6 +125,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "parallel-tool-calls",
 							Type:        "bool",
 							Description: "Whether to allow parallel tool calls.",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
 						},
 						{
 							Name:        "presence_penalty",
@@ -91,6 +151,18 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Key for prompt caching across requests.",
 						},
 						{
+							Name:        "reasoning",
+							FlagName:    "reasoning",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "safety_identifier",
 							FlagName:    "safety-identifier",
 							Type:        "string",
@@ -109,6 +181,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "If true, returns a stream of server-sent events.",
 						},
 						{
+							Name:        "stream_options",
+							FlagName:    "stream-options",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "temperature",
 							FlagName:    "temperature",
 							Type:        "float64",
@@ -117,8 +195,37 @@ func registerresponsesCommands(root *cobra.Command) {
 						{
 							Name:        "template_engine",
 							FlagName:    "template-engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Template engine for variable substitution in instructions. Defaults to the agent manifest's engine when invoking an agent, otherwise text.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "text",
+							FlagName:    "text",
+							Type:        "json",
+							Description: "Configuration for text output.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "tool_choice",
+							FlagName:    "tool-choice",
+							Type:        "json",
+							Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+						},
+						{
+							Name:        "tools",
+							FlagName:    "tools",
+							Type:        "json",
+							Description: "Tools available to the model.",
 						},
 						{
 							Name:        "top_logprobs",
@@ -131,6 +238,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "top-p",
 							Type:        "float64",
 							Description: "Nucleus sampling parameter.",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Template variables for prompt substitution. Plain values fill {{variable}} placeholders in instructions. For secrets, use {\"secret\": true, \"value\": \"sensitive-data\"} — secrets are automatically passed to platform tools (Python, HTTP, MCP) and redacted from traces.",
 						},
 					},
 				)
@@ -154,16 +267,58 @@ func registerresponsesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache_control",
+					FlagName:    "cache-control",
+					Type:        "json",
+					Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
+				},
+				{
+					Name:        "conversation",
+					FlagName:    "conversation",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Fallback models to try if the primary model fails. Each entry specifies a model in provider/model format.",
+				},
+				{
 					Name:        "frequency_penalty",
 					FlagName:    "frequency-penalty",
 					Type:        "float64",
 					Description: "Penalize new tokens based on their frequency in the text so far. Between -2.0 and 2.0.",
 				},
 				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
+					Description: "Guardrails to evaluate the request against.",
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "input",
+					FlagName:    "input",
+					Type:        "json",
+					Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
+				},
+				{
 					Name:        "instructions",
 					FlagName:    "instructions",
 					Type:        "string",
 					Description: "System prompt / instructions for the model.",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "",
 				},
 				{
 					Name:        "max_output_tokens",
@@ -178,6 +333,18 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "Maximum number of tool call rounds in the agentic loop.",
 				},
 				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+				},
+				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
@@ -188,6 +355,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "parallel-tool-calls",
 					Type:        "bool",
 					Description: "Whether to allow parallel tool calls.",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
 				},
 				{
 					Name:        "presence_penalty",
@@ -208,6 +381,18 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "Key for prompt caching across requests.",
 				},
 				{
+					Name:        "reasoning",
+					FlagName:    "reasoning",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "safety_identifier",
 					FlagName:    "safety-identifier",
 					Type:        "string",
@@ -226,6 +411,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "If true, returns a stream of server-sent events.",
 				},
 				{
+					Name:        "stream_options",
+					FlagName:    "stream-options",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "temperature",
 					FlagName:    "temperature",
 					Type:        "float64",
@@ -234,8 +425,37 @@ func registerresponsesCommands(root *cobra.Command) {
 				{
 					Name:        "template_engine",
 					FlagName:    "template-engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Template engine for variable substitution in instructions. Defaults to the agent manifest's engine when invoking an agent, otherwise text.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "text",
+					FlagName:    "text",
+					Type:        "json",
+					Description: "Configuration for text output.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "tool_choice",
+					FlagName:    "tool-choice",
+					Type:        "json",
+					Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+				},
+				{
+					Name:        "tools",
+					FlagName:    "tools",
+					Type:        "json",
+					Description: "Tools available to the model.",
 				},
 				{
 					Name:        "top_logprobs",
@@ -248,6 +468,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "top-p",
 					Type:        "float64",
 					Description: "Nucleus sampling parameter.",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Template variables for prompt substitution. Plain values fill {{variable}} placeholders in instructions. For secrets, use {\"secret\": true, \"value\": \"sensitive-data\"} — secrets are automatically passed to platform tools (Python, HTTP, MCP) and redacted from traces.",
 				},
 			},
 		)

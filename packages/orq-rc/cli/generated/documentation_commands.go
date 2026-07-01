@@ -26,7 +26,7 @@ func registerdocumentationCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search documentation",
-			Long:    bartolocli.Markdown("Searches the orq.ai documentation index for the given query and returns the matching pages with content snippets and metadata.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `limit` (integer)\n- `query` (string, required)\n- `score_threshold` (number)\n\nRequired fields: `query`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Searches the orq.ai documentation index for the given query and returns the matching pages with content snippets and metadata.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `limit` (integer)\n- `query` (string, required)\n- `score_threshold` (number)\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),

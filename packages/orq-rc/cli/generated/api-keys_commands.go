@@ -26,7 +26,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -36,6 +36,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "access",
+							FlagName:    "access",
+							Type:        "json",
+							Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
+						},
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
@@ -49,10 +55,28 @@ func registerapiKeysCommands(root *cobra.Command) {
 							Description: "Human-readable name. Required.",
 						},
 						{
+							Name:        "owner",
+							FlagName:    "owner",
+							Type:        "json",
+							Description: "Owner attribution. Defaults to service_account when omitted.",
+						},
+						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"PERMISSION_MODE_UNSPECIFIED",
+								"PERMISSION_MODE_ALL",
+								"PERMISSION_MODE_RESTRICTED",
+								"PERMISSION_MODE_READ_ONLY",
+							},
+						},
+						{
+							Name:        "project_scope",
+							FlagName:    "project-scope",
+							Type:        "json",
+							Description: "Project authorization scope. Defaults to all-projects when omitted.",
 						},
 					},
 				)
@@ -76,6 +100,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "access",
+					FlagName:    "access",
+					Type:        "json",
+					Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
+				},
+				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
 					Type:        "string",
@@ -88,10 +118,28 @@ func registerapiKeysCommands(root *cobra.Command) {
 					Description: "Human-readable name. Required.",
 				},
 				{
+					Name:        "owner",
+					FlagName:    "owner",
+					Type:        "json",
+					Description: "Owner attribution. Defaults to service_account when omitted.",
+				},
+				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"PERMISSION_MODE_UNSPECIFIED",
+						"PERMISSION_MODE_ALL",
+						"PERMISSION_MODE_RESTRICTED",
+						"PERMISSION_MODE_READ_ONLY",
+					},
+				},
+				{
+					Name:        "project_scope",
+					FlagName:    "project-scope",
+					Type:        "json",
+					Description: "Project authorization scope. Defaults to all-projects when omitted.",
 				},
 			},
 		)
@@ -260,7 +308,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update api-key-id",
 			Short:   "Update an API key",
-			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -270,6 +318,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "access",
+							FlagName:    "access",
+							Type:        "json",
+							Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
+						},
 						{
 							Name:        "clear_expires_at",
 							FlagName:    "clear-expires-at",
@@ -291,14 +345,32 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"PERMISSION_MODE_UNSPECIFIED",
+								"PERMISSION_MODE_ALL",
+								"PERMISSION_MODE_RESTRICTED",
+								"PERMISSION_MODE_READ_ONLY",
+							},
+						},
+						{
+							Name:        "project_scope",
+							FlagName:    "project-scope",
+							Type:        "json",
+							Description: "New project scope. Omit to keep current.",
 						},
 						{
 							Name:        "status",
 							FlagName:    "status",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"API_KEY_STATUS_UNSPECIFIED",
+								"API_KEY_STATUS_ACTIVE",
+								"API_KEY_STATUS_DISABLED",
+								"API_KEY_STATUS_REVOKED",
+							},
 						},
 					},
 				)
@@ -322,6 +394,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "access",
+					FlagName:    "access",
+					Type:        "json",
+					Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
+				},
+				{
 					Name:        "clear_expires_at",
 					FlagName:    "clear-expires-at",
 					Type:        "bool",
@@ -342,14 +420,32 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"PERMISSION_MODE_UNSPECIFIED",
+						"PERMISSION_MODE_ALL",
+						"PERMISSION_MODE_RESTRICTED",
+						"PERMISSION_MODE_READ_ONLY",
+					},
+				},
+				{
+					Name:        "project_scope",
+					FlagName:    "project-scope",
+					Type:        "json",
+					Description: "New project scope. Omit to keep current.",
 				},
 				{
 					Name:        "status",
 					FlagName:    "status",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"API_KEY_STATUS_UNSPECIFIED",
+						"API_KEY_STATUS_ACTIVE",
+						"API_KEY_STATUS_DISABLED",
+						"API_KEY_STATUS_REVOKED",
+					},
 				},
 			},
 		)

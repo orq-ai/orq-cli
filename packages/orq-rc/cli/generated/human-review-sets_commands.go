@@ -26,7 +26,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a human review set",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `filter_type` (string, required)\n- `filter_value` (string)\n- `filter_values` (array)\n- `human_eval_ids` (array, required)\n- `project_id` (anyOf)\n\nRequired fields: `display_name`, `filter_type`, `human_eval_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -36,7 +36,53 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "Detailed description of the human review set",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "Display name of the human review set",
+						},
+						{
+							Name:        "filter_type",
+							FlagName:    "filter-type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"span_type",
+							},
+						},
+						{
+							Name:        "filter_value",
+							FlagName:    "filter-value",
+							Type:        "string",
+							Description: "Name pattern to match",
+						},
+						{
+							Name:        "filter_values",
+							FlagName:    "filter-values",
+							Type:        "string-slice",
+							Description: "Array of span types to match",
+						},
+						{
+							Name:        "human_eval_ids",
+							FlagName:    "human-eval-ids",
+							Type:        "string-slice",
+							Description: "Array of human review IDs to be applied to matching spans",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "json",
+							Description: "Optional project ID to scope this human review set to a specific project",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -56,7 +102,53 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		humanReviewSetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "Detailed description of the human review set",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "Display name of the human review set",
+				},
+				{
+					Name:        "filter_type",
+					FlagName:    "filter-type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"span_type",
+					},
+				},
+				{
+					Name:        "filter_value",
+					FlagName:    "filter-value",
+					Type:        "string",
+					Description: "Name pattern to match",
+				},
+				{
+					Name:        "filter_values",
+					FlagName:    "filter-values",
+					Type:        "string-slice",
+					Description: "Array of span types to match",
+				},
+				{
+					Name:        "human_eval_ids",
+					FlagName:    "human-eval-ids",
+					Type:        "string-slice",
+					Description: "Array of human review IDs to be applied to matching spans",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "json",
+					Description: "Optional project ID to scope this human review set to a specific project",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -182,7 +274,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a human review set",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `filter_type` (string, required)\n- `filter_value` (string)\n- `filter_values` (array)\n- `human_eval_ids` (array, required)\n- `project_id` (anyOf)\n\nRequired fields: `display_name`, `filter_type`, `human_eval_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -192,7 +284,53 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "Detailed description of the human review set",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "Display name of the human review set",
+						},
+						{
+							Name:        "filter_type",
+							FlagName:    "filter-type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"span_type",
+							},
+						},
+						{
+							Name:        "filter_value",
+							FlagName:    "filter-value",
+							Type:        "string",
+							Description: "Name pattern to match",
+						},
+						{
+							Name:        "filter_values",
+							FlagName:    "filter-values",
+							Type:        "string-slice",
+							Description: "Array of span types to match",
+						},
+						{
+							Name:        "human_eval_ids",
+							FlagName:    "human-eval-ids",
+							Type:        "string-slice",
+							Description: "Array of human review IDs to be applied to matching spans",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "json",
+							Description: "Optional project ID to scope this human review set to a specific project",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -212,7 +350,53 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		humanReviewSetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "Detailed description of the human review set",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "Display name of the human review set",
+				},
+				{
+					Name:        "filter_type",
+					FlagName:    "filter-type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"span_type",
+					},
+				},
+				{
+					Name:        "filter_value",
+					FlagName:    "filter-value",
+					Type:        "string",
+					Description: "Name pattern to match",
+				},
+				{
+					Name:        "filter_values",
+					FlagName:    "filter-values",
+					Type:        "string-slice",
+					Description: "Array of span types to match",
+				},
+				{
+					Name:        "human_eval_ids",
+					FlagName:    "human-eval-ids",
+					Type:        "string-slice",
+					Description: "Array of human review IDs to be applied to matching spans",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "json",
+					Description: "Optional project ID to scope this human review set to a specific project",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
