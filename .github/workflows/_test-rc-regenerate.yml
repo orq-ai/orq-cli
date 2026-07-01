@@ -1,0 +1,81 @@
+name: '[TEST] RC regenerate (stops after generate)'
+
+# TEMPORARY test workflow — delete before merging.
+# Exercises the pre-release (rc) release path in real GitHub Actions, but only
+# through the "Regenerate CLI from schema" step. No commit-back, tag, release,
+# build, or npm publish. Triggers on push to the feature branch since the real
+# release workflows only fire on push to main and workflow_dispatch requires the
+# default branch.
+on:
+  push:
+    branches:
+      - feat/release-pipeline-prod-rc
+
+permissions:
+  contents: read
+
+env:
+  MODULE_DIR: packages/orq-rc # rc / pre-release path
+
+jobs:
+  test:
+    # ubuntu is fine here — we stop before the build step that needs macOS codesign.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Configure git
+        run: |
+          git config --global user.name "Orq GitHub Actions"
+          git config --global user.email "admin@orq.ai"
+
+      - name: Install bartolo (pinned to go.mod)
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          pin="$(cd "$workdir" && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
+          echo "Installing bartolo $pin"
+          go install "github.com/orq-ai/bartolo@${pin}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve version
+        id: version
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "error: app_version missing in $workdir/.bartolo.json" >&2
+            exit 1
+          fi
+          tag="v$version"
+          if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
+          echo "Resolved version=$version tag=$tag prerelease=$prerelease"
+
+      - name: Regenerate CLI from schema
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          spec="$(jq -r '.last_spec_path' "$workdir/.bartolo.json")"
+          ( cd "$workdir" && bartolo generate "$spec" )
+
+      - name: Sanity — what changed + rc build compiles
+        run: |
+          echo "=== git status after regenerate ==="
+          git status --short
+          echo "=== generated file count ==="
+          ls "${MODULE_DIR}/cli/generated" | wc -l
+          echo "=== rc module builds ==="
+          ( cd "${MODULE_DIR}" && go build ./cmd/orq && echo "rc build OK" )

@@ -1,8 +1,8 @@
 {
   "app_name": "orq",
   "app_version": "0.1.0",
-  "module_path": "orq",
-  "bartolo_version": "0.1.0",
+  "module_path": "orq-rc",
+  "bartolo_version": "0.2.0",
   "env_prefix": "ORQ",
   "default_output_format": "toon",
   "api_key_env_var": "ORQ_API_KEY",

@@ -1,37 +1,56 @@
 name: Release
 
-# Fires when you publish a GitHub Release. Draft releases do not trigger; the
-# tag name (e.g. v0.1.0) becomes the published semver after stripping the `v`.
+# Reusable release pipeline, called by release-stable.yml (prod, root module)
+# and release-pre-release.yml (rc, packages/orq-rc module). It regenerates the
+# CLI from the OpenAPI schema that orquesta-web committed, syncs the generated
+# code back to main, tags + publishes a GitHub release, cross-compiles every
+# platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
+#
+# The version is read from the module's .bartolo.json app_version (bumped by
+# orquesta-web); the tag is derived as v<app_version>. rc versions carry an
+# -rc.N suffix and produce a prerelease.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      module_dir:
+        description: "Go module to release from ('' = repo root / prod, 'packages/orq-rc' = rc)"
+        type: string
+        required: false
+        default: ''
+      npm_dist_tag:
+        description: "npm dist-tag to publish under (latest for prod, rc for pre-release)"
+        type: string
+        required: true
+    secrets:
+      NPM_TOKEN:
+        description: "npm automation token for publishing @orq-ai/cli"
+        required: true
 
-# Only one release run at a time. If you hit "re-run" on a finished release
-# it cancels any earlier in-flight workflow for the same tag.
+# Serialize releases per module so two pushes can't race the commit-back/tag.
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release-${{ inputs.module_dir || 'root' }}
   cancel-in-progress: false
 
-# Opt in to running JavaScript-based actions on Node 24 ahead of GitHub's
-# June 2026 default switch. Silences the "Node 20 actions are deprecated"
-# warning without waiting for checkout/setup-go/setup-node to ship new majors.
-# Once Node 24 becomes the default you can drop this block.
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  MODULE_DIR: ${{ inputs.module_dir }}
 
 jobs:
   release:
-    # macOS runner so `codesign` is available for ad-hoc signing of the two
-    # darwin binaries. Cross-compile targets for linux/windows still work
-    # fine on macOS — Go's cross toolchain doesn't need a matching host OS.
+    # macOS runner so `codesign` is available for ad-hoc signing the two darwin
+    # binaries. Go's cross toolchain builds linux/windows fine from macOS.
     runs-on: macos-latest
 
     permissions:
-      contents: write # upload release assets
+      contents: write # commit regenerated code, push tag, create release + assets
 
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # Default persist-credentials keeps the GITHUB_TOKEN credential so the
+          # commit-back + tag push below can write to the repo (contents: write).
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -42,20 +61,84 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Configure git
+        run: |
+          # Identity for the commit-back below. bartolo (orq-ai/bartolo) is a
+          # public module, so no extra auth is needed to install/build it; the
+          # default checkout credential already covers the push-back + tag.
+          # GITHUB_TOKEN pushes don't trigger further workflow runs, so the
+          # commit-back can't re-fire the release trigger.
+          git config --global user.name "Orq GitHub Actions"
+          git config --global user.email "admin@orq.ai"
+
+      - name: Install bartolo (pinned to go.mod)
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          pin="$(cd "$workdir" && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
+          echo "Installing bartolo $pin"
+          go install "github.com/orq-ai/bartolo@${pin}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Resolve version
         id: version
         run: |
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Release tag: $tag → npm version: $version"
+          workdir="${MODULE_DIR:-.}"
+          version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "error: app_version missing in $workdir/.bartolo.json" >&2
+            exit 1
+          fi
+          tag="v$version"
+          if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag (prerelease=$prerelease) from module '${MODULE_DIR:-root}'"
+
+      - name: Regenerate CLI from schema
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          spec="$(jq -r '.last_spec_path' "$workdir/.bartolo.json")"
+          ( cd "$workdir" && bartolo generate "$spec" )
+
+      - name: Commit regenerated code to main
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          # bartolo generate overwrites README.md with the generated API doc;
+          # the repo keeps a curated README.md, so restore it (no-op if the
+          # module doesn't track one) and never stage it.
+          git checkout -- "$workdir/README.md" 2>/dev/null || true
+          # Stage only generator outputs + their dependency manifests.
+          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "Regenerate CLI for $VERSION"
+            git push origin HEAD:main
+          fi
+
+      - name: Create tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          # Tag the (possibly just-committed) HEAD and publish a release.
+          git tag "$TAG"
+          git push origin "$TAG"
+          flags=(--title "$TAG" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
-        run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}"
+        run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
 
       - name: Dry-run publish wrapper package
         run: |
@@ -65,20 +148,22 @@ jobs:
       - name: Publish platform packages to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
           set -e
           for pkgdir in npm/cli-*/; do
-            echo "=== Publishing $(basename "$pkgdir") ==="
-            (cd "$pkgdir" && npm publish --access public)
+            echo "=== Publishing $(basename "$pkgdir") @ dist-tag $DIST_TAG ==="
+            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
           done
 
       - name: Publish wrapper package to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
           cd npm/cli
-          echo "=== Publishing @orq-ai/cli ==="
-          npm publish --access public
+          echo "=== Publishing @orq-ai/cli @ dist-tag $DIST_TAG ==="
+          npm publish --access public --tag "$DIST_TAG"
 
       - name: Stage raw binaries for GitHub Release
         run: |
