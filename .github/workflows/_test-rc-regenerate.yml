@@ -12,14 +12,16 @@ on:
       - feat/release-pipeline-prod-rc
 
 permissions:
-  contents: read
+  contents: write # the test commits regenerated code back to this branch
 
 env:
   MODULE_DIR: packages/orq-rc # rc / pre-release path
 
 jobs:
   test:
-    # ubuntu is fine here — we stop before the build step that needs macOS codesign.
+    # ubuntu-latest cross-compiles all platforms fine. The macOS ad-hoc codesign
+    # of the darwin binaries is skipped here (release-build.sh warns and
+    # continues without codesign) — the real release runs on macos-latest.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -63,6 +65,11 @@ jobs:
           fi
           tag="v$version"
           if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved version=$version tag=$tag prerelease=$prerelease"
 
       - name: Regenerate CLI from schema
@@ -79,3 +86,27 @@ jobs:
           ls "${MODULE_DIR}/cli/generated" | wc -l
           echo "=== rc module builds ==="
           ( cd "${MODULE_DIR}" && go build ./cmd/orq && echo "rc build OK" )
+
+      - name: Commit regenerated code to this branch (TEST)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          workdir="${MODULE_DIR:-.}"
+          # bartolo 0.4.3 writes the generated API doc to README.generated.md and
+          # leaves the curated README.md alone. Keep this defensive restore in
+          # case an older generator clobbers README.md, and never stage README.*.
+          git checkout -- "$workdir/README.md" 2>/dev/null || true
+          # Stage only generator outputs + their dependency manifests.
+          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "Regenerate CLI for $VERSION"
+            # Push back to the branch that triggered this run (NOT main). The
+            # default GITHUB_TOKEN credential pushes without re-triggering the
+            # workflow, so this can't loop on its own push event.
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Build all platform binaries
+        run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
