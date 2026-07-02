@@ -111,12 +111,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           workdir="${MODULE_DIR:-.}"
-          # bartolo 0.4.3 writes the generated API doc to README.generated.md and
-          # leaves the curated README.md alone. Keep this defensive restore in
-          # case an older generator clobbers README.md, and never stage README.*.
-          git checkout -- "$workdir/README.md" 2>/dev/null || true
-          # Stage only generator outputs + their dependency manifests.
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
+          # Stage the generated docs (README.md + examples/README.md) with the
+          # generated code and its manifests. bartolo leaves an existing curated
+          # README.md untouched — its fallback goes to README.generated.md, which
+          # we intentionally do not commit.
+          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
