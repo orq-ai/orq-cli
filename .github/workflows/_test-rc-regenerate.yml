@@ -146,3 +146,49 @@ jobs:
 
           [ "$fail" -eq 0 ] || { echo "version stamp check FAILED" >&2; exit 1; }
           echo "OK: package.json + binary all report $EXPECTED"
+
+      - name: npm publish dry-run (validates packaging, publishes nothing)
+        run: |
+          set -e
+          # --dry-run packs each package and reports its contents/version without
+          # uploading. No NODE_AUTH_TOKEN needed. The real release.yml does this
+          # for the wrapper, then actually publishes; the test stops at dry-run so
+          # nothing hits the npm registry.
+          for pkgdir in npm/cli-*/ npm/cli/; do
+            echo "=== dry-run $(basename "$pkgdir") ==="
+            (cd "$pkgdir" && npm publish --access public --dry-run)
+          done
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          # Mirrors release.yml. TEST-only: delete any prior release+tag for this
+          # version first so re-runs don't fail on an already-existing release.
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          flags=(--title "$TAG" --target "$(git rev-parse HEAD)" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}"
+
+      - name: Stage raw binaries for GitHub Release
+        run: |
+          set -e
+          mkdir -p dist
+          for pkgdir in npm/cli-*/; do
+            name="$(basename "$pkgdir")"
+            target="${name#cli-}"
+            if [ "$target" = "win32-x64" ]; then
+              cp "$pkgdir/bin/orq.exe" "dist/orq-$target.exe"
+            else
+              cp "$pkgdir/bin/orq" "dist/orq-$target"
+            fi
+          done
+          ls -la dist/
+
+      - name: Upload raw binaries to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ steps.version.outputs.tag }}" dist/orq-* --clobber
