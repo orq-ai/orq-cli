@@ -148,15 +148,18 @@ jobs:
           echo "OK: package.json + binary all report $EXPECTED"
 
       - name: npm publish dry-run (validates packaging, publishes nothing)
+        env:
+          DIST_TAG: rc # rc/pre-release path always publishes under the rc dist-tag
         run: |
           set -e
           # --dry-run packs each package and reports its contents/version without
-          # uploading. No NODE_AUTH_TOKEN needed. The real release.yml does this
-          # for the wrapper, then actually publishes; the test stops at dry-run so
-          # nothing hits the npm registry.
+          # uploading. No NODE_AUTH_TOKEN needed. --tag is required because these
+          # are prerelease versions (npm refuses to default a prerelease to latest).
+          # The real release.yml does this for the wrapper, then actually publishes;
+          # the test stops at dry-run so nothing hits the npm registry.
           for pkgdir in npm/cli-*/ npm/cli/; do
             echo "=== dry-run $(basename "$pkgdir") ==="
-            (cd "$pkgdir" && npm publish --access public --dry-run)
+            (cd "$pkgdir" && npm publish --access public --dry-run --tag "$DIST_TAG")
           done
 
       - name: Create GitHub release

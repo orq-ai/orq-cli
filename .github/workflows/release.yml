@@ -140,9 +140,13 @@ jobs:
         run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
 
       - name: Dry-run publish wrapper package
+        env:
+          DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
+          # --tag is required for prerelease versions (rc), else npm refuses to
+          # publish rather than default it to the latest dist-tag.
           cd npm/cli
-          npm publish --access public --dry-run
+          npm publish --access public --dry-run --tag "$DIST_TAG"
 
       - name: Publish platform packages to npm
         env:
