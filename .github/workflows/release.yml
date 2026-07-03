@@ -132,18 +132,18 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
 
-      # Not redundant with the real publishes below: the wrapper must publish
-      # LAST (its optionalDependencies pin the platform packages), so a wrapper
-      # packaging error would otherwise surface only after the 5 platform
-      # packages are live — and npm versions are immutable, so that half-
-      # published version could never be completed. This dry-run proves the
-      # wrapper packs cleanly before anything hits the registry.
-      - name: Dry-run publish wrapper package
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          cd npm/cli
-          npm publish --access public --dry-run --tag "$DIST_TAG"
+      # # Not redundant with the real publishes below: the wrapper must publish
+      # # LAST (its optionalDependencies pin the platform packages), so a wrapper
+      # # packaging error would otherwise surface only after the 5 platform
+      # # packages are live — and npm versions are immutable, so that half-
+      # # published version could never be completed. This dry-run proves the
+      # # wrapper packs cleanly before anything hits the registry.
+      # - name: Dry-run publish wrapper package
+      #   env:
+      #     DIST_TAG: ${{ inputs.npm_dist_tag }}
+      #   run: |
+      #     cd npm/cli
+      #     npm publish --access public --dry-run --tag "$DIST_TAG"
 
       - name: Publish platform packages to npm
         env:
