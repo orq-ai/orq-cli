@@ -21,10 +21,6 @@ on:
         description: "npm dist-tag to publish under (latest for prod, rc for pre-release)"
         type: string
         required: true
-    secrets:
-      NPM_TOKEN:
-        description: "npm automation token for publishing @orq-ai/cli"
-        required: true
 
 # Serialize releases per module so two pushes can't race the commit-back/tag.
 concurrency:
@@ -157,7 +153,6 @@ jobs:
 
       - name: Publish platform packages to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
           set -e
