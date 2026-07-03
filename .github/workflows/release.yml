@@ -37,7 +37,8 @@ jobs:
     runs-on: macos-latest
 
     permissions:
-      contents: write # commit regenerated code, push tag, create release + assets
+      contents: write
+      id-token: write
 
     steps:
       - name: Checkout main
