@@ -18,7 +18,5 @@ jobs:
   release:
     uses: ./.github/workflows/release.yml
     name: Runner
-    secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
       npm_dist_tag: latest

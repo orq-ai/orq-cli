@@ -6,10 +6,10 @@ name: '[Pre-release] Release'
 # the same @orq-ai/cli package under the npm "rc" dist-tag as a prerelease.
 on:
   push:
-    branches: [main]
-    paths:
-      - packages/orq-rc/openapi.yaml
-      - packages/orq-rc/.bartolo.json
+    branches: [feat/release-pipeline-prod-rc] #[main]
+    # paths:
+    #   - packages/orq-rc/openapi.yaml
+    #   - packages/orq-rc/.bartolo.json
 
 permissions:
   contents: write
@@ -18,8 +18,6 @@ jobs:
   release:
     uses: ./.github/workflows/release.yml
     name: Runner
-    secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
       module_dir: packages/orq-rc
       npm_dist_tag: rc

@@ -67,20 +67,13 @@ jobs:
 
       - name: Configure git
         run: |
-          # Identity for the commit-back below. bartolo (orq-ai/bartolo) is a
-          # public module, so no extra auth is needed to install/build it; the
-          # default checkout credential already covers the push-back + tag.
-          # GITHUB_TOKEN pushes don't trigger further workflow runs, so the
-          # commit-back can't re-fire the release trigger.
           git config --global user.name "Orq GitHub Actions"
           git config --global user.email "admin@orq.ai"
 
-      - name: Install bartolo (pinned to go.mod)
+      - name: Install bartolo
         run: |
           workdir="${MODULE_DIR:-.}"
-          pin="$(cd "$workdir" && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
-          echo "Installing bartolo $pin"
-          go install "github.com/orq-ai/bartolo@${pin}"
+          go install "github.com/orq-ai/bartolo@0.4.3"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Resolve version
@@ -112,10 +105,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           workdir="${MODULE_DIR:-.}"
-          # Stage the generated docs (README.md + examples/README.md) with the
-          # generated code and its manifests. bartolo leaves an existing curated
-          # README.md untouched — its fallback goes to README.generated.md, which
-          # we intentionally do not commit.
           git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
@@ -142,12 +131,16 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
 
+      # Not redundant with the real publishes below: the wrapper must publish
+      # LAST (its optionalDependencies pin the platform packages), so a wrapper
+      # packaging error would otherwise surface only after the 5 platform
+      # packages are live — and npm versions are immutable, so that half-
+      # published version could never be completed. This dry-run proves the
+      # wrapper packs cleanly before anything hits the registry.
       - name: Dry-run publish wrapper package
         env:
           DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
-          # --tag is required for prerelease versions (rc), else npm refuses to
-          # publish rather than default it to the latest dist-tag.
           cd npm/cli
           npm publish --access public --dry-run --tag "$DIST_TAG"
 
@@ -163,7 +156,6 @@ jobs:
 
       - name: Publish wrapper package to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
           cd npm/cli
@@ -190,4 +182,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
+          # --clobber to overwrite asset already exist
           gh release upload "$TAG" dist/orq-* --clobber
