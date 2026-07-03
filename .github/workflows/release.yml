@@ -46,7 +46,7 @@ jobs:
         # the repo with the GITHUB_TOKEN credential (contents: write).
         # zizmor: ignore[artipacked]
         with:
-          ref: main
+          ref: feat/release-pipeline-prod-rc # ref: main
           fetch-depth: 0
 
       - name: Set up Go
@@ -110,7 +110,7 @@ jobs:
             echo "No generated changes to commit."
           else
             git commit -m "Regenerate CLI for $VERSION"
-            git push origin HEAD:main
+            git push origin HEAD:feat/release-pipeline-prod-rc #main
           fi
 
       - name: Create GitHub release
