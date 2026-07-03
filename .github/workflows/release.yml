@@ -1,187 +1,96 @@
 name: Release
 
-# Reusable release pipeline, called by release-stable.yml (prod, root module)
-# and release-pre-release.yml (rc, packages/orq-rc module). It regenerates the
-# CLI from the OpenAPI schema that orquesta-web committed, syncs the generated
-# code back to main, tags + publishes a GitHub release, cross-compiles every
-# platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
-#
-# The version is read from the module's .bartolo.json app_version (bumped by
-# orquesta-web); the tag is derived as v<app_version>. rc versions carry an
-# -rc.N suffix and produce a prerelease.
 on:
-  workflow_call:
+  push:
+    branches: [feat/release-pipeline-prod-rc] # [main]
+    paths:
+      - openapi.yaml
+      - .bartolo.json
+      - packages/orq-rc/openapi.yaml
+      - packages/orq-rc/.bartolo.json
+  workflow_dispatch:
     inputs:
-      module_dir:
-        description: "Go module to release from ('' = repo root / prod, 'packages/orq-rc' = rc)"
-        type: string
-        required: false
-        default: ''
-      npm_dist_tag:
-        description: "npm dist-tag to publish under (latest for prod, rc for pre-release)"
-        type: string
+      target:
+        description: "Which release to run"
         required: true
-
-# Serialize releases per module so two pushes can't race the commit-back/tag.
-concurrency:
-  group: release-${{ inputs.module_dir || 'root' }}
-  cancel-in-progress: false
-
-env:
-  MODULE_DIR: ${{ inputs.module_dir }}
+        type: choice
+        options:
+          - stable
+          - prerelease
+          - both
 
 jobs:
-  release:
-    # macOS runner so `codesign` is available for ad-hoc signing the two darwin
-    # binaries. Go's cross toolchain builds linux/windows fine from macOS.
-    runs-on: macos-latest
+  detect-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      stable: ${{ steps.changes.outputs.stable }}
+      prerelease: ${{ steps.changes.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
 
+      - name: Detect changed files
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Manual trigger - use input
+            case "$TARGET" in
+              stable)
+                echo "stable=true" >> "$GITHUB_OUTPUT"
+                echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                ;;
+              prerelease)
+                echo "stable=false" >> "$GITHUB_OUTPUT"
+                echo "prerelease=true" >> "$GITHUB_OUTPUT"
+                ;;
+              both)
+                echo "stable=true" >> "$GITHUB_OUTPUT"
+                echo "prerelease=true" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          else
+            # Push event - detect from changed files
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
+
+            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json)$"; then
+              echo "stable=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "stable=false" >> "$GITHUB_OUTPUT"
+            fi
+
+            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json)$"; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  release-stable:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.stable == 'true'
+    uses: ./.github/workflows/release-pipeline.yml
+    name: Stable
     permissions:
       contents: write
       id-token: write
+    with:
+      npm_dist_tag: latest
 
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        # persist-credentials required: the commit-back + tag push below write to
-        # the repo with the GITHUB_TOKEN credential (contents: write).
-        # zizmor: ignore[artipacked]
-        with:
-          ref: feat/release-pipeline-prod-rc # ref: main
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version: "stable"
-          # Never build release binaries from a shared cache — a poisoned module
-          # or build cache would end up inside the published artifacts.
-          cache: false
-
-      - name: Set up Node.js
-        # setup-node's dependency cache is opt-in and not enabled here.
-        # zizmor: ignore[cache-poisoning]
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Configure git
-        run: |
-          git config --global user.name "Orq GitHub Actions"
-          git config --global user.email "admin@orq.ai"
-
-      - name: Install bartolo
-        run: |
-          workdir="${MODULE_DIR:-.}"
-          go install "github.com/orq-ai/bartolo@v0.4.3"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Resolve version
-        id: version
-        run: |
-          workdir="${MODULE_DIR:-.}"
-          version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
-          if [ -z "$version" ] || [ "$version" = "null" ]; then
-            echo "error: app_version missing in $workdir/.bartolo.json" >&2
-            exit 1
-          fi
-          tag="v$version"
-          if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-            echo "prerelease=$prerelease"
-          } >> "$GITHUB_OUTPUT"
-          echo "Releasing $tag (prerelease=$prerelease) from module '${MODULE_DIR:-root}'"
-
-      - name: Regenerate CLI from schema
-        run: |
-          workdir="${MODULE_DIR:-.}"
-          spec="$(jq -r '.last_spec_path' "$workdir/.bartolo.json")"
-          ( cd "$workdir" && bartolo generate "$spec" )
-
-      - name: Commit regenerated code to main
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          workdir="${MODULE_DIR:-.}"
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No generated changes to commit."
-          else
-            git commit -m "Regenerate CLI for $VERSION"
-            git push origin HEAD:feat/release-pipeline-prod-rc #main
-          fi
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          PRERELEASE: ${{ steps.version.outputs.prerelease }}
-        run: |
-          # gh creates the tag itself (at the current HEAD, already pushed to main
-          # by the commit-back step) and publishes the release — no separate
-          # `git tag`/`git push` needed.
-          flags=(--title "$TAG" --target "$(git rev-parse HEAD)" --generate-notes)
-          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
-          gh release create "$TAG" "${flags[@]}"
-
-      - name: Build all platform binaries
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
-
-      # # Not redundant with the real publishes below: the wrapper must publish
-      # # LAST (its optionalDependencies pin the platform packages), so a wrapper
-      # # packaging error would otherwise surface only after the 5 platform
-      # # packages are live — and npm versions are immutable, so that half-
-      # # published version could never be completed. This dry-run proves the
-      # # wrapper packs cleanly before anything hits the registry.
-      # - name: Dry-run publish wrapper package
-      #   env:
-      #     DIST_TAG: ${{ inputs.npm_dist_tag }}
-      #   run: |
-      #     cd npm/cli
-      #     npm publish --access public --dry-run --tag "$DIST_TAG"
-
-      - name: Publish platform packages to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          set -e
-          for pkgdir in npm/cli-*/; do
-            echo "=== Publishing $(basename "$pkgdir") @ dist-tag $DIST_TAG ==="
-            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
-          done
-
-      - name: Publish wrapper package to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          cd npm/cli
-          echo "=== Publishing @orq-ai/cli @ dist-tag $DIST_TAG ==="
-          npm publish --access public --tag "$DIST_TAG"
-
-      - name: Stage raw binaries for GitHub Release
-        run: |
-          set -e
-          mkdir -p dist
-          for pkgdir in npm/cli-*/; do
-            name="$(basename "$pkgdir")"
-            target="${name#cli-}"
-            if [ "$target" = "win32-x64" ]; then
-              cp "$pkgdir/bin/orq.exe" "dist/orq-$target.exe"
-            else
-              cp "$pkgdir/bin/orq" "dist/orq-$target"
-            fi
-          done
-          ls -la dist/
-
-      - name: Upload raw binaries to GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          # --clobber to overwrite asset already exist
-          gh release upload "$TAG" dist/orq-* --clobber
+  release-prerelease:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prerelease == 'true'
+    uses: ./.github/workflows/release-pipeline.yml
+    name: Pre-release
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      module_dir: packages/orq-rc
+      npm_dist_tag: rc
