@@ -23,7 +23,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key expression: @at 2026-05-01T09:00:00Z, payload.input: @file, type: once\n"
+		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
 
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
@@ -33,7 +33,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{
-					"expression: @at 2026-05-01T09:00:00Z, payload.input: @file, type: once",
+					"agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
@@ -271,7 +271,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id is_active: false\n"
+		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id payload{input: Updated input for the next run, variables.region: APAC}\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
@@ -281,7 +281,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{
-					"is_active: false",
+					"payload{input: Updated input for the next run, variables.region: APAC}",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
