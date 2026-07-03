@@ -45,21 +45,26 @@ jobs:
 
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        # persist-credentials required: the commit-back + tag push below write to
+        # the repo with the GITHUB_TOKEN credential (contents: write).
+        # zizmor: ignore[artipacked]
         with:
           ref: main
           fetch-depth: 0
-          # Default persist-credentials keeps the GITHUB_TOKEN credential so the
-          # commit-back + tag push below can write to the repo (contents: write).
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "stable"
-          cache: true
+          # Never build release binaries from a shared cache — a poisoned module
+          # or build cache would end up inside the published artifacts.
+          cache: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        # setup-node's dependency cache is opt-in and not enabled here.
+        # zizmor: ignore[cache-poisoning]
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
@@ -137,7 +142,9 @@ jobs:
           gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
-        run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}" "${MODULE_DIR}"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
 
       - name: Dry-run publish wrapper package
         env:
@@ -186,5 +193,6 @@ jobs:
       - name: Upload raw binaries to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          gh release upload "${{ steps.version.outputs.tag }}" dist/orq-* --clobber
+          gh release upload "$TAG" dist/orq-* --clobber
