@@ -1,7 +1,7 @@
 {
   "app_name": "orq",
-  "app_version": "0.1.0",
-  "module_path": "orq",
+  "app_version": "4.11.0-rc.70",
+  "module_path": "orq-rc",
   "bartolo_version": "0.4.3",
   "env_prefix": "ORQ",
   "default_output_format": "toon",
