@@ -168,7 +168,7 @@ jobs:
           # the test stops at dry-run so nothing hits the npm registry.
           for pkgdir in npm/cli-*/ npm/cli/; do
             echo "=== dry-run $(basename "$pkgdir") ==="
-            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
+            (cd "$pkgdir" && npm publish --access public --dry-run --tag "$DIST_TAG")
           done
 
       - name: Create GitHub release
