@@ -1,102 +1,96 @@
 name: Release
 
-# Fires when you publish a GitHub Release. Draft releases do not trigger; the
-# tag name (e.g. v0.1.0) becomes the published semver after stripping the `v`.
 on:
-  release:
-    types: [published]
-
-# Only one release run at a time. If you hit "re-run" on a finished release
-# it cancels any earlier in-flight workflow for the same tag.
-concurrency:
-  group: release-${{ github.event.release.tag_name }}
-  cancel-in-progress: false
-
-# Opt in to running JavaScript-based actions on Node 24 ahead of GitHub's
-# June 2026 default switch. Silences the "Node 20 actions are deprecated"
-# warning without waiting for checkout/setup-go/setup-node to ship new majors.
-# Once Node 24 becomes the default you can drop this block.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  push:
+    branches: [main]
+    paths:
+      - openapi.yaml
+      - .bartolo.json
+      - packages/orq-rc/openapi.yaml
+      - packages/orq-rc/.bartolo.json
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which release to run"
+        required: true
+        type: choice
+        options:
+          - stable
+          - prerelease
+          - both
 
 jobs:
-  release:
-    # macOS runner so `codesign` is available for ad-hoc signing of the two
-    # darwin binaries. Cross-compile targets for linux/windows still work
-    # fine on macOS — Go's cross toolchain doesn't need a matching host OS.
-    runs-on: macos-latest
-
+  detect-changes:
+    runs-on: ubuntu-latest
     permissions:
-      contents: write # upload release assets
-
+      contents: read
+    outputs:
+      stable: ${{ steps.changes.outputs.stable }}
+      prerelease: ${{ steps.changes.outputs.prerelease }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          go-version: "stable"
-          cache: true
+          fetch-depth: 2
+          persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Resolve version
-        id: version
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Release tag: $tag → npm version: $version"
-
-      - name: Build all platform binaries
-        run: ./scripts/release-build.sh "${{ steps.version.outputs.version }}"
-
-      - name: Dry-run publish wrapper package
-        run: |
-          cd npm/cli
-          npm publish --access public --dry-run
-
-      - name: Publish platform packages to npm
+      - name: Detect changed files
+        id: changes
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
         run: |
-          set -e
-          for pkgdir in npm/cli-*/; do
-            echo "=== Publishing $(basename "$pkgdir") ==="
-            (cd "$pkgdir" && npm publish --access public)
-          done
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Manual trigger - use input
+            case "$TARGET" in
+              stable)
+                echo "stable=true" >> "$GITHUB_OUTPUT"
+                echo "prerelease=false" >> "$GITHUB_OUTPUT"
+                ;;
+              prerelease)
+                echo "stable=false" >> "$GITHUB_OUTPUT"
+                echo "prerelease=true" >> "$GITHUB_OUTPUT"
+                ;;
+              both)
+                echo "stable=true" >> "$GITHUB_OUTPUT"
+                echo "prerelease=true" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          else
+            # Push event - detect from changed files
+            CHANGED=$(git diff --name-only HEAD~1 HEAD)
 
-      - name: Publish wrapper package to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd npm/cli
-          echo "=== Publishing @orq-ai/cli ==="
-          npm publish --access public
-
-      - name: Stage raw binaries for GitHub Release
-        run: |
-          set -e
-          mkdir -p dist
-          for pkgdir in npm/cli-*/; do
-            name="$(basename "$pkgdir")"
-            target="${name#cli-}"
-            if [ "$target" = "win32-x64" ]; then
-              cp "$pkgdir/bin/orq.exe" "dist/orq-$target.exe"
+            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json)$"; then
+              echo "stable=true" >> "$GITHUB_OUTPUT"
             else
-              cp "$pkgdir/bin/orq" "dist/orq-$target"
+              echo "stable=false" >> "$GITHUB_OUTPUT"
             fi
-          done
-          ls -la dist/
 
-      - name: Upload raw binaries to GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ steps.version.outputs.tag }}" dist/orq-* --clobber
+            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json)$"; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+  release-stable:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.stable == 'true'
+    uses: ./.github/workflows/release-pipeline.yml
+    name: Stable
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      npm_dist_tag: latest
+
+  release-prerelease:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prerelease == 'true'
+    uses: ./.github/workflows/release-pipeline.yml
+    name: Pre-release
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      module_dir: packages/orq-rc
+      npm_dist_tag: rc

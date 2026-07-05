@@ -6,10 +6,17 @@
 # all six package.json files.
 #
 # Usage:
-#   scripts/release-build.sh <semver>
+#   scripts/release-build.sh <semver> [module-dir]
+#
+# <module-dir> is a repo-relative path to the Go module to build from (its
+# cmd/orq is the entrypoint). Defaults to the repo root (the prod `orq`
+# module). Pass `packages/orq-rc` to build the rc module. Either way the
+# binaries land in the shared npm/cli-* packages — prod and rc publish the
+# same @orq-ai/cli package, differing only by npm dist-tag.
 #
 # Example:
 #   scripts/release-build.sh 0.1.0
+#   scripts/release-build.sh 0.1.0-rc.1 packages/orq-rc
 #
 # Intended to run inside the GitHub Actions release workflow on macos-latest
 # (so `codesign` is available for ad-hoc signing) but safe to run locally too.
@@ -17,13 +24,21 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  echo "usage: $0 <semver>" >&2
+  echo "usage: $0 <semver> [module-dir]" >&2
   exit 1
 fi
 
 VERSION="$1"
+MODULE_DIR="${2:-}"
 ROOT_DIR="$(cd -- "$(dirname "$0")/.." && pwd)"
 NPM_DIR="$ROOT_DIR/npm"
+# Absolute path to the Go module we build from. Empty MODULE_DIR = repo root.
+BUILD_DIR="$ROOT_DIR${MODULE_DIR:+/$MODULE_DIR}"
+
+if [ ! -d "$BUILD_DIR/cmd/orq" ]; then
+  echo "error: no cmd/orq in build dir: $BUILD_DIR" >&2
+  exit 1
+fi
 
 # Platforms we ship: "goos goarch npm-package-suffix exe-name"
 PLATFORMS=(
@@ -34,7 +49,7 @@ PLATFORMS=(
   "windows amd64 cli-win32-x64  orq.exe"
 )
 
-echo "Building orq $VERSION for ${#PLATFORMS[@]} platforms..."
+echo "Building orq $VERSION for ${#PLATFORMS[@]} platforms (module: ${MODULE_DIR:-.})..."
 
 for row in "${PLATFORMS[@]}"; do
   # shellcheck disable=SC2086
@@ -50,7 +65,9 @@ for row in "${PLATFORMS[@]}"; do
   echo "  $goos/$goarch → $target_dir/$exe"
 
   (
-    cd "$ROOT_DIR"
+    # Build from inside the module dir: rc is a separate Go module
+    # (packages/orq-rc) with its own go.mod, so it must be built there.
+    cd "$BUILD_DIR"
     CGO_ENABLED=0 \
     GOOS="$goos" \
     GOARCH="$goarch" \
