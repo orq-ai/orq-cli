@@ -102,16 +102,56 @@ jobs:
 
       - name: Commit regenerated code to main
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           workdir="${MODULE_DIR:-.}"
           git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
-          else
-            git commit -m "Regenerate CLI for $VERSION"
-            git push origin HEAD:main
+            exit 0
           fi
+
+          # main requires verified signatures, so we cannot `git push` an unsigned
+          # commit from the runner. Commits created through the GitHub Git Data API
+          # with GITHUB_TOKEN are GPG-signed by GitHub and show up as Verified, so
+          # we build the commit server-side and fast-forward the ref to it.
+          base_sha="$(git rev-parse HEAD)"
+          base_tree="$(git rev-parse 'HEAD^{tree}')"
+
+          # One tree entry per staged path. Existing files become a base64 blob;
+          # deleted files carry a null sha so the API drops them from the tree.
+          : > tree-items.jsonl
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            if [ -f "$path" ]; then
+              mode=100644
+              [ -x "$path" ] && mode=100755
+              base64 < "$path" | tr -d '\n' > blob.b64
+              blob_sha="$(jq -n --rawfile c blob.b64 '{content:$c, encoding:"base64"}' \
+                | gh api "repos/$REPO/git/blobs" --input - --jq .sha)"
+              jq -nc --arg p "$path" --arg m "$mode" --arg s "$blob_sha" \
+                '{path:$p, mode:$m, type:"blob", sha:$s}' >> tree-items.jsonl
+            else
+              jq -nc --arg p "$path" \
+                '{path:$p, mode:"100644", type:"blob", sha:null}' >> tree-items.jsonl
+            fi
+          done < <(git diff --cached --name-only)
+
+          new_tree="$(jq -sc --arg base "$base_tree" '{base_tree:$base, tree:.}' tree-items.jsonl \
+            | gh api "repos/$REPO/git/trees" --input - --jq .sha)"
+          new_commit="$(gh api "repos/$REPO/git/commits" \
+            -f message="Regenerate CLI for $VERSION" \
+            -f tree="$new_tree" \
+            -f "parents[]=$base_sha" \
+            --jq .sha)"
+          gh api --method PATCH "repos/$REPO/git/refs/heads/main" -f sha="$new_commit"
+
+          # Point local HEAD at the verified commit so the release is tagged there.
+          git fetch origin main
+          git reset --hard "$new_commit"
 
       - name: Create GitHub release
         env:
