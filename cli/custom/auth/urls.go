@@ -42,7 +42,7 @@ func deriveV1BaseURL(apiBase string) string {
 			return trimTrailingSlash(u.String())
 		}
 	}
-	return trimTrailingSlash(apiBase)
+	return trimTrailingSlash(apiBase) + "/v2/api"
 }
 
 func ResolveURLs(apiBase string) URLs {
