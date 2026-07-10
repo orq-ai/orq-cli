@@ -274,6 +274,8 @@ func registernotifiersCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from the previous page.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project. Must be a project the caller is authorized for.")
+		cmd.Flags().String("search", "", "Optional. Case-insensitive substring match on the notifier name.")
+		cmd.Flags().String("type", "", "Optional. Restrict results to these notifier types.")
 
 		bartolocli.SetCustomFlags(cmd)
 

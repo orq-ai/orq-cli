@@ -6078,6 +6078,14 @@ func OpenapiNotifierList(params *viper.Viper) (*gentleman.Response, map[string]i
 	if paramProjectId != "" {
 		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
+	paramSearch := params.GetString("search")
+	if paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramType := params.GetString("type")
+	if paramType != "" {
+		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 

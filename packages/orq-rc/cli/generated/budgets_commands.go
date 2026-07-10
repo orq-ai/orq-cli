@@ -160,7 +160,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new budget",
-			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -170,6 +170,12 @@ func registerbudgetsCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "alerts",
+							FlagName:    "alerts",
+							Type:        "json",
+							Description: "Optional threshold notifications. Ids are assigned by the server, so\n `alerts[].id` must be omitted here; supplying one is rejected.",
+						},
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
@@ -227,6 +233,12 @@ func registerbudgetsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "alerts",
+					FlagName:    "alerts",
+					Type:        "json",
+					Description: "Optional threshold notifications. Ids are assigned by the server, so\n `alerts[].id` must be omitted here; supplying one is rejected.",
+				},
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
@@ -476,7 +488,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update budget-id",
 			Short:   "Update a budget",
-			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `clear_alerts` (boolean)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -486,6 +498,18 @@ func registerbudgetsCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "alerts",
+							FlagName:    "alerts",
+							Type:        "json",
+							Description: "Replaces the alert list wholesale. Omit to keep the current alerts.\n An entry with a known `id` is edited in place; one with no id is minted.",
+						},
+						{
+							Name:        "clear_alerts",
+							FlagName:    "clear-alerts",
+							Type:        "bool",
+							Description: "Force-clear every alert. Mutually exclusive with a non-empty `alerts`.",
+						},
 						{
 							Name:        "clear_expires_at",
 							FlagName:    "clear-expires-at",
@@ -543,6 +567,18 @@ func registerbudgetsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "alerts",
+					FlagName:    "alerts",
+					Type:        "json",
+					Description: "Replaces the alert list wholesale. Omit to keep the current alerts.\n An entry with a known `id` is edited in place; one with no id is minted.",
+				},
+				{
+					Name:        "clear_alerts",
+					FlagName:    "clear-alerts",
+					Type:        "bool",
+					Description: "Force-clear every alert. Mutually exclusive with a non-empty `alerts`.",
+				},
 				{
 					Name:        "clear_expires_at",
 					FlagName:    "clear-expires-at",
