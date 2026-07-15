@@ -1,6 +1,6 @@
 {
   "app_name": "orq",
-  "app_version": "4.12.0-rc.29",
+  "app_version": "4.12.0-rc.30",
   "module_path": "orq-rc",
   "bartolo_version": "0.4.3",
   "env_prefix": "ORQ",
