@@ -214,7 +214,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-datasource knowledge-id",
 			Short:   "Create a new datasource",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunking_options` (object)\n- `description` (string | null)\n- `display_name` (string)\n- `file_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunking_options` (object)\n- `description` (string | null)\n- `display_name` (string)\n- `file_id` (string)\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -247,6 +247,12 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							FlagName:    "file-id",
 							Type:        "string",
 							Description: "The unique identifier of the file used for datasource creation. If provided, the file is immediately queued for chunking.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Client-defined metadata associated with the datasource.",
 						},
 					},
 				)
@@ -292,6 +298,12 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					FlagName:    "file-id",
 					Type:        "string",
 					Description: "The unique identifier of the file used for datasource creation. If provided, the file is immediately queued for chunking.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Client-defined metadata associated with the datasource.",
 				},
 			},
 		)
@@ -806,6 +818,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd.Flags().String("q", "", "Search query to find datasources by name.")
 		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("status", "", "Filter datasources by status.")
+		cmd.Flags().String("metadata", "", "Filter datasources by exact metadata key/value pairs. Provide a JSON-encoded object when calling this endpoint over HTTP.")
 
 		bartolocli.SetCustomFlags(cmd)
 

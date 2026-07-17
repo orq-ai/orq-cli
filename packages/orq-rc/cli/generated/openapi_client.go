@@ -3888,6 +3888,10 @@ func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gent
 	if paramStatus != "" {
 		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
 	}
+	paramMetadata := params.GetString("metadata")
+	if paramMetadata != "" {
+		req = req.AddQuery("metadata", fmt.Sprintf("%v", paramMetadata))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -8774,6 +8778,350 @@ func OpenapiTracesSearch(params *viper.Viper, body string) (*gentleman.Response,
 	url := server + "/v2/traces/search"
 
 	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookCount Count webhooks
+func OpenapiWebhookCount(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks count"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/count"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookCreate Create a webhook
+func OpenapiWebhookCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks create"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookDelete Delete a webhook
+func OpenapiWebhookDelete(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks delete id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/{id}"
+	url = strings.Replace(url, "{id}", paramId, 1)
+
+	req := bartolocli.Client.Delete().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookGenerateSecret Generate a webhook secret
+func OpenapiWebhookGenerateSecret(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks generate-secret"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/secret"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookGet Retrieve a webhook
+func OpenapiWebhookGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks get id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/{id}"
+	url = strings.Replace(url, "{id}", paramId, 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookList List webhooks
+func OpenapiWebhookList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks list"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramPage := params.GetInt64("page")
+	if paramPage != 0 {
+		req = req.AddQuery("page", fmt.Sprintf("%v", paramPage))
+	}
+	paramLimit := params.GetInt64("limit")
+	if paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramSearch := params.GetString("search")
+	if paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramEvent := params.GetString("event")
+	if paramEvent != "" {
+		req = req.AddQuery("event", fmt.Sprintf("%v", paramEvent))
+	}
+	paramSort := params.GetString("sort")
+	if paramSort != "" {
+		req = req.AddQuery("sort", fmt.Sprintf("%v", paramSort))
+	}
+	paramDirection := params.GetString("direction")
+	if paramDirection != "" {
+		req = req.AddQuery("direction", fmt.Sprintf("%v", paramDirection))
+	}
+	paramContentType := params.GetString("content-type")
+	if paramContentType != "" {
+		req = req.AddQuery("content_type", fmt.Sprintf("%v", paramContentType))
+	}
+	paramEnabled := params.GetBool("enabled")
+	if paramEnabled != false {
+		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookQuery Query webhooks
+func OpenapiWebhookQuery(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks query"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/query"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiWebhookUpdate Update a webhook
+func OpenapiWebhookUpdate(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "webhooks update id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/webhooks/{id}"
+	url = strings.Replace(url, "{id}", paramId, 1)
+
+	req := bartolocli.Client.Patch().URL(url)
 
 	if body != "" {
 		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
