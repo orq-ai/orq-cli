@@ -27,10 +27,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -264,10 +264,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -369,10 +369,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -489,10 +489,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -594,10 +594,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -999,10 +999,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -1120,10 +1120,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated:
           type: "string"
-          default: "2026-07-16T16:30:19.733Z"
+          default: "2026-07-17T02:34:29.037Z"
         updated_by_id:
           type:
             - "string"
@@ -3431,7 +3431,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01kxnw866fz30n433965tpw94s"
+              default: "reasoning_01kxpyt7qhyapwtw2fkwb76wt6"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -9078,6 +9078,212 @@ components:
         version:
           type: "string"
           description: "Latest semver assigned by the activity log. Stamped on the document\n by CreateSkill / UpdateSkill so reads return it without joining\n workspaces.activities."
+    ListWebhooksResponse:
+      required:
+        - "count"
+        - "items"
+        - "has_more"
+      type: "object"
+      properties:
+        count:
+          type: "integer"
+          description: "Total number of webhooks matching the filters, before pagination."
+          format: "int32"
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Webhook"
+          description: "Requested page of webhooks."
+        has_more:
+          type: "boolean"
+          description: "Whether another page of matching webhooks is available."
+      description: "A page of webhooks and the total number of matching records."
+    CreateWebhookRequest:
+      required:
+        - "_id"
+        - "url"
+        - "content_type"
+        - "display_name"
+        - "events"
+        - "secret"
+      type: "object"
+      properties:
+        _id:
+          type: "string"
+          description: "Client-generated webhook ID."
+        url:
+          pattern: "^https://"
+          type: "string"
+          description: "HTTPS endpoint that receives webhook deliveries."
+          format: "uri"
+        content_type:
+          enum:
+            - "application/json"
+            - "application/x-www-form-urlencoded"
+          type: "string"
+          description: "Content type sent with webhook deliveries."
+        display_name:
+          type: "string"
+          description: "Human-readable webhook name."
+        events:
+          minItems: 1
+          type: "array"
+          items:
+            type: "string"
+          description: "One or more workspace event slugs that trigger a delivery, for example `deployment.invoked` or `llm.response`."
+        secret:
+          writeOnly: true
+          type: "string"
+          description: "Signing secret returned by `GET /v2/webhooks/secret`."
+        enabled:
+          type: "boolean"
+          description: "Whether webhook deliveries are enabled."
+      description: "Configuration used to create a webhook in the current workspace."
+    Webhook:
+      required:
+        - "_id"
+        - "url"
+        - "content_type"
+        - "display_name"
+        - "events"
+        - "secret"
+        - "created_by_id"
+        - "updated_by_id"
+        - "created"
+        - "updated"
+      type: "object"
+      properties:
+        _id:
+          type: "string"
+          description: "Unique webhook ID."
+        url:
+          pattern: "^https://"
+          type: "string"
+          description: "HTTPS endpoint that receives webhook deliveries."
+          format: "uri"
+        content_type:
+          enum:
+            - "application/json"
+            - "application/x-www-form-urlencoded"
+          type: "string"
+          description: "Content type sent with webhook deliveries."
+        display_name:
+          type: "string"
+          description: "Human-readable webhook name."
+        events:
+          type: "array"
+          items:
+            type: "string"
+          description: "Workspace event slugs that trigger a delivery, for example `deployment.invoked` or `llm.response`."
+        secret:
+          type: "string"
+          description: "Signing secret used to verify webhook delivery signatures. Treat this value as sensitive."
+        enabled:
+          type: "boolean"
+          description: "Whether webhook deliveries are enabled."
+        failure_count:
+          readOnly: true
+          type: "integer"
+          description: "Server-managed number of consecutive delivery failures."
+          format: "int32"
+        created_by_id:
+          readOnly: true
+          type: "string"
+          description: "Account ID that created the webhook."
+        updated_by_id:
+          readOnly: true
+          type: "string"
+          description: "Account ID that most recently updated the webhook."
+        created:
+          readOnly: true
+          type: "string"
+          description: "Creation time in RFC 3339 format."
+          format: "date-time"
+        updated:
+          readOnly: true
+          type: "string"
+          description: "Most recent update time in RFC 3339 format."
+          format: "date-time"
+      description: "A webhook subscription and its delivery configuration. Responses include the signing secret; treat it as sensitive."
+    CountWebhooksResponse:
+      required:
+        - "total"
+      type: "object"
+      properties:
+        total:
+          type: "integer"
+          description: "Total number of webhooks in the current workspace."
+          format: "int32"
+      description: "Webhook count for the current workspace."
+    QueryWebhooksRequest:
+      type: "object"
+      properties:
+        pagination:
+          $ref: "#/components/schemas/QueryParamsPagination"
+        sortingProps:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/QueryParamsSort"
+        query:
+          type: "object"
+        filters:
+          type: "array"
+          items:
+            type: "object"
+        includedFields:
+          type: "object"
+          additionalProperties:
+            type: "string"
+    QueryWebhooksResponse:
+      required:
+        - "count"
+        - "items"
+      type: "object"
+      properties:
+        count:
+          type: "integer"
+          format: "int32"
+        items:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Webhook"
+    GenerateWebhookSecretResponse:
+      required:
+        - "secret"
+      type: "object"
+      properties:
+        secret:
+          type: "string"
+          description: "Signing secret to supply when creating or updating a webhook. Store it securely."
+      description: "A newly generated webhook signing secret."
+    DeleteWebhookResponse:
+      required:
+        - "id"
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          description: "ID of the deleted webhook."
+    QueryParamsPagination:
+      type: "object"
+      properties:
+        page:
+          type: "integer"
+          format: "int32"
+        limit:
+          type: "integer"
+          format: "int32"
+        lastId:
+          type: "string"
+        firstId:
+          type: "string"
+    QueryParamsSort:
+      type: "object"
+      properties:
+        key:
+          type: "string"
+        direction:
+          type: "string"
     ConversationParam:
       additionalProperties: false
       properties:
@@ -26205,7 +26411,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KXNW86BWCAH0CB546ATSG3HZ"
+                                          default: "01KXPYT7W4DGKMQVKD6N67FT3N"
                                         name:
                                           type: "string"
                                         description:
@@ -27966,7 +28172,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KXNW86DVBMF47DF782H5FJE5"
+                                          default: "01KXPYT7XPPMY0D7ZXEN99X37X"
                                         name:
                                           type: "string"
                                         description:
@@ -36735,7 +36941,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KXNW86JM29SG1C1AYMX5MZWJ"
+                              default: "tool_01KXPYT832ZHS7EQHGM9NG68KB"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -36836,7 +37042,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KXNW86JQFQ7APEN5H6T5A016"
+                              default: "tool_01KXPYT8357FR02FB8CA1740M7"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -36939,7 +37145,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KXNW86JS8TK00K42J6Q4Z05E"
+                              default: "tool_01KXPYT837F5434BKMX7G9WDTX"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37078,7 +37284,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KXNW86JWW1QZTENM0BMDNEMP"
+                              default: "tool_01KXPYT83BY5VS0AHWTB612WZD"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37154,7 +37360,7 @@ paths:
                                     properties:
                                       id:
                                         type: "string"
-                                        default: "01KXNW86JXCFMNRZDQXE237ZYJ"
+                                        default: "01KXPYT83DA6NTMJVPG86H767P"
                                       name:
                                         type: "string"
                                       description:
@@ -37213,7 +37419,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KXNW86JYGJ4BHK661RQS9KAC"
+                              default: "tool_01KXPYT83E50Z54Z8C5H7MSX4C"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37768,7 +37974,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86KFN5DNEJ4D65HJCKMJ"
+                        default: "tool_01KXPYT83Y4W5Z1Z63GZ13B76P"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37869,7 +38075,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86KJB9KRXACZ1ZDHA701"
+                        default: "tool_01KXPYT8411WW6PCX9TADQ77TQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37972,7 +38178,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86KMCFEAJ5KHCQVX9FF6"
+                        default: "tool_01KXPYT8436SDDM0Y80JXRG4BY"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38111,7 +38317,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86KPSJSXC4VE6F7FXKW5"
+                        default: "tool_01KXPYT8450M8SJ1HZBE7MX7MK"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38187,7 +38393,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KXNW86KQEHBM64DJCB3848P5"
+                                  default: "01KXPYT8466D6PXMTASYJ166EN"
                                 name:
                                   type: "string"
                                 description:
@@ -38246,7 +38452,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86KRS4BRVFBH4B2ZB8W0"
+                        default: "tool_01KXPYT8485RCSVCQQ0CP2VTD9"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38707,7 +38913,7 @@ paths:
                             properties:
                               id:
                                 type: "string"
-                                default: "01KXNW86MKA55ZC2JAYM90QNV9"
+                                default: "01KXPYT84Z4QHGRRBR0X98GV1Y"
                               name:
                                 type: "string"
                               description:
@@ -38853,7 +39059,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86M13A5ZPWJFYV0H6FVW"
+                        default: "tool_01KXPYT84GTZXBT0DZ9YNXRDVC"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38954,7 +39160,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86M3QYNMK9PJN7SKX5Z2"
+                        default: "tool_01KXPYT84J3NS76S9J8BKC74HQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39057,7 +39263,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86M5T03KNBQ5Z4F2K0JJ"
+                        default: "tool_01KXPYT84KB14EP8G15KT4ZDNM"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39196,7 +39402,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86M9K01MWH8CS5J6VY8V"
+                        default: "tool_01KXPYT84PTHSKEXNTR3HZW0XJ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39272,7 +39478,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KXNW86MACFGNGPFS3QEVCHG5"
+                                  default: "01KXPYT84Q2198J0APSHWTJT0Y"
                                 name:
                                   type: "string"
                                 description:
@@ -39331,7 +39537,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86MB1B0PF6D7SZCZ48WZ"
+                        default: "tool_01KXPYT84R2E651N4G2AXY8J44"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39492,7 +39698,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86N1HB3V00HCW4D6MK46"
+                        default: "tool_01KXPYT85B9ZEXAJMJWNPZ7FYV"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39593,7 +39799,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86N32PVXVY4XTBBW857F"
+                        default: "tool_01KXPYT85DX9XS25HPWS3VKB55"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39696,7 +39902,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86N4149R0GNVS1T0KZX9"
+                        default: "tool_01KXPYT85FK3MWZNYN910HC6VY"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39835,7 +40041,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86N7ZVAFQVQ2NA20SV8A"
+                        default: "tool_01KXPYT85HRSXHRH5PJR1Y9818"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39911,7 +40117,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KXNW86N8HQF3V4DWB41999X4"
+                                  default: "01KXPYT85J0F2TMBJ46KGWDQ83"
                                 name:
                                   type: "string"
                                 description:
@@ -39970,7 +40176,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KXNW86N9WQ9GNMRV2KPY3549"
+                        default: "tool_01KXPYT85K4BMM2A6RSCB8V1J5"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42160,6 +42366,19 @@ paths:
           description: "Filter datasources by status."
           name: "status"
           in: "query"
+        - schema:
+            type: "object"
+            additionalProperties:
+              anyOf:
+                - type: "string"
+                - type: "number"
+                - type: "boolean"
+                - type: "null"
+            description: "Filter datasources by exact metadata key/value pairs. Provide a JSON-encoded object when calling this endpoint over HTTP."
+          required: false
+          description: "Filter datasources by exact metadata key/value pairs. Provide a JSON-encoded object when calling this endpoint over HTTP."
+          name: "metadata"
+          in: "query"
       responses:
         "200":
           description: "Datasources successfully retrieved"
@@ -42181,7 +42400,7 @@ paths:
                           type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                          default: "01KXNW86RR12G3XR41FST64A01"
+                          default: "01KXPYT88MK1AD6BGV88DH4MD4"
                           readOnly: true
                           description: "The unique identifier of the data source"
                         display_name:
@@ -42233,6 +42452,28 @@ paths:
                         chunks_count:
                           type: "number"
                           description: "The number of chunks in the datasource"
+                        metadata:
+                          type: "object"
+                          properties:
+                            words_count:
+                              type: "number"
+                              description: "Number of words in the text"
+                            sentences_count:
+                              type: "number"
+                              description: "Number of sentences in the text"
+                            paragraphs_count:
+                              type: "number"
+                              description: "Number of paragraphs in the text"
+                            tokens_count:
+                              type: "number"
+                              description: "Number of tokens in the text"
+                            characters_count:
+                              type: "number"
+                              description: "Number of characters in the text"
+                            chunks_count:
+                              type: "number"
+                              description: "Number of total chunks"
+                          additionalProperties: {}
                       required:
                         - "display_name"
                         - "status"
@@ -42240,6 +42481,7 @@ paths:
                         - "updated"
                         - "knowledge_id"
                         - "chunks_count"
+                        - "metadata"
                   has_more:
                     type: "boolean"
                 required:
@@ -42280,6 +42522,10 @@ paths:
                     - "string"
                     - "null"
                   description: "The description of the knowledge base"
+                metadata:
+                  type: "object"
+                  additionalProperties: {}
+                  description: "Client-defined metadata associated with the datasource."
                 file_id:
                   type: "string"
                   description: "The unique identifier of the file used for datasource creation. If provided, the file is immediately queued for chunking."
@@ -42357,7 +42603,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KXNW86RVRSX42JNH7JZ9NQSS"
+                    default: "01KXPYT88RN6X70GR4ZXBJV7SY"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -42409,6 +42655,28 @@ paths:
                   chunks_count:
                     type: "number"
                     description: "The number of chunks in the datasource"
+                  metadata:
+                    type: "object"
+                    properties:
+                      words_count:
+                        type: "number"
+                        description: "Number of words in the text"
+                      sentences_count:
+                        type: "number"
+                        description: "Number of sentences in the text"
+                      paragraphs_count:
+                        type: "number"
+                        description: "Number of paragraphs in the text"
+                      tokens_count:
+                        type: "number"
+                        description: "Number of tokens in the text"
+                      characters_count:
+                        type: "number"
+                        description: "Number of characters in the text"
+                      chunks_count:
+                        type: "number"
+                        description: "Number of total chunks"
+                    additionalProperties: {}
                 required:
                   - "display_name"
                   - "status"
@@ -42416,6 +42684,7 @@ paths:
                   - "updated"
                   - "knowledge_id"
                   - "chunks_count"
+                  - "metadata"
         "500":
           description: "Failed to create datasource"
       security:
@@ -42457,7 +42726,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KXNW86RT3N7YSX04ZYQCG5R4"
+                    default: "01KXPYT88PKRZ105CDBJSB90VB"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -42509,6 +42778,28 @@ paths:
                   chunks_count:
                     type: "number"
                     description: "The number of chunks in the datasource"
+                  metadata:
+                    type: "object"
+                    properties:
+                      words_count:
+                        type: "number"
+                        description: "Number of words in the text"
+                      sentences_count:
+                        type: "number"
+                        description: "Number of sentences in the text"
+                      paragraphs_count:
+                        type: "number"
+                        description: "Number of paragraphs in the text"
+                      tokens_count:
+                        type: "number"
+                        description: "Number of tokens in the text"
+                      characters_count:
+                        type: "number"
+                        description: "Number of characters in the text"
+                      chunks_count:
+                        type: "number"
+                        description: "Number of total chunks"
+                    additionalProperties: {}
                 required:
                   - "display_name"
                   - "status"
@@ -42516,6 +42807,7 @@ paths:
                   - "updated"
                   - "knowledge_id"
                   - "chunks_count"
+                  - "metadata"
       security:
         - ApiKey: []
     delete:
@@ -42596,7 +42888,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KXNW86RYKHVEZBF4NJ08FHPN"
+                    default: "01KXPYT88W7SS1AN33KS0Y6AAC"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -42648,6 +42940,28 @@ paths:
                   chunks_count:
                     type: "number"
                     description: "The number of chunks in the datasource"
+                  metadata:
+                    type: "object"
+                    properties:
+                      words_count:
+                        type: "number"
+                        description: "Number of words in the text"
+                      sentences_count:
+                        type: "number"
+                        description: "Number of sentences in the text"
+                      paragraphs_count:
+                        type: "number"
+                        description: "Number of paragraphs in the text"
+                      tokens_count:
+                        type: "number"
+                        description: "Number of tokens in the text"
+                      characters_count:
+                        type: "number"
+                        description: "Number of characters in the text"
+                      chunks_count:
+                        type: "number"
+                        description: "Number of total chunks"
+                    additionalProperties: {}
                 required:
                   - "display_name"
                   - "status"
@@ -42655,6 +42969,7 @@ paths:
                   - "updated"
                   - "knowledge_id"
                   - "chunks_count"
+                  - "metadata"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks:
@@ -45303,7 +45618,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-16T16:30:10.161Z"
+                          default: "2026-07-17T02:34:22.764Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -45311,7 +45626,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:10.162Z"
+                              default: "2026-07-17T02:34:22.765Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -45455,7 +45770,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-16T16:30:10.161Z"
+                    default: "2026-07-17T02:34:22.764Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -45463,7 +45778,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-16T16:30:10.162Z"
+                        default: "2026-07-17T02:34:22.765Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -45602,7 +45917,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-16T16:30:10.161Z"
+                    default: "2026-07-17T02:34:22.764Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -45610,7 +45925,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-16T16:30:10.162Z"
+                        default: "2026-07-17T02:34:22.765Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -45782,7 +46097,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-16T16:30:10.161Z"
+                    default: "2026-07-17T02:34:22.764Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -45790,7 +46105,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-16T16:30:10.162Z"
+                        default: "2026-07-17T02:34:22.765Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -46224,7 +46539,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-16T16:30:42.017Z"
+                                    default: "2026-07-17T02:34:44.946Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46297,7 +46612,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-16T16:30:42.018Z"
+                                    default: "2026-07-17T02:34:44.947Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46370,7 +46685,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-16T16:30:42.020Z"
+                                    default: "2026-07-17T02:34:44.948Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46443,7 +46758,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-16T16:30:42.021Z"
+                                    default: "2026-07-17T02:34:44.949Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46483,7 +46798,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-16T16:30:10.161Z"
+                          default: "2026-07-17T02:34:22.764Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -46491,7 +46806,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:10.162Z"
+                              default: "2026-07-17T02:34:22.765Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -47119,7 +47434,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-16T16:30:42.042Z"
+                                default: "2026-07-17T02:34:44.965Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47192,7 +47507,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-16T16:30:42.043Z"
+                                default: "2026-07-17T02:34:44.966Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47265,7 +47580,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-16T16:30:42.044Z"
+                                default: "2026-07-17T02:34:44.967Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47338,7 +47653,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-16T16:30:42.045Z"
+                                default: "2026-07-17T02:34:44.968Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47378,7 +47693,7 @@ paths:
                           format: "date-time"
                         - type: "string"
                           format: "date-time"
-                      default: "2026-07-16T16:30:10.161Z"
+                      default: "2026-07-17T02:34:22.764Z"
                       readOnly: true
                       format: "date-time"
                       description: "The date and time the resource was created"
@@ -47386,7 +47701,7 @@ paths:
                       anyOf:
                         - type: "string"
                           format: "date-time"
-                          default: "2026-07-16T16:30:10.162Z"
+                          default: "2026-07-17T02:34:22.765Z"
                         - type: "string"
                           format: "date-time"
                       readOnly: true
@@ -47751,7 +48066,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.030Z"
+                              default: "2026-07-17T02:34:44.956Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -47824,7 +48139,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.031Z"
+                              default: "2026-07-17T02:34:44.957Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -47897,7 +48212,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.032Z"
+                              default: "2026-07-17T02:34:44.957Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -47970,7 +48285,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.033Z"
+                              default: "2026-07-17T02:34:44.958Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48010,7 +48325,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-16T16:30:10.161Z"
+                    default: "2026-07-17T02:34:22.764Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48018,7 +48333,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-16T16:30:10.162Z"
+                        default: "2026-07-17T02:34:22.765Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -48639,7 +48954,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.091Z"
+                              default: "2026-07-17T02:34:44.993Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48712,7 +49027,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.092Z"
+                              default: "2026-07-17T02:34:44.994Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48785,7 +49100,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.093Z"
+                              default: "2026-07-17T02:34:44.995Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48858,7 +49173,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:42.094Z"
+                              default: "2026-07-17T02:34:44.996Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48898,7 +49213,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-16T16:30:10.161Z"
+                    default: "2026-07-17T02:34:22.764Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48906,7 +49221,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-16T16:30:10.162Z"
+                        default: "2026-07-17T02:34:22.765Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -55143,7 +55458,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-16T16:30:42.212Z"
+                      default: "2026-07-17T02:34:45.106Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55185,7 +55500,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-16T16:30:42.212Z"
+                      default: "2026-07-17T02:34:45.107Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55227,7 +55542,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-16T16:30:42.213Z"
+                      default: "2026-07-17T02:34:45.107Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55269,7 +55584,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-16T16:30:42.214Z"
+                      default: "2026-07-17T02:34:45.108Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55604,7 +55919,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-16T16:30:10.161Z"
+                          default: "2026-07-17T02:34:22.764Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55612,7 +55927,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:10.162Z"
+                              default: "2026-07-17T02:34:22.765Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55686,7 +56001,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-16T16:30:10.161Z"
+                          default: "2026-07-17T02:34:22.764Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -55694,7 +56009,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-16T16:30:10.162Z"
+                              default: "2026-07-17T02:34:22.765Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -55882,7 +56197,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55890,7 +56205,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -55964,7 +56279,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -55972,7 +56287,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56070,7 +56385,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56078,7 +56393,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56152,7 +56467,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56160,7 +56475,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56356,7 +56671,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56364,7 +56679,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56438,7 +56753,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-16T16:30:10.161Z"
+                        default: "2026-07-17T02:34:22.764Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56446,7 +56761,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-16T16:30:10.162Z"
+                            default: "2026-07-17T02:34:22.765Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -61664,6 +61979,265 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.skills.update({\n  skillId: 'skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  description: 'Summarize support tickets for escalation handoff.',\n  tags: ['support', 'handoff'],\n  instructions:\n    'Return the issue summary, urgency, attempted fixes, and recommended owner.',\n});\n\nconsole.log(result.skill.version);\n"
       security:
         - ApiKey: []
+  /v2/webhooks:
+    get:
+      tags:
+        - "Webhooks"
+      summary: "List webhooks"
+      description: "Returns a page of webhooks in the current workspace. By default, the first 20 matching webhooks are ordered by creation time, newest first. Supplied filters are combined, `count` reports the total number of matches before pagination, and `has_more` indicates whether another page is available."
+      operationId: "WebhookList"
+      parameters:
+        - name: "page"
+          in: "query"
+          description: "One-based page number. Defaults to 1 and must be between 1 and 1,000,000."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "limit"
+          in: "query"
+          description: "Number of webhooks to return per page. Defaults to 20 and must be between\n 1 and 200."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "search"
+          in: "query"
+          description: "Optional case-insensitive substring matched against display name, content\n type, and URL. Maximum length is 200 characters."
+          schema:
+            type: "string"
+        - name: "event"
+          in: "query"
+          description: "Optional event slug that must be present in the webhook's event\n subscriptions, for example `llm.response`. Maximum length is 200\n characters."
+          schema:
+            type: "string"
+        - name: "sort"
+          in: "query"
+          description: "Field used to order results. Allowed values are `created`, `updated`, and\n `display_name`. Defaults to `created`."
+          schema:
+            type: "string"
+        - name: "direction"
+          in: "query"
+          description: "Sort direction. Allowed values are `asc` and `desc`. Defaults to `desc`."
+          schema:
+            type: "string"
+        - name: "content_type"
+          in: "query"
+          description: "Optional comma-separated content types to match, for example\n `application/json,application/x-www-form-urlencoded`. A webhook matches\n when its content type equals any supplied value."
+          schema:
+            type: "string"
+        - name: "enabled"
+          in: "query"
+          description: "Optional delivery status filter. When omitted, enabled and disabled\n webhooks are returned."
+          schema:
+            type: "boolean"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhooksResponse"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "list"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - List filtered webhooks"
+          source: "curl --get 'https://api.orq.ai/v2/webhooks' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --data-urlencode 'search=production' \\\n  --data-urlencode 'event=llm.response' \\\n  --data-urlencode 'content_type=application/json' \\\n  --data-urlencode 'enabled=true' \\\n  --data-urlencode 'page=1' \\\n  --data-urlencode 'limit=20' \\\n  --data-urlencode 'sort=created' \\\n  --data-urlencode 'direction=desc'\n"
+        - lang: "python"
+          label: "Python - List filtered webhooks"
+          source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.webhooks.list(\n    search=\"production\",\n    event=\"llm.response\",\n    content_type=\"application/json\",\n    enabled=True,\n    page=1,\n    limit=20,\n    sort=\"created\",\n    direction=\"desc\",\n)\n\nprint(f\"{page.count} matching webhooks\")\nfor webhook in page.items:\n    print(webhook._id, webhook.display_name)\nprint(f\"Has more: {page.has_more}\")\n"
+        - lang: "typescript"
+          label: "Node.js - List filtered webhooks"
+          source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst page = await client.webhooks.list({\n  search: 'production',\n  event: 'llm.response',\n  contentType: 'application/json',\n  enabled: true,\n  page: 1,\n  limit: 20,\n  sort: 'created',\n  direction: 'desc',\n});\n\nconsole.log(`${page.count} matching webhooks`);\nfor (const webhook of page.items) {\n  console.log(webhook._id, webhook.displayName);\n}\nconsole.log(`Has more: ${page.hasMore}`);\n"
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "Webhooks"
+      summary: "Create a webhook"
+      description: "Creates a webhook that delivers the selected workspace events to an HTTPS endpoint. Generate a signing secret first with `GET /v2/webhooks/secret`."
+      operationId: "WebhookCreate"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "create"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Create webhook"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/webhooks' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"_id\": \"webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"url\": \"https://example.com/orq-webhook\",\n    \"content_type\": \"application/json\",\n    \"display_name\": \"Production alerts\",\n    \"events\": [\"deployment.invoked\"],\n    \"secret\": \"orq_wh_example\",\n    \"enabled\": true\n  }'\n"
+      security:
+        - ApiKey: []
+  /v2/webhooks/count:
+    get:
+      tags:
+        - "Webhooks"
+      summary: "Count webhooks"
+      description: "Returns the total number of enabled and disabled webhooks in the current workspace."
+      operationId: "WebhookCount"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountWebhooksResponse"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "count"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Count webhooks"
+          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/count' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+      security:
+        - ApiKey: []
+  /v2/webhooks/query:
+    post:
+      tags:
+        - "Webhooks"
+      summary: "Query webhooks"
+      description: "**Deprecated.** Returns webhooks matching legacy query filters. Use `GET /v2/webhooks` for pagination, search, event filtering, and sorting."
+      operationId: "WebhookQuery"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryWebhooksRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryWebhooksResponse"
+      deprecated: true
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "query"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Query webhooks"
+          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/webhooks/query' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"sortingProps\": [{\"key\": \"created\", \"direction\": \"desc\"}],\n    \"filters\": []\n  }'\n"
+      security:
+        - ApiKey: []
+  /v2/webhooks/secret:
+    get:
+      tags:
+        - "Webhooks"
+      summary: "Generate a webhook secret"
+      description: "Generates a signing secret for verifying webhook deliveries. The secret is not persisted until it is used to create or update a webhook; store it securely."
+      operationId: "WebhookGenerateSecret"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateWebhookSecretResponse"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "generateSecret"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Generate webhook secret"
+          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/secret' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+      security:
+        - ApiKey: []
+  /v2/webhooks/{id}:
+    get:
+      tags:
+        - "Webhooks"
+      summary: "Retrieve a webhook"
+      description: "Retrieves a webhook in the current workspace by ID. The response includes its signing secret; treat it as sensitive."
+      operationId: "WebhookGet"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "get"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Retrieve webhook"
+          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+      security:
+        - ApiKey: []
+    delete:
+      tags:
+        - "Webhooks"
+      summary: "Delete a webhook"
+      description: "Deletes a webhook in the current workspace and returns the deleted webhook ID."
+      operationId: "WebhookDelete"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWebhookResponse"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "delete"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Delete webhook"
+          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY'\n"
+      security:
+        - ApiKey: []
+    patch:
+      tags:
+        - "Webhooks"
+      summary: "Update a webhook"
+      description: "Updates the supplied fields on a webhook in the current workspace. Omitted fields are unchanged. The response contains the applied fields rather than the complete webhook."
+      operationId: "WebhookUpdate"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: "object"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: "object"
+      x-speakeasy-group: "webhooks"
+      x-speakeasy-name-override: "update"
+      x-code-samples:
+        - lang: "curl"
+          label: "Core - Update webhook"
+          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header 'Authorization: Bearer $ORQ_API_KEY' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Updated alerts\",\n    \"enabled\": false\n  }'\n"
+      security:
+        - ApiKey: []
   /v2/router/embeddings:
     post:
       description: "Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms."
@@ -62970,8 +63544,6 @@ paths:
                     anyOf:
                       - $ref: "#/components/schemas/ResponseError"
                       - type: "null"
-                      - $ref: "#/components/schemas/ResponseError"
-                      - type: "null"
                   frequency_penalty:
                     format: "double"
                     type: "number"
@@ -62979,8 +63551,6 @@ paths:
                     type: "string"
                   incomplete_details:
                     anyOf:
-                      - $ref: "#/components/schemas/IncompleteDetails"
-                      - type: "null"
                       - $ref: "#/components/schemas/IncompleteDetails"
                       - type: "null"
                   input:
@@ -63040,8 +63610,6 @@ paths:
                       - "null"
                   reasoning:
                     anyOf:
-                      - $ref: "#/components/schemas/Reasoning"
-                      - type: "null"
                       - $ref: "#/components/schemas/Reasoning"
                       - type: "null"
                   safety_identifier:
@@ -63680,6 +64248,8 @@ tags:
     description: "Projects organize resources within a workspace"
   - name: "Skills"
     description: "Skills are modular instructions you can use to codify processes and conventions"
+  - name: "Webhooks"
+    description: "Create and manage webhooks that deliver workspace events to external HTTPS endpoints."
   - name: "Responses"
   - description: "Run agents on a cadence — cron, interval, or one-off. Minimum firing interval is 1 hour."
     name: "Agent Schedules"
