@@ -40,7 +40,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "api_key_id",
 							FlagName:    "api-key-id",
 							Type:        "string",
-							Description: "API key that issued the request (if any).",
+							Description: "API key that issued the request; ignored — the gate uses the caller's own key.",
 						},
 						{
 							Name:        "headers",
@@ -70,7 +70,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "Project the request targets (if any).",
+							Description: "Project the request targets; must be within the caller's scope.",
 						},
 						{
 							Name:        "provider",
@@ -103,7 +103,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "api_key_id",
 					FlagName:    "api-key-id",
 					Type:        "string",
-					Description: "API key that issued the request (if any).",
+					Description: "API key that issued the request; ignored — the gate uses the caller's own key.",
 				},
 				{
 					Name:        "headers",
@@ -133,7 +133,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "Project the request targets (if any).",
+					Description: "Project the request targets; must be within the caller's scope.",
 				},
 				{
 					Name:        "provider",
