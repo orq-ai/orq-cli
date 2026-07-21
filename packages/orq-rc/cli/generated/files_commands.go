@@ -150,6 +150,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item\n from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item\n from the previous page.")
 		cmd.Flags().String("project-id", "", "")
+		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose\n alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`)\n or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files\n of every purpose.")
 
 		bartolocli.SetCustomFlags(cmd)
 

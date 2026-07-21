@@ -2427,6 +2427,10 @@ func OpenapiFileList(params *viper.Viper) (*gentleman.Response, map[string]inter
 	if paramProjectId != "" {
 		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
+	paramPurpose := params.GetString("purpose")
+	if paramPurpose != "" {
+		req = req.AddQuery("purpose", fmt.Sprintf("%v", paramPurpose))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
