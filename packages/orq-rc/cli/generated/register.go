@@ -57,6 +57,7 @@ func Register(root *cobra.Command) {
 	registerrerankCommands(root)
 	registerroutingRulesCommands(root)
 	registerskillsCommands(root)
+	registersmartRoutersCommands(root)
 	registertelemetryCommands(root)
 	registertoolsCommands(root)
 	registertracesCommands(root)
