@@ -197,7 +197,7 @@ func registerchatCommands(root *cobra.Command) {
 						{
 							Name:        "stop",
 							FlagName:    "stop",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Up to 4 sequences where the API will stop generating further tokens.",
 						},
 						{
@@ -233,7 +233,7 @@ func registerchatCommands(root *cobra.Command) {
 						{
 							Name:        "tool_choice",
 							FlagName:    "tool-choice",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Controls which (if any) tool is called by the model.",
 						},
 						{
@@ -454,7 +454,7 @@ func registerchatCommands(root *cobra.Command) {
 				{
 					Name:        "stop",
 					FlagName:    "stop",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Up to 4 sequences where the API will stop generating further tokens.",
 				},
 				{
@@ -490,7 +490,7 @@ func registerchatCommands(root *cobra.Command) {
 				{
 					Name:        "tool_choice",
 					FlagName:    "tool-choice",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Controls which (if any) tool is called by the model.",
 				},
 				{

@@ -129,7 +129,7 @@ func registercompletionsCommands(root *cobra.Command) {
 						{
 							Name:        "stop",
 							FlagName:    "stop",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Up to 4 sequences where the API will stop generating further tokens. The returned text will not contain the stop sequence.",
 						},
 						{
@@ -282,7 +282,7 @@ func registercompletionsCommands(root *cobra.Command) {
 				{
 					Name:        "stop",
 					FlagName:    "stop",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Up to 4 sequences where the API will stop generating further tokens. The returned text will not contain the stop sequence.",
 				},
 				{

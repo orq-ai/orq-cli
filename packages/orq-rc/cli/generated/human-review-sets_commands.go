@@ -56,6 +56,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"span_type",
+								"name",
 							},
 						},
 						{
@@ -79,7 +80,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Optional project ID to scope this human review set to a specific project",
 						},
 					},
@@ -122,6 +123,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"span_type",
+						"name",
 					},
 				},
 				{
@@ -145,7 +147,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Optional project ID to scope this human review set to a specific project",
 				},
 			},
@@ -304,6 +306,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"span_type",
+								"name",
 							},
 						},
 						{
@@ -327,7 +330,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Optional project ID to scope this human review set to a specific project",
 						},
 					},
@@ -370,6 +373,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"span_type",
+						"name",
 					},
 				},
 				{
@@ -393,7 +397,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Optional project ID to scope this human review set to a specific project",
 				},
 			},
