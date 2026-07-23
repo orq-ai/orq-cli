@@ -73,7 +73,7 @@ jobs:
       - name: Install bartolo
         run: |
           workdir="${MODULE_DIR:-.}"
-          go install "github.com/orq-ai/bartolo@v0.4.3"
+          go install "github.com/orq-ai/bartolo@v0.4.4"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Resolve version
