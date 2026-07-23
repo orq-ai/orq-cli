@@ -24,95 +24,9 @@ func registerimagesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create",
-			Short:   "Create image",
-			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 11 more fields\n\nRequired fields: `model`, `prompt`\n\nSimple top-level body fields are also exposed as flags for this command."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{
-						{
-							Name:        "model",
-							FlagName:    "model",
-							Type:        "string",
-							Description: "The model to use for image generation. One of `openai/dall-e-2`, `openai/dall-e-3`, or `openai/gpt-image-1`.",
-						},
-						{
-							Name:        "name",
-							FlagName:    "name",
-							Type:        "string",
-							Description: "The name to display on the trace. If not specified, the default system name will be used.",
-						},
-						{
-							Name:        "prompt",
-							FlagName:    "prompt",
-							Type:        "string",
-							Description: "A text description of the desired image(s).",
-						},
-					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiCreateImage(params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		imagesCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "model",
-					FlagName:    "model",
-					Type:        "string",
-					Description: "The model to use for image generation. One of `openai/dall-e-2`, `openai/dall-e-3`, or `openai/gpt-image-1`.",
-				},
-				{
-					Name:        "name",
-					FlagName:    "name",
-					Type:        "string",
-					Description: "The name to display on the trace. If not specified, the default system name will be used.",
-				},
-				{
-					Name:        "prompt",
-					FlagName:    "prompt",
-					Type:        "string",
-					Description: "A text description of the desired image(s).",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "create-edit",
+			Use:     "edit",
 			Short:   "Create image edit",
-			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -123,10 +37,40 @@ func registerimagesCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
+							Name:        "image",
+							FlagName:    "image",
+							Type:        "json",
+							Description: "The image(s) to edit. Must be a supported image file or an array of images.  Each image should be a png, webp, or jpg file less than 50MB. You can provide up to 16 images.",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
+						},
+						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
 							Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+						},
+						{
+							Name:        "n",
+							FlagName:    "n",
+							Type:        "float64-nullable",
+							Description: "The number of images to generate. Must be between 1 and 10.",
 						},
 						{
 							Name:        "name",
@@ -135,16 +79,50 @@ func registerimagesCommands(root *cobra.Command) {
 							Description: "The name to display on the trace. If not specified, the default system name will be used.",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "prompt",
 							FlagName:    "prompt",
 							Type:        "string",
 							Description: "A text description of the desired image(s).",
 						},
 						{
+							Name:        "quality",
+							FlagName:    "quality",
+							Type:        "string-nullable",
+							Description: "The quality of the image that will be generated. Auto will automatically select the best quality for the given model.",
+						},
+						{
 							Name:        "response_format",
 							FlagName:    "response-format",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The format in which the generated images are returned. Some of the models only return the image in base64 format.",
+							Enum: []string{
+								"url",
+								"b64_json",
+							},
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
+						},
+						{
+							Name:        "size",
+							FlagName:    "size",
+							Type:        "string-nullable",
+							Description: "The size of the generated images",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 						},
 						{
 							Name:        "user",
@@ -174,10 +152,40 @@ func registerimagesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
+					Name:        "image",
+					FlagName:    "image",
+					Type:        "json",
+					Description: "The image(s) to edit. Must be a supported image file or an array of images.  Each image should be a png, webp, or jpg file less than 50MB. You can provide up to 16 images.",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
+				},
+				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
 					Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+				},
+				{
+					Name:        "n",
+					FlagName:    "n",
+					Type:        "float64-nullable",
+					Description: "The number of images to generate. Must be between 1 and 10.",
 				},
 				{
 					Name:        "name",
@@ -186,16 +194,50 @@ func registerimagesCommands(root *cobra.Command) {
 					Description: "The name to display on the trace. If not specified, the default system name will be used.",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "prompt",
 					FlagName:    "prompt",
 					Type:        "string",
 					Description: "A text description of the desired image(s).",
 				},
 				{
+					Name:        "quality",
+					FlagName:    "quality",
+					Type:        "string-nullable",
+					Description: "The quality of the image that will be generated. Auto will automatically select the best quality for the given model.",
+				},
+				{
 					Name:        "response_format",
 					FlagName:    "response-format",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The format in which the generated images are returned. Some of the models only return the image in base64 format.",
+					Enum: []string{
+						"url",
+						"b64_json",
+					},
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
+				},
+				{
+					Name:        "size",
+					FlagName:    "size",
+					Type:        "string-nullable",
+					Description: "The size of the generated images",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 				},
 				{
 					Name:        "user",
@@ -220,9 +262,299 @@ func registerimagesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-variation",
+			Use:     "generate",
+			Short:   "Create image",
+			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 12 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+					[]bartolocli.BodyField{
+						{
+							Name:        "background",
+							FlagName:    "background",
+							Type:        "string-nullable",
+							Description: "Allows to set transparency for the background of the generated image(s). This parameter is only supported for `openai/gpt-image-1`.",
+						},
+						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the request. This metadata will be stored in the trace and can be used for filtering.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "The model to use for image generation. One of `openai/dall-e-2`, `openai/dall-e-3`, or `openai/gpt-image-1`.",
+						},
+						{
+							Name:        "moderation",
+							FlagName:    "moderation",
+							Type:        "string-nullable",
+							Description: "Control the content-moderation level for images generated by `gpt-image-1`. Must be either `low` or `auto`.",
+						},
+						{
+							Name:        "n",
+							FlagName:    "n",
+							Type:        "int64-nullable",
+							Description: "The number of images to generate. Must be between 1 and 10. For `dall-e-3`, only `n=1` is supported.",
+						},
+						{
+							Name:        "name",
+							FlagName:    "name",
+							Type:        "string",
+							Description: "The name to display on the trace. If not specified, the default system name will be used.",
+						},
+						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "output_compression",
+							FlagName:    "output-compression",
+							Type:        "int64-nullable",
+							Description: "The compression level (0-100%) for the generated images. This parameter is only supported for `gpt-image-1` with the `webp` or `jpeg` output formats.",
+						},
+						{
+							Name:        "output_format",
+							FlagName:    "output-format",
+							Type:        "string-nullable",
+							Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`.",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "string",
+							Description: "A text description of the desired image(s).",
+						},
+						{
+							Name:        "quality",
+							FlagName:    "quality",
+							Type:        "string-nullable",
+							Description: "The quality of the image that will be generated. `auto` will automatically select the best quality for the given model.",
+						},
+						{
+							Name:        "response_format",
+							FlagName:    "response-format",
+							Type:        "string-nullable",
+							Description: "The format in which generated images are returned. Must be one of `url` or `b64_json`. This parameter isn't supported for `gpt-image-1` which will always return base64-encoded images.",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
+						},
+						{
+							Name:        "size",
+							FlagName:    "size",
+							Type:        "string-nullable",
+							Description: "The size of the generated images. Must be one of the specified sizes for each model.",
+						},
+						{
+							Name:        "style",
+							FlagName:    "style",
+							Type:        "string-nullable",
+							Description: "The style of the generated images. This parameter is only supported for `openai/dall-e-3`. Must be one of `vivid` or `natural`.",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to apply body flags")
+				}
+
+				_, decoded, err := OpenapiCreateImage(params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		imagesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "background",
+					FlagName:    "background",
+					Type:        "string-nullable",
+					Description: "Allows to set transparency for the background of the generated image(s). This parameter is only supported for `openai/gpt-image-1`.",
+				},
+				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the request. This metadata will be stored in the trace and can be used for filtering.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "The model to use for image generation. One of `openai/dall-e-2`, `openai/dall-e-3`, or `openai/gpt-image-1`.",
+				},
+				{
+					Name:        "moderation",
+					FlagName:    "moderation",
+					Type:        "string-nullable",
+					Description: "Control the content-moderation level for images generated by `gpt-image-1`. Must be either `low` or `auto`.",
+				},
+				{
+					Name:        "n",
+					FlagName:    "n",
+					Type:        "int64-nullable",
+					Description: "The number of images to generate. Must be between 1 and 10. For `dall-e-3`, only `n=1` is supported.",
+				},
+				{
+					Name:        "name",
+					FlagName:    "name",
+					Type:        "string",
+					Description: "The name to display on the trace. If not specified, the default system name will be used.",
+				},
+				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "output_compression",
+					FlagName:    "output-compression",
+					Type:        "int64-nullable",
+					Description: "The compression level (0-100%) for the generated images. This parameter is only supported for `gpt-image-1` with the `webp` or `jpeg` output formats.",
+				},
+				{
+					Name:        "output_format",
+					FlagName:    "output-format",
+					Type:        "string-nullable",
+					Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`.",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "string",
+					Description: "A text description of the desired image(s).",
+				},
+				{
+					Name:        "quality",
+					FlagName:    "quality",
+					Type:        "string-nullable",
+					Description: "The quality of the image that will be generated. `auto` will automatically select the best quality for the given model.",
+				},
+				{
+					Name:        "response_format",
+					FlagName:    "response-format",
+					Type:        "string-nullable",
+					Description: "The format in which generated images are returned. Must be one of `url` or `b64_json`. This parameter isn't supported for `gpt-image-1` which will always return base64-encoded images.",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
+				},
+				{
+					Name:        "size",
+					FlagName:    "size",
+					Type:        "string-nullable",
+					Description: "The size of the generated images. Must be one of the specified sizes for each model.",
+				},
+				{
+					Name:        "style",
+					FlagName:    "style",
+					Type:        "string-nullable",
+					Description: "The style of the generated images. This parameter is only supported for `openai/dall-e-3`. Must be one of `vivid` or `natural`.",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "variation",
 			Short:   "Create image variation",
-			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -233,10 +565,40 @@ func registerimagesCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
+							Name:        "image",
+							FlagName:    "image",
+							Type:        "json",
+							Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
+						},
+						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
 							Description: "The model to use for image generation.",
+						},
+						{
+							Name:        "n",
+							FlagName:    "n",
+							Type:        "float64-nullable",
+							Description: "The number of images to generate. Must be between 1 and 10.",
 						},
 						{
 							Name:        "name",
@@ -245,16 +607,43 @@ func registerimagesCommands(root *cobra.Command) {
 							Description: "The name to display on the trace. If not specified, the default system name will be used.",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "response_format",
 							FlagName:    "response-format",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The format in which the generated images are returned. Must be one of `url` or `b64_json`. URLs are only valid for 60 minutes after the image has been generated.",
+							Enum: []string{
+								"url",
+								"b64_json",
+							},
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
 						},
 						{
 							Name:        "size",
 							FlagName:    "size",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The size of the generated images. Must be one of `256x256`, `512x512`, or `1024x1024`.",
+							Enum: []string{
+								"256x256",
+								"512x512",
+								"1024x1024",
+							},
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 						},
 						{
 							Name:        "user",
@@ -284,10 +673,40 @@ func registerimagesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
+					Name:        "image",
+					FlagName:    "image",
+					Type:        "json",
+					Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
+				},
+				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
 					Description: "The model to use for image generation.",
+				},
+				{
+					Name:        "n",
+					FlagName:    "n",
+					Type:        "float64-nullable",
+					Description: "The number of images to generate. Must be between 1 and 10.",
 				},
 				{
 					Name:        "name",
@@ -296,16 +715,43 @@ func registerimagesCommands(root *cobra.Command) {
 					Description: "The name to display on the trace. If not specified, the default system name will be used.",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "response_format",
 					FlagName:    "response-format",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The format in which the generated images are returned. Must be one of `url` or `b64_json`. URLs are only valid for 60 minutes after the image has been generated.",
+					Enum: []string{
+						"url",
+						"b64_json",
+					},
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
 				},
 				{
 					Name:        "size",
 					FlagName:    "size",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The size of the generated images. Must be one of `256x256`, `512x512`, or `1024x1024`.",
+					Enum: []string{
+						"256x256",
+						"512x512",
+						"1024x1024",
+					},
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
 				},
 				{
 					Name:        "user",

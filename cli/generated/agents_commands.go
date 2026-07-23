@@ -24,131 +24,9 @@ func registeragentsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "a2a",
-			Short:   "Register external A2A agent",
-			Long:    bartolocli.Markdown("Register an external A2A-compliant agent into Orquesta. The agent card will be fetched during registration to validate the agent and cache its capabilities.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_url` (string, required)\n- `card_url` (string)\n- `description` (string, required)\n- `display_name` (string, required)\n- `headers` (object)\n- `key` (string, required)\n- `path` (string, required)\n\nRequired fields: `agent_url`, `description`, `display_name`, `key`, `path`\n\nSimple top-level body fields are also exposed as flags for this command."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{
-						{
-							Name:        "agent_url",
-							FlagName:    "agent-url",
-							Type:        "string",
-							Description: "The A2A agent endpoint URL",
-						},
-						{
-							Name:        "card_url",
-							FlagName:    "card-url",
-							Type:        "string",
-							Description: "Optional explicit agent card URL (must be different from agent_url)",
-						},
-						{
-							Name:        "description",
-							FlagName:    "description",
-							Type:        "string",
-							Description: "Description of the agent",
-						},
-						{
-							Name:        "display_name",
-							FlagName:    "display-name",
-							Type:        "string",
-							Description: "Display name for the agent",
-						},
-						{
-							Name:        "key",
-							FlagName:    "key",
-							Type:        "string",
-							Description: "Unique identifier for the agent",
-						},
-						{
-							Name:        "path",
-							FlagName:    "path",
-							Type:        "string",
-							Description: "Project path for organizing the agent",
-						},
-					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiPostV2AgentsA2a(params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		agentsCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "agent_url",
-					FlagName:    "agent-url",
-					Type:        "string",
-					Description: "The A2A agent endpoint URL",
-				},
-				{
-					Name:        "card_url",
-					FlagName:    "card-url",
-					Type:        "string",
-					Description: "Optional explicit agent card URL (must be different from agent_url)",
-				},
-				{
-					Name:        "description",
-					FlagName:    "description",
-					Type:        "string",
-					Description: "Description of the agent",
-				},
-				{
-					Name:        "display_name",
-					FlagName:    "display-name",
-					Type:        "string",
-					Description: "Display name for the agent",
-				},
-				{
-					Name:        "key",
-					FlagName:    "key",
-					Type:        "string",
-					Description: "Unique identifier for the agent",
-				},
-				{
-					Name:        "path",
-					FlagName:    "path",
-					Type:        "string",
-					Description: "Project path for organizing the agent",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "create-request",
+			Use:     "create",
 			Short:   "Create agent",
-			Long:    bartolocli.Markdown("Creates a new agent with the specified configuration, including model selection, instructions, tools, and knowledge bases. Agents are intelligent assistants that can execute tasks, interact with tools, and maintain context through memory stores. The agent can be configured with a primary model and optional fallback models for automatic failover, custom instructions for behavior control, and various settings to control execution limits and tool usage.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 8 more fields\n\nRequired fields: `description`, `instructions`, `key`, `model`, `path`, `role`, `settings`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new agent with the specified configuration, including model selection, instructions, tools, and knowledge bases. Agents are intelligent assistants that can execute tasks, interact with tools, and maintain context through memory stores. The agent can be configured with a primary model and optional fallback models for automatic failover, custom instructions for behavior control, and various settings to control execution limits and tool usage.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 9 more fields\n\nRequired fields: `description`, `instructions`, `key`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -173,8 +51,19 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "fallback_models",
+							FlagName:    "fallback-models",
+							Type:        "json",
+							Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
 						},
 						{
 							Name:        "instructions",
@@ -189,6 +78,24 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "Unique identifier for the agent within the workspace",
 						},
 						{
+							Name:        "knowledge_bases",
+							FlagName:    "knowledge-bases",
+							Type:        "json",
+							Description: "Optional array of knowledge base configurations for the agent to access",
+						},
+						{
+							Name:        "memory_stores",
+							FlagName:    "memory-stores",
+							Type:        "string-slice",
+							Description: "Optional array of memory store identifiers for the agent to access. Accepts both memory store IDs and keys.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "json",
+							Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
+						},
+						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
@@ -201,9 +108,44 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "The role or function of the agent",
 						},
 						{
+							Name:        "settings",
+							FlagName:    "settings",
+							Type:        "json",
+							Description: "Configuration settings for the agent's behavior",
+						},
+						{
+							Name:        "skills",
+							FlagName:    "skills",
+							Type:        "string-slice",
+							Description: "List of skills that the agent can utilize. This field allows you to specify which skills the agent has access to, enabling more complex and dynamic behavior.",
+						},
+						{
 							Name:        "source",
 							FlagName:    "source",
-							Type:        "string",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"internal",
+								"external",
+								"experiment",
+							},
+						},
+						{
+							Name:        "system_prompt",
+							FlagName:    "system-prompt",
+							Type:        "string-nullable",
+							Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+						},
+						{
+							Name:        "team_of_agents",
+							FlagName:    "team-of-agents",
+							Type:        "json",
+							Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
 							Description: "",
 						},
 					},
@@ -242,8 +184,19 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "fallback_models",
+					FlagName:    "fallback-models",
+					Type:        "json",
+					Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
 				},
 				{
 					Name:        "instructions",
@@ -258,6 +211,24 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "Unique identifier for the agent within the workspace",
 				},
 				{
+					Name:        "knowledge_bases",
+					FlagName:    "knowledge-bases",
+					Type:        "json",
+					Description: "Optional array of knowledge base configurations for the agent to access",
+				},
+				{
+					Name:        "memory_stores",
+					FlagName:    "memory-stores",
+					Type:        "string-slice",
+					Description: "Optional array of memory store identifiers for the agent to access. Accepts both memory store IDs and keys.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "json",
+					Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
+				},
+				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
@@ -270,108 +241,45 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "The role or function of the agent",
 				},
 				{
+					Name:        "settings",
+					FlagName:    "settings",
+					Type:        "json",
+					Description: "Configuration settings for the agent's behavior",
+				},
+				{
+					Name:        "skills",
+					FlagName:    "skills",
+					Type:        "string-slice",
+					Description: "List of skills that the agent can utilize. This field allows you to specify which skills the agent has access to, enabling more complex and dynamic behavior.",
+				},
+				{
 					Name:        "source",
 					FlagName:    "source",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "create-response-request agent-key",
-			Short:   "Create response",
-			Long:    bartolocli.Markdown("Initiates an agent conversation and returns a complete response. This endpoint manages the full lifecycle of an agent interaction, from receiving the initial message through all processing steps until completion. Supports synchronous execution (waits for completion) and asynchronous execution (returns immediately with task ID). The response includes all messages exchanged, tool calls made, and token usage statistics. Ideal for request-response patterns where you need the complete interaction result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `configuration` (object)\n- `contact` (object)\n- `conversation` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- ... and 5 more fields\n\nRequired fields: `message`\n\nSimple top-level body fields are also exposed as flags for this command."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{
-						{
-							Name:        "background",
-							FlagName:    "background",
-							Type:        "bool",
-							Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
-						},
-						{
-							Name:        "engine",
-							FlagName:    "engine",
-							Type:        "string",
-							Description: "Override template engine for this invocation. If not provided, uses the agent default.",
-						},
-						{
-							Name:        "stream",
-							FlagName:    "stream",
-							Type:        "bool",
-							Description: "If true, returns Server-Sent Events (SSE) streaming response with real-time events. If false (default), returns standard JSON response.",
-						},
-						{
-							Name:        "task_id",
-							FlagName:    "task-id",
-							Type:        "string",
-							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
-						},
+					Enum: []string{
+						"internal",
+						"external",
+						"experiment",
 					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiCreateAgentResponseRequest(args[0], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		agentsCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "background",
-					FlagName:    "background",
-					Type:        "bool",
-					Description: "If true, returns immediately without waiting for completion. If false (default), waits until the agent becomes inactive or errors.",
 				},
 				{
-					Name:        "engine",
-					FlagName:    "engine",
-					Type:        "string",
-					Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+					Name:        "system_prompt",
+					FlagName:    "system-prompt",
+					Type:        "string-nullable",
+					Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
 				},
 				{
-					Name:        "stream",
-					FlagName:    "stream",
-					Type:        "bool",
-					Description: "If true, returns Server-Sent Events (SSE) streaming response with real-time events. If false (default), returns standard JSON response.",
+					Name:        "team_of_agents",
+					FlagName:    "team-of-agents",
+					Type:        "json",
+					Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
 				},
 				{
-					Name:        "task_id",
-					FlagName:    "task-id",
-					Type:        "string",
-					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "",
 				},
 			},
 		)
@@ -460,7 +368,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke key",
 			Short:   "Execute an agent task",
-			Long:    bartolocli.Markdown("Invokes an agent to perform a task with the provided input message. The agent will process the request using its configured model and tools, maintaining context through memory stores if configured. Supports automatic model fallback on primary model failure, tool execution, knowledge base retrieval, and continuation of previous conversations. Returns a task response that can be used to track execution status and retrieve results.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Invokes an agent to perform a task with the provided input message. The agent will process the request using its configured model and tools, maintaining context through memory stores if configured. Supports automatic model fallback on primary model failure, tool execution, knowledge base retrieval, and continuation of previous conversations. Returns a task response that can be used to track execution status and retrieve results.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -471,16 +379,69 @@ func registeragentsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
+							Description: "Configuration options for the agent invocation",
+						},
+						{
+							Name:        "contact",
+							FlagName:    "contact",
+							Type:        "json",
+							Description: "@deprecated Use identity instead. Information about the contact making the request.",
+						},
+						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "json",
+							Description: "The A2A message to send to the agent (user input or tool results)",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 						},
 						{
 							Name:        "task_id",
 							FlagName:    "task-id",
 							Type:        "string",
 							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "Thread information to group related requests",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 						},
 					},
 				)
@@ -504,16 +465,69 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "Configuration options for the agent invocation",
+				},
+				{
+					Name:        "contact",
+					FlagName:    "contact",
+					Type:        "json",
+					Description: "@deprecated Use identity instead. Information about the contact making the request.",
+				},
+				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "json",
+					Description: "The A2A message to send to the agent (user input or tool results)",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 				},
 				{
 					Name:        "task_id",
 					FlagName:    "task-id",
 					Type:        "string",
 					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "Thread information to group related requests",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 				},
 			},
 		)
@@ -532,7 +546,46 @@ func registeragentsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "key-card-refresh key",
+			Use:     "list",
+			Short:   "List agents",
+			Long:    bartolocli.Markdown("Retrieves a comprehensive list of agents configured in your workspace. Supports pagination for large datasets and returns agents sorted by creation date (newest first). Each agent in the response includes its complete configuration: model settings with fallback options, instructions, tools, knowledge bases, memory stores, and execution parameters. Use pagination parameters to efficiently navigate through large collections of agents."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiListAgents(params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		agentsCmd.AddCommand(cmd)
+
+		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 200. When not provided, returns all agents without pagination.")
+		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
+		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("type", "", "Filter agents by type")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "refresh-agent-card key",
 			Short:   "Refresh A2A agent card",
 			Long:    bartolocli.Markdown("Fetches the latest agent card from the external A2A agent and updates the cached card in the database. Similar to MCP server refresh functionality.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
 			Example: examples,
@@ -580,46 +633,7 @@ func registeragentsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "list",
-			Short:   "List agents",
-			Long:    bartolocli.Markdown("Retrieves a comprehensive list of agents configured in your workspace. Supports pagination for large datasets and returns agents sorted by creation date (newest first). Each agent in the response includes its complete configuration: model settings with fallback options, instructions, tools, knowledge bases, memory stores, and execution parameters. Use pagination parameters to efficiently navigate through large collections of agents."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiListAgents(params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		agentsCmd.AddCommand(cmd)
-
-		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 200. When not provided, returns all agents without pagination.")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("type", "", "Filter agents by type: \"internal\" for Orquesta-managed agents, \"a2a\" for external A2A-compliant agents")
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "retrieve-agent-request agent-key",
+			Use:     "retrieve agent-key",
 			Short:   "Retrieve agent",
 			Long:    bartolocli.Markdown("Retrieves detailed information about a specific agent identified by its unique key or identifier. Returns the complete agent manifest including configuration settings, model assignments (primary and fallback), tools, knowledge bases, memory stores, instructions, and execution parameters. Use this endpoint to fetch the current state and configuration of an individual agent."),
 			Example: examples,
@@ -655,7 +669,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "run",
 			Short:   "Run an agent with configuration",
-			Long:    bartolocli.Markdown("Executes an agent using inline configuration or references an existing agent. Supports dynamic agent creation where the system automatically manages agent versioning - reusing existing agents with matching configurations or creating new versions when configurations differ. Ideal for programmatic agent execution with flexible configuration management. The agent processes messages in A2A format with support for memory context, tool execution, and automatic model fallback on failure.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Executes an agent using inline configuration or references an existing agent. Supports dynamic agent creation where the system automatically manages agent versioning - reusing existing agents with matching configurations or creating new versions when configurations differ. Ideal for programmatic agent execution with flexible configuration management. The agent processes messages in A2A format with support for memory context, tool execution, and automatic model fallback on failure.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -666,6 +680,12 @@ func registeragentsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "contact",
+							FlagName:    "contact",
+							Type:        "json",
+							Description: "@deprecated Use identity instead. Information about the contact making the request.",
+						},
+						{
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
@@ -674,8 +694,25 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Template engine for variable interpolation. Text uses {{variable}} syntax, Jinja supports loops/conditionals/filters, Mustache uses {{#section}} syntax.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "fallback_models",
+							FlagName:    "fallback-models",
+							Type:        "json",
+							Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
 						},
 						{
 							Name:        "instructions",
@@ -690,10 +727,46 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "A unique identifier for the agent. This key must be unique within the same workspace and cannot be reused. When executing the agent, this key determines if the agent already exists. If the agent version differs, a new version is created at the end of the execution, except for the task. All agent parameters are evaluated to decide if a new version is needed.",
 						},
 						{
+							Name:        "knowledge_bases",
+							FlagName:    "knowledge-bases",
+							Type:        "json",
+							Description: "Knowledge base configurations for the agent to access",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+						},
+						{
+							Name:        "memory_stores",
+							FlagName:    "memory-stores",
+							Type:        "string-slice",
+							Description: "Array of memory store identifiers that are accessible to the agent. Accepts both memory store IDs and keys.",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "json",
+							Description: "The A2A format message containing the task for the agent to perform.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the agent run as key-value pairs that will be included in traces",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "json",
+							Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
+						},
+						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "role",
@@ -702,10 +775,40 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "Specifies the agent's function and area of expertise.",
 						},
 						{
+							Name:        "settings",
+							FlagName:    "settings",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "system_prompt",
+							FlagName:    "system-prompt",
+							Type:        "string-nullable",
+							Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+						},
+						{
 							Name:        "task_id",
 							FlagName:    "task-id",
 							Type:        "string",
 							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+						},
+						{
+							Name:        "team_of_agents",
+							FlagName:    "team-of-agents",
+							Type:        "json",
+							Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "Thread information to group related requests",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 						},
 					},
 				)
@@ -729,6 +832,12 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "contact",
+					FlagName:    "contact",
+					Type:        "json",
+					Description: "@deprecated Use identity instead. Information about the contact making the request.",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -737,8 +846,25 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Template engine for variable interpolation. Text uses {{variable}} syntax, Jinja supports loops/conditionals/filters, Mustache uses {{#section}} syntax.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "fallback_models",
+					FlagName:    "fallback-models",
+					Type:        "json",
+					Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
 				},
 				{
 					Name:        "instructions",
@@ -753,10 +879,46 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "A unique identifier for the agent. This key must be unique within the same workspace and cannot be reused. When executing the agent, this key determines if the agent already exists. If the agent version differs, a new version is created at the end of the execution, except for the task. All agent parameters are evaluated to decide if a new version is needed.",
 				},
 				{
+					Name:        "knowledge_bases",
+					FlagName:    "knowledge-bases",
+					Type:        "json",
+					Description: "Knowledge base configurations for the agent to access",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+				},
+				{
+					Name:        "memory_stores",
+					FlagName:    "memory-stores",
+					Type:        "string-slice",
+					Description: "Array of memory store identifiers that are accessible to the agent. Accepts both memory store IDs and keys.",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "json",
+					Description: "The A2A format message containing the task for the agent to perform.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the agent run as key-value pairs that will be included in traces",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "json",
+					Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
+				},
+				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "role",
@@ -765,10 +927,40 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "Specifies the agent's function and area of expertise.",
 				},
 				{
+					Name:        "settings",
+					FlagName:    "settings",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "system_prompt",
+					FlagName:    "system-prompt",
+					Type:        "string-nullable",
+					Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+				},
+				{
 					Name:        "task_id",
 					FlagName:    "task-id",
 					Type:        "string",
 					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+				},
+				{
+					Name:        "team_of_agents",
+					FlagName:    "team-of-agents",
+					Type:        "json",
+					Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "Thread information to group related requests",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 				},
 			},
 		)
@@ -789,7 +981,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stream key",
 			Short:   "Stream agent execution in real-time",
-			Long:    bartolocli.Markdown("Executes an agent and streams the interaction in real-time using Server-Sent Events (SSE). Provides live updates as the agent processes the request, including message chunks, tool calls, and execution status. Perfect for building responsive chat interfaces and monitoring agent progress. The stream continues until the agent completes its task, encounters an error, or reaches the configured timeout (default 30 minutes, configurable 1-3600 seconds).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Executes an agent and streams the interaction in real-time using Server-Sent Events (SSE). Provides live updates as the agent processes the request, including message chunks, tool calls, and execution status. Perfect for building responsive chat interfaces and monitoring agent progress. The stream continues until the agent completes its task, encounters an error, or reaches the configured timeout (default 30 minutes, configurable 1-3600 seconds).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -800,10 +992,51 @@ func registeragentsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "configuration",
+							FlagName:    "configuration",
+							Type:        "json",
+							Description: "Configuration options for the agent invocation",
+						},
+						{
+							Name:        "contact",
+							FlagName:    "contact",
+							Type:        "json",
+							Description: "@deprecated Use identity instead. Information about the contact making the request.",
+						},
+						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "json",
+							Description: "The A2A message to send to the agent (user input or tool results)",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 						},
 						{
 							Name:        "stream_timeout_seconds",
@@ -816,6 +1049,18 @@ func registeragentsCommands(root *cobra.Command) {
 							FlagName:    "task-id",
 							Type:        "string",
 							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "Thread information to group related requests",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 						},
 					},
 				)
@@ -839,10 +1084,51 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "configuration",
+					FlagName:    "configuration",
+					Type:        "json",
+					Description: "Configuration options for the agent invocation",
+				},
+				{
+					Name:        "contact",
+					FlagName:    "contact",
+					Type:        "json",
+					Description: "@deprecated Use identity instead. Information about the contact making the request.",
+				},
+				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Override template engine for this invocation. If not provided, uses the agent default.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "json",
+					Description: "The A2A message to send to the agent (user input or tool results)",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the agent invocation as key-value pairs that will be included in traces",
 				},
 				{
 					Name:        "stream_timeout_seconds",
@@ -855,6 +1141,18 @@ func registeragentsCommands(root *cobra.Command) {
 					FlagName:    "task-id",
 					Type:        "string",
 					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "Thread information to group related requests",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 				},
 			},
 		)
@@ -875,7 +1173,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stream-run",
 			Short:   "Run agent with streaming response",
-			Long:    bartolocli.Markdown("Dynamically configures and executes an agent while streaming the interaction in real-time via Server-Sent Events (SSE). Intelligently manages agent versioning by reusing existing agents with matching configurations or creating new versions when configurations differ. Combines the flexibility of inline configuration with real-time streaming, making it ideal for dynamic agent interactions with live feedback. The stream provides continuous updates including message chunks, tool executions, and status changes until completion or timeout.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Dynamically configures and executes an agent while streaming the interaction in real-time via Server-Sent Events (SSE). Intelligently manages agent versioning by reusing existing agents with matching configurations or creating new versions when configurations differ. Combines the flexibility of inline configuration with real-time streaming, making it ideal for dynamic agent interactions with live feedback. The stream provides continuous updates including message chunks, tool executions, and status changes until completion or timeout.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -886,6 +1184,12 @@ func registeragentsCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "contact",
+							FlagName:    "contact",
+							Type:        "json",
+							Description: "@deprecated Use identity instead. Information about the contact making the request.",
+						},
+						{
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
@@ -894,8 +1198,25 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Template engine for variable interpolation. Text uses {{variable}} syntax, Jinja supports loops/conditionals/filters, Mustache uses {{#section}} syntax.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "fallback_models",
+							FlagName:    "fallback-models",
+							Type:        "json",
+							Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
 						},
 						{
 							Name:        "instructions",
@@ -910,10 +1231,46 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "A unique identifier for the agent. This key must be unique within the same workspace and cannot be reused. When executing the agent, this key determines if the agent already exists. If the agent version differs, a new version is created at the end of the execution, except for the task. All agent parameters are evaluated to decide if a new version is needed.",
 						},
 						{
+							Name:        "knowledge_bases",
+							FlagName:    "knowledge-bases",
+							Type:        "json",
+							Description: "Knowledge base configurations for the agent to access",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+						},
+						{
+							Name:        "memory_stores",
+							FlagName:    "memory-stores",
+							Type:        "string-slice",
+							Description: "Array of memory store identifiers that are accessible to the agent. Accepts both memory store IDs and keys.",
+						},
+						{
+							Name:        "message",
+							FlagName:    "message",
+							Type:        "json",
+							Description: "The A2A format message containing the task for the agent to perform.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Optional metadata for the agent run as key-value pairs that will be included in traces",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "json",
+							Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
+						},
+						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "role",
@@ -922,16 +1279,46 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "Specifies the agent's function and area of expertise.",
 						},
 						{
+							Name:        "settings",
+							FlagName:    "settings",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "stream_timeout_seconds",
 							FlagName:    "stream-timeout-seconds",
 							Type:        "float64",
 							Description: "Stream timeout in seconds (1-3600). Default: 1800 (30 minutes)",
 						},
 						{
+							Name:        "system_prompt",
+							FlagName:    "system-prompt",
+							Type:        "string-nullable",
+							Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+						},
+						{
 							Name:        "task_id",
 							FlagName:    "task-id",
 							Type:        "string",
 							Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+						},
+						{
+							Name:        "team_of_agents",
+							FlagName:    "team-of-agents",
+							Type:        "json",
+							Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "Thread information to group related requests",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 						},
 					},
 				)
@@ -955,6 +1342,12 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "contact",
+					FlagName:    "contact",
+					Type:        "json",
+					Description: "@deprecated Use identity instead. Information about the contact making the request.",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -963,8 +1356,25 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Template engine for variable interpolation. Text uses {{variable}} syntax, Jinja supports loops/conditionals/filters, Mustache uses {{#section}} syntax.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "fallback_models",
+					FlagName:    "fallback-models",
+					Type:        "json",
+					Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "Information about the identity making the request. If the identity does not exist, it will be created automatically.",
 				},
 				{
 					Name:        "instructions",
@@ -979,10 +1389,46 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "A unique identifier for the agent. This key must be unique within the same workspace and cannot be reused. When executing the agent, this key determines if the agent already exists. If the agent version differs, a new version is created at the end of the execution, except for the task. All agent parameters are evaluated to decide if a new version is needed.",
 				},
 				{
+					Name:        "knowledge_bases",
+					FlagName:    "knowledge-bases",
+					Type:        "json",
+					Description: "Knowledge base configurations for the agent to access",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "Memory configuration for the agent execution. Used to associate memory stores with specific entities like users or sessions.",
+				},
+				{
+					Name:        "memory_stores",
+					FlagName:    "memory-stores",
+					Type:        "string-slice",
+					Description: "Array of memory store identifiers that are accessible to the agent. Accepts both memory store IDs and keys.",
+				},
+				{
+					Name:        "message",
+					FlagName:    "message",
+					Type:        "json",
+					Description: "The A2A format message containing the task for the agent to perform.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Optional metadata for the agent run as key-value pairs that will be included in traces",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "json",
+					Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
+				},
+				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "role",
@@ -991,16 +1437,46 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "Specifies the agent's function and area of expertise.",
 				},
 				{
+					Name:        "settings",
+					FlagName:    "settings",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "stream_timeout_seconds",
 					FlagName:    "stream-timeout-seconds",
 					Type:        "float64",
 					Description: "Stream timeout in seconds (1-3600). Default: 1800 (30 minutes)",
 				},
 				{
+					Name:        "system_prompt",
+					FlagName:    "system-prompt",
+					Type:        "string-nullable",
+					Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+				},
+				{
 					Name:        "task_id",
 					FlagName:    "task-id",
 					Type:        "string",
 					Description: "Optional task ID to continue an existing agent execution. When provided, the agent will continue the conversation from the existing task state. The task must be in an inactive state to continue.",
+				},
+				{
+					Name:        "team_of_agents",
+					FlagName:    "team-of-agents",
+					Type:        "json",
+					Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "Thread information to group related requests",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Optional variables for template replacement in system prompt, instructions, and messages",
 				},
 			},
 		)
@@ -1021,7 +1497,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
 			Short:   "Update agent",
-			Long:    bartolocli.Markdown("Modifies an existing agent's configuration with partial updates. Supports updating any aspect of the agent including model assignments (primary and fallback), instructions, tools, knowledge bases, memory stores, and execution parameters. Only the fields provided in the request body will be updated; all other fields remain unchanged. Changes take effect immediately for new agent invocations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `a2a` (object)\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- ... and 11 more fields\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Modifies an existing agent's configuration with partial updates. Supports updating any aspect of the agent including model assignments (primary and fallback), instructions, tools, knowledge bases, memory stores, and execution parameters. Only the fields provided in the request body will be updated; all other fields remain unchanged. Changes take effect immediately for new agent invocations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -1046,8 +1522,19 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "engine",
 							FlagName:    "engine",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "fallback_models",
+							FlagName:    "fallback-models",
+							Type:        "json",
+							Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
 						},
 						{
 							Name:        "instructions",
@@ -1062,10 +1549,28 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "knowledge_bases",
+							FlagName:    "knowledge-bases",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "memory_stores",
+							FlagName:    "memory-stores",
+							Type:        "string-slice",
+							Description: "Array of memory store identifiers. Accepts both memory store IDs and keys.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "json",
+							Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
+						},
+						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "project_id",
@@ -1080,6 +1585,36 @@ func registeragentsCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "settings",
+							FlagName:    "settings",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "skills",
+							FlagName:    "skills",
+							Type:        "string-slice",
+							Description: "List of skills that the agent can utilize. This field allows you to specify which skills the agent has access to, enabling more complex and dynamic behavior.",
+						},
+						{
+							Name:        "system_prompt",
+							FlagName:    "system-prompt",
+							Type:        "string-nullable",
+							Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+						},
+						{
+							Name:        "team_of_agents",
+							FlagName:    "team-of-agents",
+							Type:        "json",
+							Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Extracted variables from agent instructions",
+						},
+						{
 							Name:        "versionDescription",
 							FlagName:    "version-description",
 							Type:        "string",
@@ -1088,8 +1623,13 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "versionIncrement",
 							FlagName:    "version-increment",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Optional semantic version bump to create after a successful publish.",
+							Enum: []string{
+								"major",
+								"minor",
+								"patch",
+							},
 						},
 					},
 				)
@@ -1127,8 +1667,19 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "engine",
 					FlagName:    "engine",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "fallback_models",
+					FlagName:    "fallback-models",
+					Type:        "json",
+					Description: "Optional array of fallback models used when the primary model fails. Fallbacks are attempted in order. All models must support tool calling.",
 				},
 				{
 					Name:        "instructions",
@@ -1143,10 +1694,28 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "knowledge_bases",
+					FlagName:    "knowledge-bases",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "memory_stores",
+					FlagName:    "memory-stores",
+					Type:        "string-slice",
+					Description: "Array of memory store identifiers. Accepts both memory store IDs and keys.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "json",
+					Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
+				},
+				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "project_id",
@@ -1161,6 +1730,36 @@ func registeragentsCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "settings",
+					FlagName:    "settings",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "skills",
+					FlagName:    "skills",
+					Type:        "string-slice",
+					Description: "List of skills that the agent can utilize. This field allows you to specify which skills the agent has access to, enabling more complex and dynamic behavior.",
+				},
+				{
+					Name:        "system_prompt",
+					FlagName:    "system-prompt",
+					Type:        "string-nullable",
+					Description: "A custom system prompt template for the agent. If omitted, the default template is used.",
+				},
+				{
+					Name:        "team_of_agents",
+					FlagName:    "team-of-agents",
+					Type:        "json",
+					Description: "The agents that are accessible to this orchestrator. The main agent can hand off to these agents to perform tasks.",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Extracted variables from agent instructions",
+				},
+				{
 					Name:        "versionDescription",
 					FlagName:    "version-description",
 					Type:        "string",
@@ -1169,8 +1768,13 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "versionIncrement",
 					FlagName:    "version-increment",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Optional semantic version bump to create after a successful publish.",
+					Enum: []string{
+						"major",
+						"minor",
+						"patch",
+					},
 				},
 			},
 		)

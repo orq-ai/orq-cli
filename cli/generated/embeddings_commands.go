@@ -23,36 +23,68 @@ func registerembeddingsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + embeddingsCmd.CommandPath() + " create input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create embeddings",
-			Long:    bartolocli.Markdown("Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `dimensions` (number)\n- `encoding_format` (string)\n- `fallbacks` (array)\n- `input` (anyOf, required)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- ... and 4 more fields\n\nRequired fields: `input`, `model`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `dimensions` (integer)\n- `encoding_format` (string)\n- `fallbacks` (array | null)\n- `input` (anyOf, required)\n- `load_balancer` (object)\n- `model` (string, required)\n- `name` (string)\n- ... and 4 more fields\n\nRequired fields: `input`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
+				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{
+					"input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small",
+				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "dimensions",
 							FlagName:    "dimensions",
-							Type:        "float64",
+							Type:        "int64",
 							Description: "The number of dimensions the resulting output embeddings should have.",
 						},
 						{
 							Name:        "encoding_format",
 							FlagName:    "encoding-format",
-							Type:        "string",
-							Description: "Type of the document element",
+							Type:        "enum-string",
+							Description: "The format to return the embeddings in. Can be either float or base64.",
+							Enum: []string{
+								"float",
+								"base64",
+							},
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails.",
+						},
+						{
+							Name:        "input",
+							FlagName:    "input",
+							Type:        "json",
+							Description: "Input text to embed, encoded as a string or array of tokens.",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "",
 						},
 						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "ID of the model to use",
+							Description: "ID of the model to use.",
 						},
 						{
 							Name:        "name",
@@ -61,10 +93,28 @@ func registerembeddingsCommands(root *cobra.Command) {
 							Description: "The name to display on the trace. If not specified, the default system name will be used.",
 						},
 						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "user",
 							FlagName:    "user",
 							Type:        "string",
-							Description: "A unique identifier representing your end-user",
+							Description: "A unique identifier representing your end-user.",
 						},
 					},
 				)
@@ -88,22 +138,50 @@ func registerembeddingsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "dimensions",
 					FlagName:    "dimensions",
-					Type:        "float64",
+					Type:        "int64",
 					Description: "The number of dimensions the resulting output embeddings should have.",
 				},
 				{
 					Name:        "encoding_format",
 					FlagName:    "encoding-format",
-					Type:        "string",
-					Description: "Type of the document element",
+					Type:        "enum-string",
+					Description: "The format to return the embeddings in. Can be either float or base64.",
+					Enum: []string{
+						"float",
+						"base64",
+					},
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails.",
+				},
+				{
+					Name:        "input",
+					FlagName:    "input",
+					Type:        "json",
+					Description: "Input text to embed, encoded as a string or array of tokens.",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "",
 				},
 				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "ID of the model to use",
+					Description: "ID of the model to use.",
 				},
 				{
 					Name:        "name",
@@ -112,10 +190,28 @@ func registerembeddingsCommands(root *cobra.Command) {
 					Description: "The name to display on the trace. If not specified, the default system name will be used.",
 				},
 				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "user",
 					FlagName:    "user",
 					Type:        "string",
-					Description: "A unique identifier representing your end-user",
+					Description: "A unique identifier representing your end-user.",
 				},
 			},
 		)

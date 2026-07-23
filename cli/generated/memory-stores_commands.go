@@ -26,7 +26,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create memory store",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `embedding_config` (object, required)\n- `key` (string, required)\n- `path` (string, required)\n- `ttl` (number)\n\nRequired fields: `description`, `embedding_config`, `key`, `path`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `embedding_config` (object, required)\n- `key` (string, required)\n- `path` (string, required)\n- `ttl` (number | null)\n\nRequired fields: `description`, `embedding_config`, `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -43,6 +43,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
 						},
 						{
+							Name:        "embedding_config",
+							FlagName:    "embedding-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
@@ -52,12 +58,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "ttl",
 							FlagName:    "ttl",
-							Type:        "float64",
+							Type:        "float64-nullable",
 							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 						},
 					},
@@ -88,6 +94,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
 				},
 				{
+					Name:        "embedding_config",
+					FlagName:    "embedding-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
@@ -97,13 +109,87 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "ttl",
 					FlagName:    "ttl",
-					Type:        "float64",
+					Type:        "float64-nullable",
 					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "create-document memory-store-key memory-entity-id",
+			Short:   "Create a new memory document",
+			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+						},
+						{
+							Name:        "text",
+							FlagName:    "text",
+							Type:        "string",
+							Description: "The content of the memory document (whitespace trimmed).",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to apply body flags")
+				}
+
+				_, decoded, err := OpenapiCreateMemoryDocument(args[0], args[1], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		memoryStoresCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+				},
+				{
+					Name:        "text",
+					FlagName:    "text",
+					Type:        "string",
+					Description: "The content of the memory document (whitespace trimmed).",
 				},
 			},
 		)
@@ -124,7 +210,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-memory memory-store-key",
 			Short:   "Create a new memory",
-			Long:    bartolocli.Markdown("Creates a new memory in the specified memory store.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entity_id` (string, required)\n\nRequired fields: `entity_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new memory in the specified memory store.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entity_id` (string, required)\n\nRequired fields: `entity_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -184,31 +270,14 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-memory-document memory-store-key memory-entity-id",
-			Short:   "Create a new memory document",
-			Long:    bartolocli.Markdown("Creates a new document in the specified memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string, required)\n\nRequired fields: `text`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Use:     "delete memory-store-key",
+			Short:   "Delete memory store",
+			Long:    bartolocli.Markdown("Permanently delete a memory store, including memories and documents."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(2),
+			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{
-						{
-							Name:        "text",
-							FlagName:    "text",
-							Type:        "string",
-							Description: "The content of the memory document (whitespace trimmed).",
-						},
-					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
 
-				_, decoded, err := OpenapiCreateMemoryDocument(args[0], args[1], params, body)
+				_, decoded, err := OpenapiDeleteMemoryStore(args[0], params)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -220,17 +289,6 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			},
 		}
 		memoryStoresCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "text",
-					FlagName:    "text",
-					Type:        "string",
-					Description: "The content of the memory document (whitespace trimmed).",
-				},
-			},
-		)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -246,14 +304,14 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "delete memory-store-key",
-			Short:   "Delete memory store",
-			Long:    bartolocli.Markdown("Permanently delete a memory store, including memories and documents."),
+			Use:     "delete-document memory-store-key memory-entity-id document-id",
+			Short:   "Delete a specific memory document",
+			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\n        Use this endpoint to:\n        - Remove a document from a memory\n        - Clean up unused documents\n        - Manage document storage space"),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
+			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
 
-				_, decoded, err := OpenapiDeleteMemoryStore(args[0], params)
+				_, decoded, err := OpenapiDeleteMemoryDocument(args[0], args[1], args[2], params)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -314,40 +372,6 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "delete-memory-document memory-store-key memory-entity-id document-id",
-			Short:   "Delete a specific memory document",
-			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\n        Use this endpoint to:\n        - Remove a document from a memory\n        - Clean up unused documents\n        - Manage document storage space"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(3),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiDeleteMemoryDocument(args[0], args[1], args[2], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		memoryStoresCmd.AddCommand(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List memory stores",
 			Long:    bartolocli.Markdown("Retrieves a paginated list of memory stores in the workspace. Use cursor-based pagination parameters to navigate through the results."),
@@ -368,9 +392,52 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("search", "", "Filter memory stores by key (case-insensitive match)")
+		cmd.Flags().String("updated-by", "", "Filter by the users who last updated the memory store. Accepts a comma-separated list of user IDs")
+		cmd.Flags().String("project-id", "", "Filter memory stores by project ID")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "list-documents memory-store-key memory-entity-id",
+			Short:   "List all documents for a memory",
+			Long:    bartolocli.Markdown("Retrieves a paginated list of documents associated with a specific memory."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiGetAllMemoryDocuments(args[0], args[1], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		memoryStoresCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
+		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
+		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("updated-after", "", "Filter documents updated after this ISO datetime")
+		cmd.Flags().String("updated-before", "", "Filter documents updated before this ISO datetime")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -406,50 +473,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("q", "", "Search query to filter memories by entity_id")
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "list-memory-documents memory-store-key memory-entity-id",
-			Short:   "List all documents for a memory",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of documents associated with a specific memory."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiGetAllMemoryDocuments(args[0], args[1], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		memoryStoresCmd.AddCommand(cmd)
-
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("updated-after", "", "Filter documents updated after this ISO datetime")
-		cmd.Flags().String("updated-before", "", "Filter documents updated before this ISO datetime")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -473,6 +500,40 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Run: func(cmd *cobra.Command, args []string) {
 
 				_, decoded, err := OpenapiRetrieveMemoryStore(args[0], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		memoryStoresCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "retrieve-document memory-store-key memory-entity-id document-id",
+			Short:   "Retrieve a specific memory document",
+			Long:    bartolocli.Markdown("Retrieves details of a specific memory document by its ID."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(3),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiRetrieveMemoryDocument(args[0], args[1], args[2], params)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -533,43 +594,9 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "retrieve-memory-document memory-store-key memory-entity-id document-id",
-			Short:   "Retrieve a specific memory document",
-			Long:    bartolocli.Markdown("Retrieves details of a specific memory document by its ID."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(3),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiRetrieveMemoryDocument(args[0], args[1], args[2], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		memoryStoresCmd.AddCommand(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "update memory-store-key",
 			Short:   "Update memory store",
-			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `ttl` (number)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `ttl` (number | null)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -594,7 +621,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 						{
 							Name:        "ttl",
 							FlagName:    "ttl",
-							Type:        "float64",
+							Type:        "float64-nullable",
 							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 						},
 					},
@@ -633,7 +660,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 				{
 					Name:        "ttl",
 					FlagName:    "ttl",
-					Type:        "float64",
+					Type:        "float64-nullable",
 					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
 				},
 			},
@@ -653,57 +680,9 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "update-memory memory-store-key memory-entity-id",
-			Short:   "Update a specific memory",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiUpdateMemory(args[0], args[1], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		memoryStoresCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "update-memory-document memory-store-key memory-entity-id document-id",
+			Use:     "update-document memory-store-key memory-entity-id document-id",
 			Short:   "Update a specific memory document",
-			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Updates the details of a specific memory document.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -713,6 +692,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+						},
 						{
 							Name:        "text",
 							FlagName:    "text",
@@ -741,10 +726,78 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+				},
+				{
 					Name:        "text",
 					FlagName:    "text",
 					Type:        "string",
 					Description: "The content of the memory document (whitespace trimmed).",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "update-memory memory-store-key memory-entity-id",
+			Short:   "Update a specific memory",
+			Long:    bartolocli.Markdown("Updates the details of a specific memory.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+					[]bartolocli.BodyField{
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to apply body flags")
+				}
+
+				_, decoded, err := OpenapiUpdateMemory(args[0], args[1], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		memoryStoresCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "",
 				},
 			},
 		)

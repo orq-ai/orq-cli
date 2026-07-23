@@ -60,7 +60,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a dataset",
-			Long:    bartolocli.Markdown("Creates a new dataset in the specified project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string, required)\n\nRequired fields: `display_name`, `path`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new dataset in the specified project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string, required)\n\nRequired fields: `display_name`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -80,7 +80,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 					},
 				)
@@ -113,7 +113,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 			},
 		)
@@ -132,7 +132,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-item dataset-id",
+			Use:     "create-datapoint dataset-id",
 			Short:   "Create a datapoint",
 			Long:    bartolocli.Markdown("Creates a new datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`"),
 			Example: examples,
@@ -268,9 +268,11 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().String("search", "", "Filter datasets by display name (case-insensitive match).")
+		cmd.Flags().String("updated-by", "", "Comma-separated list of user IDs; returns datasets last updated by any of them.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -306,7 +308,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 
@@ -394,7 +396,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
 			Short:   "Update a dataset",
-			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -414,7 +416,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "json",
+							Description: "The unique identifier of the project it belongs to",
 						},
 					},
 				)
@@ -447,7 +455,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path in the format: `project/folder/subfolder/...`\n\nThe first element identifies the project, followed by nested folders (auto-created as needed).\n\nWith project-based API keys, the first element is treated as a folder name, as the project is predetermined by the API key.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "json",
+					Description: "The unique identifier of the project it belongs to",
 				},
 			},
 		)
@@ -468,7 +482,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-datapoint dataset-id datapoint-id",
 			Short:   "Update a datapoint",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -483,6 +497,18 @@ func registerdatasetsCommands(root *cobra.Command) {
 							FlagName:    "expected-output",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "inputs",
+							FlagName:    "inputs",
+							Type:        "string-map",
+							Description: "The inputs of the dataset. Key value pairs where the key is the input name and the value is the input value. Nested objects and arrays are not supported.",
+						},
+						{
+							Name:        "messages",
+							FlagName:    "messages",
+							Type:        "json",
+							Description: "A list of messages comprising the conversation so far",
 						},
 					},
 				)
@@ -510,6 +536,18 @@ func registerdatasetsCommands(root *cobra.Command) {
 					FlagName:    "expected-output",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "inputs",
+					FlagName:    "inputs",
+					Type:        "string-map",
+					Description: "The inputs of the dataset. Key value pairs where the key is the input name and the value is the input value. Nested objects and arrays are not supported.",
+				},
+				{
+					Name:        "messages",
+					FlagName:    "messages",
+					Type:        "json",
+					Description: "A list of messages comprising the conversation so far",
 				},
 			},
 		)

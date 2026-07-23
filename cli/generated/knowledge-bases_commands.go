@@ -24,7 +24,147 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-chunk knowledge-id datasource-id",
+			Use:     "create",
+			Short:   "Create a knowledge",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `embedding_model` (string)\n- `external_config` (object)\n- `key` (string, required)\n- `path` (string, required)\n- `retrieval_settings` (object)\n- `type` (string)\n\nRequired fields: `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "embedding_model",
+							FlagName:    "embedding-model",
+							Type:        "string",
+							Description: "The embeddings model to use for the knowledge base in the format \"provider/model\" for public models or \"workspaceKey@provider/model\" for private workspace models. This model will be used to embed the chunks when they are added to the knowledge base.",
+						},
+						{
+							Name:        "external_config",
+							FlagName:    "external-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "retrieval_settings",
+							FlagName:    "retrieval-settings",
+							Type:        "json",
+							Description: "The retrieval settings for the knowledge base. If not provider, Hybrid Search will be used as a default query strategy.",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"internal",
+							},
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to apply body flags")
+				}
+
+				_, decoded, err := OpenapiCreateKnowledge(params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "embedding_model",
+					FlagName:    "embedding-model",
+					Type:        "string",
+					Description: "The embeddings model to use for the knowledge base in the format \"provider/model\" for public models or \"workspaceKey@provider/model\" for private workspace models. This model will be used to embed the chunks when they are added to the knowledge base.",
+				},
+				{
+					Name:        "external_config",
+					FlagName:    "external-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "retrieval_settings",
+					FlagName:    "retrieval-settings",
+					Type:        "json",
+					Description: "The retrieval settings for the knowledge base. If not provider, Hybrid Search will be used as a default query strategy.",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"internal",
+					},
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "create-chunks knowledge-id datasource-id",
 			Short:   "Create chunks for a datasource",
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`"),
 			Example: examples,
@@ -74,7 +214,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-datasource knowledge-id",
 			Short:   "Create a new datasource",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunking_options` (object)\n- `display_name` (string)\n- `file_id` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunking_options` (object)\n- `description` (string | null)\n- `display_name` (string)\n- `file_id` (string)\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -84,6 +224,18 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "chunking_options",
+							FlagName:    "chunking-options",
+							Type:        "json",
+							Description: "Configuration options specifying how the datasource file is chunked. Required if `file_id` is specified. Defaults to standard chunking options if omitted.",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string-nullable",
+							Description: "The description of the knowledge base",
+						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
@@ -95,6 +247,12 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							FlagName:    "file-id",
 							Type:        "string",
 							Description: "The unique identifier of the file used for datasource creation. If provided, the file is immediately queued for chunking.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Client-defined metadata associated with the datasource.",
 						},
 					},
 				)
@@ -118,6 +276,18 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "chunking_options",
+					FlagName:    "chunking-options",
+					Type:        "json",
+					Description: "Configuration options specifying how the datasource file is chunked. Required if `file_id` is specified. Defaults to standard chunking options if omitted.",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string-nullable",
+					Description: "The description of the knowledge base",
+				},
+				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
@@ -128,6 +298,12 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					FlagName:    "file-id",
 					Type:        "string",
 					Description: "The unique identifier of the file used for datasource creation. If provided, the file is immediately queued for chunking.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Client-defined metadata associated with the datasource.",
 				},
 			},
 		)
@@ -146,24 +322,14 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-knowledge",
-			Short:   "Create a knowledge",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
+			Use:     "delete knowledge-id",
+			Short:   "Deletes a knowledge",
+			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(0),
+			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
 
-				_, decoded, err := OpenapiCreateKnowledge(params, body)
+				_, decoded, err := OpenapiDeleteKnowledge(args[0], params)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -175,10 +341,6 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			},
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
-		)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -230,7 +392,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-chunks knowledge-id datasource-id",
 			Short:   "Delete multiple chunks",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunk_ids` (array, required)\n\nRequired fields: `chunk_ids`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunk_ids` (array, required)\n\nRequired fields: `chunk_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -239,7 +401,14 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "chunk_ids",
+							FlagName:    "chunk-ids",
+							Type:        "string-slice",
+							Description: "Array of chunk IDs to delete",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -259,7 +428,14 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "chunk_ids",
+					FlagName:    "chunk-ids",
+					Type:        "string-slice",
+					Description: "Array of chunk IDs to delete",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -310,77 +486,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "delete-knowledge knowledge-id",
-			Short:   "Deletes a knowledge",
-			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiDeleteKnowledge(args[0], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		knowledgeBasesCmd.AddCommand(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "get-chunk chunk-id datasource-id knowledge-id",
-			Short:   "Retrieve a chunk",
-			Long:    bartolocli.Markdown(""),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(3),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiGetOneChunk(args[0], args[1], args[2], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		knowledgeBasesCmd.AddCommand(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "get-chunks-count knowledge-id datasource-id",
 			Short:   "Get chunks total count",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `q` (string)\n- `status` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Returns the total count of chunks in a datasource. When `q` is provided, the count reflects indexed chunks only — recently created chunks may not be counted until embedding completes.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -405,8 +514,15 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 						{
 							Name:        "status",
 							FlagName:    "status",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Filter chunks by processing status",
+							Enum: []string{
+								"pending",
+								"processing",
+								"completed",
+								"failed",
+								"queued",
+							},
 						},
 					},
 				)
@@ -444,45 +560,18 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				{
 					Name:        "status",
 					FlagName:    "status",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Filter chunks by processing status",
+					Enum: []string{
+						"pending",
+						"processing",
+						"completed",
+						"failed",
+						"queued",
+					},
 				},
 			},
 		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "get-knowledge knowledge-id",
-			Short:   "Retrieves a knowledge base",
-			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiGetOneKnowledge(args[0], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		knowledgeBasesCmd.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -518,9 +607,13 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 300, and the default is 25")
+		cmd.Flags().String("search", "", "Filter knowledge bases by key (case-insensitive match)")
+		cmd.Flags().String("updated-by", "", "Filter by the users who last updated the knowledge base. Accepts a comma-separated list of user IDs")
+		cmd.Flags().String("type", "", "Filter knowledge bases by type")
+		cmd.Flags().String("project-id", "", "Filter knowledge bases by project ID")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -556,11 +649,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("q", "", "Search query to find datasources by name.")
-		cmd.Flags().String("status", "", "Filter datasources by status.")
+		cmd.Flags().String("status", "", "Filter chunks by status.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -578,7 +671,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-chunks-paginated knowledge-id datasource-id",
 			Short:   "List chunks with offset-based pagination",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `limit` (integer)\n- `page` (integer)\n- `q` (string)\n- `status` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `limit` (integer)\n- `page` (integer)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -615,8 +708,15 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 						{
 							Name:        "status",
 							FlagName:    "status",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "Filter chunks by processing status",
+							Enum: []string{
+								"pending",
+								"processing",
+								"completed",
+								"failed",
+								"queued",
+							},
 						},
 					},
 				)
@@ -666,8 +766,15 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				{
 					Name:        "status",
 					FlagName:    "status",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "Filter chunks by processing status",
+					Enum: []string{
+						"pending",
+						"processing",
+						"completed",
+						"failed",
+						"queued",
+					},
 				},
 			},
 		)
@@ -711,6 +818,75 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd.Flags().String("q", "", "Search query to find datasources by name.")
 		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("status", "", "Filter datasources by status.")
+		cmd.Flags().String("metadata", "", "Filter datasources by exact metadata key/value pairs. Provide a JSON-encoded object when calling this endpoint over HTTP.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "retrieve knowledge-id",
+			Short:   "Retrieves a knowledge base",
+			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiGetOneKnowledge(args[0], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		knowledgeBasesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "retrieve-chunk chunk-id datasource-id knowledge-id",
+			Short:   "Retrieve a chunk",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(3),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiGetOneChunk(args[0], args[1], args[2], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		knowledgeBasesCmd.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -760,9 +936,9 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "search-knowledge knowledge-id",
+			Use:     "search knowledge-id",
 			Short:   "Search knowledge base",
-			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (object)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (object)\n- `search_options` (object)\n- `search_type` (string)\n- `threshold` (number)\n- `top_k` (integer)\n\nRequired fields: `query`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (object)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (object)\n- `search_options` (object)\n- `search_type` (string)\n- `threshold` (number)\n- `top_k` (integer)\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -773,16 +949,45 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "agentic_rag_config",
+							FlagName:    "agentic-rag-config",
+							Type:        "json",
+							Description: "Override the agentic RAG configuration for this search. If not provided, will use the knowledge base configured agentic RAG settings.",
+						},
+						{
+							Name:        "filter_by",
+							FlagName:    "filter-by",
+							Type:        "json",
+							Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+						},
+						{
 							Name:        "query",
 							FlagName:    "query",
 							Type:        "string",
 							Description: "The query to use to search the knowledge base",
 						},
 						{
+							Name:        "rerank_config",
+							FlagName:    "rerank-config",
+							Type:        "json",
+							Description: "Override the rerank configuration for this search. If not provided, will use the knowledge base configured rerank settings.",
+						},
+						{
+							Name:        "search_options",
+							FlagName:    "search-options",
+							Type:        "json",
+							Description: "Additional search options",
+						},
+						{
 							Name:        "search_type",
 							FlagName:    "search-type",
-							Type:        "string",
+							Type:        "enum-string",
 							Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
+							Enum: []string{
+								"vector_search",
+								"keyword_search",
+								"hybrid_search",
+							},
 						},
 						{
 							Name:        "threshold",
@@ -818,16 +1023,45 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "agentic_rag_config",
+					FlagName:    "agentic-rag-config",
+					Type:        "json",
+					Description: "Override the agentic RAG configuration for this search. If not provided, will use the knowledge base configured agentic RAG settings.",
+				},
+				{
+					Name:        "filter_by",
+					FlagName:    "filter-by",
+					Type:        "json",
+					Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+				},
+				{
 					Name:        "query",
 					FlagName:    "query",
 					Type:        "string",
 					Description: "The query to use to search the knowledge base",
 				},
 				{
+					Name:        "rerank_config",
+					FlagName:    "rerank-config",
+					Type:        "json",
+					Description: "Override the rerank configuration for this search. If not provided, will use the knowledge base configured rerank settings.",
+				},
+				{
+					Name:        "search_options",
+					FlagName:    "search-options",
+					Type:        "json",
+					Description: "Additional search options",
+				},
+				{
 					Name:        "search_type",
 					FlagName:    "search-type",
-					Type:        "string",
+					Type:        "enum-string",
 					Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
+					Enum: []string{
+						"vector_search",
+						"keyword_search",
+						"hybrid_search",
+					},
 				},
 				{
 					Name:        "threshold",
@@ -858,9 +1092,137 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
+			Use:     "update knowledge-id",
+			Short:   "Updates a knowledge",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `embedding_model` (string)\n- `external_config` (object)\n- `path` (string)\n- `retrieval_settings` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+					[]bartolocli.BodyField{
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string-nullable",
+							Description: "The description of the knowledge base.",
+						},
+						{
+							Name:        "embedding_model",
+							FlagName:    "embedding-model",
+							Type:        "string",
+							Description: "The embeddings model used for the knowledge base. If the models is provided and is different than the previous set model, all the datasources in the knowledge base will be re-embedded.",
+						},
+						{
+							Name:        "external_config",
+							FlagName:    "external-config",
+							Type:        "json",
+							Description: "Configuration for the external knowledge base.",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+						},
+						{
+							Name:        "retrieval_settings",
+							FlagName:    "retrieval-settings",
+							Type:        "json",
+							Description: "The retrieval settings for the knowledge base.",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"external",
+							},
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to apply body flags")
+				}
+
+				_, decoded, err := OpenapiUpdateKnowledge(args[0], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string-nullable",
+					Description: "The description of the knowledge base.",
+				},
+				{
+					Name:        "embedding_model",
+					FlagName:    "embedding-model",
+					Type:        "string",
+					Description: "The embeddings model used for the knowledge base. If the models is provided and is different than the previous set model, all the datasources in the knowledge base will be re-embedded.",
+				},
+				{
+					Name:        "external_config",
+					FlagName:    "external-config",
+					Type:        "json",
+					Description: "Configuration for the external knowledge base.",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+				},
+				{
+					Name:        "retrieval_settings",
+					FlagName:    "retrieval-settings",
+					Type:        "json",
+					Description: "The retrieval settings for the knowledge base.",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"external",
+					},
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
 			Use:     "update-chunk chunk-id datasource-id knowledge-id",
 			Short:   "Update a chunk",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `embedding` (array)\n- `metadata` (object)\n- `text` (string)\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `embedding` (array)\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -870,6 +1232,18 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
+						{
+							Name:        "embedding",
+							FlagName:    "embedding",
+							Type:        "float64-slice",
+							Description: "The embedding vector of the chunk. If not provided the chunk will be embedded with the knowledge base embeddings model.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Metadata of the chunk",
+						},
 						{
 							Name:        "text",
 							FlagName:    "text",
@@ -898,6 +1272,18 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "embedding",
+					FlagName:    "embedding",
+					Type:        "float64-slice",
+					Description: "The embedding vector of the chunk. If not provided the chunk will be embedded with the knowledge base embeddings model.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Metadata of the chunk",
+				},
+				{
 					Name:        "text",
 					FlagName:    "text",
 					Type:        "string",
@@ -922,7 +1308,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-datasource knowledge-id datasource-id",
 			Short:   "Update a datasource",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n\nRequired fields: `display_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -966,54 +1352,6 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Description: "",
 				},
 			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
-			Use:     "update-knowledge knowledge-id",
-			Short:   "Updates a knowledge",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `oneOf`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiUpdateKnowledge(args[0], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		knowledgeBasesCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

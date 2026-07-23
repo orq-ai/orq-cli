@@ -14,7 +14,7 @@ func registerfilesCommands(root *cobra.Command) {
 	filesCmd := &cobra.Command{
 		Use:   "files",
 		Short: "Files",
-		Long:  bartolocli.Markdown("Files"),
+		Long:  bartolocli.Markdown("File upload and retrieval operations."),
 	}
 	root.AddCommand(filesCmd)
 
@@ -26,7 +26,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "content file-id-or-path",
 			Short:   "Download file content",
-			Long:    bartolocli.Markdown("Signs the object name and redirects to a presigned URL for downloading the file content. Accepts either a file ID or an object storage path (URL-encoded)."),
+			Long:    bartolocli.Markdown("Returns a presigned URL for downloading the file content by file ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -59,8 +59,8 @@ func registerfilesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete file-id",
-			Short:   "Delete file",
-			Long:    bartolocli.Markdown(""),
+			Short:   "Delete a file",
+			Long:    bartolocli.Markdown("Permanently deletes a file and its stored content from the project."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -146,9 +146,11 @@ func registerfilesCommands(root *cobra.Command) {
 		}
 		filesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. Defines your place in the list for the next page.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. Defines your place in the list for the previous page.")
+		cmd.Flags().Int64("limit", 0, "Page size. Unset uses the server default.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item\n from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item\n from the previous page.")
+		cmd.Flags().String("project-id", "", "")
+		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose\n alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`)\n or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files\n of every purpose.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -165,8 +167,8 @@ func registerfilesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update file-id",
-			Short:   "Update file",
-			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Short:   "Update a file",
+			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -180,7 +182,7 @@ func registerfilesCommands(root *cobra.Command) {
 							Name:        "file_name",
 							FlagName:    "file-name",
 							Type:        "string",
-							Description: "",
+							Description: "New display file name, including extension when available.",
 						},
 					},
 				)
@@ -207,7 +209,7 @@ func registerfilesCommands(root *cobra.Command) {
 					Name:        "file_name",
 					FlagName:    "file-name",
 					Type:        "string",
-					Description: "",
+					Description: "New display file name, including extension when available.",
 				},
 			},
 		)
@@ -227,28 +229,53 @@ func registerfilesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "upload",
-			Short:   "Create file",
-			Long:    bartolocli.Markdown("Files are used to upload documents that can be used with features like Deployments.\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file` (string, required)\n- `purpose` (string)\n\nRequired fields: `file`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Short:   "Upload a file",
+			Long:    bartolocli.Markdown("Files are used to upload documents that can be used with features like Deployments.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string, required)\n- `content_type` (string)\n- `filename` (string, required)\n- `project_id` (string)\n- `purpose` (string)\n\nRequired fields: `content`, `filename`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("multipart/form-data", args[0:], params, []string{})
+				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
+				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
-							Name:        "file",
-							FlagName:    "file",
+							Name:        "content",
+							FlagName:    "content",
 							Type:        "string",
-							Description: "The file to be uploaded.",
+							Description: "Base64-encoded file contents.",
+						},
+						{
+							Name:        "content_type",
+							FlagName:    "content-type",
+							Type:        "string",
+							Description: "MIME type of the uploaded content, for example `application/pdf`.",
+						},
+						{
+							Name:        "filename",
+							FlagName:    "filename",
+							Type:        "string",
+							Description: "Name to store for the uploaded file, including extension when available.",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Project the file is created in. Optional: project-scoped API keys default to the key's bound project; workspace-scoped callers default to the workspace's default project.",
 						},
 						{
 							Name:        "purpose",
 							FlagName:    "purpose",
-							Type:        "string",
-							Description: "The intended purpose of the uploaded file.",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"FILE_PURPOSE_UNSPECIFIED",
+								"FILE_PURPOSE_RETRIEVAL",
+								"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
+								"FILE_PURPOSE_BATCH",
+								"FILE_PURPOSE_CODE_INTERPRETER",
+							},
 						},
 					},
 				)
@@ -272,16 +299,41 @@ func registerfilesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
-					Name:        "file",
-					FlagName:    "file",
+					Name:        "content",
+					FlagName:    "content",
 					Type:        "string",
-					Description: "The file to be uploaded.",
+					Description: "Base64-encoded file contents.",
+				},
+				{
+					Name:        "content_type",
+					FlagName:    "content-type",
+					Type:        "string",
+					Description: "MIME type of the uploaded content, for example `application/pdf`.",
+				},
+				{
+					Name:        "filename",
+					FlagName:    "filename",
+					Type:        "string",
+					Description: "Name to store for the uploaded file, including extension when available.",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Project the file is created in. Optional: project-scoped API keys default to the key's bound project; workspace-scoped callers default to the workspace's default project.",
 				},
 				{
 					Name:        "purpose",
 					FlagName:    "purpose",
-					Type:        "string",
-					Description: "The intended purpose of the uploaded file.",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"FILE_PURPOSE_UNSPECIFIED",
+						"FILE_PURPOSE_RETRIEVAL",
+						"FILE_PURPOSE_KNOWLEDGE_DATASOURCE",
+						"FILE_PURPOSE_BATCH",
+						"FILE_PURPOSE_CODE_INTERPRETER",
+					},
 				},
 			},
 		)

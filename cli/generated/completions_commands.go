@@ -26,7 +26,7 @@ func registercompletionsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create completion",
-			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `allOf`"),
+			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (number | null)\n- `model` (string, required)\n- `n` (number | null)\n- ... and 14 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -35,7 +35,140 @@ func registercompletionsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "Cache configuration for the request.",
+						},
+						{
+							Name:        "echo",
+							FlagName:    "echo",
+							Type:        "bool-nullable",
+							Description: "Echo back the prompt in addition to the completion",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Array of fallback models to use if primary model fails",
+						},
+						{
+							Name:        "frequency_penalty",
+							FlagName:    "frequency-penalty",
+							Type:        "float64-nullable",
+							Description: "Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
+							Type:        "json",
+							Description: "Load balancer configuration for the request.",
+						},
+						{
+							Name:        "max_tokens",
+							FlagName:    "max-tokens",
+							Type:        "float64-nullable",
+							Description: "The maximum number of tokens that can be generated in the completion.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "ID of the model to use",
+						},
+						{
+							Name:        "n",
+							FlagName:    "n",
+							Type:        "float64-nullable",
+							Description: "How many completions to generate for each prompt. Note: Because this parameter generates many completions, it can quickly consume your token quota.",
+						},
+						{
+							Name:        "name",
+							FlagName:    "name",
+							Type:        "string",
+							Description: "The name to display on the trace. If not specified, the default system name will be used.",
+						},
+						{
+							Name:        "orq",
+							FlagName:    "orq",
+							Type:        "json",
+							Description: "Leverage Orq's intelligent routing capabilities to enhance your AI application with enterprise-grade reliability and observability. Orq provides automatic request management including retries on failures, model fallbacks for high availability, identity-level analytics tracking, conversation threading, and dynamic prompt templating with variable substitution.",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+						},
+						{
+							Name:        "presence_penalty",
+							FlagName:    "presence-penalty",
+							Type:        "float64-nullable",
+							Description: "Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "string",
+							Description: "The prompt(s) to generate completions for, encoded as a string, array of strings, array of tokens, or array of token arrays.",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "Retry configuration for the request",
+						},
+						{
+							Name:        "seed",
+							FlagName:    "seed",
+							Type:        "float64-nullable",
+							Description: "If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result.",
+						},
+						{
+							Name:        "stop",
+							FlagName:    "stop",
+							Type:        "json",
+							Description: "Up to 4 sequences where the API will stop generating further tokens. The returned text will not contain the stop sequence.",
+						},
+						{
+							Name:        "stream",
+							FlagName:    "stream",
+							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "temperature",
+							FlagName:    "temperature",
+							Type:        "float64-nullable",
+							Description: "What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.",
+						},
+						{
+							Name:        "thinking",
+							FlagName:    "thinking",
+							Type:        "json",
+							Description: "Configuration for the thinking mode capability. Set type to `adaptive` for models that support adaptive thinking (e.g. Claude Opus 4.6, Sonnet 4.6), or `enabled` with `budget_tokens` for manual control.",
+						},
+						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+						},
+						{
+							Name:        "top_p",
+							FlagName:    "top-p",
+							Type:        "float64-nullable",
+							Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered.",
+						},
+						{
+							Name:        "user",
+							FlagName:    "user",
+							Type:        "string",
+							Description: "A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -55,7 +188,140 @@ func registercompletionsCommands(root *cobra.Command) {
 		completionsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "Cache configuration for the request.",
+				},
+				{
+					Name:        "echo",
+					FlagName:    "echo",
+					Type:        "bool-nullable",
+					Description: "Echo back the prompt in addition to the completion",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Array of fallback models to use if primary model fails",
+				},
+				{
+					Name:        "frequency_penalty",
+					FlagName:    "frequency-penalty",
+					Type:        "float64-nullable",
+					Description: "Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
+					Type:        "json",
+					Description: "Load balancer configuration for the request.",
+				},
+				{
+					Name:        "max_tokens",
+					FlagName:    "max-tokens",
+					Type:        "float64-nullable",
+					Description: "The maximum number of tokens that can be generated in the completion.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "ID of the model to use",
+				},
+				{
+					Name:        "n",
+					FlagName:    "n",
+					Type:        "float64-nullable",
+					Description: "How many completions to generate for each prompt. Note: Because this parameter generates many completions, it can quickly consume your token quota.",
+				},
+				{
+					Name:        "name",
+					FlagName:    "name",
+					Type:        "string",
+					Description: "The name to display on the trace. If not specified, the default system name will be used.",
+				},
+				{
+					Name:        "orq",
+					FlagName:    "orq",
+					Type:        "json",
+					Description: "Leverage Orq's intelligent routing capabilities to enhance your AI application with enterprise-grade reliability and observability. Orq provides automatic request management including retries on failures, model fallbacks for high availability, identity-level analytics tracking, conversation threading, and dynamic prompt templating with variable substitution.",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+				},
+				{
+					Name:        "presence_penalty",
+					FlagName:    "presence-penalty",
+					Type:        "float64-nullable",
+					Description: "Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "string",
+					Description: "The prompt(s) to generate completions for, encoded as a string, array of strings, array of tokens, or array of token arrays.",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "Retry configuration for the request",
+				},
+				{
+					Name:        "seed",
+					FlagName:    "seed",
+					Type:        "float64-nullable",
+					Description: "If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result.",
+				},
+				{
+					Name:        "stop",
+					FlagName:    "stop",
+					Type:        "json",
+					Description: "Up to 4 sequences where the API will stop generating further tokens. The returned text will not contain the stop sequence.",
+				},
+				{
+					Name:        "stream",
+					FlagName:    "stream",
+					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "temperature",
+					FlagName:    "temperature",
+					Type:        "float64-nullable",
+					Description: "What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.",
+				},
+				{
+					Name:        "thinking",
+					FlagName:    "thinking",
+					Type:        "json",
+					Description: "Configuration for the thinking mode capability. Set type to `adaptive` for models that support adaptive thinking (e.g. Claude Opus 4.6, Sonnet 4.6), or `enabled` with `budget_tokens` for manual control.",
+				},
+				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "Timeout configuration to apply to the request. If the request exceeds the timeout, it will be retried or fallback to the next model if configured.",
+				},
+				{
+					Name:        "top_p",
+					FlagName:    "top-p",
+					Type:        "float64-nullable",
+					Description: "An alternative to sampling with temperature, called nucleus sampling, where the model considers the results of the tokens with top_p probability mass. So 0.1 means only the tokens comprising the top 10% probability mass are considered.",
+				},
+				{
+					Name:        "user",
+					FlagName:    "user",
+					Type:        "string",
+					Description: "A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

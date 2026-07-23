@@ -24,9 +24,9 @@ func registerresponsesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "create-response",
+			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `allOf`"),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 26 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -35,13 +35,223 @@ func registerresponsesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "cache_control",
+							FlagName:    "cache-control",
+							Type:        "json",
+							Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
+						},
+						{
+							Name:        "conversation",
+							FlagName:    "conversation",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "fallbacks",
+							FlagName:    "fallbacks",
+							Type:        "json",
+							Description: "Fallback models to try if the primary model fails. Each entry specifies a model in provider/model format.",
+						},
+						{
+							Name:        "frequency_penalty",
+							FlagName:    "frequency-penalty",
+							Type:        "float64",
+							Description: "Penalize new tokens based on their frequency in the text so far. Between -2.0 and 2.0.",
+						},
+						{
+							Name:        "guardrails",
+							FlagName:    "guardrails",
+							Type:        "json",
+							Description: "Guardrails to evaluate the request against.",
+						},
+						{
+							Name:        "identity",
+							FlagName:    "identity",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "input",
+							FlagName:    "input",
+							Type:        "json",
+							Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
+						},
+						{
+							Name:        "instructions",
+							FlagName:    "instructions",
+							Type:        "string",
+							Description: "System prompt / instructions for the model.",
+						},
+						{
+							Name:        "limits",
+							FlagName:    "limits",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "max_output_tokens",
+							FlagName:    "max-output-tokens",
+							Type:        "int64",
+							Description: "Maximum number of tokens in the response output.",
+						},
+						{
+							Name:        "max_tool_calls",
+							FlagName:    "max-tool-calls",
+							Type:        "int64",
+							Description: "Maximum number of tool call rounds in the agentic loop.",
+						},
+						{
+							Name:        "memory",
+							FlagName:    "memory",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "string-map",
+							Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+						},
+						{
+							Name:        "parallel_tool_calls",
+							FlagName:    "parallel-tool-calls",
+							Type:        "bool",
+							Description: "Whether to allow parallel tool calls.",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+						},
+						{
+							Name:        "presence_penalty",
+							FlagName:    "presence-penalty",
+							Type:        "float64",
+							Description: "Penalize new tokens based on their presence in the text so far. Between -2.0 and 2.0.",
+						},
+						{
+							Name:        "previous_response_id",
+							FlagName:    "previous-response-id",
+							Type:        "string",
+							Description: "The ID of a previous response to continue from. Requires store to be true (default) on the original response.",
+						},
+						{
+							Name:        "prompt_cache_key",
+							FlagName:    "prompt-cache-key",
+							Type:        "string",
+							Description: "Key for prompt caching across requests.",
+						},
+						{
+							Name:        "reasoning",
+							FlagName:    "reasoning",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "retry",
+							FlagName:    "retry",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "safety_identifier",
+							FlagName:    "safety-identifier",
+							Type:        "string",
+							Description: "Safety identifier for content filtering.",
+						},
+						{
+							Name:        "store",
+							FlagName:    "store",
+							Type:        "bool",
+							Description: "Whether to persist the response (default: true). When false, the response cannot be retrieved later and previous_response_id will not work for follow-up requests.",
+						},
+						{
+							Name:        "stream",
+							FlagName:    "stream",
+							Type:        "bool",
+							Description: "If true, returns a stream of server-sent events.",
+						},
+						{
+							Name:        "stream_options",
+							FlagName:    "stream-options",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "temperature",
+							FlagName:    "temperature",
+							Type:        "float64",
+							Description: "Sampling temperature between 0 and 2.",
+						},
+						{
+							Name:        "template_engine",
+							FlagName:    "template-engine",
+							Type:        "enum-string",
+							Description: "Template engine for variable substitution in instructions. Defaults to the agent manifest's engine when invoking an agent, otherwise text.",
+							Enum: []string{
+								"text",
+								"jinja",
+								"mustache",
+							},
+						},
+						{
+							Name:        "text",
+							FlagName:    "text",
+							Type:        "json",
+							Description: "Configuration for text output.",
+						},
+						{
+							Name:        "thread",
+							FlagName:    "thread",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "tool_choice",
+							FlagName:    "tool-choice",
+							Type:        "json",
+							Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+						},
+						{
+							Name:        "tools",
+							FlagName:    "tools",
+							Type:        "json",
+							Description: "Tools available to the model.",
+						},
+						{
+							Name:        "top_logprobs",
+							FlagName:    "top-logprobs",
+							Type:        "int64",
+							Description: "Number of most likely tokens to return at each position.",
+						},
+						{
+							Name:        "top_p",
+							FlagName:    "top-p",
+							Type:        "float64",
+							Description: "Nucleus sampling parameter.",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "string-map",
+							Description: "Template variables for prompt substitution. Plain values fill {{variable}} placeholders in instructions. For secrets, use {\"secret\": true, \"value\": \"sensitive-data\"} — secrets are automatically passed to platform tools (Python, HTTP, MCP) and redacted from traces.",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
 				}
 
-				_, decoded, err := OpenapiCreateResponse(params, body)
+				_, decoded, err := OpenapiCreateRouterResponse(params, body)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -55,8 +265,252 @@ func registerresponsesCommands(root *cobra.Command) {
 		responsesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "cache_control",
+					FlagName:    "cache-control",
+					Type:        "json",
+					Description: "Top-level cache control automatically applies a cache_control marker to the last cacheable block in the request.",
+				},
+				{
+					Name:        "conversation",
+					FlagName:    "conversation",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "fallbacks",
+					FlagName:    "fallbacks",
+					Type:        "json",
+					Description: "Fallback models to try if the primary model fails. Each entry specifies a model in provider/model format.",
+				},
+				{
+					Name:        "frequency_penalty",
+					FlagName:    "frequency-penalty",
+					Type:        "float64",
+					Description: "Penalize new tokens based on their frequency in the text so far. Between -2.0 and 2.0.",
+				},
+				{
+					Name:        "guardrails",
+					FlagName:    "guardrails",
+					Type:        "json",
+					Description: "Guardrails to evaluate the request against.",
+				},
+				{
+					Name:        "identity",
+					FlagName:    "identity",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "input",
+					FlagName:    "input",
+					Type:        "json",
+					Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
+				},
+				{
+					Name:        "instructions",
+					FlagName:    "instructions",
+					Type:        "string",
+					Description: "System prompt / instructions for the model.",
+				},
+				{
+					Name:        "limits",
+					FlagName:    "limits",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "max_output_tokens",
+					FlagName:    "max-output-tokens",
+					Type:        "int64",
+					Description: "Maximum number of tokens in the response output.",
+				},
+				{
+					Name:        "max_tool_calls",
+					FlagName:    "max-tool-calls",
+					Type:        "int64",
+					Description: "Maximum number of tool call rounds in the agentic loop.",
+				},
+				{
+					Name:        "memory",
+					FlagName:    "memory",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "string-map",
+					Description: "Developer-defined key-value pairs attached to the response (OpenAI spec: Map<string, string>). Non-string values are rejected with a 400.",
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "The model to use in provider/model format (e.g. openai/gpt-4o). Use agent/<key> to invoke a pre-configured agent from the orq.ai platform.",
+				},
+				{
+					Name:        "parallel_tool_calls",
+					FlagName:    "parallel-tool-calls",
+					Type:        "bool",
+					Description: "Whether to allow parallel tool calls.",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+				},
+				{
+					Name:        "presence_penalty",
+					FlagName:    "presence-penalty",
+					Type:        "float64",
+					Description: "Penalize new tokens based on their presence in the text so far. Between -2.0 and 2.0.",
+				},
+				{
+					Name:        "previous_response_id",
+					FlagName:    "previous-response-id",
+					Type:        "string",
+					Description: "The ID of a previous response to continue from. Requires store to be true (default) on the original response.",
+				},
+				{
+					Name:        "prompt_cache_key",
+					FlagName:    "prompt-cache-key",
+					Type:        "string",
+					Description: "Key for prompt caching across requests.",
+				},
+				{
+					Name:        "reasoning",
+					FlagName:    "reasoning",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "retry",
+					FlagName:    "retry",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "safety_identifier",
+					FlagName:    "safety-identifier",
+					Type:        "string",
+					Description: "Safety identifier for content filtering.",
+				},
+				{
+					Name:        "store",
+					FlagName:    "store",
+					Type:        "bool",
+					Description: "Whether to persist the response (default: true). When false, the response cannot be retrieved later and previous_response_id will not work for follow-up requests.",
+				},
+				{
+					Name:        "stream",
+					FlagName:    "stream",
+					Type:        "bool",
+					Description: "If true, returns a stream of server-sent events.",
+				},
+				{
+					Name:        "stream_options",
+					FlagName:    "stream-options",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "temperature",
+					FlagName:    "temperature",
+					Type:        "float64",
+					Description: "Sampling temperature between 0 and 2.",
+				},
+				{
+					Name:        "template_engine",
+					FlagName:    "template-engine",
+					Type:        "enum-string",
+					Description: "Template engine for variable substitution in instructions. Defaults to the agent manifest's engine when invoking an agent, otherwise text.",
+					Enum: []string{
+						"text",
+						"jinja",
+						"mustache",
+					},
+				},
+				{
+					Name:        "text",
+					FlagName:    "text",
+					Type:        "json",
+					Description: "Configuration for text output.",
+				},
+				{
+					Name:        "thread",
+					FlagName:    "thread",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "tool_choice",
+					FlagName:    "tool-choice",
+					Type:        "json",
+					Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
+				},
+				{
+					Name:        "tools",
+					FlagName:    "tools",
+					Type:        "json",
+					Description: "Tools available to the model.",
+				},
+				{
+					Name:        "top_logprobs",
+					FlagName:    "top-logprobs",
+					Type:        "int64",
+					Description: "Number of most likely tokens to return at each position.",
+				},
+				{
+					Name:        "top_p",
+					FlagName:    "top-p",
+					Type:        "float64",
+					Description: "Nucleus sampling parameter.",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "string-map",
+					Description: "Template variables for prompt substitution. Plain values fill {{variable}} placeholders in instructions. For secrets, use {\"secret\": true, \"value\": \"sensitive-data\"} — secrets are automatically passed to platform tools (Python, HTTP, MCP) and redacted from traces.",
+				},
+			},
 		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "get response-id",
+			Short:   "Retrieve response",
+			Long:    bartolocli.Markdown("Retrieves a previously created response by its ID."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiRetrieveResponse(args[0], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		responsesCmd.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 

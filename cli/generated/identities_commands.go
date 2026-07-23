@@ -26,7 +26,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an identity",
-			Long:    bartolocli.Markdown("Creates a new identity with a unique external_id. If an identity with the same external_id already exists, the operation will fail. Use this endpoint to add users from your system to orq.ai for tracking their usage and engagement.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string | null)\n- `display_name` (string | null)\n- `email` (string | null)\n- `external_id` (string, required)\n- `metadata` (object)\n- `tags` (array)\n\nRequired fields: `external_id`\n\nSimple top-level body fields are also exposed as flags for this command."),
+			Long:    bartolocli.Markdown("Creates a new identity with a unique external_id. If an identity with the same external_id already exists, the operation will fail.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `external_id` (string, required)\n- `metadata` (object)\n- `tags` (array)\n\nRequired fields: `external_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -37,10 +37,40 @@ func registeridentitiesCommands(root *cobra.Command) {
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
 					[]bartolocli.BodyField{
 						{
+							Name:        "avatar_url",
+							FlagName:    "avatar-url",
+							Type:        "string",
+							Description: "URL of the identity avatar image.",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "Human-readable display name for the identity.",
+						},
+						{
+							Name:        "email",
+							FlagName:    "email",
+							Type:        "string",
+							Description: "Email address associated with the identity.",
+						},
+						{
 							Name:        "external_id",
 							FlagName:    "external-id",
 							Type:        "string",
-							Description: "Unique string value to identify the contact user in the customer's system. This should be the same ID you use in your system to reference this user.",
+							Description: "Customer-provided stable identifier for this identity. Must be unique\n within the workspace.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "Custom JSON metadata stored with the identity.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Free-form labels used to organize and filter identities.",
 						},
 					},
 				)
@@ -64,10 +94,40 @@ func registeridentitiesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "avatar_url",
+					FlagName:    "avatar-url",
+					Type:        "string",
+					Description: "URL of the identity avatar image.",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "Human-readable display name for the identity.",
+				},
+				{
+					Name:        "email",
+					FlagName:    "email",
+					Type:        "string",
+					Description: "Email address associated with the identity.",
+				},
+				{
 					Name:        "external_id",
 					FlagName:    "external-id",
 					Type:        "string",
-					Description: "Unique string value to identify the contact user in the customer's system. This should be the same ID you use in your system to reference this user.",
+					Description: "Customer-provided stable identifier for this identity. Must be unique\n within the workspace.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "Custom JSON metadata stored with the identity.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Free-form labels used to organize and filter identities.",
 				},
 			},
 		)
@@ -88,7 +148,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete an identity",
-			Long:    bartolocli.Markdown("Permanently deletes an identity from your workspace and cleans up associated budget configurations. This action cannot be undone."),
+			Long:    bartolocli.Markdown("Permanently deletes an identity from your workspace and cleans up associated budget configurations."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -140,12 +200,14 @@ func registeridentitiesCommands(root *cobra.Command) {
 		}
 		identitiesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("search", "", "Search identities by display name or email address. Minimum 2 characters required.")
-		cmd.Flags().String("filter-by", "", "Filter identities by tags. Can be provided as JSON object {\"tags\": [\"premium\", \"beta-user\"]} or as query format \"tags=premium,beta-user\"")
-		cmd.Flags().String("include-metrics", "", "Include usage metrics of the last 30 days for each identity.")
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from\n the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from\n the previous page.")
+		cmd.Flags().String("search", "", "Case-insensitive search text matched against identity profile fields.")
+		cmd.Flags().String("filter-by-tags", "", "Return only identities that have at least one of these tags.")
+		cmd.Flags().String("include-metrics", "", "Include aggregate usage metrics on each returned identity.")
+		cmd.Flags().String("sort-by", "", "Field used to order the list.")
+		cmd.Flags().String("include-budget", "", "When true, embed each identity's identity-scoped budget (config and\n limits only, no live usage) on the returned records. Adds one budget\n lookup for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -181,7 +243,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 		}
 		identitiesCmd.AddCommand(cmd)
 
-		cmd.Flags().String("include-metrics", "", "Include usage metrics of the last 30 days for the identity.")
+		cmd.Flags().String("include-metrics", "", "Include aggregate usage metrics on the returned identity.")
+		cmd.Flags().String("include-budget", "", "When true, embed the identity-scoped budget (config and limits only,\n no live usage) on the returned record.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -199,7 +262,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an identity",
-			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string | null)\n- `display_name` (string | null)\n- `email` (string | null)\n- `metadata` (object)\n- `tags` (array)"),
+			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -208,7 +271,38 @@ func registeridentitiesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
 				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "avatar_url",
+							FlagName:    "avatar-url",
+							Type:        "string",
+							Description: "New avatar image URL. Omit to keep the current avatar URL.",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "New display name. Omit to keep the current display name.",
+						},
+						{
+							Name:        "email",
+							FlagName:    "email",
+							Type:        "string",
+							Description: "New email address. Omit to keep the current email.",
+						},
+						{
+							Name:        "metadata",
+							FlagName:    "metadata",
+							Type:        "json",
+							Description: "Replacement custom JSON metadata.",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Replacement tag list. Leave empty to clear tags.",
+						},
+					},
 				)
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to apply body flags")
@@ -228,7 +322,38 @@ func registeridentitiesCommands(root *cobra.Command) {
 		identitiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "avatar_url",
+					FlagName:    "avatar-url",
+					Type:        "string",
+					Description: "New avatar image URL. Omit to keep the current avatar URL.",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "New display name. Omit to keep the current display name.",
+				},
+				{
+					Name:        "email",
+					FlagName:    "email",
+					Type:        "string",
+					Description: "New email address. Omit to keep the current email.",
+				},
+				{
+					Name:        "metadata",
+					FlagName:    "metadata",
+					Type:        "json",
+					Description: "Replacement custom JSON metadata.",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Replacement tag list. Leave empty to clear tags.",
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
