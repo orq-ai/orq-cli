@@ -75,7 +75,7 @@ func registerresponsesCommands(root *cobra.Command) {
 						{
 							Name:        "input",
 							FlagName:    "input",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
 						},
 						{
@@ -218,7 +218,7 @@ func registerresponsesCommands(root *cobra.Command) {
 						{
 							Name:        "tool_choice",
 							FlagName:    "tool-choice",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
 						},
 						{
@@ -305,7 +305,7 @@ func registerresponsesCommands(root *cobra.Command) {
 				{
 					Name:        "input",
 					FlagName:    "input",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Input to the model: a string or an array of input items (messages, files, etc.).",
 				},
 				{
@@ -448,7 +448,7 @@ func registerresponsesCommands(root *cobra.Command) {
 				{
 					Name:        "tool_choice",
 					FlagName:    "tool-choice",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "How the model should use the provided tools. Can be a string shorthand or a specific function selector.",
 				},
 				{

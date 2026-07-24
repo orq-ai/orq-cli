@@ -115,6 +115,10 @@ func registertoolsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"function",
+								"json_schema",
+								"http",
+								"mcp",
+								"code",
 							},
 						},
 					},
@@ -217,6 +221,10 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"function",
+						"json_schema",
+						"http",
+						"mcp",
+						"code",
 					},
 				},
 			},
@@ -505,6 +513,10 @@ func registertoolsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"function",
+								"json_schema",
+								"http",
+								"mcp",
+								"code",
 							},
 						},
 						{
@@ -624,6 +636,10 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"function",
+						"json_schema",
+						"http",
+						"mcp",
+						"code",
 					},
 				},
 				{

@@ -92,7 +92,7 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "model",
 							FlagName:    "model",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
 						},
 						{
@@ -225,7 +225,7 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "model",
 					FlagName:    "model",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
 				},
 				{
@@ -759,7 +759,7 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "model",
 							FlagName:    "model",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
 						},
 						{
@@ -911,7 +911,7 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "model",
 					FlagName:    "model",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
 				},
 				{
@@ -1263,7 +1263,7 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "model",
 							FlagName:    "model",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
 						},
 						{
@@ -1421,7 +1421,7 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "model",
 					FlagName:    "model",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Model configuration for this execution. Can override the agent manifest defaults if the agent already exists.",
 				},
 				{
@@ -1563,7 +1563,7 @@ func registeragentsCommands(root *cobra.Command) {
 						{
 							Name:        "model",
 							FlagName:    "model",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
 						},
 						{
@@ -1708,7 +1708,7 @@ func registeragentsCommands(root *cobra.Command) {
 				{
 					Name:        "model",
 					FlagName:    "model",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Model configuration for agent execution. Can be a simple model ID string or a configuration object with optional behavior parameters and retry settings.",
 				},
 				{

@@ -421,7 +421,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "The unique identifier of the project it belongs to",
 						},
 					},
@@ -460,7 +460,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "The unique identifier of the project it belongs to",
 				},
 			},

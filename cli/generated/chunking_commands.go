@@ -169,6 +169,11 @@ func registerchunkingCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"token",
+								"sentence",
+								"recursive",
+								"semantic",
+								"agentic",
+								"fast",
 							},
 						},
 						{
@@ -192,7 +197,7 @@ func registerchunkingCommands(root *cobra.Command) {
 						{
 							Name:        "threshold",
 							FlagName:    "threshold",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Similarity threshold for grouping (0-1) or \"auto\" for automatic detection",
 						},
 					},
@@ -345,6 +350,11 @@ func registerchunkingCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"token",
+						"sentence",
+						"recursive",
+						"semantic",
+						"agentic",
+						"fast",
 					},
 				},
 				{
@@ -368,7 +378,7 @@ func registerchunkingCommands(root *cobra.Command) {
 				{
 					Name:        "threshold",
 					FlagName:    "threshold",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Similarity threshold for grouping (0-1) or \"auto\" for automatic detection",
 				},
 			},

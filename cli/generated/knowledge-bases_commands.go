@@ -79,6 +79,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"internal",
+								"external",
 							},
 						},
 					},
@@ -145,6 +146,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"internal",
+						"external",
 					},
 				},
 			},
@@ -1141,6 +1143,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"external",
+								"internal",
 							},
 						},
 					},
@@ -1201,6 +1204,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"external",
+						"internal",
 					},
 				},
 			},

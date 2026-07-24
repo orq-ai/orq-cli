@@ -82,7 +82,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 						{
 							Name:        "value",
 							FlagName:    "value",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "The feedback value. For single selection of multiple choice, the value should be an array of strings. For `correction`, the value should be a string.",
 						},
 					},
@@ -152,7 +152,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 				{
 					Name:        "value",
 					FlagName:    "value",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "The feedback value. For single selection of multiple choice, the value should be an array of strings. For `correction`, the value should be a string.",
 				},
 			},
@@ -364,6 +364,9 @@ func registerfeedbackCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"string",
+								"number",
+								"boolean",
+								"string_array",
 							},
 						},
 						{
@@ -455,6 +458,9 @@ func registerfeedbackCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"string",
+						"number",
+						"boolean",
+						"string_array",
 					},
 				},
 				{

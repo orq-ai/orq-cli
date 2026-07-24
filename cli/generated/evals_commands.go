@@ -132,6 +132,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"single",
+								"jury",
 							},
 						},
 						{
@@ -177,6 +178,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Description: "",
 							Enum: []string{
 								"llm_eval",
+								"python_eval",
 							},
 						},
 					},
@@ -255,6 +257,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"single",
+						"jury",
 					},
 				},
 				{
@@ -300,6 +303,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Description: "",
 					Enum: []string{
 						"llm_eval",
+						"python_eval",
 					},
 				},
 			},

@@ -71,7 +71,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 						{
 							Name:        "input",
 							FlagName:    "input",
-							Type:        "json",
+							Type:        "json-or-string",
 							Description: "Input text to embed, encoded as a string or array of tokens.",
 						},
 						{
@@ -168,7 +168,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 				{
 					Name:        "input",
 					FlagName:    "input",
-					Type:        "json",
+					Type:        "json-or-string",
 					Description: "Input text to embed, encoded as a string or array of tokens.",
 				},
 				{
