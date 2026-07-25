@@ -27,10 +27,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -264,10 +264,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -369,10 +369,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -489,10 +489,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -594,10 +594,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -999,10 +999,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -1120,10 +1120,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated:
           type: "string"
-          default: "2026-07-24T06:25:07.444Z"
+          default: "2026-07-25T18:01:35.240Z"
         updated_by_id:
           type:
             - "string"
@@ -3809,7 +3809,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01ky9csmheab0s8ek3h953zag1"
+              default: "reasoning_01kyd71g2ntx712xrcxbhvkwb7"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -7622,6 +7622,601 @@ components:
         - "maxTokens"
         - "topP"
       type: "object"
+    ListActivitiesResponse:
+      type: "object"
+      properties:
+        object:
+          type: "string"
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Activity"
+        has_more:
+          type: "boolean"
+    CreateActivityRequest:
+      type: "object"
+      properties:
+        type:
+          $ref: "#/components/schemas/ActivityType"
+        project_id:
+          type: "string"
+        content:
+          type: "string"
+        parent_activity_id:
+          type: "string"
+        mentions:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ActivityMention"
+        checksum:
+          type: "string"
+        version:
+          type: "string"
+        description:
+          type: "string"
+        data:
+          type: "object"
+        entity_type:
+          type: "string"
+    CreateActivityResponse:
+      type: "object"
+      properties:
+        activity:
+          $ref: "#/components/schemas/Activity"
+    UpdateActivityRequest:
+      type: "object"
+      properties:
+        content:
+          type: "string"
+        environments:
+          $ref: "#/components/schemas/ActivityEnvironments"
+    UpdateActivityResponse:
+      type: "object"
+      properties:
+        activity:
+          $ref: "#/components/schemas/Activity"
+    Activity:
+      type: "object"
+      properties:
+        activity_id:
+          type: "string"
+        type:
+          $ref: "#/components/schemas/ActivityType"
+        workspace_id:
+          type: "string"
+        project_id:
+          type: "string"
+        entity_id:
+          type: "string"
+        account_id:
+          type: "string"
+        created_at:
+          type: "string"
+          format: "date-time"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        content:
+          type: "string"
+        parent_activity_id:
+          type: "string"
+        mentions:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ActivityMention"
+        is_edited:
+          type: "boolean"
+        edited_at:
+          type: "string"
+          format: "date-time"
+        checksum:
+          type: "string"
+        version:
+          type: "string"
+        description:
+          type: "string"
+        environments:
+          type: "array"
+          items:
+            type: "string"
+        data:
+          type: "object"
+        entity_type:
+          type: "string"
+    ActivityType:
+      type: "string"
+      enum:
+        - "ACTIVITY_TYPE_UNSPECIFIED"
+        - "ACTIVITY_TYPE_COMMENT"
+        - "ACTIVITY_TYPE_VERSION"
+    ActivityMention:
+      type: "object"
+      properties:
+        user_id:
+          type: "string"
+        display_name:
+          type: "string"
+    ActivityEnvironments:
+      type: "object"
+      properties:
+        values:
+          type: "array"
+          items:
+            type: "string"
+    ListAlertsResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Alert"
+          description: "Page of alerts, ordered newest first."
+        has_more:
+          type: "boolean"
+          description: "Whether more alerts are available in the selected pagination\n direction."
+    CreateAlertRequest:
+      required:
+        - "display_name"
+        - "project_id"
+        - "query"
+        - "condition"
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "Workspace-unique display name."
+        description:
+          type: "string"
+          description: "Short human-readable summary of what the alert watches."
+        project_id:
+          type: "string"
+          description: "Project that owns the alert. Required."
+        signal:
+          type: "string"
+          description: "UI signal preset the alert is created from. Defaults to `custom`."
+        query:
+          allOf:
+            - $ref: "#/components/schemas/AlertQuery"
+          description: "Metric query evaluated on each tick."
+        condition:
+          allOf:
+            - $ref: "#/components/schemas/AlertCondition"
+          description: "Threshold condition applied to the query result."
+        notifier_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "Notifiers that receive trigger-open and trigger-resolve\n notifications."
+        enabled:
+          type: "boolean"
+          description: "Whether the alert starts evaluating immediately. Defaults to true."
+    CreateAlertResponse:
+      required:
+        - "alert"
+      type: "object"
+      properties:
+        alert:
+          allOf:
+            - $ref: "#/components/schemas/Alert"
+          description: "Newly created alert."
+    GetAlertResponse:
+      required:
+        - "alert"
+      type: "object"
+      properties:
+        alert:
+          allOf:
+            - $ref: "#/components/schemas/Alert"
+          description: "Requested alert."
+    DeleteAlertResponse:
+      type: "object"
+      properties: {}
+    UpdateAlertRequest:
+      required: []
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "New workspace-unique display name. Omit to keep the current name."
+        description:
+          type: "string"
+          description: "New description. Omit to keep the current description."
+        signal:
+          type: "string"
+          description: "New UI signal preset. Omit to keep the current value."
+        query:
+          allOf:
+            - $ref: "#/components/schemas/AlertQuery"
+          description: "Replacement query. Omit to keep the current query."
+        condition:
+          allOf:
+            - $ref: "#/components/schemas/AlertCondition"
+          description: "Replacement condition. Omit to keep the current condition."
+        notifier_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "Replacement notifier set. Omit to keep the current notifiers."
+        enabled:
+          type: "boolean"
+          description: "New enabled state. Omit to keep the current state."
+    UpdateAlertResponse:
+      required:
+        - "alert"
+      type: "object"
+      properties:
+        alert:
+          allOf:
+            - $ref: "#/components/schemas/Alert"
+          description: "Updated alert."
+    CheckAlertNowRequest:
+      required: []
+      type: "object"
+      properties: {}
+    CheckAlertNowResponse:
+      type: "object"
+      properties: {}
+    ListAlertTriggersResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AlertTrigger"
+          description: "Page of triggers, ordered newest first."
+        has_more:
+          type: "boolean"
+          description: "Whether more triggers are available in the selected pagination\n direction."
+    ListAlertTriggerEventsResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AlertTriggerEvent"
+          description: "Page of events, ordered newest first."
+        has_more:
+          type: "boolean"
+          description: "Whether more events are available in the selected pagination\n direction."
+    Alert:
+      required:
+        - "alert_id"
+        - "display_name"
+        - "description"
+        - "project_id"
+        - "signal"
+        - "query"
+        - "condition"
+        - "notifier_ids"
+        - "enabled"
+        - "status"
+        - "created_at"
+        - "updated_at"
+        - "created_by_id"
+        - "updated_by_id"
+      type: "object"
+      properties:
+        alert_id:
+          type: "string"
+          description: "Unique alert identifier assigned by ORQ, for example `alert_01H...`.\n Use this value in retrieve, update, and delete requests."
+        display_name:
+          type: "string"
+          description: "Workspace-unique display name."
+        description:
+          type: "string"
+          description: "Short human-readable summary of what the alert watches."
+        project_id:
+          type: "string"
+          description: "Project that owns the alert. Immutable after creation."
+        signal:
+          enum:
+            - "cost"
+            - "latency"
+            - "errors"
+            - "evals"
+            - "custom"
+          type: "string"
+          description: "UI signal preset the alert was created from."
+        query:
+          allOf:
+            - $ref: "#/components/schemas/AlertQuery"
+          description: "Metric query evaluated on each tick."
+        condition:
+          allOf:
+            - $ref: "#/components/schemas/AlertCondition"
+          description: "Threshold condition applied to the query result."
+        notifier_ids:
+          type: "array"
+          items:
+            type: "string"
+          description: "Notifiers that receive trigger-open and trigger-resolve\n notifications."
+        enabled:
+          type: "boolean"
+          description: "Whether the alert is evaluated. Disabled alerts keep their trigger\n history but stop firing."
+        status:
+          enum:
+            - "ok"
+            - "degraded"
+            - "triggered"
+          type: "string"
+          description: "Current runtime status, maintained by the evaluation engine."
+        last_triggered_at:
+          type: "string"
+          description: "Time when the alert last opened a trigger."
+          format: "date-time"
+        recent_runs:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AlertRun"
+          description: "Rolling window of the most recent evaluation ticks, oldest first.\n Maintained by the evaluation engine; read-only."
+        created_at:
+          type: "string"
+          description: "Time when the alert was created."
+          format: "date-time"
+        updated_at:
+          type: "string"
+          description: "Time when the alert was last updated."
+          format: "date-time"
+        created_by_id:
+          type: "string"
+          description: "User ID that created the alert."
+        updated_by_id:
+          type: "string"
+          description: "User ID that last updated the alert."
+    AlertQuery:
+      required:
+        - "metric"
+      type: "object"
+      properties:
+        metric:
+          type: "string"
+          description: "Reporting API catalogue metric, e.g. `genai.cost` or\n `genai.latency.avg`. Validated against the catalogue when the alert\n is saved."
+        filters:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorFilter"
+          description: "Reporting filters combined with AND."
+    AlertCondition:
+      required:
+        - "comparator"
+        - "threshold"
+        - "window"
+        - "interval"
+      type: "object"
+      properties:
+        comparator:
+          enum:
+            - "gt"
+            - "gte"
+            - "lt"
+            - "lte"
+            - "eq"
+          type: "string"
+          description: "Comparison applied as `value <comparator> threshold`."
+        threshold:
+          type: "number"
+          description: "Critical-tier threshold. Breaching it opens (or escalates) a\n trigger at critical severity."
+          format: "double"
+        degraded_threshold:
+          type: "number"
+          description: "Optional degraded-tier threshold. Values past it but short of\n `threshold` open a trigger at degraded severity. Must sit on the\n recovery side of `threshold` for the chosen comparator and is not\n supported with `eq`."
+          format: "double"
+        resolve_threshold:
+          type: "number"
+          description: "Optional custom resolve bound (hysteresis). An open trigger\n resolves only once the value recovers past this bound; defaults to\n the lowest configured tier. Must sit at or past that tier on the\n recovery side. Not supported with `eq`."
+          format: "double"
+        window:
+          enum:
+            - "5m"
+            - "15m"
+            - "30m"
+            - "1h"
+            - "4h"
+            - "1d"
+          type: "string"
+          description: "Look-back window aggregated on each evaluation tick."
+        interval:
+          enum:
+            - "30s"
+            - "5m"
+            - "15m"
+            - "1h"
+            - "1d"
+          type: "string"
+          description: "How often the alert is evaluated. `30s` is a testing cadence."
+        delay:
+          enum:
+            - "30s"
+            - "60s"
+            - "120s"
+            - "300s"
+            - "600s"
+          type: "string"
+          description: "Ingestion delay subtracted from the evaluation window. Defaults to `120s`."
+    AlertTrigger:
+      required:
+        - "trigger_id"
+        - "alert_id"
+        - "project_id"
+        - "status"
+        - "opened_at"
+        - "peak_value"
+        - "last_value"
+        - "event_count"
+      type: "object"
+      properties:
+        trigger_id:
+          type: "string"
+          description: "Unique trigger identifier, for example `trigger_01H...`."
+        alert_id:
+          type: "string"
+          description: "Alert this trigger belongs to."
+        project_id:
+          type: "string"
+          description: "Project that owns the alert."
+        status:
+          enum:
+            - "open"
+            - "resolved"
+          type: "string"
+          description: "Whether the breach is ongoing or recovered."
+        severity:
+          enum:
+            - "critical"
+            - "degraded"
+          type: "string"
+          description: "Current tier of the incident."
+        peak_severity:
+          enum:
+            - "critical"
+            - "degraded"
+          type: "string"
+          description: "Worst tier reached while the trigger was open."
+        opened_at:
+          type: "string"
+          description: "Time when the threshold was first crossed."
+          format: "date-time"
+        resolved_at:
+          type: "string"
+          description: "Time when the value recovered. Unset while the trigger is open."
+          format: "date-time"
+        peak_value:
+          type: "number"
+          description: "Worst observed value while the trigger was open."
+          format: "double"
+        last_value:
+          type: "number"
+          description: "Most recent observed value."
+          format: "double"
+        event_count:
+          type: "integer"
+          description: "Number of evaluation events recorded on this trigger."
+          format: "int32"
+    AlertTriggerEvent:
+      required:
+        - "event_id"
+        - "trigger_id"
+        - "alert_id"
+        - "at"
+        - "value"
+      type: "object"
+      properties:
+        event_id:
+          type: "string"
+          description: "Unique event identifier, for example `alertevent_01H...`."
+        trigger_id:
+          type: "string"
+          description: "Trigger the event was recorded on."
+        alert_id:
+          type: "string"
+          description: "Alert the event belongs to."
+        at:
+          type: "string"
+          description: "Time of the evaluation tick."
+          format: "date-time"
+        value:
+          type: "number"
+          description: "Observed metric value at the tick."
+          format: "double"
+        evidence:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AlertEvidence"
+          description: "Exemplar traces that contributed to the breach, worst first."
+    AlertRun:
+      required:
+        - "at"
+        - "value"
+        - "breached"
+        - "has_data"
+      type: "object"
+      properties:
+        at:
+          type: "string"
+          description: "Time of the evaluation tick."
+          format: "date-time"
+        value:
+          type: "number"
+          description: "Observed metric value. Zero when `has_data` is false."
+          format: "double"
+        breached:
+          type: "boolean"
+          description: "Whether the value breached the alert condition."
+        has_data:
+          type: "boolean"
+          description: "Whether the evaluation window contained any data."
+        severity:
+          enum:
+            - "critical"
+            - "degraded"
+          type: "string"
+          description: "Tier the value landed in when breached. Empty when not breached."
+    MonitorFilter:
+      required:
+        - "field"
+        - "op"
+        - "values"
+      type: "object"
+      properties:
+        field:
+          type: "string"
+          description: "Reporting dimension to filter on. Valid fields depend on the\n metric; validated when the monitor is saved."
+        op:
+          enum:
+            - "eq"
+            - "neq"
+            - "in"
+            - "not_in"
+          type: "string"
+          description: "Predicate operator. `eq` and `neq` accept exactly one value; `in` and `not_in` accept 1-100 values."
+        values:
+          type: "array"
+          items:
+            type: "string"
+          description: "Values compared against the selected field."
+    AlertEvidence:
+      required:
+        - "trace_id"
+        - "span_id"
+        - "start_time"
+        - "value"
+      type: "object"
+      properties:
+        trace_id:
+          type: "string"
+          description: "Trace the exemplar span belongs to."
+        span_id:
+          type: "string"
+          description: "Exemplar span ID."
+        start_time:
+          type: "string"
+          description: "Start time of the exemplar span."
+          format: "date-time"
+        value:
+          type: "number"
+          description: "Metric contribution of the exemplar (e.g. cost or duration)."
+          format: "double"
     ApiKeyStatus:
       type: "string"
       enum:
@@ -8288,6 +8883,49 @@ components:
         icon:
           type: "string"
           description: "Optional icon identifier for the page."
+    ListFeaturePreviewsResponse:
+      type: "object"
+      properties:
+        previews:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/FeaturePreview"
+    ToggleFeaturePreviewRequest:
+      type: "object"
+      properties:
+        enabled:
+          type: "boolean"
+          description: "Desired enabled state."
+    ToggleFeaturePreviewResponse:
+      type: "object"
+      properties:
+        preview:
+          $ref: "#/components/schemas/FeaturePreview"
+    FeaturePreview:
+      type: "object"
+      properties:
+        slug:
+          type: "string"
+          description: "Stable identifier of the feature (e.g. \"sidebar_v2\")."
+        name:
+          type: "string"
+          description: "Human-readable name shown in the list."
+        summary:
+          type: "string"
+          description: "Short one-line summary."
+        description_markdown:
+          type: "string"
+          description: "Markdown body describing the feature."
+        requires_refresh:
+          type: "boolean"
+          description: "Whether the page must be reloaded for the change to take effect."
+        order:
+          type: "integer"
+          description: "Display order in the list."
+          format: "int32"
+        enabled:
+          type: "boolean"
+          description: "Whether the current user has this feature enabled."
     ListFilesResponse:
       required:
         - "object"
@@ -8863,6 +9501,329 @@ components:
           items:
             type: "string"
           description: "An empty list is valid and means \"shared with no project\" — the model\n stays in the workspace catalog but no project-scoped caller can use it\n (admins/workspace-wide callers still can). The UI surfaces this as\n \"Custom\" with every project toggled off."
+    ListMonitorsResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Monitor"
+          description: "Page of monitors, ordered newest first."
+        has_more:
+          type: "boolean"
+          description: "Whether more monitors are available in the selected pagination\n direction."
+    CreateMonitorRequest:
+      required:
+        - "display_name"
+        - "widgets"
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "Workspace-unique display name."
+        description:
+          type: "string"
+          description: "Short human-readable summary of what the monitor tracks."
+        project_id:
+          type: "string"
+          description: "Project that should own the monitor. Omit to create a\n workspace-wide monitor (requires admin access)."
+        widgets:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorWidget"
+          description: "Widgets to render on the monitor."
+        default_range:
+          type: "string"
+          description: "Default relative time range applied when the monitor opens."
+        preset_key:
+          type: "string"
+          description: "Preset the monitor is created from, stamped for provenance."
+    CreateMonitorResponse:
+      required:
+        - "monitor"
+      type: "object"
+      properties:
+        monitor:
+          allOf:
+            - $ref: "#/components/schemas/Monitor"
+          description: "Newly created monitor."
+    ListMonitorPresetsResponse:
+      required:
+        - "object"
+        - "data"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorPreset"
+          description: "Built-in presets, dashboards first."
+    GetMonitorResponse:
+      required:
+        - "monitor"
+      type: "object"
+      properties:
+        monitor:
+          allOf:
+            - $ref: "#/components/schemas/Monitor"
+          description: "Requested monitor."
+    DeleteMonitorResponse:
+      type: "object"
+      properties: {}
+    UpdateMonitorRequest:
+      required: []
+      type: "object"
+      properties:
+        display_name:
+          type: "string"
+          description: "New workspace-unique display name. Omit to keep the current name."
+        description:
+          type: "string"
+          description: "New description. Omit to keep the current description."
+        widgets:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorWidget"
+          description: "Replacement widget set. A non-empty array replaces all widgets;\n omit or send empty to keep the current widgets."
+        default_range:
+          type: "string"
+          description: "New default relative time range. Omit to keep the current value."
+    UpdateMonitorResponse:
+      required:
+        - "monitor"
+      type: "object"
+      properties:
+        monitor:
+          allOf:
+            - $ref: "#/components/schemas/Monitor"
+          description: "Updated monitor."
+    Monitor:
+      required:
+        - "monitor_id"
+        - "display_name"
+        - "description"
+        - "project_id"
+        - "widgets"
+        - "preset_key"
+        - "created_at"
+        - "updated_at"
+        - "created_by_id"
+        - "updated_by_id"
+      type: "object"
+      properties:
+        monitor_id:
+          type: "string"
+          description: "Unique monitor identifier assigned by ORQ, for example\n `monitor_01H...`. Use this value in retrieve, update, and delete\n requests."
+        display_name:
+          type: "string"
+          description: "Workspace-unique display name."
+        description:
+          type: "string"
+          description: "Short human-readable summary of what the monitor tracks."
+        project_id:
+          type: "string"
+          description: "Project that owns the monitor. Empty for workspace-wide monitors (admin-managed). Immutable after creation."
+        widgets:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorWidget"
+          description: "Widgets rendered on the monitor, each carrying its own query and\n layout position."
+        default_range:
+          enum:
+            - "15m"
+            - "1h"
+            - "4h"
+            - "1d"
+            - "3d"
+            - "7d"
+            - "14d"
+            - "30d"
+            - "90d"
+          type: "string"
+          description: "Default relative time range applied when the monitor opens."
+        preset_key:
+          type: "string"
+          description: "Preset this monitor was created from. Empty when built from scratch."
+        created_at:
+          type: "string"
+          description: "Time when the monitor was created."
+          format: "date-time"
+        updated_at:
+          type: "string"
+          description: "Time when the monitor was last updated."
+          format: "date-time"
+        created_by_id:
+          type: "string"
+          description: "User ID that created the monitor."
+        updated_by_id:
+          type: "string"
+          description: "User ID that last updated the monitor."
+    MonitorWidget:
+      required:
+        - "widget_id"
+        - "type"
+        - "title"
+        - "queries"
+        - "layout"
+      type: "object"
+      properties:
+        widget_id:
+          type: "string"
+          description: "Widget identifier, unique within the monitor. Provide your own or\n leave empty to have the server assign one."
+        type:
+          enum:
+            - "timeseries"
+            - "toplist"
+            - "bignumber"
+          type: "string"
+          description: "Widget rendering type."
+        title:
+          type: "string"
+          description: "Title shown in the widget header."
+        queries:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorWidgetQuery"
+          description: "Queries feeding the widget. Each maps 1:1 onto a Reporting API\n request; the viewer's time range, time zone, and the query mode\n derived from the widget type are supplied at render time."
+        display:
+          allOf:
+            - $ref: "#/components/schemas/MonitorWidgetDisplay"
+          description: "Display options such as visualization style and unit."
+        layout:
+          allOf:
+            - $ref: "#/components/schemas/MonitorWidgetLayout"
+          description: "Position and size on the monitor grid."
+    MonitorPreset:
+      required:
+        - "preset_key"
+        - "display_name"
+        - "description"
+        - "kind"
+        - "widgets"
+      type: "object"
+      properties:
+        preset_key:
+          type: "string"
+          description: "Stable identifier for the preset, e.g. `genai-overview` or\n `widget-cost-by-model`."
+        display_name:
+          type: "string"
+          description: "Human-readable preset name shown in galleries."
+        description:
+          type: "string"
+          description: "What the preset shows and when to use it."
+        kind:
+          enum:
+            - "dashboard"
+            - "widget"
+          type: "string"
+          description: "Preset kind."
+        widgets:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorWidget"
+          description: "Widgets the preset materializes into a create request. Widget\n presets carry exactly one entry."
+        default_range:
+          type: "string"
+          description: "Default relative time range suggested by the preset."
+    MonitorWidgetQuery:
+      required:
+        - "metric"
+      type: "object"
+      properties:
+        metric:
+          type: "string"
+          description: "Reporting API catalogue metric, e.g. `genai.cost` or\n `genai.latency.p95`. Validated against the catalogue when the\n monitor is saved."
+        group_by:
+          type: "array"
+          items:
+            type: "string"
+          description: "Reporting dimensions to break down by. Valid dimensions depend on\n the metric; validated when the monitor is saved."
+        filters:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/MonitorFilter"
+          description: "Reporting filters combined with AND."
+        grain:
+          enum:
+            - "auto"
+            - "minute"
+            - "hour"
+            - "day"
+          type: "string"
+          description: "Requested bucket grain for timeseries widgets."
+        limit:
+          type: "integer"
+          description: "Row cap. For toplist widgets this is the top-N group count."
+          format: "int32"
+    MonitorWidgetDisplay:
+      type: "object"
+      properties:
+        visualization:
+          enum:
+            - "lines"
+            - "bars"
+          type: "string"
+          description: "Chart style for timeseries widgets."
+        unit:
+          enum:
+            - "count"
+            - "cost"
+            - "duration"
+            - "percent"
+            - "bytes"
+          type: "string"
+          description: "Unit used for axis and value formatting."
+        sort:
+          enum:
+            - "desc"
+            - "asc"
+          type: "string"
+          description: "Value ordering for toplist widgets."
+        show_overall:
+          type: "boolean"
+          description: "When true, toplist widgets also show the overall total across all\n groups for the window."
+        target:
+          type: "number"
+          description: "Optional threshold line rendered on timeseries widgets."
+          format: "double"
+        decimals:
+          type: "integer"
+          description: "Decimal places used when formatting values."
+          format: "int32"
+    MonitorWidgetLayout:
+      required:
+        - "x"
+        - "y"
+        - "w"
+        - "h"
+      type: "object"
+      properties:
+        x:
+          type: "integer"
+          description: "Column offset in grid units."
+          format: "int32"
+        y:
+          type: "integer"
+          description: "Row offset in grid units."
+          format: "int32"
+        w:
+          type: "integer"
+          description: "Width in grid units."
+          format: "int32"
+        h:
+          type: "integer"
+          description: "Height in grid units."
+          format: "int32"
     NotifierType:
       type: "string"
       enum:
@@ -9120,6 +10081,167 @@ components:
             webhook_url:
               type: "string"
               description: "Generic webhook URL used when `type` is `NOTIFIER_TYPE_WEBHOOK`."
+    ListPeopleResponse:
+      required:
+        - "object"
+        - "data"
+        - "has_more"
+      type: "object"
+      properties:
+        object:
+          type: "string"
+          description: "Object discriminator for list responses; always `list`."
+        data:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Person"
+          description: "Page of people, ordered newest first."
+        has_more:
+          type: "boolean"
+          description: "Whether more people are available in the selected pagination\n direction."
+    CreatePersonRequest:
+      required:
+        - "emails"
+      type: "object"
+      properties:
+        emails:
+          type: "array"
+          items:
+            type: "string"
+          description: "Email addresses to invite. At least one email is required."
+        roles:
+          type: "array"
+          items:
+            type: "string"
+          description: "Roles to assign. Defaults to [\"member\"] when empty."
+        groups:
+          type: "array"
+          items:
+            type: "string"
+          description: "Group IDs to assign."
+    CreatePersonResponse:
+      required:
+        - "people"
+      type: "object"
+      properties:
+        people:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/Person"
+          description: "Newly created people."
+    GetPersonResponse:
+      required:
+        - "person"
+      type: "object"
+      properties:
+        person:
+          allOf:
+            - $ref: "#/components/schemas/Person"
+          description: "Requested person."
+    DeletePersonResponse:
+      type: "object"
+      properties: {}
+    UpdatePersonRequest:
+      required: []
+      type: "object"
+      properties:
+        roles:
+          type: "array"
+          items:
+            type: "string"
+          description: "Replacement role list. Leave empty to clear all roles."
+        groups:
+          type: "array"
+          items:
+            type: "string"
+          description: "Replacement group list. Leave empty to clear all groups."
+        clear_roles:
+          type: "boolean"
+          description: "Explicitly clear all roles. Set to true when sending an empty roles array."
+        clear_groups:
+          type: "boolean"
+          description: "Explicitly clear all groups. Set to true when sending an empty groups array."
+    UpdatePersonResponse:
+      required:
+        - "person"
+      type: "object"
+      properties:
+        person:
+          allOf:
+            - $ref: "#/components/schemas/Person"
+          description: "Updated person."
+    ResendInvitationRequest:
+      required: []
+      type: "object"
+      properties: {}
+    ResendInvitationResponse:
+      required:
+        - "person"
+      type: "object"
+      properties:
+        person:
+          allOf:
+            - $ref: "#/components/schemas/Person"
+          description: "Person whose invitation was resent."
+    Person:
+      required:
+        - "id"
+        - "account_id"
+        - "email"
+        - "display_name"
+        - "roles"
+        - "groups"
+        - "status"
+        - "created_at"
+        - "updated_at"
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          description: "Unique workspace user identifier (ULID)."
+        account_id:
+          type: "string"
+          description: "Linked account ID."
+        email:
+          type: "string"
+          description: "Email address."
+        display_name:
+          type: "string"
+          description: "Full display name (firstname + lastname)."
+        avatar_url:
+          type: "string"
+          description: "Profile image URL."
+        roles:
+          type: "array"
+          items:
+            type: "string"
+          description: "Permission roles assigned to the person."
+        groups:
+          type: "array"
+          items:
+            type: "string"
+          description: "Group IDs the person belongs to (non-support groups)."
+        status:
+          description: "Membership status: pending or active."
+          $ref: "#/components/schemas/PersonStatus"
+        last_activity:
+          type: "string"
+          description: "Last activity timestamp."
+          format: "date-time"
+        created_at:
+          type: "string"
+          description: "When the person was invited or added."
+          format: "date-time"
+        updated_at:
+          type: "string"
+          description: "Last modification timestamp."
+          format: "date-time"
+    PersonStatus:
+      type: "string"
+      enum:
+        - "PERSON_STATUS_UNSPECIFIED"
+        - "PERSON_STATUS_PENDING"
+        - "PERSON_STATUS_ACTIVE"
     ListProjectsResponse:
       required:
         - "object"
@@ -12807,9 +13929,13 @@ components:
             - "genai.tokens"
             - "genai.cost"
             - "genai.errors"
+            - "genai.error_rate"
             - "genai.latency.p50"
             - "genai.latency.p95"
             - "genai.latency.p99"
+            - "genai.ttft.avg"
+            - "genai.ttft.p50"
+            - "genai.ttft.p95"
             - "genai.evaluator.runs"
             - "genai.evaluator.pass_rate"
             - "genai.evaluator.score.avg"
@@ -12890,6 +14016,18 @@ components:
         include_totals:
           type: "boolean"
           description: "When true, include a `totals` block aggregated across the full\n report window."
+        mode:
+          enum:
+            - "timeseries"
+            - "scalar"
+          type: "string"
+          description: "Value shaping. `timeseries` (default) buckets by time; `scalar` returns one aggregated row per group over the whole window, ordered by value (top list), or a single row when `group_by` is empty."
+        sort:
+          enum:
+            - "desc"
+            - "asc"
+          type: "string"
+          description: "Value ordering for `scalar` rows. Defaults to `desc`. Ignored for `timeseries`."
     QueryReportResponse:
       type: "object"
       properties:
@@ -12978,7 +14116,7 @@ components:
       properties:
         timestamp:
           type: "string"
-          description: "Bucket start in UTC, RFC 3339. Clients that need epoch ms can call\n `Date.parse(timestamp)` or `new Date(timestamp).getTime()` —\n returning the int64 in JSON would force a string (protojson rule)\n and force callers to coerce anyway, so we ship ISO only."
+          description: "Bucket start in UTC, RFC 3339. Clients that need epoch ms can call\n `Date.parse(timestamp)` or `new Date(timestamp).getTime()` —\n returning the int64 in JSON would force a string (protojson rule)\n and force callers to coerce anyway, so we ship ISO only. Unset for\n `mode=scalar` rows, which aggregate the whole window."
           format: "date-time"
         dimensions:
           type: "object"
@@ -14521,6 +15659,17 @@ paths:
           description: "Eval deleted"
         "404":
           description: "Workspace ID is not found on the request"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                properties:
+                  message:
+                    type: "string"
+                required:
+                  - "message"
+        "409":
+          description: "The evaluator is still referenced as an evaluator or guardrail by one or more deployments"
           content:
             application/json:
               schema:
@@ -26435,7 +27584,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KY9CSMPW6GVZH22V2ZZ1RAA9"
+                                          default: "01KYD71G78SSKWDMH48SPPC4YD"
                                         name:
                                           type: "string"
                                         description:
@@ -28211,7 +29360,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KY9CSMS2K82T28SJB5KGEE2F"
+                                          default: "01KYD71G91W0VK1T81X3SMQZNH"
                                         name:
                                           type: "string"
                                         description:
@@ -36980,7 +38129,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KY9CSMXMAAB5GTKJ5B12ZZKH"
+                              default: "tool_01KYD71GDY2C5AVMDAA61BSEV1"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37081,7 +38230,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KY9CSMXPHAMXHDSS2W5YCPFD"
+                              default: "tool_01KYD71GE0HBHMZ01YP4GR331N"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37184,7 +38333,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KY9CSMXRWTZWPSFAHNQQEVZ4"
+                              default: "tool_01KYD71GE3VMR75DV26FD3TVBD"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37328,7 +38477,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KY9CSMXTKRHMYT9FAW30QABB"
+                              default: "tool_01KYD71GE6WFBNFAZKKW7ET9T4"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37404,7 +38553,7 @@ paths:
                                     properties:
                                       id:
                                         type: "string"
-                                        default: "01KY9CSMXWMKXDJ2RDSSX8WN23"
+                                        default: "01KYD71GE8E5BYG35B7C00H5WE"
                                       name:
                                         type: "string"
                                       description:
@@ -37463,7 +38612,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KY9CSMXXE4J9WF25Q7B5Z0JK"
+                              default: "tool_01KYD71GE9RHS5YWPYCCBTZT7W"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38023,7 +39172,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMYNEY3VRQ7E7VM43Y5M"
+                        default: "tool_01KYD71GES1E1VYN5G18WYDHJS"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38124,7 +39273,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMYRA1MQ793VD3RNESNT"
+                        default: "tool_01KYD71GEWTYRA6BRAM6P2FZ3R"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38227,7 +39376,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMYTDWB110C4VYC5FCP4"
+                        default: "tool_01KYD71GEYM1HNKGM808GXCS45"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38371,7 +39520,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMYWARD0GS5CFDWSEQ9T"
+                        default: "tool_01KYD71GF1HMFSDCS532SE2QVA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38447,7 +39596,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KY9CSMYY3BJ10TRE8D0SY7X9"
+                                  default: "01KYD71GF3GS4E0H5TRKBK8B65"
                                 name:
                                   type: "string"
                                 description:
@@ -38506,7 +39655,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMYZNFBW7VB6ZY51BWHW"
+                        default: "tool_01KYD71GF4PBEEG2Z0SY7DYRYP"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38972,7 +40121,7 @@ paths:
                             properties:
                               id:
                                 type: "string"
-                                default: "01KY9CSMZX0PV0Q8B6WJC6N14W"
+                                default: "01KYD71GG4QBRY2D6PNYZ15C4H"
                               name:
                                 type: "string"
                               description:
@@ -39118,7 +40267,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMZ954EF9HN3DRCRN2W1"
+                        default: "tool_01KYD71GFE1Z5PM00WFX0G6YS6"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39219,7 +40368,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMZB84DTBMM8R88BHSRJ"
+                        default: "tool_01KYD71GFHA6QRX7C42ZERG734"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39322,7 +40471,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMZDG67KCSFJD01ADNXP"
+                        default: "tool_01KYD71GFMA3Q8D472Y6NFV5ZF"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39466,7 +40615,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMZG0GRKVD9G8CQT9606"
+                        default: "tool_01KYD71GFQZ132B06S0A6Y7P2J"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39542,7 +40691,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KY9CSMZK6YFD0QDWMWF9T3VF"
+                                  default: "01KYD71GFSTKFJG2YTGDB05Y3P"
                                 name:
                                   type: "string"
                                 description:
@@ -39601,7 +40750,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSMZM4JZDM2T28CERZ95F"
+                        default: "tool_01KYD71GFV3RB9SJP0TPSNACDF"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39762,7 +40911,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSN0CQ690V9SZWXQNA7T1"
+                        default: "tool_01KYD71GGKPEC5MYAQBGT0SMHA"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39863,7 +41012,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSN0EVY93RJ76V4V4DY4H"
+                        default: "tool_01KYD71GGNMNGQFNV43DH0W1CC"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39966,7 +41115,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSN0GSK3BNP4QMJ8NQ9JV"
+                        default: "tool_01KYD71GGQP7PE69XYVND1VE3Z"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40110,7 +41259,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSN0NPWB01SKH3AZ2NEYX"
+                        default: "tool_01KYD71GGT6AJW3XR2074RQN7B"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40186,7 +41335,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KY9CSN0PEPFMP3SECP0R84Y4"
+                                  default: "01KYD71GGVGHYHP7YFRGR5HW5G"
                                 name:
                                   type: "string"
                                 description:
@@ -40245,7 +41394,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KY9CSN0Q4ZAY4HYD85MPGB3K"
+                        default: "tool_01KYD71GGWTTP4JHV300X0GRVY"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42469,7 +43618,7 @@ paths:
                           type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                          default: "01KY9CSN4BMPWJKBP7DFD339MB"
+                          default: "01KYD71GMAZ4S6A7E74A2JJ5P4"
                           readOnly: true
                           description: "The unique identifier of the data source"
                         display_name:
@@ -42672,7 +43821,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KY9CSN4G5MVQNG2ZPQB0WZW9"
+                    default: "01KYD71GMF31E1N4SW7DRS99BY"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -42795,7 +43944,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KY9CSN4EW204G257KZ0GG0KA"
+                    default: "01KYD71GMDGV66Q3JX6MFPAW3M"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -42957,7 +44106,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KY9CSN4KXNN4HBCNFB5E6P60"
+                    default: "01KYD71GMKS34235B8W37QDBX8"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -45687,7 +46836,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-24T06:25:00.262Z"
+                          default: "2026-07-25T18:01:32.736Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -45695,7 +46844,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:00.263Z"
+                              default: "2026-07-25T18:01:32.738Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -45839,7 +46988,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-24T06:25:00.262Z"
+                    default: "2026-07-25T18:01:32.736Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -45847,7 +46996,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-24T06:25:00.263Z"
+                        default: "2026-07-25T18:01:32.738Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -45986,7 +47135,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-24T06:25:00.262Z"
+                    default: "2026-07-25T18:01:32.736Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -45994,7 +47143,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-24T06:25:00.263Z"
+                        default: "2026-07-25T18:01:32.738Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -46166,7 +47315,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-24T06:25:00.262Z"
+                    default: "2026-07-25T18:01:32.736Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -46174,7 +47323,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-24T06:25:00.263Z"
+                        default: "2026-07-25T18:01:32.738Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -46608,7 +47757,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-24T06:25:25.205Z"
+                                    default: "2026-07-25T18:01:49.015Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46681,7 +47830,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-24T06:25:25.206Z"
+                                    default: "2026-07-25T18:01:49.016Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46754,7 +47903,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-24T06:25:25.207Z"
+                                    default: "2026-07-25T18:01:49.018Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46827,7 +47976,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-24T06:25:25.208Z"
+                                    default: "2026-07-25T18:01:49.019Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -46867,7 +48016,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-24T06:25:00.262Z"
+                          default: "2026-07-25T18:01:32.736Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -46875,7 +48024,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:00.263Z"
+                              default: "2026-07-25T18:01:32.738Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -47503,7 +48652,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-24T06:25:25.228Z"
+                                default: "2026-07-25T18:01:49.043Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47576,7 +48725,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-24T06:25:25.230Z"
+                                default: "2026-07-25T18:01:49.044Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47649,7 +48798,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-24T06:25:25.231Z"
+                                default: "2026-07-25T18:01:49.046Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47722,7 +48871,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-24T06:25:25.233Z"
+                                default: "2026-07-25T18:01:49.048Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -47762,7 +48911,7 @@ paths:
                           format: "date-time"
                         - type: "string"
                           format: "date-time"
-                      default: "2026-07-24T06:25:00.262Z"
+                      default: "2026-07-25T18:01:32.736Z"
                       readOnly: true
                       format: "date-time"
                       description: "The date and time the resource was created"
@@ -47770,7 +48919,7 @@ paths:
                       anyOf:
                         - type: "string"
                           format: "date-time"
-                          default: "2026-07-24T06:25:00.263Z"
+                          default: "2026-07-25T18:01:32.738Z"
                         - type: "string"
                           format: "date-time"
                       readOnly: true
@@ -48135,7 +49284,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.216Z"
+                              default: "2026-07-25T18:01:49.028Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48208,7 +49357,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.217Z"
+                              default: "2026-07-25T18:01:49.030Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48281,7 +49430,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.218Z"
+                              default: "2026-07-25T18:01:49.031Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48354,7 +49503,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.219Z"
+                              default: "2026-07-25T18:01:49.033Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -48394,7 +49543,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-24T06:25:00.262Z"
+                    default: "2026-07-25T18:01:32.736Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48402,7 +49551,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-24T06:25:00.263Z"
+                        default: "2026-07-25T18:01:32.738Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -49023,7 +50172,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.263Z"
+                              default: "2026-07-25T18:01:49.080Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -49096,7 +50245,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.264Z"
+                              default: "2026-07-25T18:01:49.081Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -49169,7 +50318,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.266Z"
+                              default: "2026-07-25T18:01:49.083Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -49242,7 +50391,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:25.267Z"
+                              default: "2026-07-25T18:01:49.084Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -49282,7 +50431,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-24T06:25:00.262Z"
+                    default: "2026-07-25T18:01:32.736Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -49290,7 +50439,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-24T06:25:00.263Z"
+                        default: "2026-07-25T18:01:32.738Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -55533,7 +56682,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-24T06:25:25.391Z"
+                      default: "2026-07-25T18:01:49.262Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55575,7 +56724,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-24T06:25:25.391Z"
+                      default: "2026-07-25T18:01:49.263Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55617,7 +56766,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-24T06:25:25.392Z"
+                      default: "2026-07-25T18:01:49.264Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55659,7 +56808,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-24T06:25:25.393Z"
+                      default: "2026-07-25T18:01:49.265Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -55994,7 +57143,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-24T06:25:00.262Z"
+                          default: "2026-07-25T18:01:32.736Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -56002,7 +57151,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:00.263Z"
+                              default: "2026-07-25T18:01:32.738Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -56076,7 +57225,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-24T06:25:00.262Z"
+                          default: "2026-07-25T18:01:32.736Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -56084,7 +57233,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-24T06:25:00.263Z"
+                              default: "2026-07-25T18:01:32.738Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -56272,7 +57421,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56280,7 +57429,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56354,7 +57503,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56362,7 +57511,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56460,7 +57609,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56468,7 +57617,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56542,7 +57691,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56550,7 +57699,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56746,7 +57895,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56754,7 +57903,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -56828,7 +57977,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-24T06:25:00.262Z"
+                        default: "2026-07-25T18:01:32.736Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -56836,7 +57985,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-24T06:25:00.263Z"
+                            default: "2026-07-25T18:01:32.738Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -59896,6 +61045,368 @@ paths:
       x-speakeasy-name-override: "disable"
       security:
         - ApiKey: []
+  /v2/activity/{entity_id}:
+    get:
+      tags:
+        - "Activities"
+      summary: "List activities for an entity"
+      operationId: "ActivityList"
+      parameters:
+        - name: "entity_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListActivitiesResponse"
+      x-speakeasy-group: "activities"
+      x-speakeasy-name-override: "list"
+      x-speakeasy-ignore: true
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "Activities"
+      summary: "Create a new activity"
+      operationId: "ActivityCreate"
+      parameters:
+        - name: "entity_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateActivityResponse"
+      x-speakeasy-group: "activities"
+      x-speakeasy-name-override: "create"
+      x-speakeasy-ignore: true
+      security:
+        - ApiKey: []
+  /v2/activity/{entity_id}/{activity_id}:
+    patch:
+      tags:
+        - "Activities"
+      summary: "Update an activity"
+      operationId: "ActivityUpdate"
+      parameters:
+        - name: "entity_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "activity_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActivityRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateActivityResponse"
+      x-speakeasy-group: "activities"
+      x-speakeasy-name-override: "update"
+      x-speakeasy-ignore: true
+      security:
+        - ApiKey: []
+  /v2/alerts:
+    get:
+      tags:
+        - "Alerts"
+      summary: "List alerts"
+      description: "Returns the alerts visible to the caller, newest first. Use `starting_after` or `ending_before` to page."
+      operationId: "AlertList"
+      parameters:
+        - name: "limit"
+          in: "query"
+          description: "Page size, 1-200. Unset uses the server default (25)."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          description: "Cursor for forward pagination. Set to the `alert_id` of the last\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          description: "Cursor for backward pagination. Set to the `alert_id` of the first\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "project_id"
+          in: "query"
+          description: "Restrict results to one project."
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAlertsResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "list"
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "Alerts"
+      summary: "Create an alert"
+      description: "Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval."
+      operationId: "AlertCreate"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAlertResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "create"
+      security:
+        - ApiKey: []
+  /v2/alerts/{alert_id}:
+    get:
+      tags:
+        - "Alerts"
+      summary: "Retrieve an alert"
+      description: "Retrieves an alert by ID."
+      operationId: "AlertGet"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert ID to retrieve."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetAlertResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "get"
+      security:
+        - ApiKey: []
+    delete:
+      tags:
+        - "Alerts"
+      summary: "Delete an alert"
+      description: "Permanently deletes an alert together with its trigger history and events, and stops the evaluation schedule."
+      operationId: "AlertDelete"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert ID to delete."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAlertResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "delete"
+      security:
+        - ApiKey: []
+    patch:
+      tags:
+        - "Alerts"
+      summary: "Update an alert"
+      description: "Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable."
+      operationId: "AlertUpdate"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert ID to update."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlertRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateAlertResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "update"
+      security:
+        - ApiKey: []
+  /v2/alerts/{alert_id}/check:
+    post:
+      tags:
+        - "Alerts"
+      summary: "Run an alert check now"
+      description: "Schedules one immediate evaluation of the alert (delivered within ~10 seconds), independent of its regular interval. The check runs through the normal evaluation pipeline: it records a run, can open or resolve triggers, and fires notifications. The alert must be enabled."
+      operationId: "AlertCheckNow"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert to evaluate now."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckAlertNowRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckAlertNowResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "checkNow"
+      security:
+        - ApiKey: []
+  /v2/alerts/{alert_id}/triggers:
+    get:
+      tags:
+        - "Alerts"
+      summary: "List alert triggers"
+      description: "Returns the trigger history of an alert, newest first. A trigger is one breach incident: it opens when the threshold is first crossed and resolves when the value recovers."
+      operationId: "AlertListTriggers"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert whose triggers to list."
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Page size, 1-200. Unset uses the server default (25)."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          description: "Cursor for forward pagination. Set to the `trigger_id` of the last\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          description: "Cursor for backward pagination. Set to the `trigger_id` of the\n first item from the previous page."
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAlertTriggersResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "listTriggers"
+      security:
+        - ApiKey: []
+  /v2/alerts/{alert_id}/triggers/{trigger_id}/events:
+    get:
+      tags:
+        - "Alerts"
+      summary: "List alert trigger events"
+      description: "Returns the evaluation events recorded while a trigger was open, newest first. Each event carries the observed value and, when available, exemplar traces that contributed to the breach."
+      operationId: "AlertListTriggerEvents"
+      parameters:
+        - name: "alert_id"
+          in: "path"
+          description: "Alert the trigger belongs to."
+          required: true
+          schema:
+            type: "string"
+        - name: "trigger_id"
+          in: "path"
+          description: "Trigger whose events to list."
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          description: "Page size, 1-200. Unset uses the server default (25)."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          description: "Cursor for forward pagination. Set to the `event_id` of the last\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          description: "Cursor for backward pagination. Set to the `event_id` of the first\n item from the previous page."
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAlertTriggerEventsResponse"
+      x-speakeasy-group: "alerts"
+      x-speakeasy-name-override: "listTriggerEvents"
+      security:
+        - ApiKey: []
   /v2/api-keys:
     get:
       tags:
@@ -60426,6 +61937,63 @@ paths:
         - lang: "typescript"
           label: "Node.js - Search documentation"
           source: "const response = await fetch('https://api.orq.ai/v2/documentation/search', {\n  method: 'POST',\n  headers: {\n    Authorization: `Bearer ${process.env.ORQ_API_KEY}`,\n    'Content-Type': 'application/json',\n  },\n  body: JSON.stringify({\n    query: 'How do I create an API key?',\n    limit: 5,\n    score_threshold: 0.65,\n  }),\n});\n\nif (!response.ok) {\n  throw new Error(`Request failed: ${response.status}`);\n}\n\nconst { results } = await response.json();\nfor (const result of results) {\n  console.log(result.metadata.title, result.metadata.href);\n}\n"
+      security:
+        - ApiKey: []
+  /v2/feature-previews:
+    get:
+      tags:
+        - "FeaturePreviews"
+      summary: "List feature previews"
+      description: "Returns the full catalog of feature previews, each marked enabled\n according to the current user's saved choice (or its default)."
+      operationId: "FeaturePreviewsList"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFeaturePreviewsResponse"
+      x-speakeasy-group: "featurePreviews"
+      x-speakeasy-name-override: "list"
+      x-cli-group: "featurePreviews"
+      x-cli-name: "list"
+      x-cli-hidden: true
+      x-speakeasy-ignore: true
+      security:
+        - ApiKey: []
+  /v2/feature-previews/{slug}/toggle:
+    post:
+      tags:
+        - "FeaturePreviews"
+      summary: "Toggle feature preview"
+      description: "Toggles a single feature preview on/off for the current user and\n returns its new state."
+      operationId: "FeaturePreviewToggle"
+      parameters:
+        - name: "slug"
+          in: "path"
+          description: "Slug of the feature to toggle."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleFeaturePreviewRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleFeaturePreviewResponse"
+      x-speakeasy-group: "featurePreviews"
+      x-speakeasy-name-override: "toggle"
+      x-cli-group: "featurePreviews"
+      x-cli-name: "toggle"
+      x-cli-hidden: true
+      x-speakeasy-ignore: true
       security:
         - ApiKey: []
   /v2/files:
@@ -61156,6 +62724,166 @@ paths:
       x-speakeasy-ignore: true
       security:
         - ApiKey: []
+  /v2/monitors:
+    get:
+      tags:
+        - "Monitors"
+      summary: "List monitors"
+      description: "Returns the monitors visible to the caller, newest first. Project-restricted callers see monitors of their projects plus workspace-wide monitors. Use `starting_after` or `ending_before` to page."
+      operationId: "MonitorList"
+      parameters:
+        - name: "limit"
+          in: "query"
+          description: "Page size, 1-200. Unset uses the server default (25)."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          description: "Cursor for forward pagination. Set to the `monitor_id` of the last\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          description: "Cursor for backward pagination. Set to the `monitor_id` of the\n first item from the previous page."
+          schema:
+            type: "string"
+        - name: "project_id"
+          in: "query"
+          description: "Restrict results to one project. Workspace-wide monitors are still\n included unless the caller's key is pinned to specific projects."
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMonitorsResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "list"
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "Monitors"
+      summary: "Create a monitor"
+      description: "Creates a monitor (custom observability dashboard) in the workspace. Set `project_id` to scope the monitor to a project; omit it to create a workspace-wide monitor, which requires admin access."
+      operationId: "MonitorCreate"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMonitorRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateMonitorResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "create"
+      security:
+        - ApiKey: []
+  /v2/monitors/presets:
+    get:
+      tags:
+        - "Monitors"
+      summary: "List monitor presets"
+      description: "Returns the built-in monitor templates (preset dashboards and preset widgets). Presets are defined by the platform and versioned with it; create a monitor from a preset by copying its widgets into a create request and stamping `preset_key`."
+      operationId: "MonitorListPresets"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListMonitorPresetsResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "listPresets"
+      security:
+        - ApiKey: []
+  /v2/monitors/{monitor_id}:
+    get:
+      tags:
+        - "Monitors"
+      summary: "Retrieve a monitor"
+      description: "Retrieves a monitor by ID."
+      operationId: "MonitorGet"
+      parameters:
+        - name: "monitor_id"
+          in: "path"
+          description: "Monitor ID to retrieve."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMonitorResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "get"
+      security:
+        - ApiKey: []
+    delete:
+      tags:
+        - "Monitors"
+      summary: "Delete a monitor"
+      description: "Permanently deletes a monitor. Widgets are stored inline, so no other resources are affected."
+      operationId: "MonitorDelete"
+      parameters:
+        - name: "monitor_id"
+          in: "path"
+          description: "Monitor ID to delete."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteMonitorResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "delete"
+      security:
+        - ApiKey: []
+    patch:
+      tags:
+        - "Monitors"
+      summary: "Update a monitor"
+      description: "Updates monitor metadata and widgets. A non-empty `widgets` array replaces the whole widget set; omit `widgets` to keep the current set. `project_id` is immutable."
+      operationId: "MonitorUpdate"
+      parameters:
+        - name: "monitor_id"
+          in: "path"
+          description: "Monitor ID to update."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMonitorRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateMonitorResponse"
+      x-speakeasy-group: "monitors"
+      x-speakeasy-name-override: "update"
+      security:
+        - ApiKey: []
   /v2/notifiers:
     get:
       tags:
@@ -61355,6 +63083,174 @@ paths:
         - lang: "typescript"
           label: "Node.js - Update notifier"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.notifiers.update({\n  notifierId: 'notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V',\n  displayName: 'Production incident alerts',\n  emails: ['incidents@example.com'],\n});\n\nconsole.log(result.notifier.displayName);\n"
+      security:
+        - ApiKey: []
+  /v2/people:
+    get:
+      tags:
+        - "People"
+      summary: "List all people"
+      description: "Returns a paginated list of people in the current workspace. Use `starting_after` or `ending_before` to page through large collections."
+      operationId: "PersonList"
+      parameters:
+        - name: "limit"
+          in: "query"
+          description: "Page size, 1-200. Unset uses the server default."
+          schema:
+            type: "integer"
+            format: "int32"
+        - name: "starting_after"
+          in: "query"
+          description: "Cursor for forward pagination. Set to the `id` of the last\n item from the previous page."
+          schema:
+            type: "string"
+        - name: "ending_before"
+          in: "query"
+          description: "Cursor for backward pagination. Set to the `id` of the first\n item from the previous page."
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPeopleResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "list"
+      security:
+        - ApiKey: []
+    post:
+      tags:
+        - "People"
+      summary: "Invite people to a workspace"
+      description: "Invites one or more people to the current workspace. If an email is not already registered, a new account is created and an invitation email is sent. Existing accounts are linked directly to the workspace."
+      operationId: "PersonCreate"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePersonRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatePersonResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "create"
+      security:
+        - ApiKey: []
+  /v2/people/{person_id}:
+    get:
+      tags:
+        - "People"
+      summary: "Retrieve a person"
+      description: "Retrieves the details of an existing workspace member or invited user by their person ID."
+      operationId: "PersonGet"
+      parameters:
+        - name: "person_id"
+          in: "path"
+          description: "Person ID to retrieve."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetPersonResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "get"
+      security:
+        - ApiKey: []
+    delete:
+      tags:
+        - "People"
+      summary: "Delete a person"
+      description: "Removes a member or invited user from the workspace. API keys owned by the removed user are cascade revoked. The response body is empty when the delete succeeds."
+      operationId: "PersonDelete"
+      parameters:
+        - name: "person_id"
+          in: "path"
+          description: "Person ID to delete."
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletePersonResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "delete"
+      security:
+        - ApiKey: []
+    patch:
+      tags:
+        - "People"
+      summary: "Update a person"
+      description: "Updates the roles and group assignments of a workspace member. Omitted fields keep their current values."
+      operationId: "PersonUpdate"
+      parameters:
+        - name: "person_id"
+          in: "path"
+          description: "Person ID to update."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePersonRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdatePersonResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "update"
+      security:
+        - ApiKey: []
+  /v2/people/{person_id}:resend:
+    post:
+      tags:
+        - "People"
+      summary: "Resend invitation"
+      description: "Resends the invitation email to a pending workspace member. Has no effect if the person has already accepted."
+      operationId: "PersonResendInvitation"
+      parameters:
+        - name: "person_id"
+          in: "path"
+          description: "Person ID of the pending invite to resend."
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResendInvitationRequest"
+        required: true
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendInvitationResponse"
+      x-speakeasy-group: "people"
+      x-speakeasy-name-override: "resendInvitation"
       security:
         - ApiKey: []
   /v2/projects:
@@ -64216,12 +66112,18 @@ tags:
   - name: "Guardrail Rules"
   - name: "Policies"
   - name: "Routing Rules"
+  - name: "Activities"
+    description: "Activity timeline entries for comments and entity versions."
+  - name: "Alerts"
+    description: "Alerts evaluate a Reporting API metric on a fixed interval and fire notifications through notifiers when the value breaches a threshold. Each breach opens a trigger that tracks the incident until the value recovers."
   - name: "API keys"
     description: "API keys authenticate programmatic access to the workspace. The unified key model exposes opaque tokens, per-domain access grants, and budget / rate-limit constraints (see ADR 0001 and ADR 0002)."
   - name: "Budgets"
     description: "Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, api-key, provider, and model. A budget is hierarchical and defense-in-depth — every applicable budget is a hard gate, and the most restrictive one wins per dimension (see ADR 0007)."
   - name: "Documentation"
     description: "Search the orq.ai documentation. Proxies the workspace's query to the hosted docs search index."
+  - name: "FeaturePreviews"
+    description: "Internal: list and toggle per-user feature previews (beta features users can opt into)."
   - name: "Files"
     description: "File upload and retrieval operations."
   - name: "Finder"
@@ -64232,8 +66134,12 @@ tags:
     description: "Management keys are workspace-scoped credentials that authenticate programmatic access to workspace administration surfaces (API keys, budgets). Unlike project-scoped API keys, a management key always operates at the workspace level."
   - name: "Model Sharing"
     description: "Model sharing controls which projects a workspace model is available to. Workspace admins configure a model's Sharing (all projects / selected projects); the config ships inline on the models list response, so there is no separate read endpoint."
+  - name: "Monitors"
+    description: "Monitors are custom observability dashboards over GenAI trace metrics. Each monitor holds a set of widgets whose queries run against the Reporting API metric catalogue."
   - name: "Notifiers"
     description: "Notifier destinations used to send delivery and workflow notifications."
+  - name: "People"
+    description: "People are workspace members and invited users. Manage roles, groups, and invitations for your team."
   - name: "Projects"
     description: "Projects organize resources within a workspace"
   - name: "Skills"
