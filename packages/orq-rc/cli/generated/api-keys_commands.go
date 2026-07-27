@@ -26,7 +26,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -47,6 +47,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 							FlagName:    "expires-at",
 							Type:        "string",
 							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+						},
+						{
+							Name:        "mcp_access",
+							FlagName:    "mcp-access",
+							Type:        "json",
+							Description: "Optional MCP-gateway access restriction. Unset means no\n restriction. See McpAccess for the deny_all / allow-list semantics.",
 						},
 						{
 							Name:        "name",
@@ -110,6 +116,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 					FlagName:    "expires-at",
 					Type:        "string",
 					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+				},
+				{
+					Name:        "mcp_access",
+					FlagName:    "mcp-access",
+					Type:        "json",
+					Description: "Optional MCP-gateway access restriction. Unset means no\n restriction. See McpAccess for the deny_all / allow-list semantics.",
 				},
 				{
 					Name:        "name",
@@ -308,7 +320,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update api-key-id",
 			Short:   "Update an API key",
-			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -335,6 +347,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 							FlagName:    "expires-at",
 							Type:        "string",
 							Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
+						},
+						{
+							Name:        "mcp_access",
+							FlagName:    "mcp-access",
+							Type:        "json",
+							Description: "Replacement MCP-gateway access restriction. Absent leaves the\n current value intact; an explicitly-set McpAccess replaces it —\n including an empty one (deny_all=false + empty list), which clears\n any existing restriction. See McpAccess.",
 						},
 						{
 							Name:        "name",
@@ -410,6 +428,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 					FlagName:    "expires-at",
 					Type:        "string",
 					Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
+				},
+				{
+					Name:        "mcp_access",
+					FlagName:    "mcp-access",
+					Type:        "json",
+					Description: "Replacement MCP-gateway access restriction. Absent leaves the\n current value intact; an explicitly-set McpAccess replaces it —\n including an empty one (deny_all=false + empty list), which clears\n any existing restriction. See McpAccess.",
 				},
 				{
 					Name:        "name",
