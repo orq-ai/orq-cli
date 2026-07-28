@@ -27,10 +27,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -264,10 +264,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -369,10 +369,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -489,10 +489,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -594,10 +594,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -999,10 +999,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -1120,10 +1120,10 @@ components:
           type: "string"
         created:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated:
           type: "string"
-          default: "2026-07-27T09:51:24.480Z"
+          default: "2026-07-28T04:12:16.755Z"
         updated_by_id:
           type:
             - "string"
@@ -2671,6 +2671,18 @@ components:
         - "id"
         - "language"
       title: "PII redaction plugin (Dutch)"
+    ResponseHealingPlugin:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          enum:
+            - "response_healing"
+          description: "Plugin discriminator. Must be `response_healing`."
+      required:
+        - "id"
+      additionalProperties: false
+      title: "Response healing plugin"
     AgentToolInputCRUD:
       anyOf:
         - type: "object"
@@ -3843,7 +3855,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01kyhfse52v0pd8q7v1dy0qw13"
+              default: "reasoning_01kykesh5x25qze4ys16jsk53x"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -7073,8 +7085,11 @@ components:
       properties:
         OfPIIRedaction:
           $ref: "#/components/schemas/PIIRedactionPlugin"
+        OfResponseHealing:
+          $ref: "#/components/schemas/ResponseHealingPlugin"
       required:
         - "OfPIIRedaction"
+        - "OfResponseHealing"
       type: "object"
     Policy:
       additionalProperties: false
@@ -12215,9 +12230,9 @@ components:
           description: "Whether to allow parallel tool calls."
           type: "boolean"
         plugins:
-          description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+          description: "Request-scoped transforms applied to the text exchanged with the model. Supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and response_healing, which repairs malformed JSON in non-streaming model output."
           items:
-            $ref: "#/components/schemas/PublicPIIRedactionPlugin"
+            $ref: "#/components/schemas/PublicPlugin"
           type:
             - "array"
             - "null"
@@ -12233,7 +12248,7 @@ components:
           type: "string"
         reasoning:
           $ref: "#/components/schemas/ReasoningParam"
-          description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
+          description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
         retry:
           $ref: "#/components/schemas/ResponseRetryConfig"
           description: "Retry configuration. Specify the number of retries and which HTTP status codes should trigger a retry."
@@ -12569,38 +12584,36 @@ components:
         - "owned_by"
         - "created"
       type: "object"
-    PublicPIIRedactionPlugin:
+    PublicPlugin:
       additionalProperties: false
       properties:
         entities:
-          description: "Entity types to redact (e.g. EMAIL_ADDRESS, BSN). Omit to redact every type detected for the language."
+          description: "pii_redaction only. Entity types to redact (e.g. EMAIL_ADDRESS, BSN). Omit to redact every type detected for the language."
           items:
             type: "string"
           type:
             - "array"
             - "null"
         id:
-          description: "Plugin discriminator. Must be pii_redaction."
+          description: "Plugin discriminator. pii_redaction replaces PII with placeholders before the provider sees it and restores the original values in the response. response_healing repairs malformed JSON in non-streaming model output."
           enum:
             - "pii_redaction"
+            - "response_healing"
           type: "string"
         language:
-          description: "Detector language. Defaults to en."
+          description: "pii_redaction only. Detector language. Defaults to en."
           enum:
             - "en"
             - "nl"
           type: "string"
         on_failure:
-          description: "Behavior when redaction is unavailable. block (default) fails the request; passthrough sends the original text."
+          description: "pii_redaction only. Behavior when redaction is unavailable. block (default) fails the request; passthrough sends the original text."
           enum:
             - "block"
             - "passthrough"
           type: "string"
-        persist_redacted_to_traces:
-          description: "Store the redacted (placeholder) form in traces rather than the restored original. Defaults to true."
-          type: "boolean"
         threshold:
-          description: "Detector confidence cutoff in [0,1]."
+          description: "pii_redaction only. Detector confidence cutoff in [0,1]."
           format: "double"
           maximum: 1
           minimum: 0
@@ -12951,6 +12964,7 @@ components:
             - "medium"
             - "high"
             - "xhigh"
+            - "max"
           type: "string"
         summary:
           description: "The format of the reasoning summary returned by the model."
@@ -12972,6 +12986,7 @@ components:
             - "medium"
             - "high"
             - "xhigh"
+            - "max"
           type: "string"
         summary:
           description: "The format of the reasoning summary returned by the model."
@@ -17564,6 +17579,8 @@ paths:
                       - "poolside"
                       - "tencent"
                       - "nebius"
+                      - "fireworks"
+                      - "baseten"
                       - "reson8"
                       - "slack"
                       - "orq"
@@ -18113,6 +18130,8 @@ paths:
                                     - "low"
                                     - "medium"
                                     - "high"
+                                    - "xhigh"
+                                    - "max"
                                   description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                                 budgetTokens:
                                   type: "number"
@@ -18171,6 +18190,8 @@ paths:
                                 - "poolside"
                                 - "tencent"
                                 - "nebius"
+                                - "fireworks"
+                                - "baseten"
                                 - "reson8"
                                 - "slack"
                                 - "orq"
@@ -19590,6 +19611,8 @@ paths:
                           - "low"
                           - "medium"
                           - "high"
+                          - "xhigh"
+                          - "max"
                         description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                       budgetTokens:
                         type: "number"
@@ -20666,6 +20689,8 @@ paths:
                           - poolside
                           - tencent
                           - nebius
+                          - fireworks
+                          - baseten
                           - reson8
                           - slack
                           - orq
@@ -21183,7 +21208,8 @@ paths:
                                   - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                   - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                   - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                              description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                  - $ref: "#/components/schemas/ResponseHealingPlugin"
+                              description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                             fallbacks:
                               type: "array"
                               items:
@@ -21530,7 +21556,8 @@ paths:
                                     - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                     - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                     - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                    - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                               fallbacks:
                                 type: "array"
                                 items:
@@ -22311,7 +22338,8 @@ paths:
                                 - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                 - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                 - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                            description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                - $ref: "#/components/schemas/ResponseHealingPlugin"
+                            description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                           fallbacks:
                             type: "array"
                             items:
@@ -22655,7 +22683,8 @@ paths:
                                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                     fallbacks:
                                       type: "array"
                                       items:
@@ -23347,7 +23376,8 @@ paths:
                                       - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                       - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                       - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                  description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                      - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                  description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                 fallbacks:
                                   type: "array"
                                   items:
@@ -23691,7 +23721,8 @@ paths:
                                                 - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                                 - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                                 - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                            description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                                - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                            description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                           fallbacks:
                                             type: "array"
                                             items:
@@ -24485,7 +24516,8 @@ paths:
                                 - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                 - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                 - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                            description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                - $ref: "#/components/schemas/ResponseHealingPlugin"
+                            description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                           fallbacks:
                             type: "array"
                             items:
@@ -24829,7 +24861,8 @@ paths:
                                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                     fallbacks:
                                       type: "array"
                                       items:
@@ -25248,7 +25281,8 @@ paths:
                                   - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                   - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                   - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                              description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                  - $ref: "#/components/schemas/ResponseHealingPlugin"
+                              description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                             fallbacks:
                               type: "array"
                               items:
@@ -25595,7 +25629,8 @@ paths:
                                     - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                     - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                     - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                    - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                               fallbacks:
                                 type: "array"
                                 items:
@@ -26362,7 +26397,8 @@ paths:
                                 - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                 - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                 - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                            description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                - $ref: "#/components/schemas/ResponseHealingPlugin"
+                            description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                           fallbacks:
                             type: "array"
                             items:
@@ -26706,7 +26742,8 @@ paths:
                                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                     fallbacks:
                                       type: "array"
                                       items:
@@ -27485,7 +27522,8 @@ paths:
                                   - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                   - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                   - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                              description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                  - $ref: "#/components/schemas/ResponseHealingPlugin"
+                              description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                             fallbacks:
                               type: "array"
                               items:
@@ -27832,7 +27870,8 @@ paths:
                                     - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                     - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                     - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                    - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                               fallbacks:
                                 type: "array"
                                 items:
@@ -28791,7 +28830,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KYHFSE9ESFHKECWBJM21PTKV"
+                                          default: "01KYKESHAQFCGVFJ23P9JH89S2"
                                         name:
                                           type: "string"
                                         description:
@@ -29295,7 +29334,8 @@ paths:
                                   - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                   - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                   - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                              description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                  - $ref: "#/components/schemas/ResponseHealingPlugin"
+                              description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                             fallbacks:
                               type: "array"
                               items:
@@ -29642,7 +29682,8 @@ paths:
                                     - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                     - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                     - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                    - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                               fallbacks:
                                 type: "array"
                                 items:
@@ -30601,7 +30642,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01KYHFSEBJXEPEC9T3XKD5X8A8"
+                                          default: "01KYKESHCJAFHYHA7KJXMTWA0D"
                                         name:
                                           type: "string"
                                         description:
@@ -31210,10 +31251,6 @@ paths:
                               type:
                                 - "string"
                                 - "null"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             model_type:
                               type:
                                 - "string"
@@ -31383,6 +31420,8 @@ paths:
                                     - "low"
                                     - "medium"
                                     - "high"
+                                    - "xhigh"
+                                    - "max"
                                   description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                                 budgetTokens:
                                   type: "number"
@@ -31443,6 +31482,8 @@ paths:
                                 - "poolside"
                                 - "tencent"
                                 - "nebius"
+                                - "fireworks"
+                                - "baseten"
                                 - "reson8"
                                 - "slack"
                                 - "orq"
@@ -31450,10 +31491,6 @@ paths:
                             integration_id:
                               anyOf:
                                 - type: "string"
-                                  format: "uuid"
-                                  pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                                  readOnly: true
-                                  description: "The id of the resource"
                                 - type: "string"
                                   format: "ulid"
                                   pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -31855,7 +31892,8 @@ paths:
                                   - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                   - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                   - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                              description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                  - $ref: "#/components/schemas/ResponseHealingPlugin"
+                              description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                             fallbacks:
                               type: "array"
                               items:
@@ -32814,7 +32852,8 @@ paths:
                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                     fallbacks:
                       type: "array"
                       items:
@@ -33016,10 +33055,6 @@ paths:
                         type:
                           - "string"
                           - "null"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       model_type:
                         type:
                           - "string"
@@ -33189,6 +33224,8 @@ paths:
                               - "low"
                               - "medium"
                               - "high"
+                              - "xhigh"
+                              - "max"
                             description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                           budgetTokens:
                             type: "number"
@@ -33249,6 +33286,8 @@ paths:
                           - "poolside"
                           - "tencent"
                           - "nebius"
+                          - "fireworks"
+                          - "baseten"
                           - "reson8"
                           - "slack"
                           - "orq"
@@ -33256,10 +33295,6 @@ paths:
                       integration_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -33661,7 +33696,8 @@ paths:
                             - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                             - $ref: "#/components/schemas/PIIRedactionPluginEn"
                             - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                        description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                            - $ref: "#/components/schemas/ResponseHealingPlugin"
+                        description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                       fallbacks:
                         type: "array"
                         items:
@@ -34138,10 +34174,6 @@ paths:
                         type:
                           - "string"
                           - "null"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       model_type:
                         type:
                           - "string"
@@ -34311,6 +34343,8 @@ paths:
                               - "low"
                               - "medium"
                               - "high"
+                              - "xhigh"
+                              - "max"
                             description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                           budgetTokens:
                             type: "number"
@@ -34371,6 +34405,8 @@ paths:
                           - "poolside"
                           - "tencent"
                           - "nebius"
+                          - "fireworks"
+                          - "baseten"
                           - "reson8"
                           - "slack"
                           - "orq"
@@ -34378,10 +34414,6 @@ paths:
                       integration_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -34783,7 +34815,8 @@ paths:
                             - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                             - $ref: "#/components/schemas/PIIRedactionPluginEn"
                             - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                        description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                            - $ref: "#/components/schemas/ResponseHealingPlugin"
+                        description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                       fallbacks:
                         type: "array"
                         items:
@@ -35720,7 +35753,8 @@ paths:
                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                     fallbacks:
                       type: "array"
                       items:
@@ -35960,10 +35994,6 @@ paths:
                         type:
                           - "string"
                           - "null"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       model_type:
                         type:
                           - "string"
@@ -36133,6 +36163,8 @@ paths:
                               - "low"
                               - "medium"
                               - "high"
+                              - "xhigh"
+                              - "max"
                             description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                           budgetTokens:
                             type: "number"
@@ -36193,6 +36225,8 @@ paths:
                           - "poolside"
                           - "tencent"
                           - "nebius"
+                          - "fireworks"
+                          - "baseten"
                           - "reson8"
                           - "slack"
                           - "orq"
@@ -36200,10 +36234,6 @@ paths:
                       integration_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -36605,7 +36635,8 @@ paths:
                             - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                             - $ref: "#/components/schemas/PIIRedactionPluginEn"
                             - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                        description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                            - $ref: "#/components/schemas/ResponseHealingPlugin"
+                        description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                       fallbacks:
                         type: "array"
                         items:
@@ -37141,10 +37172,6 @@ paths:
                                   type:
                                     - "string"
                                     - "null"
-                                  format: "uuid"
-                                  pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                                  readOnly: true
-                                  description: "The id of the resource"
                                 model_type:
                                   type:
                                     - "string"
@@ -37314,6 +37341,8 @@ paths:
                                         - "low"
                                         - "medium"
                                         - "high"
+                                        - "xhigh"
+                                        - "max"
                                       description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                                     budgetTokens:
                                       type: "number"
@@ -37374,6 +37403,8 @@ paths:
                                     - "poolside"
                                     - "tencent"
                                     - "nebius"
+                                    - "fireworks"
+                                    - "baseten"
                                     - "reson8"
                                     - "slack"
                                     - "orq"
@@ -37381,10 +37412,6 @@ paths:
                                 integration_id:
                                   anyOf:
                                     - type: "string"
-                                      format: "uuid"
-                                      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                                      readOnly: true
-                                      description: "The id of the resource"
                                     - type: "string"
                                       format: "ulid"
                                       pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -37786,7 +37813,8 @@ paths:
                                       - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                       - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                       - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                                  description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                      - $ref: "#/components/schemas/ResponseHealingPlugin"
+                                  description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                                 fallbacks:
                                   type: "array"
                                   items:
@@ -38258,10 +38286,6 @@ paths:
                             type:
                               - "string"
                               - "null"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           model_type:
                             type:
                               - "string"
@@ -38431,6 +38455,8 @@ paths:
                                   - "low"
                                   - "medium"
                                   - "high"
+                                  - "xhigh"
+                                  - "max"
                                 description: "Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response."
                               budgetTokens:
                                 type: "number"
@@ -38491,6 +38517,8 @@ paths:
                               - "poolside"
                               - "tencent"
                               - "nebius"
+                              - "fireworks"
+                              - "baseten"
                               - "reson8"
                               - "slack"
                               - "orq"
@@ -38498,10 +38526,6 @@ paths:
                           integration_id:
                             anyOf:
                               - type: "string"
-                                format: "uuid"
-                                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                                readOnly: true
-                                description: "The id of the resource"
                               - type: "string"
                                 format: "ulid"
                                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -38903,7 +38927,8 @@ paths:
                                 - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                                 - $ref: "#/components/schemas/PIIRedactionPluginEn"
                                 - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                            description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                                - $ref: "#/components/schemas/ResponseHealingPlugin"
+                            description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                           fallbacks:
                             type: "array"
                             items:
@@ -39370,7 +39395,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KYHFSEG0ZJS0FNWQPETWVA8V"
+                              default: "tool_01KYKESHH93THPN8QZ6N3T6B01"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39471,7 +39496,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KYHFSEG28RJV7Z4V11K6B7QD"
+                              default: "tool_01KYKESHHBVWNWGG5HCRNVZK45"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39574,7 +39599,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KYHFSEG46V5YMGA60F58MMFE"
+                              default: "tool_01KYKESHHEZ81959SA4KN53TH2"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39718,7 +39743,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KYHFSEG7W0ZS8JNZNA1AX1MH"
+                              default: "tool_01KYKESHHHDG40K60EPJXP3S0P"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39794,7 +39819,7 @@ paths:
                                     properties:
                                       id:
                                         type: "string"
-                                        default: "01KYHFSEG969GFFZMW0HT9YWQY"
+                                        default: "01KYKESHHJ4MKHZC91WKDDRHMF"
                                       name:
                                         type: "string"
                                       description:
@@ -39853,7 +39878,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01KYHFSEGBY8BJCX37CZHE98QM"
+                              default: "tool_01KYKESHHKDVQ4QY7ZM2S707BV"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40413,7 +40438,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEHJSNTD12BYJWBBT5W3"
+                        default: "tool_01KYKESHJ1DGWC22ANAXSCM1EE"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40514,7 +40539,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEHMFTE6ARYXEH0EBNS9"
+                        default: "tool_01KYKESHJ4G7YS9ND2BGDSYJ5S"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40617,7 +40642,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEHP19V2W8XS93HXZGKY"
+                        default: "tool_01KYKESHJ5WPG7ANQ1SFNNNQ7J"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40761,7 +40786,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEHSV8RY9AVE2AGCFFGZ"
+                        default: "tool_01KYKESHJ82SW2RA10CQV8JC43"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40837,7 +40862,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KYHFSEHVS7GJ4BAET0Q5JSC6"
+                                  default: "01KYKESHJA46KQ89AWEN7GCA61"
                                 name:
                                   type: "string"
                                 description:
@@ -40896,7 +40921,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEHW7XS9HQ8WFJGAY1DG"
+                        default: "tool_01KYKESHJB765T9JZ0AFZNVRJC"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -41362,7 +41387,7 @@ paths:
                             properties:
                               id:
                                 type: "string"
-                                default: "01KYHFSEJT3V72TWF0XPZZM0A8"
+                                default: "01KYKESHK7XYPQHY81MVHKEJRW"
                               name:
                                 type: "string"
                               description:
@@ -41508,7 +41533,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEJ5A3X0MJTNT9FCMZCK"
+                        default: "tool_01KYKESHJNF27RYSPJ6MPJK4PG"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -41609,7 +41634,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEJ6PETATYB32BTB1Z7E"
+                        default: "tool_01KYKESHJQBFMZZNCRMV0RWHCD"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -41712,7 +41737,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEJ8XN1RMD77ZSK74Q4W"
+                        default: "tool_01KYKESHJTRXB2TV9PE6Y9YK52"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -41856,7 +41881,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEJB47Z0MWCF5TQE2673"
+                        default: "tool_01KYKESHJXPNQ7PXK0EJPZS68D"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -41932,7 +41957,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KYHFSEJD387H5NZ8VFCJB8SB"
+                                  default: "01KYKESHJYC1CYJ6Y5HESWM6GF"
                                 name:
                                   type: "string"
                                 description:
@@ -41991,7 +42016,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEJFN1TD2NXRQCPTNKFG"
+                        default: "tool_01KYKESHJZ5KBDS104ZZJDV3RQ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42152,7 +42177,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEK90J6Z50JQS9FZXPV7"
+                        default: "tool_01KYKESHKP2AP9TRHZS0R622RG"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42253,7 +42278,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEKBSNH0CVQKVJKR11EV"
+                        default: "tool_01KYKESHKR52HTWSP17S8VAK2R"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42356,7 +42381,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEKD0MTGYM5JJP7TDHD1"
+                        default: "tool_01KYKESHKTGR5S3DEZG1T4XWZ2"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42500,7 +42525,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEKGF15T7W3YKFPXD0WP"
+                        default: "tool_01KYKESHKX3J8Q9J4J70HNHVCN"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -42576,7 +42601,7 @@ paths:
                               properties:
                                 id:
                                   type: "string"
-                                  default: "01KYHFSEKKQC3VB6SPP8BEEXGG"
+                                  default: "01KYKESHKYDQXN398VKS6M7909"
                                 name:
                                   type: "string"
                                 description:
@@ -42635,7 +42660,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01KYHFSEKM5348YSGN97WQXSQZ"
+                        default: "tool_01KYKESHKZC6QYV28V1XZ510C5"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -44859,7 +44884,7 @@ paths:
                           type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                          default: "01KYHFSEPSKYP213MWTWA6C08P"
+                          default: "01KYKESHQTHB9EA7RRRMAJC8VW"
                           readOnly: true
                           description: "The unique identifier of the data source"
                         display_name:
@@ -44893,17 +44918,11 @@ paths:
                           type:
                             - "string"
                             - "null"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
                           description: "The user ID of the creator of the knowledge base"
                         update_by_id:
                           type:
                             - "string"
                             - "null"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
                           description: "The user ID of the last user who updated the knowledge base"
                         knowledge_id:
                           type: "string"
@@ -45062,7 +45081,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KYHFSEPYB7RHGM9S5YW820Y7"
+                    default: "01KYKESHQYWMT7MH16HYC4EGQ1"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -45096,17 +45115,11 @@ paths:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the creator of the knowledge base"
                   update_by_id:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the last user who updated the knowledge base"
                   knowledge_id:
                     type: "string"
@@ -45185,7 +45198,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KYHFSEPWERTGKZ4SYMZQQ639"
+                    default: "01KYKESHQWTFNY0BQWSYDY39BZ"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -45219,17 +45232,11 @@ paths:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the creator of the knowledge base"
                   update_by_id:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the last user who updated the knowledge base"
                   knowledge_id:
                     type: "string"
@@ -45347,7 +45354,7 @@ paths:
                     type: "string"
                     format: "ulid"
                     pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
-                    default: "01KYHFSEQ3C33SA1ZT94MSY4F7"
+                    default: "01KYKESHR2PM9PR2MYAS523RAA"
                     readOnly: true
                     description: "The unique identifier of the data source"
                   display_name:
@@ -45381,17 +45388,11 @@ paths:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the creator of the knowledge base"
                   update_by_id:
                     type:
                       - "string"
                       - "null"
-                    format: "uuid"
-                    pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                    readOnly: true
                     description: "The user ID of the last user who updated the knowledge base"
                   knowledge_id:
                     type: "string"
@@ -47992,10 +47993,6 @@ paths:
                         _id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48010,10 +48007,6 @@ paths:
                         project_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48023,10 +48016,6 @@ paths:
                         workspace_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48046,10 +48035,6 @@ paths:
                         created_by_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48060,10 +48045,6 @@ paths:
                         updated_by_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48077,7 +48058,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-27T09:51:21.837Z"
+                          default: "2026-07-28T04:12:12.096Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -48085,7 +48066,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:21.838Z"
+                              default: "2026-07-28T04:12:12.098Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -48144,10 +48125,6 @@ paths:
                   _id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48162,10 +48139,6 @@ paths:
                   project_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48175,10 +48148,6 @@ paths:
                   workspace_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48198,10 +48167,6 @@ paths:
                   created_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48212,10 +48177,6 @@ paths:
                   updated_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48229,7 +48190,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-27T09:51:21.837Z"
+                    default: "2026-07-28T04:12:12.096Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48237,7 +48198,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-27T09:51:21.838Z"
+                        default: "2026-07-28T04:12:12.098Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -48266,10 +48227,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48291,10 +48248,6 @@ paths:
                   _id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48309,10 +48262,6 @@ paths:
                   project_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48322,10 +48271,6 @@ paths:
                   workspace_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48345,10 +48290,6 @@ paths:
                   created_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48359,10 +48300,6 @@ paths:
                   updated_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48376,7 +48313,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-27T09:51:21.837Z"
+                    default: "2026-07-28T04:12:12.096Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48384,7 +48321,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-27T09:51:21.838Z"
+                        default: "2026-07-28T04:12:12.098Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -48418,10 +48355,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48446,10 +48379,6 @@ paths:
                 project_id:
                   anyOf:
                     - type: "string"
-                      format: "uuid"
-                      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                      readOnly: true
-                      description: "The id of the resource"
                     - type: "string"
                       format: "ulid"
                       pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48471,10 +48400,6 @@ paths:
                   _id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48489,10 +48414,6 @@ paths:
                   project_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48502,10 +48423,6 @@ paths:
                   workspace_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48525,10 +48442,6 @@ paths:
                   created_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48539,10 +48452,6 @@ paths:
                   updated_by_id:
                     anyOf:
                       - type: "string"
-                        format: "uuid"
-                        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                        readOnly: true
-                        description: "The id of the resource"
                       - type: "string"
                         format: "ulid"
                         pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48556,7 +48465,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-27T09:51:21.837Z"
+                    default: "2026-07-28T04:12:12.096Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -48564,7 +48473,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-27T09:51:21.838Z"
+                        default: "2026-07-28T04:12:12.098Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -48598,10 +48507,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48634,10 +48539,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -48998,7 +48899,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-27T09:51:39.833Z"
+                                    default: "2026-07-28T04:12:43.197Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -49071,7 +48972,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-27T09:51:39.834Z"
+                                    default: "2026-07-28T04:12:43.199Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -49144,7 +49045,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-27T09:51:39.836Z"
+                                    default: "2026-07-28T04:12:43.200Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -49217,7 +49118,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-07-27T09:51:39.837Z"
+                                    default: "2026-07-28T04:12:43.201Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -49257,7 +49158,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-27T09:51:21.837Z"
+                          default: "2026-07-28T04:12:12.096Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -49265,7 +49166,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:21.838Z"
+                              default: "2026-07-28T04:12:12.098Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -49303,10 +49204,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -49893,7 +49790,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-27T09:51:39.858Z"
+                                default: "2026-07-28T04:12:43.228Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -49966,7 +49863,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-27T09:51:39.859Z"
+                                default: "2026-07-28T04:12:43.229Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -50039,7 +49936,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-27T09:51:39.860Z"
+                                default: "2026-07-28T04:12:43.231Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -50112,7 +50009,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-07-27T09:51:39.861Z"
+                                default: "2026-07-28T04:12:43.232Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -50152,7 +50049,7 @@ paths:
                           format: "date-time"
                         - type: "string"
                           format: "date-time"
-                      default: "2026-07-27T09:51:21.837Z"
+                      default: "2026-07-28T04:12:12.096Z"
                       readOnly: true
                       format: "date-time"
                       description: "The date and time the resource was created"
@@ -50160,7 +50057,7 @@ paths:
                       anyOf:
                         - type: "string"
                           format: "date-time"
-                          default: "2026-07-27T09:51:21.838Z"
+                          default: "2026-07-28T04:12:12.098Z"
                         - type: "string"
                           format: "date-time"
                       readOnly: true
@@ -50187,10 +50084,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -50525,7 +50418,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.846Z"
+                              default: "2026-07-28T04:12:43.212Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -50598,7 +50491,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.848Z"
+                              default: "2026-07-28T04:12:43.214Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -50671,7 +50564,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.849Z"
+                              default: "2026-07-28T04:12:43.215Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -50744,7 +50637,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.850Z"
+                              default: "2026-07-28T04:12:43.217Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -50784,7 +50677,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-27T09:51:21.837Z"
+                    default: "2026-07-28T04:12:12.096Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -50792,7 +50685,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-27T09:51:21.838Z"
+                        default: "2026-07-28T04:12:12.098Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -50823,10 +50716,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -51413,7 +51302,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.887Z"
+                              default: "2026-07-28T04:12:43.288Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -51486,7 +51375,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.888Z"
+                              default: "2026-07-28T04:12:43.290Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -51559,7 +51448,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.889Z"
+                              default: "2026-07-28T04:12:43.291Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -51632,7 +51521,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:39.890Z"
+                              default: "2026-07-28T04:12:43.292Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -51672,7 +51561,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-07-27T09:51:21.837Z"
+                    default: "2026-07-28T04:12:12.096Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -51680,7 +51569,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-07-27T09:51:21.838Z"
+                        default: "2026-07-28T04:12:12.098Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -51712,10 +51601,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -51759,10 +51644,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -52354,7 +52235,8 @@ paths:
                           - $ref: "#/components/schemas/PIIRedactionPluginAuto"
                           - $ref: "#/components/schemas/PIIRedactionPluginEn"
                           - $ref: "#/components/schemas/PIIRedactionPluginNl"
-                      description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                          - $ref: "#/components/schemas/ResponseHealingPlugin"
+                      description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output."
                     fallbacks:
                       type: "array"
                       items:
@@ -57923,7 +57805,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-27T09:51:40.031Z"
+                      default: "2026-07-28T04:12:43.454Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -57965,7 +57847,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-27T09:51:40.032Z"
+                      default: "2026-07-28T04:12:43.455Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -58007,7 +57889,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-27T09:51:40.033Z"
+                      default: "2026-07-28T04:12:43.456Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -58049,7 +57931,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-07-27T09:51:40.034Z"
+                      default: "2026-07-28T04:12:43.457Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -58310,10 +58192,6 @@ paths:
         - schema:
             anyOf:
               - type: "string"
-                format: "uuid"
-                pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                readOnly: true
-                description: "The id of the resource"
               - type: "string"
                 format: "ulid"
                 pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58364,10 +58242,6 @@ paths:
                         project_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58384,7 +58258,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-27T09:51:21.837Z"
+                          default: "2026-07-28T04:12:12.096Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -58392,7 +58266,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:21.838Z"
+                              default: "2026-07-28T04:12:12.098Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -58446,10 +58320,6 @@ paths:
                         project_id:
                           anyOf:
                             - type: "string"
-                              format: "uuid"
-                              pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                              readOnly: true
-                              description: "The id of the resource"
                             - type: "string"
                               format: "ulid"
                               pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58466,7 +58336,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-07-27T09:51:21.837Z"
+                          default: "2026-07-28T04:12:12.096Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -58474,7 +58344,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-07-27T09:51:21.838Z"
+                              default: "2026-07-28T04:12:12.098Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -58533,10 +58403,6 @@ paths:
                     project_id:
                       anyOf:
                         - type: "string"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
-                          description: "The id of the resource"
                         - type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58581,10 +58447,6 @@ paths:
                     project_id:
                       anyOf:
                         - type: "string"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
-                          description: "The id of the resource"
                         - type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58642,10 +58504,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58662,7 +58520,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -58670,7 +58528,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -58724,10 +58582,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58744,7 +58598,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -58752,7 +58606,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -58830,10 +58684,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58850,7 +58700,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -58858,7 +58708,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -58912,10 +58762,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -58932,7 +58778,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -58940,7 +58786,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -59007,10 +58853,6 @@ paths:
                     project_id:
                       anyOf:
                         - type: "string"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
-                          description: "The id of the resource"
                         - type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -59055,10 +58897,6 @@ paths:
                     project_id:
                       anyOf:
                         - type: "string"
-                          format: "uuid"
-                          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                          readOnly: true
-                          description: "The id of the resource"
                         - type: "string"
                           format: "ulid"
                           pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -59116,10 +58954,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -59136,7 +58970,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -59144,7 +58978,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -59198,10 +59032,6 @@ paths:
                       project_id:
                         anyOf:
                           - type: "string"
-                            format: "uuid"
-                            pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-                            readOnly: true
-                            description: "The id of the resource"
                           - type: "string"
                             format: "ulid"
                             pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
@@ -59218,7 +59048,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-07-27T09:51:21.837Z"
+                        default: "2026-07-28T04:12:12.096Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -59226,7 +59056,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-07-27T09:51:21.838Z"
+                            default: "2026-07-28T04:12:12.098Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -67053,9 +66883,9 @@ paths:
                   description: "Whether to allow parallel tool calls."
                   type: "boolean"
                 plugins:
-                  description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response."
+                  description: "Request-scoped transforms applied to the text exchanged with the model. Supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and response_healing, which repairs malformed JSON in non-streaming model output."
                   items:
-                    $ref: "#/components/schemas/PublicPIIRedactionPlugin"
+                    $ref: "#/components/schemas/PublicPlugin"
                   type:
                     - "array"
                     - "null"
@@ -67071,7 +66901,7 @@ paths:
                   type: "string"
                 reasoning:
                   $ref: "#/components/schemas/ReasoningParam"
-                  description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
+                  description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost."
                 retry:
                   $ref: "#/components/schemas/ResponseRetryConfig"
                   description: "Retry configuration. Specify the number of retries and which HTTP status codes should trigger a retry."
