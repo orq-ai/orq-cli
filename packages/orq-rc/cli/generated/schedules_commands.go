@@ -271,7 +271,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id payload{input: Updated input for the next run, variables.region: APAC}\n"
+		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id expression: @every 6h\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
@@ -281,7 +281,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{
-					"payload{input: Updated input for the next run, variables.region: APAC}",
+					"expression: @every 6h",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
