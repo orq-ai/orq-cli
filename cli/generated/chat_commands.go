@@ -148,7 +148,7 @@ func registerchatCommands(root *cobra.Command) {
 							Name:        "plugins",
 							FlagName:    "plugins",
 							Type:        "json",
-							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output.",
 						},
 						{
 							Name:        "presence_penalty",
@@ -405,7 +405,7 @@ func registerchatCommands(root *cobra.Command) {
 					Name:        "plugins",
 					FlagName:    "plugins",
 					Type:        "json",
-					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output.",
 				},
 				{
 					Name:        "presence_penalty",
