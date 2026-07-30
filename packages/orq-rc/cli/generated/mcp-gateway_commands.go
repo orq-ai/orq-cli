@@ -69,7 +69,7 @@ func registermcpGatewayCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an MCP gateway",
-			Long:    bartolocli.Markdown("Creates a client-facing MCP gateway that links one or more synced upstream servers and exposes a unified MCP endpoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `egress_policy` (object)\n- `key` (string)\n- `project_id` (string)\n- `runtime_limits` (object)\n- `server_links` (array)\n- `tool_naming` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a client-facing MCP gateway that links one or more synced upstream servers and exposes a unified MCP endpoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `egress_policy` (object)\n- `key` (string)\n- `mode` (string)\n- `project_id` (string)\n- `runtime_limits` (object)\n- `server_links` (array)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -102,6 +102,17 @@ func registermcpGatewayCommands(root *cobra.Command) {
 							FlagName:    "key",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "mode",
+							FlagName:    "mode",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"MCP_GATEWAY_MODE_UNSPECIFIED",
+								"MCP_GATEWAY_MODE_CODE",
+								"MCP_GATEWAY_MODE_DIRECT",
+							},
 						},
 						{
 							Name:        "project_id",
@@ -176,6 +187,17 @@ func registermcpGatewayCommands(root *cobra.Command) {
 					FlagName:    "key",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "mode",
+					FlagName:    "mode",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"MCP_GATEWAY_MODE_UNSPECIFIED",
+						"MCP_GATEWAY_MODE_CODE",
+						"MCP_GATEWAY_MODE_DIRECT",
+					},
 				},
 				{
 					Name:        "project_id",
@@ -333,7 +355,7 @@ func registermcpGatewayCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-tools gateway-id",
 			Short:   "List exposed tools for a gateway",
-			Long:    bartolocli.Markdown("Returns the namespaced, policy-filtered tool view for a gateway."),
+			Long:    bartolocli.Markdown("Returns the namespaced tool view for a gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -1381,83 +1403,9 @@ func registermcpGatewayCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "test-tool gateway-id",
-			Short:   "Test an MCP gateway tool",
-			Long:    bartolocli.Markdown("Executes a single exposed tool through a gateway for testing.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `arguments` (object)\n- `tool_name` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{
-						{
-							Name:        "arguments",
-							FlagName:    "arguments",
-							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "tool_name",
-							FlagName:    "tool-name",
-							Type:        "string",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiMcpGatewayTestTool(args[0], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		mcpGatewayCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "arguments",
-					FlagName:    "arguments",
-					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "tool_name",
-					FlagName:    "tool-name",
-					Type:        "string",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP gateway",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `egress_policy` (object)\n- `key` (string)\n- `runtime_limits` (object)\n- `server_links` (array)\n- `status` (string)\n- `tool_naming` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `egress_policy` (object)\n- `key` (string)\n- `mode` (string)\n- `runtime_limits` (object)\n- `server_links` (array)\n- `status` (string)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -1490,6 +1438,17 @@ func registermcpGatewayCommands(root *cobra.Command) {
 							FlagName:    "key",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "mode",
+							FlagName:    "mode",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"MCP_GATEWAY_MODE_UNSPECIFIED",
+								"MCP_GATEWAY_MODE_CODE",
+								"MCP_GATEWAY_MODE_DIRECT",
+							},
 						},
 						{
 							Name:        "runtime_limits",
@@ -1569,6 +1528,17 @@ func registermcpGatewayCommands(root *cobra.Command) {
 					FlagName:    "key",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "mode",
+					FlagName:    "mode",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"MCP_GATEWAY_MODE_UNSPECIFIED",
+						"MCP_GATEWAY_MODE_CODE",
+						"MCP_GATEWAY_MODE_DIRECT",
+					},
 				},
 				{
 					Name:        "runtime_limits",
