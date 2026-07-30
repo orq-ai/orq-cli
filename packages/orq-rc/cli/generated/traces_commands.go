@@ -14,7 +14,7 @@ func registertracesCommands(root *cobra.Command) {
 	tracesCmd := &cobra.Command{
 		Use:   "traces",
 		Short: "Traces",
-		Long:  bartolocli.Markdown("Query and inspect ingested trace data: search trace summaries, aggregate metrics, and read individual traces and their spans."),
+		Long:  bartolocli.Markdown("Traces"),
 	}
 	root.AddCommand(tracesCmd)
 
