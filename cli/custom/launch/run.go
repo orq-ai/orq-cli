@@ -36,8 +36,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		}
 	}
 	if flags.Sandbox {
-		// ponytail: sandbox lands in the docker phase; keep flag surface stable
-		return 2, fmt.Errorf("--sandbox is not available yet")
+		return RunSandbox(def, flags, passthrough)
 	}
 
 	creds, err := ResolveCredentials(os.Getenv)
