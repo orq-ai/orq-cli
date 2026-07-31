@@ -214,6 +214,8 @@ The agent CLI itself must be installed (each subcommand prints an install hint w
 
 The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into every launched agent automatically using each harness's native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`.
 
+For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) is loaded **session-only** via `--plugin-url` — nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
+
 ### Shared flags
 
 | Flag | Description |
@@ -223,6 +225,7 @@ The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into every launched agen
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
 | `--no-mcp` | Do not wire the orq MCP server into the agent |
+| `--no-skills` | Do not load the orq skills plugin (claude only) |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--sandbox` | Run inside a throwaway Docker container |
 | `--mount-cwd` | Sandbox only: mount the current directory read-write at `/workspace` |

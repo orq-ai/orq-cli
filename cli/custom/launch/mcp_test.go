@@ -32,8 +32,11 @@ func TestClaudeMCPWiring(t *testing.T) {
 	}
 	defer plan.Cleanup()
 
-	if len(plan.PreArgs) != 2 || plan.PreArgs[0] != "--mcp-config" {
+	if len(plan.PreArgs) != 4 || plan.PreArgs[0] != "--mcp-config" {
 		t.Fatalf("preargs: %v", plan.PreArgs)
+	}
+	if plan.PreArgs[2] != "--plugin-url" || plan.PreArgs[3] != DefaultSkillsPluginURL {
+		t.Fatalf("skills plugin args: %v", plan.PreArgs)
 	}
 	data, err := os.ReadFile(plan.PreArgs[1])
 	if err != nil {
@@ -53,12 +56,26 @@ func TestClaudeMCPWiring(t *testing.T) {
 }
 
 func TestClaudeNoMCP(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{NoMCP: true}))
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{NoMCP: true, NoSkills: true}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.PreArgs) != 0 || plan.Cleanup != nil {
-		t.Fatalf("no-mcp should skip wiring: %v", plan.PreArgs)
+		t.Fatalf("opt-outs should skip all wiring: %v", plan.PreArgs)
+	}
+}
+
+func TestClaudeSkillsOverride(t *testing.T) {
+	plan, err := resolveClaude(&AgentContext{
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Getenv: env(map[string]string{"ORQ_SKILLS_URL": "https://example.com/custom.zip"}),
+		Flags:  GatewayFlags{NoMCP: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.PreArgs) != 2 || plan.PreArgs[1] != "https://example.com/custom.zip" {
+		t.Fatalf("skills url override: %v", plan.PreArgs)
 	}
 }
 
