@@ -71,6 +71,9 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
+	if url := mcpURL(ctx); url != "" {
+		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
+	}
 	return plan, nil
 }
 

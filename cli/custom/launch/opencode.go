@@ -96,7 +96,7 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		return nil, err
 	}
 
-	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels)
+	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, mcpURL(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,8 @@ type openCodeProvider struct {
 
 // BuildOpenCodeConfigContent serializes the inline OpenCode/Kilo config JSON.
 // The api key stays out of the file via {env:ORQ_API_KEY} interpolation.
-func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string) (string, error) {
+// A non-empty mcpServerURL adds the orq MCP server as a remote entry.
+func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, mcpServerURL string) (string, error) {
 	options := map[string]string{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
 	toModelMap := func(models []string) map[string]map[string]any {
 		out := make(map[string]map[string]any, len(models))
@@ -163,14 +164,21 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 		}
 	}
 
+	var mcp map[string]any
+	if mcpServerURL != "" {
+		mcp = openCodeMCPBlock(mcpServerURL)
+	}
+
 	encoded, err := json.Marshal(struct {
 		Schema   string                      `json:"$schema"`
 		Provider map[string]openCodeProvider `json:"provider"`
 		Model    string                      `json:"model"`
+		MCP      map[string]any              `json:"mcp,omitempty"`
 	}{
 		Schema:   "https://opencode.ai/config.json",
 		Provider: provider,
 		Model:    ToOpenCodeModel(gatewayModel),
+		MCP:      mcp,
 	})
 	return string(encoded), err
 }

@@ -23,6 +23,7 @@ func TestOpenCodeConfigSplitsProviders(t *testing.T) {
 		"https://api.orq.ai/v3/router",
 		"openai/gpt-5-mini",
 		[]string{"openai/gpt-5-mini", "anthropic/claude-sonnet-4-6"},
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +71,7 @@ func TestOpenCodeConfigOmitsEmptyProvider(t *testing.T) {
 		"https://api.orq.ai/v3/router",
 		"anthropic/claude-sonnet-4-6",
 		[]string{"anthropic/claude-sonnet-4-6"},
+		"",
 	)
 	if strings.Contains(content, "orq-openai") {
 		t.Fatalf("responses provider should be absent: %s", content)
