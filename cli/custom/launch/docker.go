@@ -142,12 +142,17 @@ func ensureImage(def *AgentDef, rebuild bool) error {
 
 // copyTempDirs replicates each resolved TempDir into the container at its
 // host path, so env vars and argv paths embedded by Resolve stay valid.
+// Host temp paths (e.g. /var/folders on macOS) don't exist in the container
+// and need root to create; the session itself still runs as the agent user.
 func copyTempDirs(container string, dirs []TempDir) error {
 	for _, dir := range dirs {
-		if _, err := dockerOutput("exec", container, "mkdir", "-p", dir.HostPath); err != nil {
+		if _, err := dockerOutput("exec", "-u", "root", container, "mkdir", "-p", dir.HostPath); err != nil {
 			return err
 		}
 		if _, err := dockerOutput("cp", dir.HostPath+"/.", container+":"+dir.HostPath); err != nil {
+			return err
+		}
+		if _, err := dockerOutput("exec", "-u", "root", container, "chown", "-R", "agent:agent", dir.HostPath); err != nil {
 			return err
 		}
 	}
