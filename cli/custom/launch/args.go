@@ -72,6 +72,8 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 			flags.NoFetchModels = true
 		case arg == "--no-mcp":
 			flags.NoMCP = true
+		case arg == "--no-skills":
+			flags.NoSkills = true
 		case arg == "--sandbox":
 			flags.Sandbox = true
 		case arg == "--mount-cwd":
