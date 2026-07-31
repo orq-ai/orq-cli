@@ -10,6 +10,19 @@ import (
 // so orq tools are available without manual per-harness setup.
 const DefaultMCPURL = "https://my.orq.ai/v2/mcp"
 
+// DefaultSkillsPluginURL is the orq skills plugin (github.com/orq-ai/
+// assistant-plugins) as a zip; claude loads it session-only via --plugin-url.
+const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/refs/heads/main.zip"
+
+// skillsPluginURL returns the plugin zip URL, or "" when disabled via
+// --no-skills.
+func skillsPluginURL(ctx *AgentContext) string {
+	if ctx.Flags.NoSkills {
+		return ""
+	}
+	return firstNonEmpty(ctx.Getenv("ORQ_SKILLS_URL"), DefaultSkillsPluginURL)
+}
+
 // mcpURL returns the orq MCP endpoint for this launch, or "" when disabled
 // via --no-mcp. The API key is never embedded — each harness references the
 // ORQ_API_KEY env var through its own mechanism.

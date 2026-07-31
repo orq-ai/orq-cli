@@ -62,6 +62,11 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
 		plan.Cleanup = cleanup
 	}
+	if url := skillsPluginURL(ctx); url != "" {
+		// Session-only plugin load: claude fetches the zip itself, nothing is
+		// installed into the user's ~/.claude config.
+		plan.PreArgs = append(plan.PreArgs, "--plugin-url", url)
+	}
 	return plan, nil
 }
 
