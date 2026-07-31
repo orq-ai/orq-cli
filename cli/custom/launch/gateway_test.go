@@ -221,13 +221,14 @@ func TestFetchEnabledModelsHTTP(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Fatalf("auth header: %s", r.Header.Get("Authorization"))
 		}
-		w.Write([]byte(`{"data":[
+		// Top-level array, matching the real endpoint shape.
+		w.Write([]byte(`[
 			{"provider":"openai","model_id":"gpt-5-mini","model_type":"chat","enabled":true,
 			 "metadata":{"context_window":400000,"max_output_tokens":128000}},
 			{"provider":"openai","model_id":"dall-e","model_type":"image","enabled":true},
 			{"provider":"anthropic","model_id":"claude-sonnet-4-6","model_type":"chat","enabled":false},
 			{"provider":"anthropic","model_id":"claude-haiku-4-5","model_type":"chat","enabled":true}
-		]}`))
+		]`))
 	}))
 	defer srv.Close()
 
