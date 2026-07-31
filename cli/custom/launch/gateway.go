@@ -151,24 +151,23 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("GET /v2/models: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
-	var payload struct {
-		Data []struct {
-			Provider  string `json:"provider"`
-			ModelID   string `json:"model_id"`
-			ModelType string `json:"model_type"`
-			Enabled   bool   `json:"enabled"`
-			Metadata  *struct {
-				ContextWindow   int `json:"context_window"`
-				MaxOutputTokens int `json:"max_output_tokens"`
-			} `json:"metadata"`
-		} `json:"data"`
+	// The endpoint returns a top-level JSON array (see openapi.yaml ModelList).
+	var payload []struct {
+		Provider  string `json:"provider"`
+		ModelID   string `json:"model_id"`
+		ModelType string `json:"model_type"`
+		Enabled   bool   `json:"enabled"`
+		Metadata  *struct {
+			ContextWindow   int `json:"context_window"`
+			MaxOutputTokens int `json:"max_output_tokens"`
+		} `json:"metadata"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
 
 	var models []ModelInfo
-	for _, m := range payload.Data {
+	for _, m := range payload {
 		if !m.Enabled || m.ModelType != "chat" {
 			continue
 		}
