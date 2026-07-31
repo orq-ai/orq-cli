@@ -231,6 +231,7 @@ func registerCommands(root *cobra.Command) {
 	addHiddenAuthAliases(root)
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewManPagesCommand())
+	root.AddCommand(commands.NewLaunchCommand())
 }
 
 func replaceDoctor(root *cobra.Command) {
