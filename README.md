@@ -212,6 +212,8 @@ orq launch kimi                   # Kimi Code
 
 The agent CLI itself must be installed (each subcommand prints an install hint when it is missing). All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into every launched agent automatically using each harness's native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`.
+
 ### Shared flags
 
 | Flag | Description |
@@ -220,6 +222,7 @@ The agent CLI itself must be installed (each subcommand prints an install hint w
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
+| `--no-mcp` | Do not wire the orq MCP server into the agent |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--sandbox` | Run inside a throwaway Docker container |
 | `--mount-cwd` | Sandbox only: mount the current directory read-write at `/workspace` |

@@ -73,6 +73,12 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	if url := mcpURL(ctx); url != "" {
+		if err := os.WriteFile(filepath.Join(home, "mcp.json"), []byte(kimiMCPConfig(url)), 0o600); err != nil {
+			cleanup()
+			return nil, err
+		}
+	}
 
 	plan := &LaunchPlan{
 		Env: map[string]string{
