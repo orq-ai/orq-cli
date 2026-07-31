@@ -10,6 +10,7 @@ require (
 	github.com/rs/zerolog v1.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.2.1
+	golang.org/x/term v0.43.0
 	gopkg.in/h2non/gentleman.v2 v2.0.3
 )
 
@@ -38,7 +39,6 @@ require (
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
