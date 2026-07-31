@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	custom "orq/cli/custom"
 	generated "orq/cli/generated"
@@ -22,5 +24,7 @@ func main() {
 	generated.Register(bartolocli.Root)
 	custom.Register(bartolocli.Root)
 
-	bartolocli.Root.Execute()
+	if err := bartolocli.Root.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
