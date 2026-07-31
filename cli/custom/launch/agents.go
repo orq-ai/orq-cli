@@ -47,6 +47,9 @@ func Agents() []AgentDef {
 	return []AgentDef{
 		claudeAgent(),
 		codexAgent(),
+		opencodeAgent(),
+		kiloAgent(),
+		kimiAgent(),
 	}
 }
 

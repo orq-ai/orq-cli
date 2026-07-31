@@ -1,0 +1,173 @@
+package launch
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	DefaultKimiModel = "anthropic/claude-sonnet-4-6"
+
+	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
+	// fork). Provider type "openai" = /chat/completions, "openai_responses" =
+	// /responses. Both read OPENAI_API_KEY / OPENAI_BASE_URL from the env, so
+	// the key stays out of the config file.
+	KimiChatProvider      = "orq"
+	KimiResponsesProvider = "orq-responses"
+
+	kimiChatType      = "openai"
+	kimiResponsesType = "openai_responses"
+
+	// Fallbacks for models the catalog has no metadata for. Kimi sends
+	// max_tokens = max_output_size on the chat path, so it must be <= the
+	// model's real output cap; 8192 is safe for all but a handful of legacy
+	// models (which do carry metadata).
+	fallbackContextSize = 262144
+	fallbackOutputSize  = 8192
+)
+
+var kimiNormalize = MakeNormalizeModel([]string{KimiResponsesProvider, KimiChatProvider})
+
+func kimiAgent() AgentDef {
+	return AgentDef{
+		Name:        "kimi",
+		Binary:      "kimi",
+		Label:       "Kimi Code",
+		InstallHint: "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
+		NpmPackage:  "@moonshot-ai/kimi-code",
+		AllowModels: true,
+		Prompt: &PromptMapping{
+			Flags:  []string{"-p", "--prompt"},
+			ToArgs: func(v string) []string { return []string{"--prompt", v} },
+		},
+		Resolve: resolveKimi,
+	}
+}
+
+// resolveKimi ports spawn-kimi.ts: router base URL, config.toml with
+// per-model context/output caps written into a fresh temp dir used as
+// KIMI_CODE_HOME (kimi has no per-file config override), so the user's real
+// ~/.kimi-code is never touched.
+func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
+	resolved, err := ResolveGatewayConfig(ResolveInput{
+		AuthToken:         ctx.Creds.APIKey,
+		APIBaseURL:        ctx.Creds.APIBaseURL,
+		Getenv:            ctx.Getenv,
+		Flags:             ctx.Flags,
+		Fetch:             ctx.Fetch,
+		Normalize:         kimiNormalize,
+		DefaultModel:      DefaultKimiModel,
+		BaseURLEnvKey:     "ORQ_KIMI_BASE_URL",
+		ModelEnvKey:       "KIMI_MODEL",
+		ModelsEnvKey:      "KIMI_MODELS",
+		CollectModelInfos: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	toml := BuildKimiConfigTOML(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos)
+	home, cleanup, err := writeKimiConfigHome(toml)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := &LaunchPlan{
+		Env: map[string]string{
+			"ORQ_API_KEY":     ctx.Creds.APIKey,
+			"OPENAI_API_KEY":  ctx.Creds.APIKey,
+			"OPENAI_BASE_URL": resolved.BaseURL,
+			"KIMI_CODE_HOME":  home,
+		},
+		TempDirs: []TempDir{{HostPath: home, EnvVar: "KIMI_CODE_HOME"}},
+		Cleanup:  cleanup,
+	}
+	if resolved.ModelFetchWarning != "" {
+		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
+	}
+	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, kimiNormalize) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", resolved.GatewayModel))
+	}
+	return plan, nil
+}
+
+// tomlString escapes a TOML basic string (model ids contain `/` and `.`).
+func tomlString(value string) string {
+	return `"` + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), `"`, `\"`) + `"`
+}
+
+// BuildKimiConfigTOML serializes kimi's config.toml. base_url is not secret;
+// api_key is omitted so the providers fall back to OPENAI_API_KEY from env.
+func BuildKimiConfigTOML(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo) string {
+	limits := make(map[string]ModelInfo, len(infos))
+	for _, info := range infos {
+		limits[info.ID] = info
+	}
+
+	var chatModels, responsesModels []string
+	for _, m := range gatewayModels {
+		if IsResponsesModel(m) {
+			responsesModels = append(responsesModels, m)
+		} else {
+			chatModels = append(chatModels, m)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "default_model = %s\n\n", tomlString(gatewayModel))
+
+	provider := func(name, typ string) {
+		fmt.Fprintf(&b, "[providers.%s]\n", name)
+		fmt.Fprintf(&b, "type = %s\n", tomlString(typ))
+		fmt.Fprintf(&b, "base_url = %s\n\n", tomlString(baseURL))
+	}
+	if len(chatModels) > 0 {
+		provider(KimiChatProvider, kimiChatType)
+	}
+	if len(responsesModels) > 0 {
+		provider(KimiResponsesProvider, kimiResponsesType)
+	}
+
+	model := func(id, providerName string) {
+		contextSize, outputSize := fallbackContextSize, fallbackOutputSize
+		if limit, ok := limits[id]; ok {
+			if limit.ContextWindow > 0 {
+				contextSize = limit.ContextWindow
+			}
+			if limit.MaxOutputTokens > 0 {
+				outputSize = limit.MaxOutputTokens
+			}
+		}
+		fmt.Fprintf(&b, "[models.%s]\n", tomlString(id))
+		fmt.Fprintf(&b, "provider = %s\n", tomlString(providerName))
+		fmt.Fprintf(&b, "model = %s\n", tomlString(id))
+		fmt.Fprintf(&b, "max_context_size = %d\n", contextSize)
+		// Kimi sends max_tokens = max_output_size on the chat path; must be <=
+		// the model's real output cap or the upstream rejects the request.
+		fmt.Fprintf(&b, "max_output_size = %d\n\n", outputSize)
+	}
+	for _, id := range chatModels {
+		model(id, KimiChatProvider)
+	}
+	for _, id := range responsesModels {
+		model(id, KimiResponsesProvider)
+	}
+
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func writeKimiConfigHome(toml string) (home string, cleanup func(), err error) {
+	home, err = os.MkdirTemp("", "orq-kimi-")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup = func() { os.RemoveAll(home) }
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(toml), 0o600); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return home, cleanup, nil
+}
