@@ -1,6 +1,9 @@
 package launch
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 const (
 	// DefaultClaudeGatewayURL is the anthropic-native gateway path — not the
@@ -37,7 +40,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
 	}
 
-	return &LaunchPlan{
+	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ANTHROPIC_BASE_URL":         baseURL,
 			"ANTHROPIC_AUTH_TOKEN":       ctx.Creds.APIKey,
@@ -46,7 +49,20 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 			"ANTHROPIC_SMALL_FAST_MODEL": smallFast,
 		},
 		Warnings: warnings,
-	}, nil
+	}
+
+	if url := mcpURL(ctx); url != "" {
+		path, cleanup, err := writeClaudeMCPConfig(url)
+		if err != nil {
+			return nil, err
+		}
+		// claude expands ${ORQ_API_KEY} from env when loading the config file.
+		plan.Env["ORQ_API_KEY"] = ctx.Creds.APIKey
+		plan.PreArgs = []string{"--mcp-config", path}
+		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
+		plan.Cleanup = cleanup
+	}
+	return plan, nil
 }
 
 func noopNormalize(model string) string { return model }

@@ -29,6 +29,7 @@ type GatewayFlags struct {
 	Models        string
 	BaseURL       string
 	NoFetchModels bool
+	NoMCP         bool
 	Sandbox       bool
 	MountCwd      bool
 	Rebuild       bool

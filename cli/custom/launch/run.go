@@ -128,6 +128,7 @@ Flags:
 	}
 	fmt.Print(`  --base-url <url>      Override the gateway base URL
   --no-fetch-models     Skip fetching the enabled-model catalog
+  --no-mcp              Do not wire the orq MCP server into the agent
 `)
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
