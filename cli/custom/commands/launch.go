@@ -29,6 +29,11 @@ through the orq.ai AI Router. Authenticate with 'orq auth login' or ORQ_API_KEY.
 			Use:                def.Name,
 			Short:              "Launch " + def.Label,
 			DisableFlagParsing: true,
+			// DisableFlagParsing hides our flags from cobra's completion
+			// machinery; ValidArgsFunction still runs, so surface them here.
+			ValidArgsFunction: func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return launch.CompletionFlags(&def, toComplete), cobra.ShellCompDirectiveNoFileComp
+			},
 			RunE: func(_ *cobra.Command, args []string) error {
 				code, err := launch.Run(&def, args)
 				if err != nil {
