@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,8 @@ const (
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
 	// fork). Provider type "openai" = /chat/completions, "openai_responses" =
-	// /responses. Both read OPENAI_API_KEY / OPENAI_BASE_URL from the env, so
-	// the key stays out of the config file.
+	// /responses. base_url is written into config.toml; the API key is read
+	// from OPENAI_API_KEY env, so only the key stays out of the file.
 	KimiChatProvider      = "orq"
 	KimiResponsesProvider = "orq-responses"
 
@@ -91,12 +92,17 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 		Cleanup:  cleanup,
 	}
 	appendModelWarnings(plan, resolved, kimiNormalize, "anthropic/claude-sonnet-4-6")
+	appendCapWarning(plan, resolved)
 	return plan, nil
 }
 
-// tomlString escapes a TOML basic string (model ids contain `/` and `.`).
+// tomlString encodes a TOML basic string. JSON string encoding is a valid
+// TOML basic string (quotes, backslashes, and control chars all escaped) —
+// raw control characters from a hostile model id would otherwise make kimi
+// reject the whole config file.
 func tomlString(value string) string {
-	return `"` + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), `"`, `\"`) + `"`
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
 }
 
 // BuildKimiConfigTOML serializes kimi's config.toml. base_url is not secret;

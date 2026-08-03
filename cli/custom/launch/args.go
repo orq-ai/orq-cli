@@ -22,9 +22,9 @@ type ParseArgvOptions struct {
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
 // shell completion (cobra flag parsing is disabled, so cobra can't enumerate
-// them itself). Kept next to ParseArgv so the two lists can't drift. Returns
-// nil unless toComplete looks like a flag — anything else belongs to the
-// agent's own CLI.
+// them itself). The list mirrors ParseArgv's cases; TestCompletionFlagsMatchParser
+// asserts every entry is actually consumed by ParseArgv. Returns nil unless
+// toComplete looks like a flag — anything else belongs to the agent's own CLI.
 func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if !strings.HasPrefix(toComplete, "-") {
 		return nil
@@ -47,34 +47,74 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 }
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
-// cobra DisableFlagParsing): shared --model/--models/--base-url/
-// --no-fetch-models plus launch-specific --sandbox/--mount-cwd/--rebuild/
-// --dry-run, `--` passthrough, and leading -h/--help (cobra can't auto-handle
-// help with flag parsing disabled). Once any arg has passed through, -h
-// belongs to the agent (`orq launch codex exec -h` → codex's help).
-// Unrecognized args pass through to the agent.
+// cobra DisableFlagParsing). Launcher-owned flags — shared --model/--models/
+// --base-url/--no-fetch-models plus --sandbox/--mount-cwd/--rebuild/
+// --dry-run/-h — are recognized only at the FRONT of argv: the first arg the
+// launcher doesn't own ends launcher parsing and everything from there on
+// belongs to the agent verbatim. This keeps agent flags that collide with
+// ours (codex's --sandbox <mode>, codex's -p profile) reachable:
+// `orq launch codex exec --sandbox workspace-write` passes both to codex. A
+// leading `--` ends launcher parsing explicitly; a later `--` is the agent's.
+// Prompt-mapped flags (-p/--prompt) expand to the agent's own syntax (e.g.
+// `run <text>`) and land at the front of the agent argv by construction.
 func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, error) {
 	var flags GatewayFlags
-	var passthrough []string
+	var prompt []string
 
 	takeValue := func(arg string, i *int) (string, error) {
 		*i++
-		if *i >= len(argv) || argv[*i] == "" {
+		if *i >= len(argv) || argv[*i] == "" || strings.HasPrefix(argv[*i], "-") {
 			return "", fmt.Errorf("flag %s expects a value", arg)
 		}
 		return argv[*i], nil
 	}
+	// eqValue handles the --flag=value form; empty values are an error, not
+	// passthrough.
+	eqValue := func(arg, prefix string) (string, bool, error) {
+		v, ok := strings.CutPrefix(arg, prefix)
+		if !ok {
+			return "", false, nil
+		}
+		if v == "" {
+			return "", true, fmt.Errorf("flag %s expects a value", strings.TrimSuffix(prefix, "="))
+		}
+		return v, true, nil
+	}
 
-	for i := 0; i < len(argv); i++ {
+	i := 0
+scan:
+	for ; i < len(argv); i++ {
 		arg := argv[i]
 
-		if arg == "--" {
-			passthrough = append(passthrough, argv[i+1:]...)
-			break
+		if v, ok, err := eqValue(arg, "--model="); ok {
+			if err != nil {
+				return flags, nil, err
+			}
+			flags.Model = v
+			continue
+		}
+		if opts.AllowModels {
+			if v, ok, err := eqValue(arg, "--models="); ok {
+				if err != nil {
+					return flags, nil, err
+				}
+				flags.Models = v
+				continue
+			}
+		}
+		if v, ok, err := eqValue(arg, "--base-url="); ok {
+			if err != nil {
+				return flags, nil, err
+			}
+			flags.BaseURL = v
+			continue
 		}
 
 		switch {
-		case (arg == "-h" || arg == "--help") && len(passthrough) == 0:
+		case arg == "--":
+			i++ // explicit end of launcher flags; rest is the agent's
+			break scan
+		case arg == "-h" || arg == "--help":
 			flags.Help = true
 		case arg == "--model":
 			v, err := takeValue(arg, &i)
@@ -82,24 +122,18 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 				return flags, nil, err
 			}
 			flags.Model = v
-		case len(arg) > 8 && arg[:8] == "--model=":
-			flags.Model = arg[8:]
 		case opts.AllowModels && arg == "--models":
 			v, err := takeValue(arg, &i)
 			if err != nil {
 				return flags, nil, err
 			}
 			flags.Models = v
-		case opts.AllowModels && len(arg) > 9 && arg[:9] == "--models=":
-			flags.Models = arg[9:]
 		case arg == "--base-url":
 			v, err := takeValue(arg, &i)
 			if err != nil {
 				return flags, nil, err
 			}
 			flags.BaseURL = v
-		case len(arg) > 11 && arg[:11] == "--base-url=":
-			flags.BaseURL = arg[11:]
 		case arg == "--no-fetch-models":
 			flags.NoFetchModels = true
 		case arg == "--no-mcp":
@@ -119,11 +153,15 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 			if err != nil {
 				return flags, nil, err
 			}
-			passthrough = append(passthrough, opts.Prompt.ToArgs(v)...)
+			prompt = opts.Prompt.ToArgs(v)
 		default:
-			passthrough = append(passthrough, arg)
+			break scan // first agent-owned arg; stop consuming
 		}
 	}
 
+	passthrough := append(prompt, argv[i:]...)
+	if len(passthrough) == 0 {
+		passthrough = nil
+	}
 	return flags, passthrough, nil
 }

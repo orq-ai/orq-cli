@@ -211,9 +211,9 @@ orq launch kimi                   # Kimi Code
 orq launch pi                     # Pi Coding Agent
 ```
 
-The agent CLI itself must be installed (each subcommand prints an install hint when it is missing). All requests appear in your orq.ai traces and logs like any other gateway traffic.
+For local mode the agent CLI itself must be installed (each subcommand prints an install hint when it is missing); `--sandbox` installs it into the container image for you. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into every launched agent automatically using each harness's native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into each launched agent automatically using its native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there.
 
 For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) is loaded **session-only** via `--plugin-url` — nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
@@ -222,7 +222,7 @@ For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins)
 | Flag | Description |
 |---|---|
 | `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-4-6` |
-| `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi) |
+| `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
 | `--no-mcp` | Do not wire the orq MCP server into the agent |
@@ -233,7 +233,7 @@ For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins)
 | `--rebuild` | Sandbox only: rebuild the Docker image (`--no-cache --pull`) |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-Everything after `--` is passed to the agent untouched:
+Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim (so agent flags that collide with ours, like codex's `--sandbox <mode>`, stay reachable). Everything after `--` is passed to the agent untouched:
 
 ```sh
 orq launch claude -- --resume
@@ -254,7 +254,8 @@ docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_GATEWAY_URL` | Gateway base URL for all agents |
+| `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude (OpenAI-shaped router) |
+| `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint) |
 | `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | claude model selection |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |

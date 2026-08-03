@@ -189,7 +189,7 @@ func TestResolveSkipsFetch(t *testing.T) {
 			return nil, nil
 		}
 	}))
-	if err != nil || got.ModelFetchWarning != "" {
+	if err != nil || len(got.ModelWarnings) != 0 {
 		t.Fatalf("skip fetch: %v, %v", got, err)
 	}
 	if !reflect.DeepEqual(got.GatewayModels, []string{"openai/gpt-5-mini"}) {
@@ -208,8 +208,8 @@ func TestResolveFetchFailureWarns(t *testing.T) {
 	if got.GatewayModel != "openai/manual-model" {
 		t.Fatalf("model: %v", got.GatewayModel)
 	}
-	if !strings.Contains(got.ModelFetchWarning, "Could not fetch enabled models") {
-		t.Fatalf("warning: %q", got.ModelFetchWarning)
+	if len(got.ModelWarnings) == 0 || !strings.Contains(got.ModelWarnings[0], "Could not fetch enabled models") {
+		t.Fatalf("warnings: %q", got.ModelWarnings)
 	}
 }
 

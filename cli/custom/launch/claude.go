@@ -26,12 +26,21 @@ func claudeAgent() AgentDef {
 	}
 }
 
-// resolveClaude configures claude via env vars only: gateway base URL and
-// auth token; no model fetch.
+// resolveClaude wires claude through env vars (gateway base URL, auth token,
+// models — no /v2/models fetch) plus two PreArgs: --mcp-config pointing at a
+// temp file and --plugin-url for the pinned skills plugin.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	getenv := ctx.Getenv
 
-	baseURL := firstNonEmpty(ctx.Flags.BaseURL, getenv("ORQ_GATEWAY_URL"), DefaultClaudeGatewayURL)
+	// Deliberately NOT ORQ_GATEWAY_URL: that is the OpenAI-shaped router URL
+	// shared by the other agents, and claude speaks the Anthropic-native API —
+	// inheriting it would misroute every request. Claude gets its own key.
+	baseURL := firstNonEmpty(
+		ctx.Flags.BaseURL,
+		getenv("ORQ_ANTHROPIC_BASE_URL"),
+		deriveFromAPIBase(ctx.Creds.APIBaseURL, "/v3/anthropic"),
+		DefaultClaudeGatewayURL,
+	)
 	model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), DefaultClaudeModel)
 	smallFast := firstNonEmpty(getenv("ANTHROPIC_SMALL_FAST_MODEL"), DefaultClaudeSmallFastModel)
 
