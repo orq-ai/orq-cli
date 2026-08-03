@@ -28,9 +28,9 @@ func codexAgent() AgentDef {
 	}
 }
 
-// resolveCodex ports spawn-codex.ts: router base URL, config via -c TOML
-// overrides, model catalog rewritten from the bundled template so the picker
-// lists gateway models. Catalog failures degrade to a warning.
+// resolveCodex configures codex with the router base URL via -c TOML
+// overrides, and rewrites the bundled model catalog so the picker lists
+// gateway models. Catalog failures degrade to a warning.
 func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
 		AuthToken:     ctx.Creds.APIKey,
@@ -50,13 +50,7 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	plan := &LaunchPlan{
 		Env: map[string]string{"ORQ_API_KEY": ctx.Creds.APIKey},
 	}
-	if resolved.ModelFetchWarning != "" {
-		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
-	}
-	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, codexNormalize) {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. openai/gpt-5.4", resolved.GatewayModel))
-	}
+	appendModelWarnings(plan, resolved, codexNormalize, "openai/gpt-5.4")
 
 	catalogPath := ""
 	if ctx.ExecProbe != nil {

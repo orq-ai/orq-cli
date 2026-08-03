@@ -1,6 +1,10 @@
 package launch
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 // PromptMapping maps an agent-agnostic prompt flag (-p/--prompt) to the
 // agent's own CLI syntax (e.g. `run "..."` for opencode, `exec ...` for
@@ -16,11 +20,39 @@ type ParseArgvOptions struct {
 	AllowModels bool
 }
 
+// CompletionFlags returns the launcher-owned flags matching toComplete for
+// shell completion (cobra flag parsing is disabled, so cobra can't enumerate
+// them itself). Kept next to ParseArgv so the two lists can't drift. Returns
+// nil unless toComplete looks like a flag — anything else belongs to the
+// agent's own CLI.
+func CompletionFlags(def *AgentDef, toComplete string) []string {
+	if !strings.HasPrefix(toComplete, "-") {
+		return nil
+	}
+	flags := []string{"--model", "--base-url", "--no-fetch-models", "--no-mcp",
+		"--no-skills", "--sandbox", "--mount-cwd", "--rebuild", "--dry-run", "--help"}
+	if def.AllowModels {
+		flags = append(flags, "--models")
+	}
+	if def.Prompt != nil {
+		flags = append(flags, def.Prompt.Flags...)
+	}
+	var out []string
+	for _, f := range flags {
+		if strings.HasPrefix(f, toComplete) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing): shared --model/--models/--base-url/
 // --no-fetch-models plus launch-specific --sandbox/--mount-cwd/--rebuild/
-// --dry-run, `--` passthrough, and -h/--help (cobra can't auto-handle help
-// with flag parsing disabled). Unrecognized args pass through to the agent.
+// --dry-run, `--` passthrough, and leading -h/--help (cobra can't auto-handle
+// help with flag parsing disabled). Once any arg has passed through, -h
+// belongs to the agent (`orq launch codex exec -h` → codex's help).
+// Unrecognized args pass through to the agent.
 func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, error) {
 	var flags GatewayFlags
 	var passthrough []string
@@ -42,7 +74,7 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 		}
 
 		switch {
-		case arg == "-h" || arg == "--help":
+		case (arg == "-h" || arg == "--help") && len(passthrough) == 0:
 			flags.Help = true
 		case arg == "--model":
 			v, err := takeValue(arg, &i)
@@ -82,7 +114,7 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 			flags.Rebuild = true
 		case arg == "--dry-run":
 			flags.DryRun = true
-		case opts.Prompt != nil && containsString(opts.Prompt.Flags, arg):
+		case opts.Prompt != nil && slices.Contains(opts.Prompt.Flags, arg):
 			v, err := takeValue(arg, &i)
 			if err != nil {
 				return flags, nil, err
@@ -94,13 +126,4 @@ func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, er
 	}
 
 	return flags, passthrough, nil
-}
-
-func containsString(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
 }
