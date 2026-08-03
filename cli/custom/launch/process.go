@@ -3,6 +3,7 @@ package launch
 import (
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // RunChild execs the agent binary with inherited stdio and the plan's env
@@ -38,7 +39,7 @@ func MergeEnv(base []string, overrides map[string]string) []string {
 	out := make([]string, 0, len(base)+len(overrides))
 	for _, kv := range base {
 		key := kv
-		if i := indexByte(kv, '='); i >= 0 {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
 			key = kv[:i]
 		}
 		if _, replaced := overrides[key]; !replaced {
@@ -49,13 +50,4 @@ func MergeEnv(base []string, overrides map[string]string) []string {
 		out = append(out, k+"="+v)
 	}
 	return out
-}
-
-func indexByte(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
 }

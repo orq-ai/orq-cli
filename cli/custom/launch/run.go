@@ -26,7 +26,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	if !flags.Sandbox {
+	if !flags.Sandbox && !flags.DryRun {
 		switch promptLocalWarning(os.Getenv) {
 		case localCancel:
 			fmt.Fprintln(os.Stderr, "Cancelled.")

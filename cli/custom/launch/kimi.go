@@ -46,10 +46,10 @@ func kimiAgent() AgentDef {
 	}
 }
 
-// resolveKimi ports spawn-kimi.ts: router base URL, config.toml with
-// per-model context/output caps written into a fresh temp dir used as
-// KIMI_CODE_HOME (kimi has no per-file config override), so the user's real
-// ~/.kimi-code is never touched.
+// resolveKimi writes a config.toml with the router base URL and per-model
+// context/output caps into a fresh temp dir used as KIMI_CODE_HOME (kimi has
+// no per-file config override), so the user's real ~/.kimi-code is never
+// touched.
 func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
 		AuthToken:         ctx.Creds.APIKey,
@@ -87,16 +87,10 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 			"OPENAI_BASE_URL": resolved.BaseURL,
 			"KIMI_CODE_HOME":  home,
 		},
-		TempDirs: []TempDir{{HostPath: home, EnvVar: "KIMI_CODE_HOME"}},
+		TempDirs: []TempDir{{HostPath: home}},
 		Cleanup:  cleanup,
 	}
-	if resolved.ModelFetchWarning != "" {
-		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
-	}
-	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, kimiNormalize) {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", resolved.GatewayModel))
-	}
+	appendModelWarnings(plan, resolved, kimiNormalize, "anthropic/claude-sonnet-4-6")
 	return plan, nil
 }
 

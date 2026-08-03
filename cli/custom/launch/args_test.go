@@ -2,6 +2,7 @@ package launch
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -89,6 +90,19 @@ func TestParseArgvHelp(t *testing.T) {
 	if !flags.Help {
 		t.Fatal("--help not detected")
 	}
+	// Leading launcher flags don't disqualify help...
+	flags, _, _ = ParseArgv([]string{"--sandbox", "-h"}, ParseArgvOptions{})
+	if !flags.Help {
+		t.Fatal("-h after launcher flag not detected")
+	}
+	// ...but once an agent arg has passed through, -h belongs to the agent.
+	flags, rest, _ := ParseArgv([]string{"exec", "-h"}, ParseArgvOptions{})
+	if flags.Help {
+		t.Fatal("non-leading -h must pass through to the agent")
+	}
+	if !reflect.DeepEqual(rest, []string{"exec", "-h"}) {
+		t.Fatalf("rest: %v", rest)
+	}
 }
 
 func TestParseArgvUnknownPassthrough(t *testing.T) {
@@ -107,11 +121,11 @@ func TestMergeEnv(t *testing.T) {
 		t.Fatal("old value not replaced")
 	}
 	if !strings.Contains(joined, "ANTHROPIC_API_KEY=\n") && !strings.HasSuffix(joined, "ANTHROPIC_API_KEY=") {
-		if !containsString(got, "ANTHROPIC_API_KEY=") {
+		if !slices.Contains(got, "ANTHROPIC_API_KEY=") {
 			t.Fatalf("empty override lost: %v", got)
 		}
 	}
-	if !containsString(got, "PATH=/usr/bin") || !containsString(got, "NEW=v") {
+	if !slices.Contains(got, "PATH=/usr/bin") || !slices.Contains(got, "NEW=v") {
 		t.Fatalf("merge broken: %v", got)
 	}
 }
