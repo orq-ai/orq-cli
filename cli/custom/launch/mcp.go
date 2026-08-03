@@ -42,6 +42,7 @@ func claudeMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			"orq": map[string]any{
+				"type":    "http",
 				"url":     url,
 				"headers": map[string]string{"Authorization": "Bearer ${ORQ_API_KEY}"},
 			},
