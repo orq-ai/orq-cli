@@ -381,48 +381,6 @@ func OpenapiListAgents(params *viper.Viper) (*gentleman.Response, map[string]int
 	return resp, decoded, nil
 }
 
-// OpenapiPostV2AgentsKeyCardRefresh Refresh A2A agent card
-func OpenapiPostV2AgentsKeyCardRefresh(paramKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "agents refresh-agent-card key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
-
-	url := server + "/v2/agents/{key}/card/refresh"
-	url = strings.Replace(url, "{key}", paramKey, 1)
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after.(map[string]interface{})
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiRetrieveAgentRequest Retrieve agent
 func OpenapiRetrieveAgentRequest(paramAgentKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents retrieve agent-key"
@@ -9541,6 +9499,10 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 	paramEnabled := params.GetBool("enabled")
 	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
+	}
+	paramIncludeMetrics := params.GetBool("include-metrics")
+	if paramIncludeMetrics != false {
+		req = req.AddQuery("include_metrics", fmt.Sprintf("%v", paramIncludeMetrics))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
