@@ -11,8 +11,8 @@ import (
 	"golang.org/x/term"
 )
 
-// Run resolves and launches an agent locally, returning the child exit code.
-// Sandbox mode is dispatched from here once docker support lands.
+// Run resolves and launches an agent, returning the child exit code. Local
+// mode execs directly; --sandbox dispatches to RunSandbox.
 func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
 		Prompt:      def.Prompt,
@@ -76,6 +76,11 @@ func Run(def *AgentDef, argv []string) (int, error) {
 
 func hostExecProbe(binary string, args ...string) (string, error) {
 	out, err := exec.Command(binary, args...).Output()
+	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) != 0 {
+		// Output() captures stderr on the error; without this the probe's
+		// real failure reason ends up as an opaque "exit status 1".
+		err = fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+	}
 	return string(out), err
 }
 
@@ -102,8 +107,15 @@ func promptLocalWarning(getenv func(string) string) localChoice {
 
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
-		return localCancel
+		return localCancel // read failure fails closed
 	}
+	return parseLocalChoice(line)
+}
+
+// parseLocalChoice maps the safety-prompt answer to an action. Bare Enter
+// accepts: the prompt already interrupted the user's explicit `orq launch
+// <agent>` intent, and Enter-to-continue is the CLI convention there.
+func parseLocalChoice(line string) localChoice {
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "o", "ok", "y", "yes", "":
 		return localOk
@@ -137,7 +149,7 @@ Flags:
 	fmt.Print(`  --sandbox             Run inside a throwaway Docker container
   --mount-cwd           Sandbox only: mount current directory at /workspace
   --rebuild             Sandbox only: rebuild the Docker image
-  --dry-run             Print the resolved command without launching
+  --dry-run             Print the resolved command and env (key redacted) without launching
   -h, --help            Show this help
 
 Everything after -- is passed to the agent untouched.

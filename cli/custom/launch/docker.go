@@ -3,6 +3,7 @@ package launch
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,19 +21,23 @@ const containerLabel = "orq.launch=1"
 // prefix so -g installs work unprivileged; PATH covers claude's native
 // installer target so exec-form argv resolves without a login shell.
 const dockerfileTemplate = `FROM node:22-bookworm
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN useradd -m -s /bin/bash agent
 USER agent
 WORKDIR /home/agent
 ENV PATH="/home/agent/.npm-global/bin:/home/agent/.claude/local/bin:/home/agent/.local/bin:${PATH}"
-RUN npm config set prefix /home/agent/.npm-global && %s
+RUN npm config set prefix /home/agent/.npm-global && %s && command -v %s
 CMD ["sleep", "infinity"]
 `
 
 // agentInstallCmd is the Dockerfile RUN payload installing the agent CLI.
 // claude prefers its native installer (tracks releases better than npm).
+// pipefail (SHELL above) matters: without it a failed `curl | bash` exits 0,
+// the fallback never runs, and docker caches a broken image; the trailing
+// `command -v <binary>` makes any silent install failure fail the build.
 func agentInstallCmd(def *AgentDef) string {
 	if def.Name == "claude" {
-		return "(curl -fsSL https://claude.ai/install.sh | bash) || npm install -g " + def.NpmPackage
+		return "((curl -fsSL https://claude.ai/install.sh | bash) || npm install -g " + def.NpmPackage + ")"
 	}
 	return "npm install -g " + def.NpmPackage
 }
@@ -118,8 +123,10 @@ func CheckDocker() error {
 	return fmt.Errorf("docker is not available (binary missing or daemon not running); --sandbox needs it. %s", hint)
 }
 
-// pruneOrphans removes exited containers from previous runs (crash leftovers).
-// Best-effort; random container names mean live sessions are never touched.
+// pruneOrphans removes exited launch containers. The status=exited filter is
+// what protects concurrent live sessions — do not remove it. Known gap: a
+// SIGKILL/host-crash leftover keeps running `sleep infinity` and is never
+// `exited`, so it is not reclaimed here (see README for manual cleanup).
 func pruneOrphans() {
 	out, err := dockerOutput("ps", "-aq", "--filter", "label="+containerLabel, "--filter", "status=exited")
 	if err != nil {
@@ -138,7 +145,7 @@ func ensureImage(def *AgentDef, rebuild bool) error {
 	}
 	fmt.Fprintf(os.Stderr, "Building sandbox image %s (first run only)...\n", ImageTag(def.Name))
 	cmd := exec.Command("docker", BuildImageArgs(def.Name, rebuild)...)
-	cmd.Stdin = strings.NewReader(fmt.Sprintf(dockerfileTemplate, agentInstallCmd(def)))
+	cmd.Stdin = strings.NewReader(fmt.Sprintf(dockerfileTemplate, agentInstallCmd(def), def.Binary))
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -168,7 +175,10 @@ func copyTempDirs(container string, dirs []TempDir) error {
 // reference launcher).
 // Deliberately NOT bypassPermissionsModeAccepted — auto-YOLO stays user opt-in.
 func setupClaudeSandbox(container string) error {
-	config := `{"hasCompletedOnboarding":true,"projects":{"/workspace":{"hasTrustDialogAccepted":true}}}`
+	// Trust both working dirs: /workspace is the cwd under --mount-cwd, but
+	// the Dockerfile WORKDIR (where a plain --sandbox session starts) is
+	// /home/agent — keying only /workspace left the trust dialog visible.
+	config := `{"hasCompletedOnboarding":true,"projects":{"/workspace":{"hasTrustDialogAccepted":true},"/home/agent":{"hasTrustDialogAccepted":true}}}`
 	script := fmt.Sprintf("printf '%%s' '%s' > ~/.claude.json && chmod 600 ~/.claude.json", config)
 	_, err := dockerOutput("exec", container, "bash", "-c", script)
 	return err
@@ -176,9 +186,17 @@ func setupClaudeSandbox(container string) error {
 
 // RunSandbox launches the agent inside a throwaway container. The container
 // is removed when the session ends. --dry-run resolves and prints the exec
-// command without touching docker at all (no build, no container, no config
-// writes).
+// command without touching docker at all (no build, no container, nothing
+// written to the user's config). Resolution itself still runs: temp config
+// files are created and cleaned up, and /v2/models is still fetched unless
+// --no-fetch-models.
 func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, error) {
+	if runtime.GOOS == "windows" {
+		// ponytail: Windows would need volume/`docker cp` path mapping into
+		// the Linux container (C:\… paths break both); gate until someone
+		// needs it.
+		return 1, errors.New("--sandbox is not supported on Windows yet; run locally or use WSL")
+	}
 	dry := flags.DryRun
 	if !dry {
 		if err := CheckDocker(); err != nil {

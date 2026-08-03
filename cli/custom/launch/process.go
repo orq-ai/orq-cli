@@ -27,7 +27,9 @@ func RunChild(binary string, args []string, env map[string]string) (int, error) 
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		return exitCodeFromState(exitErr), nil
 	}
-	return -1, err
+	// 127 = command-not-found convention; -1 would be masked to 255 by
+	// os.Exit and collide with the 128+signum range.
+	return 127, err
 }
 
 // MergeEnv overlays overrides onto base ("K=V" pairs), replacing any existing
