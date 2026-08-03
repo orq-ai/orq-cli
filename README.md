@@ -220,6 +220,7 @@ orq launch codex                  # OpenAI Codex CLI
 orq launch opencode               # OpenCode
 orq launch kilo                   # Kilo CLI (OpenCode fork)
 orq launch kimi                   # Kimi Code
+orq launch pi                     # Pi Coding Agent
 ```
 
 The agent CLI itself must be installed (each subcommand prints an install hint when it is missing). All requests appear in your orq.ai traces and logs like any other gateway traffic.
@@ -255,7 +256,7 @@ orq launch codex -- exec --full-auto "fix the build"
 
 Local mode runs the agent directly on your machine — it has full access to your filesystem, shell, and network, so an interactive warning is shown on TTYs (skip it with `ORQ_LAUNCH_NON_INTERACTIVE=1`).
 
-`--sandbox` runs the agent inside a throwaway Docker container instead: the image is built locally on first use, **nothing is mounted by default** (opt in with `--mount-cwd`), and the container is removed when the session ends. Works with any Docker-compatible engine — Docker Desktop, [OrbStack](https://orbstack.dev), or Colima. Note that the routing env (including the API key) is visible via `docker inspect` to anyone with access to your Docker socket. Leftover containers can be removed manually with:
+`--sandbox` runs the agent inside a throwaway Docker container instead: the image is built locally on first use, **nothing is mounted by default** (opt in with `--mount-cwd`), and the container is removed when the session ends. Works with Docker Desktop (the `docker` CLI is the only requirement). The routing env (including the API key) is passed at `docker exec` time via name-only `-e` flags, so it never appears in the container's `docker inspect` config or in host `ps`. Leftover containers can be removed manually with:
 
 ```sh
 docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
@@ -270,6 +271,7 @@ docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
+| `ORQ_PI_BASE_URL` / `PI_MODEL` / `PI_MODELS` | pi overrides |
 
 ---
 
