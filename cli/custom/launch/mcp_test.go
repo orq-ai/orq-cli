@@ -47,6 +47,10 @@ func TestClaudeMCPWiring(t *testing.T) {
 		!strings.Contains(content, "Bearer ${ORQ_API_KEY}") {
 		t.Fatalf("mcp config: %s", content)
 	}
+	// claude skips servers with a url but no transport type.
+	if !strings.Contains(content, `"type":"http"`) {
+		t.Fatalf("mcp config missing transport type: %s", content)
+	}
 	if strings.Contains(content, "orq-key") {
 		t.Fatal("key leaked into mcp config file")
 	}
