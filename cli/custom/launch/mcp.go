@@ -12,7 +12,10 @@ const DefaultMCPURL = "https://my.orq.ai/v2/mcp"
 
 // DefaultSkillsPluginURL is the orq skills plugin (github.com/orq-ai/
 // assistant-plugins) as a zip; claude loads it session-only via --plugin-url.
-const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/refs/heads/main.zip"
+// Pinned to a commit SHA so a compromised or bad upstream push can't reach
+// users unreviewed — bump the SHA in CLI releases to ship plugin updates
+// (override ad hoc with ORQ_SKILLS_URL).
+const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/415edd51ddba3b10d4e3091c6d91b0cbca57566b.zip"
 
 // skillsPluginURL returns the plugin zip URL, or "" when disabled via
 // --no-skills.
