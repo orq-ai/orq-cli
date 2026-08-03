@@ -26,7 +26,8 @@ func claudeAgent() AgentDef {
 	}
 }
 
-// resolveClaude ports spawn-claude.ts: no model fetch, env-only wiring.
+// resolveClaude configures claude via env vars only: gateway base URL and
+// auth token; no model fetch.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	getenv := ctx.Getenv
 

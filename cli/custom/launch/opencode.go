@@ -1,9 +1,6 @@
 package launch
 
-import (
-	"encoding/json"
-	"fmt"
-)
+import "encoding/json"
 
 const (
 	DefaultOpenCodeModel = "openai/gpt-5-mini"
@@ -107,13 +104,7 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 			family.configEnvVar: configJSON,
 		},
 	}
-	if resolved.ModelFetchWarning != "" {
-		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
-	}
-	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, opencodeNormalize) {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. openai/gpt-5-mini", resolved.GatewayModel))
-	}
+	appendModelWarnings(plan, resolved, opencodeNormalize, "openai/gpt-5-mini")
 	return plan, nil
 }
 

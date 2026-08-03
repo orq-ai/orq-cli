@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -131,6 +132,19 @@ func ShouldWarnMissingProviderPrefix(model string, normalize NormalizeModel) boo
 	return !strings.Contains(normalize(model), "/")
 }
 
+// appendModelWarnings collects the shared post-resolution warnings: the model
+// fetch failure (if any) and the missing provider/ prefix hint. example is an
+// agent-appropriate model id shown in the hint.
+func appendModelWarnings(plan *LaunchPlan, resolved *ResolvedModels, normalize NormalizeModel, example string) {
+	if resolved.ModelFetchWarning != "" {
+		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
+	}
+	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, normalize) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"model %q has no provider/ prefix; the gateway expects e.g. %s", resolved.GatewayModel, example))
+	}
+}
+
 // ModelFetcher fetches the enabled chat models from the gateway.
 type ModelFetcher func(apiKey, apiBaseURL string) ([]ModelInfo, error)
 
@@ -157,6 +171,7 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 	var payload []struct {
 		Provider  string `json:"provider"`
 		ModelID   string `json:"model_id"`
+		RefID     string `json:"refId"`
 		ModelType string `json:"model_type"`
 		Enabled   bool   `json:"enabled"`
 		Metadata  *struct {
@@ -173,7 +188,15 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 		if !m.Enabled || m.ModelType != "chat" {
 			continue
 		}
-		info := ModelInfo{ID: m.Provider + "/" + m.ModelID}
+		// refId is the canonical invoke id: "provider/model_id" for system
+		// models, "workspace@orq/model_id" for custom models (autorouters).
+		// Building provider/model_id for the latter would yield "orq/<name>",
+		// which agent normalizers strip back to a bare, un-invokable name.
+		id := m.RefID
+		if id == "" {
+			id = m.Provider + "/" + m.ModelID
+		}
+		info := ModelInfo{ID: id}
 		if m.Metadata != nil {
 			info.ContextWindow = m.Metadata.ContextWindow
 			info.MaxOutputTokens = m.Metadata.MaxOutputTokens
@@ -209,9 +232,9 @@ type ResolvedModels struct {
 	Infos []ModelInfo // only when CollectModelInfos; fetched models only
 }
 
-// ResolveGatewayConfig ports resolveGatewaySpawnConfig from the internal CLI:
-// base URL priority flag > agent env > ORQ_GATEWAY_URL > default; model
-// priority flag > env > default-if-fetched > first-fetched > first-explicit >
+// ResolveGatewayConfig resolves the gateway wiring shared by all agents.
+// Base URL priority: flag > agent env > ORQ_GATEWAY_URL > default; model
+// priority: flag > env > default-if-fetched > first-fetched > first-explicit >
 // fallback.
 func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 	if input.AuthToken == "" {
@@ -277,7 +300,7 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 		input.Flags.Model,
 		getenv(input.ModelEnvKey),
 		func() string {
-			if contains(fetched, input.DefaultModel) {
+			if slices.Contains(fetched, input.DefaultModel) {
 				return input.DefaultModel
 			}
 			return firstNonEmpty(first(fetched), first(explicitModels), fallbackModel)
@@ -314,13 +337,4 @@ func first(values []string) string {
 		return values[0]
 	}
 	return ""
-}
-
-func contains(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
 }

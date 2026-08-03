@@ -34,10 +34,15 @@ func TestRunContainerArgs(t *testing.T) {
 }
 
 func TestExecArgs(t *testing.T) {
-	got := ExecArgs("c1", true, map[string]string{"B": "2", "A": "1"}, []string{"claude", "--resume"})
-	want := []string{"exec", "-i", "-t", "-e", "A=1", "-e", "B=2", "c1", "claude", "--resume"}
+	// Name-only -e flags: values must never appear in the argv (host `ps`
+	// would expose the API key for the whole session).
+	got := ExecArgs("c1", true, map[string]string{"B": "sk-secret", "A": "1"}, []string{"claude", "--resume"})
+	want := []string{"exec", "-i", "-t", "-e", "A", "-e", "B", "c1", "claude", "--resume"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
+	}
+	if strings.Contains(strings.Join(got, " "), "sk-secret") {
+		t.Fatalf("secret leaked into argv: %v", got)
 	}
 
 	got = ExecArgs("c1", false, nil, []string{"kimi"})
@@ -65,12 +70,5 @@ func TestAgentInstallCmd(t *testing.T) {
 	kimi := kimiAgent()
 	if cmd := agentInstallCmd(&kimi); cmd != "npm install -g @moonshot-ai/kimi-code" {
 		t.Fatalf("kimi install: %s", cmd)
-	}
-}
-
-func TestRedactArgs(t *testing.T) {
-	got := redactArgs([]string{"-e", "ORQ_API_KEY=sk-secret", "claude"}, "sk-secret")
-	if got[1] != "ORQ_API_KEY=<redacted>" || got[2] != "claude" {
-		t.Fatalf("got %v", got)
 	}
 }

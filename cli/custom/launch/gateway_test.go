@@ -221,13 +221,16 @@ func TestFetchEnabledModelsHTTP(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Fatalf("auth header: %s", r.Header.Get("Authorization"))
 		}
-		// Top-level array, matching the real endpoint shape.
+		// Top-level array, matching the real endpoint shape. Custom models
+		// (autorouters) have provider "orq" and a workspace-qualified refId;
+		// claude-haiku has no refId to cover the provider/model_id fallback.
 		w.Write([]byte(`[
-			{"provider":"openai","model_id":"gpt-5-mini","model_type":"chat","enabled":true,
+			{"provider":"openai","model_id":"gpt-5-mini","refId":"openai/gpt-5-mini","model_type":"chat","enabled":true,
 			 "metadata":{"context_window":400000,"max_output_tokens":128000}},
-			{"provider":"openai","model_id":"dall-e","model_type":"image","enabled":true},
-			{"provider":"anthropic","model_id":"claude-sonnet-4-6","model_type":"chat","enabled":false},
-			{"provider":"anthropic","model_id":"claude-haiku-4-5","model_type":"chat","enabled":true}
+			{"provider":"openai","model_id":"dall-e","refId":"openai/dall-e","model_type":"image","enabled":true},
+			{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6","model_type":"chat","enabled":false},
+			{"provider":"anthropic","model_id":"claude-haiku-4-5","model_type":"chat","enabled":true},
+			{"provider":"orq","model_id":"my-router","refId":"ws@orq/my-router","model_type":"chat","enabled":true}
 		]`))
 	}))
 	defer srv.Close()
@@ -239,6 +242,7 @@ func TestFetchEnabledModelsHTTP(t *testing.T) {
 	want := []ModelInfo{
 		{ID: "anthropic/claude-haiku-4-5"},
 		{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
+		{ID: "ws@orq/my-router"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v", got)
