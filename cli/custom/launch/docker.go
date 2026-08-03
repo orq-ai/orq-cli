@@ -57,13 +57,17 @@ func RunContainerArgs(agent, name, cwd string, mountCwd bool) []string {
 	return append(args, ImageTag(agent), "sleep", "infinity")
 }
 
+// ExecArgs deliberately emits name-only -e flags: -e K=V would put secrets
+// (ORQ_API_KEY, ANTHROPIC_AUTH_TOKEN) in host `ps` for the whole session.
+// docker exec reads each value from the docker client's environment, which
+// RunSandbox seeds via RunChild's env override.
 func ExecArgs(container string, tty bool, env map[string]string, argv []string) []string {
 	args := []string{"exec", "-i"}
 	if tty {
 		args = append(args, "-t")
 	}
 	for _, k := range sortedKeys(env) {
-		args = append(args, "-e", k+"="+env[k])
+		args = append(args, "-e", k)
 	}
 	return append(append(args, container), argv...)
 }
@@ -109,7 +113,7 @@ func CheckDocker() error {
 	}
 	hint := "install docker (https://docs.docker.com/engine/install/)"
 	if runtime.GOOS == "darwin" {
-		hint = "install OrbStack (brew install orbstack) or Docker Desktop"
+		hint = "install Docker Desktop (https://www.docker.com/products/docker-desktop/)"
 	}
 	return fmt.Errorf("docker is not available (binary missing or daemon not running); --sandbox needs it. %s", hint)
 }
@@ -160,7 +164,8 @@ func copyTempDirs(container string, dirs []TempDir) error {
 }
 
 // setupClaudeSandbox pre-accepts claude's onboarding + workspace-trust
-// prompts inside the throwaway container (pattern from OpenRouter spawn).
+// prompts inside the throwaway container (pattern from the OpenRouter
+// reference launcher).
 // Deliberately NOT bypassPermissionsModeAccepted — auto-YOLO stays user opt-in.
 func setupClaudeSandbox(container string) error {
 	config := `{"hasCompletedOnboarding":true,"projects":{"/workspace":{"hasTrustDialogAccepted":true}}}`
@@ -170,14 +175,19 @@ func setupClaudeSandbox(container string) error {
 }
 
 // RunSandbox launches the agent inside a throwaway container. The container
-// is removed when the session ends.
+// is removed when the session ends. --dry-run resolves and prints the exec
+// command without touching docker at all (no build, no container, no config
+// writes).
 func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, error) {
-	if err := CheckDocker(); err != nil {
-		return 1, err
-	}
-	pruneOrphans()
-	if err := ensureImage(def, flags.Rebuild); err != nil {
-		return 1, fmt.Errorf("sandbox image build failed: %w", err)
+	dry := flags.DryRun
+	if !dry {
+		if err := CheckDocker(); err != nil {
+			return 1, err
+		}
+		pruneOrphans()
+		if err := ensureImage(def, flags.Rebuild); err != nil {
+			return 1, fmt.Errorf("sandbox image build failed: %w", err)
+		}
 	}
 
 	creds, err := ResolveCredentials(os.Getenv)
@@ -186,24 +196,31 @@ func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, e
 	}
 
 	container := containerName(def.Name)
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil && flags.MountCwd {
+		return 1, fmt.Errorf("--mount-cwd: cannot determine current directory: %w", err)
+	}
 	if flags.MountCwd {
 		fmt.Fprintf(os.Stderr, "Warning: --mount-cwd mounts %s read-write at /workspace inside the sandbox.\n", cwd)
 	}
-	if _, err := dockerOutput(RunContainerArgs(def.Name, container, cwd, flags.MountCwd)...); err != nil {
-		return 1, err
-	}
-	removeContainer := func() { _ = exec.Command("docker", "rm", "-f", container).Run() }
-	defer removeContainer()
-
-	plan, err := def.Resolve(&AgentContext{
+	ctx := &AgentContext{
 		Creds:  creds,
 		Getenv: os.Getenv,
 		Flags:  flags,
-		ExecProbe: func(binary string, args ...string) (string, error) {
+	}
+	if !dry {
+		if _, err := dockerOutput(RunContainerArgs(def.Name, container, cwd, flags.MountCwd)...); err != nil {
+			return 1, err
+		}
+		defer func() { _ = exec.Command("docker", "rm", "-f", container).Run() }()
+		// ExecProbe is nil on dry-run: resolvers nil-guard it and skip
+		// container probes (codex catalog degrades to a warning).
+		ctx.ExecProbe = func(binary string, args ...string) (string, error) {
 			return dockerOutput(append([]string{"exec", container, binary}, args...)...)
-		},
-	})
+		}
+	}
+
+	plan, err := def.Resolve(ctx)
 	if err != nil {
 		return 1, err
 	}
@@ -214,13 +231,17 @@ func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, e
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 
-	if err := copyTempDirs(container, plan.TempDirs); err != nil {
-		return 1, fmt.Errorf("sandbox config delivery failed: %w", err)
+	if !dry {
+		if err := copyTempDirs(container, plan.TempDirs); err != nil {
+			return 1, fmt.Errorf("sandbox config delivery failed: %w", err)
+		}
 	}
 	env := plan.Env
 	if def.Name == "claude" {
-		if err := setupClaudeSandbox(container); err != nil {
-			return 1, fmt.Errorf("claude sandbox setup failed: %w", err)
+		if !dry {
+			if err := setupClaudeSandbox(container); err != nil {
+				return 1, fmt.Errorf("claude sandbox setup failed: %w", err)
+			}
 		}
 		env = map[string]string{"CLAUDE_CODE_SKIP_ONBOARDING": "1"}
 		for k, v := range plan.Env {
@@ -232,21 +253,22 @@ func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, e
 	tty := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	execArgs := ExecArgs(container, tty, env, argv)
 
-	if flags.DryRun {
-		fmt.Printf("docker %s\n", strings.Join(redactArgs(execArgs, creds.APIKey), " "))
+	if dry {
+		fmt.Printf("docker %s\n", strings.Join(execArgs, " "))
+		for _, k := range sortedKeys(env) {
+			v := env[k]
+			if v != "" && v == creds.APIKey {
+				v = "<redacted>"
+			}
+			fmt.Printf("env: %s=%s\n", k, v)
+		}
 		return 0, nil
 	}
 
 	// docker CLI handles raw TTY + signal forwarding into the container.
-	return RunChild("docker", execArgs, nil)
-}
-
-func redactArgs(args []string, apiKey string) []string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		out[i] = strings.ReplaceAll(a, apiKey, "<redacted>")
-	}
-	return out
+	// env goes to the docker client process; exec's name-only -e flags
+	// propagate the values (see ExecArgs).
+	return RunChild("docker", execArgs, env)
 }
 
 func sortedKeys(m map[string]string) []string {

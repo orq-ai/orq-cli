@@ -13,12 +13,10 @@ type AgentContext struct {
 	ExecProbe func(binary string, args ...string) (string, error)
 }
 
-// TempDir is a host directory holding config the agent reads. EnvVar (if set)
-// points the agent at it; in sandbox mode the dir is docker-cp'd to MountAt.
+// TempDir is a host directory holding config the agent reads; in sandbox mode
+// it is replicated into the container at the same path (see copyTempDirs).
 type TempDir struct {
 	HostPath string
-	EnvVar   string
-	MountAt  string
 }
 
 // LaunchPlan is a fully resolved agent invocation.
@@ -50,6 +48,7 @@ func Agents() []AgentDef {
 		opencodeAgent(),
 		kiloAgent(),
 		kimiAgent(),
+		piAgent(),
 	}
 }
 
