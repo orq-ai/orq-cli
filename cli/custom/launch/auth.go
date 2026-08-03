@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"fmt"
+
 	"orq/cli/custom/auth"
 )
 
@@ -11,9 +13,10 @@ type Credentials struct {
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly
-// (not relying on the session PreRun env side effect): ORQ_API_KEY env wins,
-// else the active workspace token from the login session. API base: session
-// APIBaseURL → ORQ_API_BASE_URL → default.
+// (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
+// (the session is not read at all), else the active workspace token from the
+// login session. API base: ORQ_API_BASE_URL env → session APIBaseURL →
+// default.
 func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	apiBase := firstNonEmpty(getenv("ORQ_API_BASE_URL"), DefaultGatewayAPIBaseURL)
 
@@ -22,19 +25,23 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	}
 
 	session, err := auth.ReadSession()
-	if err == nil && session != nil {
-		if session.APIBaseURL != "" && getenv("ORQ_API_BASE_URL") == "" {
-			apiBase = session.APIBaseURL
-		}
-		client := auth.NewClient(session.APIBaseURL)
-		active, err := client.GetActiveWorkspaceAccessToken()
-		if err != nil {
-			return nil, err
-		}
-		return &Credentials{APIKey: active.AccessToken, APIBaseURL: apiBase}, nil
+	if err != nil {
+		// Unreadable or corrupt session ≠ not logged in — telling the user to
+		// log in again would loop without surfacing the real cause.
+		return nil, fmt.Errorf("cannot read login session: %w (fix the session file or export ORQ_API_KEY)", err)
 	}
-
-	return nil, errNotLoggedIn
+	if session == nil {
+		return nil, errNotLoggedIn
+	}
+	if session.APIBaseURL != "" && getenv("ORQ_API_BASE_URL") == "" {
+		apiBase = session.APIBaseURL
+	}
+	client := auth.NewClient(session.APIBaseURL)
+	active, err := client.GetActiveWorkspaceAccessToken()
+	if err != nil {
+		return nil, err
+	}
+	return &Credentials{APIKey: active.AccessToken, APIBaseURL: apiBase}, nil
 }
 
 var errNotLoggedIn = notLoggedInError{}

@@ -38,7 +38,7 @@ func TestClaudeDefaults(t *testing.T) {
 
 func TestClaudeBaseURLPriority(t *testing.T) {
 	plan, _ := resolveClaude(claudeCtx(
-		map[string]string{"ORQ_GATEWAY_URL": "https://env.example/v3/anthropic"},
+		map[string]string{"ORQ_ANTHROPIC_BASE_URL": "https://env.example/v3/anthropic"},
 		GatewayFlags{BaseURL: "https://flag.example/v3/anthropic"},
 	))
 	if plan.Env["ANTHROPIC_BASE_URL"] != "https://flag.example/v3/anthropic" {
@@ -46,9 +46,17 @@ func TestClaudeBaseURLPriority(t *testing.T) {
 	}
 
 	plan, _ = resolveClaude(claudeCtx(
-		map[string]string{"ORQ_GATEWAY_URL": "https://env.example/v3/anthropic"}, GatewayFlags{}))
+		map[string]string{"ORQ_ANTHROPIC_BASE_URL": "https://env.example/v3/anthropic"}, GatewayFlags{}))
 	if plan.Env["ANTHROPIC_BASE_URL"] != "https://env.example/v3/anthropic" {
 		t.Fatalf("env should win over default: %v", plan.Env["ANTHROPIC_BASE_URL"])
+	}
+
+	// The OpenAI-shaped shared router var must NOT reach claude — it speaks
+	// the Anthropic-native API (review finding: silent misroute).
+	plan, _ = resolveClaude(claudeCtx(
+		map[string]string{"ORQ_GATEWAY_URL": "https://api.orq.ai/v3/router"}, GatewayFlags{}))
+	if plan.Env["ANTHROPIC_BASE_URL"] != DefaultClaudeGatewayURL {
+		t.Fatalf("ORQ_GATEWAY_URL must be ignored by claude: %v", plan.Env["ANTHROPIC_BASE_URL"])
 	}
 }
 

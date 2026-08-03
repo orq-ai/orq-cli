@@ -32,12 +32,20 @@ through the orq.ai AI Router. Authenticate with 'orq auth login' or ORQ_API_KEY.
 			// DisableFlagParsing hides our flags from cobra's completion
 			// machinery; ValidArgsFunction still runs, so surface them here.
 			ValidArgsFunction: func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-				return launch.CompletionFlags(&def, toComplete), cobra.ShellCompDirectiveNoFileComp
+				if comps := launch.CompletionFlags(&def, toComplete); comps != nil {
+					return comps, cobra.ShellCompDirectiveNoFileComp
+				}
+				// Non-flag input belongs to the agent — fall back to file
+				// completion so its path arguments still complete.
+				return nil, cobra.ShellCompDirectiveDefault
 			},
 			RunE: func(_ *cobra.Command, args []string) error {
 				code, err := launch.Run(&def, args)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					if code == 0 {
+						code = 1 // never report an error and exit 0
+					}
 				}
 				if code != 0 {
 					os.Exit(code)

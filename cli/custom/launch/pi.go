@@ -62,8 +62,9 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	// ponytail: no MCP wiring — pi has no MCP config surface today; add when
-	// it grows one.
+	// No MCP wiring: pi has no built-in MCP support by design (extensions
+	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
+	// grows a native config surface.
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
@@ -74,6 +75,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		Cleanup:  cleanup,
 	}
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
+	appendCapWarning(plan, resolved)
 	return plan, nil
 }
 
