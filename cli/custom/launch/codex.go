@@ -53,15 +53,18 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	appendModelWarnings(plan, resolved, codexNormalize, "openai/gpt-5.4")
 
 	catalogPath := ""
-	if ctx.ExecProbe != nil {
-		if path, cleanup, err := writeCodexCatalog(ctx, resolved.GatewayModels); err != nil {
-			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-				"could not build codex model catalog (model picker will show bundled models): %v", err))
-		} else {
-			catalogPath = path
-			plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
-			plan.Cleanup = cleanup
-		}
+	if ctx.ExecProbe == nil {
+		// Sandbox dry-run: no container to probe, so the catalog step is
+		// skipped — say so, or the printed command silently differs from a
+		// real run.
+		plan.Warnings = append(plan.Warnings, "codex model catalog skipped (no container on dry-run); a real run adds -c model_catalog_json=…")
+	} else if path, cleanup, err := writeCodexCatalog(ctx, resolved.GatewayModels); err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"could not build codex model catalog (model picker will show bundled models): %v", err))
+	} else {
+		catalogPath = path
+		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
+		plan.Cleanup = cleanup
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
@@ -84,6 +87,9 @@ func BuildCodexOverrideArgs(model, baseURL, modelCatalogPath string) []string {
 		"-c", tomlOverride("model_providers.orq.name", "orq Gateway"),
 		"-c", tomlOverride("model_providers.orq.base_url", baseURL),
 		"-c", tomlOverride("model_providers.orq.env_key", "ORQ_API_KEY"),
+		// codex removed chat/completions support (hard error since Feb 2026);
+		// "responses" is the only valid wire_api, and it is per-provider only
+		// — a second chat-shaped provider like opencode's is not an option.
 		"-c", tomlOverride("model_providers.orq.wire_api", "responses"),
 	}
 	if modelCatalogPath != "" {

@@ -1,5 +1,5 @@
 // Package launch starts coding-agent CLIs (claude, codex, opencode, kilo,
-// kimi) preconfigured to route model calls through the orq.ai AI Router.
+// kimi, pi) preconfigured to route model calls through the orq.ai AI Router.
 //
 // Shared core for every `orq launch <agent>` command. Agents differ only in
 // how they serialize provider config and launch their CLI; resolving the
@@ -41,12 +41,15 @@ type GatewayFlags struct {
 
 // GatewayConfig is the fully resolved routing configuration for one launch.
 type GatewayConfig struct {
-	AuthToken         string
-	APIBaseURL        string
-	BaseURL           string
-	GatewayModel      string
-	GatewayModels     []string
-	ModelFetchWarning string
+	AuthToken     string
+	APIBaseURL    string
+	BaseURL       string
+	GatewayModel  string
+	GatewayModels []string
+	// ModelWarnings collects everything the user should hear about model
+	// resolution: fetch failures, an empty catalog, a silently substituted
+	// default. Surfaced via appendModelWarnings.
+	ModelWarnings []string
 }
 
 // ModelInfo is one entry from GET /v2/models, with the metadata kimi needs.
@@ -132,13 +135,52 @@ func ShouldWarnMissingProviderPrefix(model string, normalize NormalizeModel) boo
 	return !strings.Contains(normalize(model), "/")
 }
 
+// deriveFromAPIBase returns apiBase+path when the CLI points at a non-default
+// API base (self-hosted / regional), so anthropic-native and MCP endpoints
+// follow the override instead of silently staying on production. Returns ""
+// on the default base — the hardcoded per-endpoint defaults win there.
+func deriveFromAPIBase(apiBase, path string) string {
+	if apiBase == "" || apiBase == DefaultGatewayAPIBaseURL {
+		return ""
+	}
+	return strings.TrimSuffix(apiBase, "/") + path
+}
+
+// MissingCapModels returns the gateway models that have no fetched metadata —
+// agents that bake context/output caps into config (kimi, pi) fall back to
+// conservative limits for these, which silently truncates output on capable
+// models unless the user is told.
+func MissingCapModels(gatewayModels []string, infos []ModelInfo) []string {
+	known := make(map[string]bool, len(infos))
+	for _, info := range infos {
+		if info.ContextWindow > 0 || info.MaxOutputTokens > 0 {
+			known[info.ID] = true
+		}
+	}
+	var missing []string
+	for _, id := range gatewayModels {
+		if !known[id] {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+// appendCapWarning adds the conservative-caps warning for agents that write
+// per-model output limits into their config.
+func appendCapWarning(plan *LaunchPlan, resolved *ResolvedModels) {
+	if missing := MissingCapModels(resolved.GatewayModels, resolved.Infos); len(missing) > 0 {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"no metadata for %s; using conservative caps (context %d, max output %d) — responses may truncate early on capable models",
+			strings.Join(missing, ", "), fallbackContextSize, fallbackOutputSize))
+	}
+}
+
 // appendModelWarnings collects the shared post-resolution warnings: the model
 // fetch failure (if any) and the missing provider/ prefix hint. example is an
 // agent-appropriate model id shown in the hint.
 func appendModelWarnings(plan *LaunchPlan, resolved *ResolvedModels, normalize NormalizeModel, example string) {
-	if resolved.ModelFetchWarning != "" {
-		plan.Warnings = append(plan.Warnings, resolved.ModelFetchWarning)
-	}
+	plan.Warnings = append(plan.Warnings, resolved.ModelWarnings...)
 	if ShouldWarnMissingProviderPrefix(resolved.GatewayModel, normalize) {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"model %q has no provider/ prefix; the gateway expects e.g. %s", resolved.GatewayModel, example))
@@ -272,7 +314,7 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 
 	var fetched []string
 	var infos []ModelInfo
-	var fetchWarning string
+	var warnings []string
 	if !input.Flags.NoFetchModels {
 		fetcher := input.Fetch
 		if fetcher == nil {
@@ -280,9 +322,9 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 		}
 		fetchedInfos, err := fetcher(input.AuthToken, input.APIBaseURL)
 		if err != nil {
-			fetchWarning = fmt.Sprintf(
+			warnings = append(warnings, fmt.Sprintf(
 				"Could not fetch enabled models from %s/v2/models. Falling back to explicit/default models. %v",
-				input.APIBaseURL, err)
+				input.APIBaseURL, err))
 		} else {
 			ids := make([]string, len(fetchedInfos))
 			for i, m := range fetchedInfos {
@@ -292,32 +334,47 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 			if input.CollectModelInfos {
 				infos = fetchedInfos
 			}
+			if len(fetched) == 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"the workspace has no enabled chat models; launching against %q anyway — enable models in the orq.ai studio or pass --model",
+					firstNonEmpty(input.Flags.Model, getenv(input.ModelEnvKey), first(explicitModels), input.DefaultModel)))
+			}
 		}
 	}
 
 	fallbackModel := firstNonEmpty(getenv(input.ModelEnvKey), input.DefaultModel)
+	defaultSubstituted := false
 	gatewayModel := normalize(firstNonEmpty(
 		input.Flags.Model,
 		getenv(input.ModelEnvKey),
 		func() string {
-			if slices.Contains(fetched, input.DefaultModel) {
+			if slices.Contains(fetched, normalize(input.DefaultModel)) {
 				return input.DefaultModel
 			}
-			return firstNonEmpty(first(fetched), first(explicitModels), fallbackModel)
+			if m := first(fetched); m != "" {
+				defaultSubstituted = true
+				return m
+			}
+			return firstNonEmpty(first(explicitModels), fallbackModel)
 		}(),
 	))
+	if defaultSubstituted {
+		warnings = append(warnings, fmt.Sprintf(
+			"default model %q is not enabled in this workspace; using %q (first enabled model) — pass --model to pick explicitly",
+			input.DefaultModel, gatewayModel))
+	}
 
 	all := append(append(append([]string{}, fetched...), explicitModels...), gatewayModel)
 	gatewayModels := DedupeModels(all, normalize)
 
 	return &ResolvedModels{
 		GatewayConfig: GatewayConfig{
-			AuthToken:         input.AuthToken,
-			APIBaseURL:        input.APIBaseURL,
-			BaseURL:           baseURL,
-			GatewayModel:      gatewayModel,
-			GatewayModels:     gatewayModels,
-			ModelFetchWarning: fetchWarning,
+			AuthToken:     input.AuthToken,
+			APIBaseURL:    input.APIBaseURL,
+			BaseURL:       baseURL,
+			GatewayModel:  gatewayModel,
+			GatewayModels: gatewayModels,
+			ModelWarnings: warnings,
 		},
 		Infos: infos,
 	}, nil

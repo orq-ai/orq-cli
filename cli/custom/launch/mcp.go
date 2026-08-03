@@ -27,13 +27,22 @@ func skillsPluginURL(ctx *AgentContext) string {
 }
 
 // mcpURL returns the orq MCP endpoint for this launch, or "" when disabled
-// via --no-mcp. The API key is never embedded — each harness references the
-// ORQ_API_KEY env var through its own mechanism.
+// via --no-mcp. A non-default ORQ_API_BASE_URL (self-hosted / regional)
+// carries the MCP endpoint with it. The API key is never embedded — each
+// harness references the ORQ_API_KEY env var through its own mechanism.
 func mcpURL(ctx *AgentContext) string {
 	if ctx.Flags.NoMCP {
 		return ""
 	}
-	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), DefaultMCPURL)
+	apiBase := ""
+	if ctx.Creds != nil {
+		apiBase = ctx.Creds.APIBaseURL
+	}
+	return firstNonEmpty(
+		ctx.Getenv("ORQ_MCP_URL"),
+		deriveFromAPIBase(apiBase, "/v2/mcp"),
+		DefaultMCPURL,
+	)
 }
 
 // claudeMCPConfig is the --mcp-config file payload; claude expands
