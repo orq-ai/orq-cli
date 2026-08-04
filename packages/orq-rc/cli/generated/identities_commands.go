@@ -63,7 +63,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 						{
 							Name:        "metadata",
 							FlagName:    "metadata",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Custom JSON metadata stored with the identity.",
 						},
 						{
@@ -120,7 +120,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 				{
 					Name:        "metadata",
 					FlagName:    "metadata",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Custom JSON metadata stored with the identity.",
 				},
 				{
@@ -293,7 +293,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 						{
 							Name:        "metadata",
 							FlagName:    "metadata",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Replacement custom JSON metadata.",
 						},
 						{
@@ -344,7 +344,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 				{
 					Name:        "metadata",
 					FlagName:    "metadata",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Replacement custom JSON metadata.",
 				},
 				{
