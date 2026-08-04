@@ -359,7 +359,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke id",
 			Short:   "Invoke a Custom Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n- `variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -404,6 +404,12 @@ func registerevalsCommands(root *cobra.Command) {
 							FlagName:    "retrievals",
 							Type:        "string-slice",
 							Description: "Knowledge base retrievals",
+						},
+						{
+							Name:        "variables",
+							FlagName:    "variables",
+							Type:        "json",
+							Description: "Template variables for evaluator prompt substitution. Request values override evaluator defaults, including for nested arrays and objects.",
 						},
 					},
 				)
@@ -461,6 +467,12 @@ func registerevalsCommands(root *cobra.Command) {
 					FlagName:    "retrievals",
 					Type:        "string-slice",
 					Description: "Knowledge base retrievals",
+				},
+				{
+					Name:        "variables",
+					FlagName:    "variables",
+					Type:        "json",
+					Description: "Template variables for evaluator prompt substitution. Request values override evaluator defaults, including for nested arrays and objects.",
 				},
 			},
 		)
