@@ -26,7 +26,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 27 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 29 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -183,6 +183,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							},
 						},
 						{
+							Name:        "stop_sequences",
+							FlagName:    "stop-sequences",
+							Type:        "string-slice",
+							Description: "Custom text sequences that cause the model to stop generating. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
+						},
+						{
 							Name:        "store",
 							FlagName:    "store",
 							Type:        "bool",
@@ -240,6 +246,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "tools",
 							Type:        "json",
 							Description: "Tools available to the model.",
+						},
+						{
+							Name:        "top_k",
+							FlagName:    "top-k",
+							Type:        "int64",
+							Description: "Only sample from the top K options for each subsequent token. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 						},
 						{
 							Name:        "top_logprobs",
@@ -427,6 +439,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					},
 				},
 				{
+					Name:        "stop_sequences",
+					FlagName:    "stop-sequences",
+					Type:        "string-slice",
+					Description: "Custom text sequences that cause the model to stop generating. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
+				},
+				{
 					Name:        "store",
 					FlagName:    "store",
 					Type:        "bool",
@@ -484,6 +502,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "tools",
 					Type:        "json",
 					Description: "Tools available to the model.",
+				},
+				{
+					Name:        "top_k",
+					FlagName:    "top-k",
+					Type:        "int64",
+					Description: "Only sample from the top K options for each subsequent token. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 				},
 				{
 					Name:        "top_logprobs",

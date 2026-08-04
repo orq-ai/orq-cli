@@ -46,7 +46,7 @@ func registerskillsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, and underscores. Dashes and dots are not allowed.",
+							Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 						},
 						{
 							Name:        "instructions",
@@ -103,7 +103,7 @@ func registerskillsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, and underscores. Dashes and dots are not allowed.",
+					Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 				},
 				{
 					Name:        "instructions",
@@ -274,7 +274,7 @@ func registerskillsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "New workspace-unique display name. Omit to keep the current name.\n Must start with a letter and may contain letters, numbers, and\n underscores. Dashes and dots are not allowed because skill names\n are referenced as template variables.",
+							Description: "New workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 						},
 						{
 							Name:        "instructions",
@@ -331,7 +331,7 @@ func registerskillsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "New workspace-unique display name. Omit to keep the current name.\n Must start with a letter and may contain letters, numbers, and\n underscores. Dashes and dots are not allowed because skill names\n are referenced as template variables.",
+					Description: "New workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 				},
 				{
 					Name:        "instructions",
