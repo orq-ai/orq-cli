@@ -23,7 +23,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + embeddingsCmd.CommandPath() + " create input: The food was delicious and the waiter..., model: openai/text-embedding-3-small\n"
+		examples += "  " + embeddingsCmd.CommandPath() + " create input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -33,7 +33,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{
-					"input: The food was delicious and the waiter..., model: openai/text-embedding-3-small",
+					"input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
