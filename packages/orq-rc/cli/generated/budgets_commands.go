@@ -226,40 +226,6 @@ func registerbudgetsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "get-consumption budget-id",
-			Short:   "Get current-period consumption",
-			Long:    bartolocli.Markdown("Returns the current-period cost, token, and per-minute request counters for the budget. Values reflect the live Redis state for the active period bucket."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-
-				_, decoded, err := OpenapiBudgetGetConsumption(args[0], params)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		budgetsCmd.AddCommand(cmd)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List budgets",
 			Long:    bartolocli.Markdown("Returns budgets visible to the current workspace, ordered by creation time with the newest first. Supports filtering by scope kind, scope target id, period, and active state, plus an optional free-text query that searches across denormalized target names via Typesense."),

@@ -24,54 +24,6 @@ func registeralertsCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "check-now alert-id",
-			Short:   "Run an alert check now",
-			Long:    bartolocli.Markdown("Schedules one immediate evaluation of the alert (delivered within ~10 seconds), independent of its regular interval. The check runs through the normal evaluation pipeline: it records a run, can open or resolve triggers, and fires notifications. The alert must be enabled.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
-					[]bartolocli.BodyField{},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
-				}
-
-				_, decoded, err := OpenapiAlertCheckNow(args[0], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		alertsCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
-		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an alert",
 			Long:    bartolocli.Markdown("Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string, required)\n- `query` (allOf, required)\n- `signal` (string)\n\nRequired fields: `condition`, `display_name`, `project_id`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
