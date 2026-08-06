@@ -4,15 +4,35 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	isatty "github.com/mattn/go-isatty"
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
+// hasInteractiveTTY gates every prompt in the CLI. --no-input/ORQ_NO_INPUT
+// forces the non-interactive path even on a real TTY, so scripts can rely on
+// "fail instead of hang" regardless of how they are invoked.
 func hasInteractiveTTY() bool {
+	if viper.GetBool("no-input") {
+		return false
+	}
 	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
+}
+
+// envAPIKeyConfigured mirrors custom.apiKeyConfigured (register.go); the
+// commands package cannot import the custom package without an import cycle.
+func envAPIKeyConfigured() bool {
+	for _, envVar := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+		if strings.TrimSpace(os.Getenv(envVar)) != "" {
+			return true
+		}
+	}
+	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
 func selectWorkspace(workspaces []map[string]any, message string) (string, error) {

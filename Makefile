@@ -6,9 +6,10 @@ BIN_DIR ?= ./bin
 INSTALL_DIR ?= $(HOME)/.local/bin
 BUILD_TARGET := ./cmd/$(BINARY)
 COMPLETIONS_DIR ?= ./completions
+MAN_DIR ?= ./man
 BARTOLO ?= bartolo
 
-.PHONY: help build install-local tidy doctor completions sync
+.PHONY: help build install-local tidy doctor completions man sync
 
 help:
 	@printf '%s\n' \
@@ -18,6 +19,7 @@ help:
 		'  make tidy           Run go mod tidy' \
 		'  make doctor         Run the CLI doctor command' \
 		'  make completions    Generate shell completions into $(COMPLETIONS_DIR)' \
+		'  make man            Generate man pages into $(MAN_DIR)' \
 		'  make sync           Refresh Bartolo-owned scaffold files'
 
 build:
@@ -43,6 +45,10 @@ completions:
 	@go run "$(BUILD_TARGET)" completion fish > "$(COMPLETIONS_DIR)/$(BINARY).fish"
 	@go run "$(BUILD_TARGET)" completion powershell > "$(COMPLETIONS_DIR)/$(BINARY).ps1"
 	@printf 'Generated completions in %s\n' "$(COMPLETIONS_DIR)"
+
+man:
+	@go run "$(BUILD_TARGET)" man-pages --dir "$(MAN_DIR)"
+	@printf 'Generated man pages in %s\n' "$(MAN_DIR)"
 
 sync:
 	@$(BARTOLO) sync
