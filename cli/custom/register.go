@@ -89,6 +89,13 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
+		override := strings.TrimSpace(viper.GetString("workspace"))
+		// Warn about a shadowed --workspace before anything else, so the no-op
+		// is surfaced even when there is no session at all (API-key-only use).
+		if override != "" && apiKeyConfigured() {
+			fmt.Fprintln(bartolocli.Stderr,
+				"warning: --workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
+		}
 		session, err := auth.ReadSession()
 		if err != nil || session == nil {
 			return nil
@@ -96,12 +103,7 @@ func installSessionPreRun() {
 		if viper.GetString("server") == "" && session.APIBaseURL != "" {
 			viper.Set("server", session.APIBaseURL)
 		}
-		override := strings.TrimSpace(viper.GetString("workspace"))
 		if apiKeyConfigured() {
-			if override != "" {
-				fmt.Fprintln(bartolocli.Stderr,
-					"warning: --workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
-			}
 			return nil
 		}
 		if override != "" {
