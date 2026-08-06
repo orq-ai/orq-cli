@@ -193,9 +193,11 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 		authLine = "authenticated as " + userEmail
 	}
 	heading("orq doctor")
-	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), paint(ansiDim, pad("auth", 16)), authLine)
+	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
+	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", 16)), paint(ansiDim, "RESULT"))
+	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", 16), authLine)
 	for _, c := range checks {
-		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), paint(ansiDim, pad(c.ID, 16)), c.Message)
+		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), pad(c.ID, 16), c.Message)
 	}
 	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
 }

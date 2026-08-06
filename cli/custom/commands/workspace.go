@@ -143,16 +143,43 @@ func newWorkspaceUseCommand() *cobra.Command {
 	return cmd
 }
 
-// printWorkspaceList renders the workspace roster with a colored marker on the
-// active one and an aligned member count.
+// printWorkspaceList renders the workspace roster as an aligned table: a dim
+// header row, a green dot on the active workspace, and right-aligned member
+// counts. Column widths grow to fit the data.
 func printWorkspaceList(rows []workspaceRow, nameWidth int) {
+	const memHdr = "MEMBERS"
+	keyWidth := len("KEY")
+	for _, r := range rows {
+		if len(r.Key) > keyWidth {
+			keyWidth = len(r.Key)
+		}
+	}
+	if nameWidth < len("NAME") {
+		nameWidth = len("NAME")
+	}
+	out := bartolocli.Stdout
 	heading("Workspaces")
+	// Header row. The 2-space gutter lines up with the active-marker column.
+	fmt.Fprintf(out, "  %s%s  %s  %s\n",
+		"  ",
+		paint(ansiDim, pad("NAME", nameWidth)),
+		paint(ansiDim, pad("KEY", keyWidth)),
+		paint(ansiDim, memHdr))
+	anyActive := false
 	for _, r := range rows {
 		marker := "  "
 		if r.Active {
-			marker = paint(ansiGreen, "* ")
+			marker = paint(ansiGreen, "● ")
+			anyActive = true
 		}
-		label := fmt.Sprintf("%s (%s)", pad(r.Name, nameWidth), r.Key)
-		fmt.Fprintf(bartolocli.Stdout, "  %s%s  %s\n", marker, label, paint(ansiDim, fmt.Sprintf("%d members", r.TotalMembers)))
+		members := fmt.Sprintf("%*d", len(memHdr), r.TotalMembers)
+		fmt.Fprintf(out, "  %s%s  %s  %s\n",
+			marker,
+			pad(r.Name, nameWidth),
+			pad(r.Key, keyWidth),
+			paint(ansiDim, members))
+	}
+	if anyActive {
+		fmt.Fprintln(out, paint(ansiDim, "\n● active"))
 	}
 }
