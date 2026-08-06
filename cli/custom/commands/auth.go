@@ -63,7 +63,10 @@ func NewLoginCommand() *cobra.Command {
 			}
 
 			report := BuildIdentityReport(session, &client.URLs)
-			printSignedIn(report)
+			if wantsHumanView(cmd) {
+				printIdentity(report, "Signed in as")
+				return nil
+			}
 			return emit(map[string]any{
 				"identity":         report,
 				"browser_opened":   browserOpened,
@@ -176,7 +179,10 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			report := BuildIdentityReport(session, &client.URLs)
-			printSignedIn(report)
+			if wantsHumanView(cmd) {
+				printIdentity(report, "Signed in as")
+				return nil
+			}
 			return emit(report)
 		},
 	}
@@ -184,17 +190,20 @@ func NewWhoAmICommand() *cobra.Command {
 	return cmd
 }
 
-// printSignedIn shows a human confirmation of who is signed in and where. The
-// structured identity report still follows on stdout; this is the glanceable
-// version for a person at a terminal.
-func printSignedIn(report IdentityReport) {
-	email := ""
+// printIdentity renders the friendly "who am I" block: a green headline plus an
+// aligned key/value list. The structured report is reserved for scripts and
+// --json/-o, so this is the primary output at a terminal.
+func printIdentity(report IdentityReport, verb string) {
+	email := "current user"
+	name := ""
 	if report.User != nil {
-		email = report.User.Email
+		if report.User.Email != "" {
+			email = report.User.Email
+		}
+		name = report.User.DisplayName
 	}
-	if email == "" {
-		email = "current user"
-	}
+	success("%s %s", verb, email)
+
 	activeName := ""
 	if report.ActiveWorkspaceKey != nil {
 		for _, w := range report.Workspaces {
@@ -204,8 +213,15 @@ func printSignedIn(report IdentityReport) {
 			}
 		}
 	}
-	success("Signed in as %s", email)
-	if activeName != "" && report.ActiveWorkspaceKey != nil {
-		info("  workspace: %s (%s)", activeName, *report.ActiveWorkspaceKey)
+	const w = 9
+	if name != "" {
+		kv(w, "name", "%s", name)
 	}
+	if activeName != "" && report.ActiveWorkspaceKey != nil {
+		kv(w, "workspace", "%s (%s)", activeName, *report.ActiveWorkspaceKey)
+	}
+	if len(report.Workspaces) > 1 {
+		kv(w, "access", "%d workspaces", len(report.Workspaces))
+	}
+	kv(w, "session", "%s", report.SessionFile)
 }

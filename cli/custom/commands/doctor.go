@@ -148,7 +148,7 @@ func NewDoctorCommand() *cobra.Command {
 			// full structured report is verbose diagnostic data meant for
 			// machines and for `--json`/`-o`. Scripts (non-TTY) and an explicit
 			// format request always get the structured report.
-			if humanOutput() && !machineFormatRequested(cmd) {
+			if wantsHumanView(cmd) {
 				printDoctorSummary(authStatus, userEmail, checks)
 				return nil
 			}
@@ -192,25 +192,12 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
 	}
-	fmt.Fprintln(out, paint(ansiDim, "orq doctor"))
-	fmt.Fprintf(out, "  %s  auth: %s\n", statusGlyph(authStatusToCheck(authStatus)), authLine)
+	heading("orq doctor")
+	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), paint(ansiDim, pad("auth", 16)), authLine)
 	for _, c := range checks {
-		fmt.Fprintf(out, "  %s  %s: %s\n", statusGlyph(c.Status), c.ID, c.Message)
+		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), paint(ansiDim, pad(c.ID, 16)), c.Message)
 	}
 	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
-}
-
-// machineFormatRequested reports whether the user explicitly asked for a
-// machine format via --json or -o/--output-format, in which case doctor emits
-// the structured report even at a terminal.
-func machineFormatRequested(cmd *cobra.Command) bool {
-	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
-		return true
-	}
-	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
-		return true
-	}
-	return false
 }
 
 func authStatusToCheck(status string) string {

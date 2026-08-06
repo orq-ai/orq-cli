@@ -51,21 +51,23 @@ func newWorkspaceListCommand() *cobra.Command {
 				activeKey = *session.ActiveWorkspaceKey
 			}
 			rows := make([]workspaceRow, 0, len(session.Workspaces))
+			nameWidth := 0
 			for _, w := range session.Workspaces {
 				ws := workspaceFromMap(w)
-				active := ws.Key == activeKey
 				rows = append(rows, workspaceRow{
 					ID:           ws.ID,
 					Key:          ws.Key,
 					Name:         ws.Name,
 					TotalMembers: ws.TotalMembers,
-					Active:       active,
+					Active:       ws.Key == activeKey,
 				})
-				marker := "  "
-				if active {
-					marker = paint(ansiGreen, "* ")
+				if len(ws.Name) > nameWidth {
+					nameWidth = len(ws.Name)
 				}
-				info("%s%s (%s)", marker, ws.Name, ws.Key)
+			}
+			if wantsHumanView(cmd) {
+				printWorkspaceList(rows, nameWidth)
+				return nil
 			}
 			return emit(map[string]any{
 				"active_workspace_key": session.ActiveWorkspaceKey,
@@ -123,14 +125,34 @@ func newWorkspaceUseCommand() *cobra.Command {
 					break
 				}
 			}
-			success("Active workspace: %s (%s)", activeName, workspaceKey)
-			if envAPIKeyConfigured() {
-				fmt.Fprintln(bartolocli.Stderr,
-					"warning: an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
+			shadowed := envAPIKeyConfigured()
+			if wantsHumanView(cmd) {
+				success("Active workspace: %s (%s)", activeName, workspaceKey)
+				if shadowed {
+					Warn("an explicit API key takes precedence, so this switch will not affect API calls until it is unset")
+				}
+				return nil
+			}
+			if shadowed {
+				Warn("an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
 			}
 			return emit(report)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	return cmd
+}
+
+// printWorkspaceList renders the workspace roster with a colored marker on the
+// active one and an aligned member count.
+func printWorkspaceList(rows []workspaceRow, nameWidth int) {
+	heading("Workspaces")
+	for _, r := range rows {
+		marker := "  "
+		if r.Active {
+			marker = paint(ansiGreen, "* ")
+		}
+		label := fmt.Sprintf("%s (%s)", pad(r.Name, nameWidth), r.Key)
+		fmt.Fprintf(bartolocli.Stdout, "  %s%s  %s\n", marker, label, paint(ansiDim, fmt.Sprintf("%d members", r.TotalMembers)))
+	}
 }

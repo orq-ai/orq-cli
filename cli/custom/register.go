@@ -93,8 +93,7 @@ func installSessionPreRun() {
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
 		if override != "" && apiKeyConfigured() {
-			fmt.Fprintln(bartolocli.Stderr,
-				"warning: --workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
+			commands.Warn("--workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
 		}
 		session, err := auth.ReadSession()
 		if err != nil || session == nil {
