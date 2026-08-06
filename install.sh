@@ -110,6 +110,34 @@ if [ ! -s "$tmp_file" ]; then
   exit 1
 fi
 
+# --- Verify checksum -------------------------------------------------------
+
+# Releases publish a .sha256 next to each binary. Verify when present; older
+# releases predate the checksum assets, so a missing file is a warning, not a
+# failure (pin ORQ_CLI_VERSION to a recent release to require verification).
+checksum_url="${download_url}.sha256"
+expected="$(curl -fsSL "$checksum_url" 2>/dev/null | awk '{print $1}')" || expected=""
+if [ -n "$expected" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$tmp_file" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "$tmp_file" | awk '{print $1}')"
+  else
+    err "cannot verify checksum: neither sha256sum nor shasum is available"
+    exit 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    err "checksum mismatch for $asset"
+    err "expected: $expected"
+    err "actual:   $actual"
+    err "refusing to install a corrupted or tampered binary"
+    exit 1
+  fi
+  echo "Checksum verified (sha256)"
+else
+  err "warning: no checksum published for ${VERSION}; skipping verification"
+fi
+
 chmod +x "$tmp_file"
 
 # --- Install ---------------------------------------------------------------

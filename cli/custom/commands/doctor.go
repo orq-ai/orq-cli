@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"time"
@@ -37,10 +38,14 @@ type doctorReport struct {
 
 func NewDoctorCommand() *cobra.Command {
 	var apiBase string
+	var report bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect config, auth state, and endpoint reachability",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if report {
+				return emitBugReport(cmd)
+			}
 			inspect := auth.InspectSession()
 
 			apiBaseSource := "default"
@@ -143,7 +148,31 @@ func NewDoctorCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
+	cmd.Flags().BoolVar(&report, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
 	return cmd
+}
+
+// emitBugReport prints a GitHub new-issue URL pre-filled with the environment
+// details maintainers always have to ask for. Only non-sensitive facts go in:
+// version, platform, profile name — never tokens, emails, or URLs from the
+// session file.
+func emitBugReport(cmd *cobra.Command) error {
+	body := fmt.Sprintf(
+		"### Environment\n\n"+
+			"- orq version: %s\n"+
+			"- platform: %s/%s\n"+
+			"- go runtime: %s\n"+
+			"- profile: %s\n\n"+
+			"### What happened\n\n<!-- steps to reproduce, actual output -->\n\n"+
+			"### What you expected\n",
+		cmd.Root().Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
+	)
+	issueURL := "https://github.com/orq-ai/orq-cli/issues/new?title=" +
+		url.QueryEscape("bug: ") + "&body=" + url.QueryEscape(body)
+	return emit(map[string]any{
+		"report_url": issueURL,
+		"note":       "Open the URL to file a pre-filled bug report. Review the body before submitting.",
+	})
 }
 
 func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {

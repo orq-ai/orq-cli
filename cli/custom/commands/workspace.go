@@ -2,9 +2,11 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 
 	"orq/cli/custom/auth"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
 
@@ -106,6 +108,10 @@ func newWorkspaceUseCommand() *cobra.Command {
 			session, err = client.UseWorkspace(workspaceKey)
 			if err != nil {
 				return err
+			}
+			if envAPIKeyConfigured() {
+				fmt.Fprintln(bartolocli.Stderr,
+					"warning: an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
 			}
 			return emit(BuildIdentityReport(session, &client.URLs))
 		},

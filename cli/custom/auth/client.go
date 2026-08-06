@@ -349,6 +349,27 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 	return session, nil
 }
 
+// WorkspaceToken returns an access token for the given workspace WITHOUT
+// changing the stored session's active workspace. Backs the per-invocation
+// `--workspace`/`ORQ_WORKSPACE` override: two concurrent invocations with
+// different overrides must not race each other's active-workspace state.
+// The fetched token is still cached back into the session file.
+func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, error) {
+	if tok, ok := session.WorkspaceTokens[workspaceKey]; ok && !isExpired(tok.ExpiresAt, 60) {
+		return tok.Token, nil
+	}
+	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
+	if err != nil {
+		return "", err
+	}
+	if session.WorkspaceTokens == nil {
+		session.WorkspaceTokens = map[string]StoredAccessToken{}
+	}
+	session.WorkspaceTokens[workspaceKey] = tok
+	_ = SaveSession(session)
+	return tok.Token, nil
+}
+
 func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 	session, err := ReadSession()
 	if err != nil {

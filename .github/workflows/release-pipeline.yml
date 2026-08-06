@@ -204,6 +204,26 @@ jobs:
           done
           ls -la dist/
 
+      - name: Generate man pages
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -e
+          go run -ldflags "-X main.version=${TAG#v}" ./cmd/orq man-pages --dir dist/man
+          tar -czf dist/orq-man-pages.tar.gz -C dist man
+          rm -rf dist/man
+
+      - name: Generate checksums
+        run: |
+          set -e
+          # Per-asset sha256 files; install.sh downloads and verifies them.
+          cd dist
+          for f in orq-*; do
+            case "$f" in *.sha256) continue ;; esac
+            shasum -a 256 "$f" > "$f.sha256"
+          done
+          ls -la
+
       - name: Upload raw binaries to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

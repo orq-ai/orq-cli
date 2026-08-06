@@ -79,6 +79,8 @@ func NewLoginCommand() *cobra.Command {
 
 func NewLogoutCommand() *cobra.Command {
 	var apiBase string
+	var yes bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "logout",
@@ -96,7 +98,13 @@ func NewLogoutCommand() *cobra.Command {
 				})
 			}
 
-			if hasInteractiveTTY() {
+			// --force clears local credentials no matter what, so it implies
+			// consent; asking "are you sure?" after the user said "force" is noise.
+			confirmed := yes || force
+			if !confirmed {
+				if !hasInteractiveTTY() {
+					return errors.New("refusing to log out without confirmation in non-interactive mode; pass --yes")
+				}
 				userLabel := "current user"
 				if session.User != nil && session.User.Email != "" {
 					userLabel = session.User.Email
@@ -114,7 +122,16 @@ func NewLogoutCommand() *cobra.Command {
 			}
 
 			client := auth.NewClient(sessionAPIBase(apiBase, session))
-			_ = client.Logout(session.RefreshToken)
+			revokeErr := client.Logout(session.RefreshToken)
+			if revokeErr != nil && !force {
+				// Deleting local credentials while the refresh token is still
+				// valid server-side would orphan the session. Keep it so the
+				// user can retry, unless they explicitly force the clear.
+				return fmt.Errorf(
+					"token revoke failed, local session kept (retry, or pass --force to clear local credentials anyway): %w",
+					revokeErr,
+				)
+			}
 			if err := client.ClearLocalSession(); err != nil {
 				return err
 			}
@@ -122,11 +139,14 @@ func NewLogoutCommand() *cobra.Command {
 			return emit(map[string]any{
 				"authenticated": false,
 				"cleared":       true,
+				"revoked":       revokeErr == nil,
 				"session_file":  auth.SessionFilePath(),
 			})
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the confirmation prompt")
+	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
 	return cmd
 }
 
