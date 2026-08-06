@@ -216,7 +216,6 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd.Flags().String("search", "", "")
 		cmd.Flags().String("profile", "", "")
 		cmd.Flags().String("enabled", "", "")
-		cmd.Flags().String("include-metrics", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 

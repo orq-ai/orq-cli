@@ -1414,7 +1414,7 @@ func OpenapiApiKeyCreate(params *viper.Viper, body string) (*gentleman.Response,
 }
 
 // OpenapiApiKeyDelete Delete an API key
-func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys delete api-key-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -1433,7 +1433,7 @@ func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1445,7 +1445,7 @@ func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -1495,7 +1495,7 @@ func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Res
 }
 
 // OpenapiApiKeyList List API keys
-func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys list"
 	server := viper.GetString("server")
 	if server == "" {
@@ -1550,7 +1550,7 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]int
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1562,7 +1562,7 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -9207,10 +9207,6 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 	paramEnabled := params.GetBool("enabled")
 	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
-	}
-	paramIncludeMetrics := params.GetBool("include-metrics")
-	if paramIncludeMetrics != false {
-		req = req.AddQuery("include_metrics", fmt.Sprintf("%v", paramIncludeMetrics))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

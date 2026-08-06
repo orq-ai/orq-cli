@@ -242,7 +242,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List API keys",
-			Long:    bartolocli.Markdown("Returns API keys visible to the current workspace, ordered by creation time with the newest key first. The `api_key` and `token_hash` fields are never returned by this endpoint; only `token_prefix` is included."),
+			Long:    bartolocli.Markdown("Returns API keys visible to the current workspace as a JSON array. Raw tokens are never included; the `token` field contains a masked display value."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
