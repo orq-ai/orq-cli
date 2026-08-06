@@ -63,6 +63,7 @@ func NewLoginCommand() *cobra.Command {
 			}
 
 			report := BuildIdentityReport(session, &client.URLs)
+			printSignedIn(report)
 			return emit(map[string]any{
 				"identity":         report,
 				"browser_opened":   browserOpened,
@@ -136,6 +137,11 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 
+			if revokeErr == nil {
+				success("Signed out")
+			} else {
+				success("Local credentials cleared (server-side token was not revoked)")
+			}
 			return emit(map[string]any{
 				"authenticated": false,
 				"cleared":       true,
@@ -170,9 +176,36 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			report := BuildIdentityReport(session, &client.URLs)
+			printSignedIn(report)
 			return emit(report)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	return cmd
+}
+
+// printSignedIn shows a human confirmation of who is signed in and where. The
+// structured identity report still follows on stdout; this is the glanceable
+// version for a person at a terminal.
+func printSignedIn(report IdentityReport) {
+	email := ""
+	if report.User != nil {
+		email = report.User.Email
+	}
+	if email == "" {
+		email = "current user"
+	}
+	activeName := ""
+	if report.ActiveWorkspaceKey != nil {
+		for _, w := range report.Workspaces {
+			if w.Key == *report.ActiveWorkspaceKey {
+				activeName = w.Name
+				break
+			}
+		}
+	}
+	success("Signed in as %s", email)
+	if activeName != "" && report.ActiveWorkspaceKey != nil {
+		info("  workspace: %s (%s)", activeName, *report.ActiveWorkspaceKey)
+	}
 }

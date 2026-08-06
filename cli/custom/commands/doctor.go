@@ -144,6 +144,14 @@ func NewDoctorCommand() *cobra.Command {
 				Auth:   authMap,
 				Checks: checks,
 			}
+			// A person at a terminal gets the scannable colored checklist; the
+			// full structured report is verbose diagnostic data meant for
+			// machines and for `--json`/`-o`. Scripts (non-TTY) and an explicit
+			// format request always get the structured report.
+			if humanOutput() && !machineFormatRequested(cmd) {
+				printDoctorSummary(authStatus, userEmail, checks)
+				return nil
+			}
 			return emit(report)
 		},
 	}
@@ -173,6 +181,47 @@ func emitBugReport(cmd *cobra.Command) error {
 		"report_url": issueURL,
 		"note":       "Open the URL to file a pre-filled bug report. Review the body before submitting.",
 	})
+}
+
+// printDoctorSummary is the scannable, colored checklist a person sees at a
+// terminal. It is the primary output in that mode (the verbose structured
+// report is reserved for scripts and --json/-o), so it writes to stdout.
+func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
+	out := bartolocli.Stdout
+	authLine := authStatus
+	if authStatus == "authenticated" && userEmail != "" {
+		authLine = "authenticated as " + userEmail
+	}
+	fmt.Fprintln(out, paint(ansiDim, "orq doctor"))
+	fmt.Fprintf(out, "  %s  auth: %s\n", statusGlyph(authStatusToCheck(authStatus)), authLine)
+	for _, c := range checks {
+		fmt.Fprintf(out, "  %s  %s: %s\n", statusGlyph(c.Status), c.ID, c.Message)
+	}
+	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
+}
+
+// machineFormatRequested reports whether the user explicitly asked for a
+// machine format via --json or -o/--output-format, in which case doctor emits
+// the structured report even at a terminal.
+func machineFormatRequested(cmd *cobra.Command) bool {
+	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
+		return true
+	}
+	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
+		return true
+	}
+	return false
+}
+
+func authStatusToCheck(status string) string {
+	switch status {
+	case "authenticated":
+		return "pass"
+	case "missing":
+		return "warn"
+	default:
+		return "fail"
+	}
 }
 
 func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {

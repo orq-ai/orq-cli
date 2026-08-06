@@ -53,13 +53,19 @@ func newWorkspaceListCommand() *cobra.Command {
 			rows := make([]workspaceRow, 0, len(session.Workspaces))
 			for _, w := range session.Workspaces {
 				ws := workspaceFromMap(w)
+				active := ws.Key == activeKey
 				rows = append(rows, workspaceRow{
 					ID:           ws.ID,
 					Key:          ws.Key,
 					Name:         ws.Name,
 					TotalMembers: ws.TotalMembers,
-					Active:       ws.Key == activeKey,
+					Active:       active,
 				})
+				marker := "  "
+				if active {
+					marker = paint(ansiGreen, "* ")
+				}
+				info("%s%s (%s)", marker, ws.Name, ws.Key)
 			}
 			return emit(map[string]any{
 				"active_workspace_key": session.ActiveWorkspaceKey,
@@ -109,11 +115,20 @@ func newWorkspaceUseCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			report := BuildIdentityReport(session, &client.URLs)
+			activeName := workspaceKey
+			for _, w := range report.Workspaces {
+				if w.Key == workspaceKey {
+					activeName = w.Name
+					break
+				}
+			}
+			success("Active workspace: %s (%s)", activeName, workspaceKey)
 			if envAPIKeyConfigured() {
 				fmt.Fprintln(bartolocli.Stderr,
 					"warning: an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
 			}
-			return emit(BuildIdentityReport(session, &client.URLs))
+			return emit(report)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
