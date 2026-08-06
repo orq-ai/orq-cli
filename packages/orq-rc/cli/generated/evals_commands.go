@@ -67,7 +67,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 7 more fields\n\nRequired fields: `key`, `path`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -157,7 +157,13 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Legacy alternative to `project_id`. Storage path whose first segment names the project that owns the evaluator. Mutually exclusive with `project_id`.",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Mutually exclusive with `path`.",
 						},
 						{
 							Name:        "prompt",
@@ -282,7 +288,13 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Legacy alternative to `project_id`. Storage path whose first segment names the project that owns the evaluator. Mutually exclusive with `project_id`.",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Mutually exclusive with `path`.",
 				},
 				{
 					Name:        "prompt",
@@ -565,7 +577,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 14 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -661,13 +673,19 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Project path. Optional on update — uses existing project if omitted.",
+							Description: "Legacy alternative to `project_id`. Project path. Optional on update — the evaluator keeps its current project when both are omitted. Mutually exclusive with `project_id`.",
 						},
 						{
 							Name:        "payload",
 							FlagName:    "payload",
 							Type:        "string-map",
 							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Optional on update — the evaluator keeps its current project when omitted; supplying a different id moves it. Mutually exclusive with `path`.",
 						},
 						{
 							Name:        "prompt",
@@ -823,13 +841,19 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Project path. Optional on update — uses existing project if omitted.",
+					Description: "Legacy alternative to `project_id`. Project path. Optional on update — the evaluator keeps its current project when both are omitted. Mutually exclusive with `project_id`.",
 				},
 				{
 					Name:        "payload",
 					FlagName:    "payload",
 					Type:        "string-map",
 					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Optional on update — the evaluator keeps its current project when omitted; supplying a different id moves it. Mutually exclusive with `path`.",
 				},
 				{
 					Name:        "prompt",
