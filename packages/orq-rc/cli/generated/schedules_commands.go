@@ -23,17 +23,17 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
+		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
 
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
 			Short:   "Create schedule",
-			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a recurring or one-off cadence. The minimum firing interval is 1 hour for `cron` and `interval`; `once` schedules are exempt.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a recurring or one-off cadence. The minimum firing interval is 1 hour for `cron` and `interval`; `once` schedules are exempt.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string, required)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `display_name`, `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{
-					"agent_tag: v2, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron",
+					"agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * mon-fri, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
@@ -45,6 +45,12 @@ func registerschedulesCommands(root *cobra.Command) {
 							FlagName:    "agent-tag",
 							Type:        "string",
 							Description: "Pin this schedule to a specific agent version. Omit to always use the active version.",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "Human-readable name of the schedule.",
 						},
 						{
 							Name:        "expression",
@@ -95,6 +101,12 @@ func registerschedulesCommands(root *cobra.Command) {
 					FlagName:    "agent-tag",
 					Type:        "string",
 					Description: "Pin this schedule to a specific agent version. Omit to always use the active version.",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "Human-readable name of the schedule.",
 				},
 				{
 					Name:        "expression",
@@ -271,7 +283,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id expression: @every 6h\n"
+		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id payload{input: Updated input for the next run, variables.region: APAC}\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
@@ -281,7 +293,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{
-					"expression: @every 6h",
+					"payload{input: Updated input for the next run, variables.region: APAC}",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
