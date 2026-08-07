@@ -436,6 +436,17 @@ func skillsCacheDir() (string, error) {
 	return filepath.Join(home, ".orq", "cache", "skills"), nil
 }
 
+// skillsCacheFresh reports whether fetchSkills will hit the day-old cache, so
+// callers can announce the download that otherwise looks like a hang.
+func skillsCacheFresh() bool {
+	cache, err := skillsCacheDir()
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(cache, ".fetched"))
+	return err == nil && time.Since(info.ModTime()) < 24*time.Hour
+}
+
 // fetchSkills downloads and extracts the skills tarball, returning the
 // directory holding the individual skill folders. A cached copy less than a day
 // old is reused.

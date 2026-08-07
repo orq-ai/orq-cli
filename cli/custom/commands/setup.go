@@ -674,6 +674,9 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			results = append(results, res)
 			continue
 		}
+		if !skillsCacheFresh() {
+			rep.note("%-8s skills  downloading…", id)
+		}
 		count, err := installSkillsInto(dest)
 		if err != nil {
 			rep.warn("%-8s skills  %v", id, err)
@@ -868,6 +871,19 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w, "  Run your first command:")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "      orq agents list")
+	}
+	providerWired := false
+	for _, a := range agents {
+		if a.Error == "" && a.Provider != "" {
+			providerWired = true
+		}
+	}
+	if providerWired && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+		fmt.Fprintln(w, "  ! agents read ORQ_API_KEY from the environment; it is not set in this shell.")
+		fmt.Fprintln(w, "    Add to your shell profile (key saved in ~/.orq/credentials.json):")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "      export ORQ_API_KEY=<your key>")
+		fmt.Fprintln(w)
 	}
 	fmt.Fprintln(w)
 	if ws := links["workspace"]; ws != "" {
