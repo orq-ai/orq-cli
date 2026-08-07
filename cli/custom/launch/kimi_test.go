@@ -75,10 +75,11 @@ func TestKimiResolvePlan(t *testing.T) {
 	defer plan.Cleanup()
 
 	home := plan.Env["KIMI_CODE_HOME"]
-	if home == "" || plan.Env["ORQ_API_KEY"] != "sk-test" ||
-		plan.Env["OPENAI_API_KEY"] != "sk-test" ||
-		plan.Env["OPENAI_BASE_URL"] != DefaultGatewayBaseURL {
+	if home == "" || plan.Env["ORQ_API_KEY"] != "sk-test" {
 		t.Fatalf("env: %v", plan.Env)
+	}
+	if _, ok := plan.Env["OPENAI_API_KEY"]; ok {
+		t.Fatal("OPENAI_API_KEY must not be exported; kimi ignores it and it reads as a leaked OpenAI credential")
 	}
 
 	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
