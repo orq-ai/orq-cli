@@ -56,8 +56,8 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	if creds.FromSession && !flags.NoMCP {
-		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — login-session tokens have no MCP scope. Export ORQ_API_KEY (or run 'orq setup' to mint a key) to enable MCP tools.")
+	if !creds.SupportsMCP() && !flags.NoMCP {
+		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
 	}
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)

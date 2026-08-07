@@ -74,7 +74,13 @@ func (c *Client) StartDeviceLogin(clientName string) (*DeviceLoginStart, error) 
 		http.MethodPost,
 		c.URLs.AuthBaseURL+"/cli/device/start",
 		"",
-		map[string]string{"client_name": clientName},
+		map[string]any{
+			"client_name": clientName,
+			// Request MCP scopes up front so the session's access tokens can
+			// authenticate against the orq MCP server; without them every MCP
+			// call fails with insufficient_scope.
+			"scope": []string{"mcp:tools", "mcp:resources"},
+		},
 		&resp,
 	)
 	if err != nil {
