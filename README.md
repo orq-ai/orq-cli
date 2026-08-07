@@ -22,15 +22,20 @@ Requires Node.js 14 or newer. The matching native binary is downloaded automatic
 curl -fsSL https://raw.githubusercontent.com/orq-ai/orq-cli/main/install.sh | sh
 ```
 
-Installs a raw binary to `~/.orq/bin/orq`. Pin a specific version or pick a different install directory:
+Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published `SHA256SUMS`, adds the install directory to your shell profile, and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
 
 ```sh
 # pin a version
-curl -fsSL https://raw.githubusercontent.com/orq-ai/orq-cli/main/install.sh | ORQ_CLI_VERSION=v0.1.0 sh
+curl -fsSL .../install.sh | sh -s -- --version v0.1.0
 
 # custom install dir (must be writable by the current user)
-curl -fsSL https://raw.githubusercontent.com/orq-ai/orq-cli/main/install.sh | ORQ_CLI_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL .../install.sh | sh -s -- --install-dir /usr/local/bin
+
+# just install: no profile edit, no setup
+curl -fsSL .../install.sh | sh -s -- --no-modify-path --no-setup
 ```
+
+`ORQ_CLI_VERSION` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version` and `--install-dir`. A checksum *mismatch* aborts the install; releases published before `SHA256SUMS` existed simply skip verification with a notice.
 
 ### Pre-built release binaries
 
@@ -52,12 +57,48 @@ make build
 ## Quick start
 
 ```sh
-orq auth login           # OAuth device login; picks an active workspace
+orq setup                # sign in, pick a project, wire up your coding agent
+```
+
+That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server plus skills with your coding agent. After that:
+
+```sh
 orq whoami               # verify identity
 orq workspace list       # see available workspaces
 orq prompts list         # run any generated command
 orq doctor               # diagnose auth, config, and endpoint reachability
 ```
+
+### `orq setup`
+
+Three modes, same command:
+
+```sh
+orq setup                # short path — asks only what it cannot infer
+orq setup -i             # asks about every choice
+orq setup --no-input \
+  --project support-bot \
+  --api-key "$ORQ_API_KEY" \
+  --agent codex          # fully parameterized, for CI
+```
+
+Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format, plus the orq skills copied into the directory it scans. `pi` has no MCP support, so it receives skills only.
+
+**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v2/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
+
+Your API key is **never written into an agent config** — those reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+
+| Flag | Effect |
+|---|---|
+| `--project <name>` | Select the project, creating it when it does not exist |
+| `--workspace <key>` | Activate a workspace |
+| `--api-key <key>` | Use this key instead of logging in and minting one |
+| `--agent <name>` | Instrument a coding agent (repeatable) |
+| `--global` | Write agent config under `$HOME` instead of the current project |
+| `--no-agent` / `--no-env` | Skip agent instrumentation / skip writing `.env` |
+| `--no-input` | Never prompt; missing values become errors |
+
+Scope is chosen automatically: setup writes into the current directory when it looks like a project (`.git`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and falls back to `$HOME` otherwise, so installing from your home directory does not scatter config files there.
 
 ---
 
@@ -175,6 +216,7 @@ surface changes are always a reviewed diff.
 
 | Command | Purpose |
 |---|---|
+| `orq setup` | First-run onboarding: auth, project, API key, coding agent |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
@@ -288,6 +330,8 @@ docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
 | `ORQ_CLI_INSTALL_DIR` | Install directory for `install.sh` |
+| `ORQ_WEB_BASE_URL` | Web app base URL used for the links `orq setup` prints |
+| `ORQ_NO_SPLASH` | Suppress the `orq setup` banner |
 
 `.env` and `.env.local` files in the current directory are loaded automatically.
 
@@ -317,8 +361,8 @@ cmd/orq/main.go              entrypoint
 cli/generated/               bartolo-generated OpenAPI commands (DO NOT edit)
 cli/custom/
 ├── register.go              custom entrypoint: middleware + commands
-├── auth/                    OAuth device-login client, session store, URL resolution
-└── commands/                cobra commands: auth, workspace, doctor, identity
+├── auth/                    OAuth device-login client, session store, URL resolution, projects/api-keys
+└── commands/                cobra commands: auth, workspace, doctor, identity, setup, agents
 npm/
 ├── cli/                     @orq-ai/cli wrapper (JS shim + optionalDependencies)
 └── cli-<os>-<arch>/         per-platform binary containers

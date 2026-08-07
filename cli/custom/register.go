@@ -232,6 +232,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
+	root.AddCommand(commands.NewSetupCommand())
 }
 
 func replaceDoctor(root *cobra.Command) {

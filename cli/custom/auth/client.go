@@ -547,13 +547,7 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 400 {
-		var errResp struct {
-			Message string `json:"message"`
-		}
-		if json.Unmarshal(raw, &errResp) == nil && errResp.Message != "" {
-			return errors.New(errResp.Message)
-		}
-		return fmt.Errorf("request failed with status %d", res.StatusCode)
+		return fmt.Errorf("%s", describeAPIError(res.StatusCode, raw))
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -561,6 +555,84 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 		}
 	}
 	return nil
+}
+
+// describeAPIError turns an error response into something actionable. A bare
+// "Request body failed validation." tells the user nothing, so any per-field
+// detail the API returned is appended.
+func describeAPIError(status int, raw []byte) string {
+	// The API returns per-field problems under details.issues; older/other
+	// endpoints use a flat issues/errors array. Handle all three.
+	type issue struct {
+		Path    []any    `json:"path"`
+		Message string   `json:"message"`
+		Values  []string `json:"values"`
+	}
+	var body struct {
+		Message   string  `json:"message"`
+		Error     string  `json:"error"`
+		Detail    string  `json:"detail"`
+		RequestID string  `json:"request_id"`
+		Issues    []issue `json:"issues"`
+		Errors    []issue `json:"errors"`
+		Details   struct {
+			Issues []issue `json:"issues"`
+		} `json:"details"`
+	}
+	_ = json.Unmarshal(raw, &body)
+
+	summary := firstNonEmpty(body.Message, body.Error, body.Detail)
+	if summary == "" {
+		summary = fmt.Sprintf("request failed with status %d", status)
+	}
+
+	details := []string{}
+	all := append(append(append([]issue{}, body.Details.Issues...), body.Issues...), body.Errors...)
+	for _, i := range all {
+		line := joinPathMessage(i.Path, i.Message)
+		if len(i.Values) > 0 {
+			line += " (expected one of: " + strings.Join(i.Values, ", ") + ")"
+		}
+		details = append(details, line)
+	}
+	if len(details) > 0 && body.RequestID != "" {
+		details = append(details, "request_id: "+body.RequestID)
+	}
+	if len(details) > 0 {
+		return summary + "\n  " + strings.Join(details, "\n  ")
+	}
+
+	// Nothing structured to show: fall back to the raw payload, which at least
+	// lets the user report what happened.
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed != "" && trimmed != "{}" && summary == fmt.Sprintf("request failed with status %d", status) {
+		if len(trimmed) > 400 {
+			trimmed = trimmed[:400] + "…"
+		}
+		return summary + "\n  " + trimmed
+	}
+	return summary
+}
+
+func joinPathMessage(path []any, message string) string {
+	parts := make([]string, 0, len(path))
+	for _, p := range path {
+		parts = append(parts, fmt.Sprintf("%v", p))
+	}
+	rendered := strings.Join(parts, ".")
+	if rendered == "" {
+		return message
+	}
+	return rendered + ": " + message
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // OpenBrowser tries to open the given URL in the default browser. Returns true

@@ -39,6 +39,8 @@ type Session struct {
 	User               *SessionUser                 `json:"user"`
 	Workspaces         []map[string]any             `json:"workspaces"`
 	ActiveWorkspaceKey *string                      `json:"activeWorkspaceKey"`
+	ActiveProjectID    string                       `json:"activeProjectId,omitempty"`
+	ActiveProjectName  string                       `json:"activeProjectName,omitempty"`
 	RefreshToken       string                       `json:"refreshToken"`
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
