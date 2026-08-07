@@ -85,10 +85,10 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 
 	plan := &LaunchPlan{
 		Env: map[string]string{
-			"ORQ_API_KEY":     ctx.Creds.APIKey,
-			"OPENAI_API_KEY":  ctx.Creds.APIKey,
-			"OPENAI_BASE_URL": resolved.BaseURL,
-			"KIMI_CODE_HOME":  home,
+			// The provider credential lives in config.toml (kimi has no env
+			// fallback); this env var only feeds mcp.json's bearerTokenEnvVar.
+			"ORQ_API_KEY":    ctx.Creds.APIKey,
+			"KIMI_CODE_HOME": home,
 		},
 		TempDirs: []TempDir{{HostPath: home}},
 		Cleanup:  cleanup,
