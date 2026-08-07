@@ -31,8 +31,9 @@ func TestKimiTOMLProvidersAndCaps(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, toml)
 		}
 	}
-	if strings.Contains(toml, "api_key") {
-		t.Fatal("api_key must never be written to the config file")
+	// The credential must appear only as an env interpolation, never a literal.
+	if !strings.Contains(toml, `api_key = "${ORQ_API_KEY}"`) {
+		t.Fatal("providers must declare api_key via ${ORQ_API_KEY} env interpolation")
 	}
 	responsesBlock := toml[strings.Index(toml, `[models."openai/gpt-5-mini"]`):]
 	if !strings.Contains(responsesBlock, `provider = "orq-responses"`) {

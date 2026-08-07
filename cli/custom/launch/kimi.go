@@ -128,7 +128,13 @@ func BuildKimiConfigTOML(baseURL, gatewayModel string, gatewayModels []string, i
 	provider := func(name, typ string) {
 		fmt.Fprintf(&b, "[providers.%s]\n", name)
 		fmt.Fprintf(&b, "type = %s\n", tomlString(typ))
-		fmt.Fprintf(&b, "base_url = %s\n\n", tomlString(baseURL))
+		fmt.Fprintf(&b, "base_url = %s\n", tomlString(baseURL))
+		// Kimi does not fall back to OPENAI_API_KEY for custom-named
+		// providers; the credential must be declared, interpolated from env
+		// so it stays out of the file.
+		fmt.Fprintf(&b, "api_key = \"${ORQ_API_KEY}\"\n\n")
+		fmt.Fprintf(&b, "[providers.%s.env]\n", name)
+		fmt.Fprintf(&b, "ORQ_API_KEY = \"ORQ_API_KEY\"\n\n")
 	}
 	if len(chatModels) > 0 {
 		provider(KimiChatProvider, kimiChatType)
