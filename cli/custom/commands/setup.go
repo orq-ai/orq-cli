@@ -674,10 +674,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			results = append(results, res)
 			continue
 		}
+		var stopSpin func()
 		if !skillsCacheFresh() {
-			rep.note("%-8s skills  downloading…", id)
+			stopSpin = rep.busy("%-8s skills  downloading…", id)
 		}
 		count, err := installSkillsInto(dest)
+		if stopSpin != nil {
+			stopSpin()
+		}
 		if err != nil {
 			rep.warn("%-8s skills  %v", id, err)
 		} else {
@@ -706,8 +710,11 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 	}
 	codingModelsFetched = true
 
+	stopSpin := rep.busy("probing gateway models for working candidates…")
+
 	all, err := client.ListModels(state.bearer)
 	if err != nil {
+		stopSpin()
 		rep.warn("could not list gateway models: %v", err)
 		return nil
 	}
@@ -725,6 +732,7 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 			skipped++
 		}
 	}
+	stopSpin()
 	// Reported at warn level so the omission is visible even in quiet mode —
 	// silently dropping models would read as "these are all that exist".
 	if skipped > 0 {

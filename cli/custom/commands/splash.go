@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	isatty "github.com/mattn/go-isatty"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -108,4 +109,42 @@ func (r *reporter) note(format string, args ...any) {
 		return
 	}
 	fmt.Fprintf(r.w, "  "+format+"\n", args...)
+}
+
+// busy animates a spinner line until the returned stop func is called, then
+// erases it so the caller's ✓/! line takes its place. Non-TTY (CI, pipes)
+// degrades to a single static line.
+func (r *reporter) busy(format string, args ...any) (stop func()) {
+	msg := fmt.Sprintf(format, args...)
+	if r.quiet {
+		return func() {}
+	}
+	if f, ok := r.w.(*os.File); !ok || !isatty.IsTerminal(f.Fd()) {
+		fmt.Fprintf(r.w, "  %s\n", msg)
+		return func() {}
+	}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		i := 0
+		fmt.Fprintf(r.w, "%c %s", frames[0], msg)
+		for {
+			select {
+			case <-done:
+				fmt.Fprintf(r.w, "\r%s\r", strings.Repeat(" ", len([]rune(msg))+2))
+				return
+			case <-ticker.C:
+				i++
+				fmt.Fprintf(r.w, "\r%c %s", frames[i%len(frames)], msg)
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}
 }
