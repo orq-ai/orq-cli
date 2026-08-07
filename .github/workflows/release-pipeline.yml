@@ -204,10 +204,18 @@ jobs:
           done
           ls -la dist/
 
+      - name: Generate checksums
+        run: |
+          set -e
+          # install.sh verifies downloads against this file. Names are stored
+          # bare (no dist/ prefix) so the installer can match on asset name.
+          ( cd dist && shasum -a 256 orq-* > SHA256SUMS )
+          cat dist/SHA256SUMS
+
       - name: Upload raw binaries to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           # --clobber to overwrite asset already exist
-          gh release upload "$TAG" dist/orq-* --clobber
+          gh release upload "$TAG" dist/orq-* dist/SHA256SUMS --clobber
