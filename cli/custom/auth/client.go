@@ -76,10 +76,12 @@ func (c *Client) StartDeviceLogin(clientName string) (*DeviceLoginStart, error) 
 		"",
 		map[string]any{
 			"client_name": clientName,
-			// Request MCP scopes up front so the session's access tokens can
-			// authenticate against the orq MCP server; without them every MCP
-			// call fails with insufficient_scope.
-			"scope": []string{"mcp:tools", "mcp:resources"},
+			// Request MCP scopes and audience up front so the session's access
+			// tokens can authenticate against the orq MCP server; without them
+			// every MCP call fails with insufficient_scope / invalid_token.
+			// Platform and gateway auth ignore both claims.
+			"scope":    []string{"mcp:tools", "mcp:resources"},
+			"audience": strings.TrimRight(c.URLs.APIBaseURL, "/") + "/v2/mcp",
 		},
 		&resp,
 	)
