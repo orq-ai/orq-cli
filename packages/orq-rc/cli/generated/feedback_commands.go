@@ -308,7 +308,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-08-07T13:29:40.610Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-08-07T13:42:40.252Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
