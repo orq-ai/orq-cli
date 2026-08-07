@@ -23,7 +23,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * *, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
+		examples += "  " + schedulesCmd.CommandPath() + " create agent-key display_name: Weekly ticket status update, expression: 0 0 9 * * 1, payload.input: Post the weekly status update for TICKET-123., type: cron\n"
 
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
@@ -33,7 +33,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{
-					"agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * *, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron",
+					"display_name: Weekly ticket status update, expression: 0 0 9 * * 1, payload.input: Post the weekly status update for TICKET-123., type: cron",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
@@ -279,7 +279,7 @@ func registerschedulesCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id payload{input: Updated input for the next run, variables.region: APAC}\n"
+		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id expression: 0 0 9 * * *\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
@@ -289,7 +289,7 @@ func registerschedulesCommands(root *cobra.Command) {
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
 				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{
-					"payload{input: Updated input for the next run, variables.region: APAC}",
+					"expression: 0 0 9 * * *",
 				})
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
