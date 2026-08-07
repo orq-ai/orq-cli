@@ -34,10 +34,11 @@ func mcpURL(ctx *AgentContext) string {
 	if ctx.Flags.NoMCP {
 		return ""
 	}
-	// Session workspace tokens are minted without the MCP scope, so the
-	// server would reject every request with insufficient_scope. Skip the
-	// wiring instead of shipping a broken server; run.go prints the note.
-	if ctx.Creds != nil && ctx.Creds.FromSession {
+	// A credential that cannot pass MCP auth (session token from a login
+	// made before the CLI requested mcp:* scopes) would make every MCP call
+	// fail with insufficient_scope. Skip the wiring instead of shipping a
+	// broken server; run.go prints the note.
+	if ctx.Creds != nil && !ctx.Creds.SupportsMCP() {
 		return ""
 	}
 	apiBase := ""
