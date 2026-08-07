@@ -1,7 +1,10 @@
 package launch
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"orq/cli/custom/auth"
 )
@@ -11,9 +14,44 @@ type Credentials struct {
 	APIKey     string
 	APIBaseURL string
 	// FromSession is set when APIKey is a login-session workspace token
-	// rather than a real API key. Session tokens work against the gateway
-	// and platform API but are minted without the MCP scope.
+	// rather than a real API key.
 	FromSession bool
+	// MCPScoped reports whether a session token carries the mcp:* scopes.
+	// Logins made before the CLI requested them produce tokens without, and
+	// the MCP server rejects those with insufficient_scope. Real API keys
+	// (FromSession false) always pass MCP auth and skip this check.
+	MCPScoped bool
+}
+
+// SupportsMCP reports whether the credential can authenticate against the
+// orq MCP server.
+func (c *Credentials) SupportsMCP() bool {
+	return !c.FromSession || c.MCPScoped
+}
+
+// tokenHasMCPScope decodes the JWT payload (unverified — this is a local
+// capability hint, not authentication) and looks for an mcp:* scope entry.
+func tokenHasMCPScope(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Scope []string `json:"scope"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return false
+	}
+	for _, s := range claims.Scope {
+		if strings.HasPrefix(s, "mcp:") {
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly
@@ -45,7 +83,12 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Credentials{APIKey: active.AccessToken, APIBaseURL: apiBase, FromSession: true}, nil
+	return &Credentials{
+		APIKey:      active.AccessToken,
+		APIBaseURL:  apiBase,
+		FromSession: true,
+		MCPScoped:   tokenHasMCPScope(active.AccessToken),
+	}, nil
 }
 
 var errNotLoggedIn = notLoggedInError{}
