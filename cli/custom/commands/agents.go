@@ -52,7 +52,9 @@ type agentSpec struct {
 	// agents where we do not configure one.
 	providerConfig func(global bool) (string, error)
 	// writeProvider registers the provider and a set of models in that file.
-	writeProvider func(path, routerURL string, models []auth.RouterModel) error
+	// apiKey is written literally when the agent cannot read it from env
+	// (kimi); the file must be 0600.
+	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel) error
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in
@@ -343,7 +345,7 @@ func writeMCPCodexTOML(path, url string) error {
 // The key is referenced through Kimi's `env` sub-table rather than written in
 // plaintext — Kimi does not read the environment on its own, but this mapping
 // tells it which variable to read.
-func writeKimiProviderTOML(path, routerURL string, models []auth.RouterModel) error {
+func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -359,18 +361,23 @@ func writeKimiProviderTOML(path, routerURL string, models []auth.RouterModel) er
 		return err
 	}
 	defer f.Close()
-	_, err = f.WriteString("\n" + kimiProviderBlock(routerURL, models))
+	// The file now carries a literal credential; a pre-existing copy may have
+	// been created with looser permissions.
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
+	_, err = f.WriteString("\n" + kimiProviderBlock(routerURL, apiKey, models))
 	return err
 }
 
-func kimiProviderBlock(routerURL string, models []auth.RouterModel) string {
+func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[providers.%s]\n", providerName)
 	b.WriteString("type = \"openai\"\n")
 	fmt.Fprintf(&b, "base_url = %q\n", routerURL)
-	b.WriteString("api_key = \"${ORQ_API_KEY}\"\n\n")
-	fmt.Fprintf(&b, "[providers.%s.env]\n", providerName)
-	b.WriteString("ORQ_API_KEY = \"ORQ_API_KEY\"\n")
+	// Kimi 0.34 has no env fallback or ${VAR} interpolation for provider
+	// credentials; the literal key is the only working form.
+	fmt.Fprintf(&b, "api_key = %q\n", apiKey)
 	for _, m := range models {
 		context := m.Metadata.ContextWindow
 		if context <= 0 {

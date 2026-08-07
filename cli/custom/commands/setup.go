@@ -652,7 +652,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		if spec.writeProvider != nil {
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
-				if werr := spec.writeProvider(path, client.RouterBaseURL(), models); werr != nil {
+				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models); werr != nil {
 					rep.warn("%-8s provider  %v", id, werr)
 				} else {
 					rep.ok("%-8s provider  %s → orq gateway (%d models)", id, path, len(models))
