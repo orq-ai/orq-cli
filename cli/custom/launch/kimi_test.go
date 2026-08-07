@@ -13,7 +13,7 @@ var kimiInfos = []ModelInfo{
 }
 
 func TestKimiTOMLProvidersAndCaps(t *testing.T) {
-	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "openai/gpt-5-mini",
+	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "openai/gpt-5-mini",
 		[]string{"anthropic/claude-sonnet-4-6", "openai/gpt-5-mini"}, kimiInfos)
 
 	for _, want := range []string{
@@ -31,9 +31,9 @@ func TestKimiTOMLProvidersAndCaps(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, toml)
 		}
 	}
-	// The credential must appear only as an env interpolation, never a literal.
-	if !strings.Contains(toml, `api_key = "${ORQ_API_KEY}"`) {
-		t.Fatal("providers must declare api_key via ${ORQ_API_KEY} env interpolation")
+	// Kimi resolves credentials from the file only; the key must be present.
+	if !strings.Contains(toml, `api_key = "sk-test-key"`) {
+		t.Fatal("providers must declare the literal api_key")
 	}
 	responsesBlock := toml[strings.Index(toml, `[models."openai/gpt-5-mini"]`):]
 	if !strings.Contains(responsesBlock, `provider = "orq-responses"`) {
@@ -42,7 +42,7 @@ func TestKimiTOMLProvidersAndCaps(t *testing.T) {
 }
 
 func TestKimiTOMLFallbackCaps(t *testing.T) {
-	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "anthropic/claude-sonnet-4-6",
+	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "anthropic/claude-sonnet-4-6",
 		[]string{"anthropic/claude-sonnet-4-6"}, nil)
 	if !strings.Contains(toml, "max_context_size = 262144") || !strings.Contains(toml, "max_output_size = 8192") {
 		t.Fatalf("fallback caps missing:\n%s", toml)
@@ -53,7 +53,7 @@ func TestKimiTOMLFallbackCaps(t *testing.T) {
 }
 
 func TestKimiTOMLEscaping(t *testing.T) {
-	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", `weird/a"b\c`, []string{`weird/a"b\c`}, nil)
+	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", `weird/a"b\c`, []string{`weird/a"b\c`}, nil)
 	if !strings.Contains(toml, `[models."weird/a\"b\\c"]`) {
 		t.Fatalf("escaping broken:\n%s", toml)
 	}
@@ -85,8 +85,9 @@ func TestKimiResolvePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "sk-test") {
-		t.Fatal("key leaked into config.toml")
+	// Kimi reads credentials from the file only, so the key must be there.
+	if !strings.Contains(string(data), `api_key = "sk-test`) {
+		t.Fatal("api_key missing from config.toml")
 	}
 	if !strings.Contains(string(data), "max_context_size = 200000") {
 		t.Fatalf("metadata caps missing:\n%s", data)

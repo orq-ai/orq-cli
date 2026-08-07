@@ -53,6 +53,16 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 					if err != nil || info.IsDir() {
 						return err
 					}
+					// Kimi is the sole sanctioned exception: it resolves
+					// provider credentials from config.toml only (no env
+					// fallback or interpolation), so the key lives in a 0600
+					// file inside a temp dir removed at session end.
+					if def.Name == "kimi" && filepath.Base(path) == "config.toml" {
+						if info.Mode().Perm() != 0o600 {
+							t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
+						}
+						return nil
+					}
 					data, err := os.ReadFile(path)
 					if err != nil {
 						return err
