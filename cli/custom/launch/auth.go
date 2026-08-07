@@ -10,6 +10,10 @@ import (
 type Credentials struct {
 	APIKey     string
 	APIBaseURL string
+	// FromSession is set when APIKey is a login-session workspace token
+	// rather than a real API key. Session tokens work against the gateway
+	// and platform API but are minted without the MCP scope.
+	FromSession bool
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly
@@ -41,7 +45,7 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Credentials{APIKey: active.AccessToken, APIBaseURL: apiBase}, nil
+	return &Credentials{APIKey: active.AccessToken, APIBaseURL: apiBase, FromSession: true}, nil
 }
 
 var errNotLoggedIn = notLoggedInError{}
