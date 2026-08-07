@@ -23,6 +23,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " azure-foundry-deployments --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "azure-foundry-deployments",
 			Short:   "List Azure Foundry deployments under a resource",
@@ -30,11 +32,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"base_url\": \"base_url\",\n  \"provider\": \"provider\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "api_key",
@@ -63,7 +64,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelAzureFoundryDeployments(params, body)
@@ -79,6 +80,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -121,6 +123,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create custom model",
@@ -128,11 +132,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"configuration\": {},\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"id\": \"id\",\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"config\": {},\n      \"name\": \"name\",\n      \"parameter\": \"parameter\",\n      \"parameter_type\": \"parameter_type\"\n    }\n  ],\n  \"provider\": \"provider\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "configuration",
@@ -215,7 +218,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreate(params, body)
@@ -231,6 +234,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -327,6 +331,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " create-aws-bedrock --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-aws-bedrock",
 			Short:   "Create AWS Bedrock custom model",
@@ -334,11 +340,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "assume_role_arn",
@@ -493,7 +498,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateAwsBedrock(params, body)
@@ -509,6 +514,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -677,6 +683,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " create-openai-like --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-openai-like",
 			Short:   "Create OpenAI-compatible custom model",
@@ -684,11 +692,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"base_url\": \"base_url\",\n  \"display_name\": \"display_name\",\n  \"model_id\": \"model_id\",\n  \"model_type\": \"model_type\",\n  \"region\": \"region\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "api_key",
@@ -795,7 +802,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateOpenAILike(params, body)
@@ -811,6 +818,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -931,6 +939,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " create-vertex --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-vertex",
 			Short:   "Create Vertex AI custom model",
@@ -938,11 +948,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"configuration\": {\n    \"location\": \"location\",\n    \"modelConfiguration\": {\n      \"capabilities\": {\n        \"structuredOutput\": false,\n        \"supportToolCalling\": false,\n        \"vision\": false\n      },\n      \"id\": \"id\",\n      \"inputCost\": 0,\n      \"outputCost\": 0,\n      \"parameters\": {\n        \"maxTokens\": {\n          \"max\": 0,\n          \"min\": 0\n        },\n        \"temperature\": {\n          \"max\": 0,\n          \"min\": 0\n        },\n        \"topP\": {\n          \"max\": 0,\n          \"min\": 0\n        }\n      }\n    },\n    \"projectId\": \"projectId\",\n    \"serviceAccount\": {}\n  },\n  \"display_name\": \"display_name\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "configuration",
@@ -959,7 +968,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateVertex(params, body)
@@ -975,6 +984,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1073,6 +1083,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " enable --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "enable",
 			Short:   "Enable model for workspace",
@@ -1080,11 +1092,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"model_id\": \"model_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "model_id",
@@ -1095,7 +1106,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelEnable(params, body)
@@ -1111,6 +1122,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1135,6 +1147,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " import-litellm --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "import-litellm",
 			Short:   "Import models from LiteLLM",
@@ -1142,15 +1156,14 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"litellm_params\": {\n      \"merge_reasoning_content_in_choices\": false,\n      \"model\": \"model\",\n      \"use_in_pass_through\": false,\n      \"use_litellm_proxy\": false\n    },\n    \"model_info\": {\n      \"db_model\": false,\n      \"id\": \"id\",\n      \"key\": \"key\",\n      \"litellm_provider\": \"litellm_provider\",\n      \"mode\": \"mode\"\n    },\n    \"model_name\": \"model_name\"\n  }\n]") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelLiteLLMImport(params, body)
@@ -1166,6 +1179,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},
 		)
@@ -1285,6 +1299,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " update id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update custom model",
@@ -1292,11 +1308,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"id\": \"id\"\n    }\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -1343,7 +1358,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdate(args[0], params, body)
@@ -1359,6 +1374,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1419,6 +1435,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " update-aws-bedrock id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-aws-bedrock id",
 			Short:   "Update AWS Bedrock custom model",
@@ -1426,11 +1444,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "assume_role_arn",
@@ -1567,7 +1584,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdateAwsBedrock(args[0], params, body)
@@ -1583,6 +1600,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1733,6 +1751,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " update-openai-like id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-openai-like id",
 			Short:   "Update OpenAI-compatible custom model",
@@ -1740,11 +1760,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"model_type\": \"model_type\",\n  \"region\": \"region\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "base_url",
@@ -1845,7 +1864,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdateOpenAILike(args[0], params, body)
@@ -1861,6 +1880,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1975,6 +1995,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " validate --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "validate",
 			Short:   "Validate model endpoint",
@@ -1982,11 +2004,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"provider\": \"provider\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "api_key",
@@ -2033,7 +2054,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelValidate(params, body)
@@ -2049,6 +2070,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -2109,6 +2131,8 @@ func registermodelsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelsCmd.CommandPath() + " validate-aws-bedrock --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "validate-aws-bedrock",
 			Short:   "Validate AWS Bedrock inference profile",
@@ -2116,11 +2140,10 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"inference_profile_arn\": \"inference_profile_arn\",\n  \"region\": \"region\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "assume_role_arn",
@@ -2167,7 +2190,7 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelValidateAwsBedrock(params, body)
@@ -2183,6 +2206,7 @@ func registermodelsCommands(root *cobra.Command) {
 		}
 		modelsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

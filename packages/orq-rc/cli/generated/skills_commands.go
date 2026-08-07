@@ -30,11 +30,7 @@ func registerskillsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -75,7 +71,7 @@ func registerskillsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSkillCreate(params, body)
@@ -251,6 +247,8 @@ func registerskillsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + skillsCmd.CommandPath() + " update skill-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update skill-id",
 			Short:   "Update a skill",
@@ -258,11 +256,10 @@ func registerskillsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"instructions\": \"instructions\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -303,7 +300,7 @@ func registerskillsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSkillUpdate(args[0], params, body)
@@ -319,6 +316,7 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		skillsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

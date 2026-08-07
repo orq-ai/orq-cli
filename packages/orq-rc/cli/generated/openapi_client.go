@@ -9200,9 +9200,9 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 	if paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
-	paramProfile := params.GetString("profile")
-	if paramProfile != "" {
-		req = req.AddQuery("profile", fmt.Sprintf("%v", paramProfile))
+	paramParamProfile := params.GetString("param-profile")
+	if paramParamProfile != "" {
+		req = req.AddQuery("profile", fmt.Sprintf("%v", paramParamProfile))
 	}
 	paramEnabled := params.GetBool("enabled")
 	if paramEnabled != false {

@@ -57,6 +57,8 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + workspaceSettingsCmd.CommandPath() + " update --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update",
 			Short:   "Update workspace settings",
@@ -64,11 +66,10 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"pii_redaction\": {\n    \"enabled\": false\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -91,7 +92,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceSettingsUpdate(params, body)
@@ -107,6 +108,7 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 		}
 		workspaceSettingsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

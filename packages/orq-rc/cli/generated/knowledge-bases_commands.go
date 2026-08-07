@@ -23,6 +23,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a knowledge",
@@ -30,11 +32,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"embedding_model\": \"embedding_model\",\n  \"key\": \"key\",\n  \"path\": \"Default\",\n  \"type\": \"internal\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -85,7 +86,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateKnowledge(params, body)
@@ -101,6 +102,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -165,6 +167,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " create-chunks knowledge-id datasource-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-chunks knowledge-id datasource-id",
 			Short:   "Create chunks for a datasource",
@@ -172,15 +176,14 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"text\": \"text\"\n  }\n]") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateChunk(args[0], args[1], params, body)
@@ -196,6 +199,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},
 		)
@@ -213,6 +217,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " create-datasource knowledge-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-datasource knowledge-id",
 			Short:   "Create a new datasource",
@@ -220,11 +226,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"chunking_options\": {\n    \"chunking_cleanup_options\": {\n      \"clean_bullet_points\": false,\n      \"clean_dashes\": false,\n      \"clean_numbered_list\": false,\n      \"clean_unicode\": false,\n      \"clean_whitespaces\": false,\n      \"delete_credit_cards\": false,\n      \"delete_emails\": false,\n      \"delete_phone_numbers\": false\n    },\n    \"chunking_configuration\": {\n      \"type\": \"default\"\n    }\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"file_id\": \"file_id\",\n  \"metadata\": {}\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "chunking_options",
@@ -259,7 +264,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateDatasource(args[0], params, body)
@@ -275,6 +280,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -391,6 +397,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " delete-chunks knowledge-id datasource-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "delete-chunks knowledge-id datasource-id",
 			Short:   "Delete multiple chunks",
@@ -398,11 +406,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"chunk_ids\": [\n    \"chunk_ids\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "chunk_ids",
@@ -413,7 +420,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeleteChunks(args[0], args[1], params, body)
@@ -429,6 +436,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -487,6 +495,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " get-chunks-count knowledge-id datasource-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "get-chunks-count knowledge-id datasource-id",
 			Short:   "Get chunks total count",
@@ -495,11 +505,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"q\": \"\",\n  \"status\": \"pending\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "enabled",
@@ -529,7 +538,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiGetChunksCount(args[0], args[1], params, body)
@@ -545,6 +554,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -670,6 +680,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " list-chunks-paginated knowledge-id datasource-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "list-chunks-paginated knowledge-id datasource-id",
 			Short:   "List chunks with offset-based pagination",
@@ -677,11 +689,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"limit\": 100,\n  \"page\": 1,\n  \"q\": \"\",\n  \"status\": \"pending\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "enabled",
@@ -723,7 +734,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiListChunksPaginated(args[0], args[1], params, body)
@@ -739,6 +750,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -937,6 +949,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " search knowledge-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "search knowledge-id",
 			Short:   "Search knowledge base",
@@ -944,11 +958,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"query\": \"query\",\n  \"search_type\": \"hybrid_search\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "agentic_rag_config",
@@ -1006,7 +1019,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSearchKnowledge(args[0], params, body)
@@ -1022,6 +1035,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1093,6 +1107,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " update knowledge-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update knowledge-id",
 			Short:   "Updates a knowledge",
@@ -1100,11 +1116,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default\",\n  \"type\": \"external\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -1149,7 +1164,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateKnowledge(args[0], params, body)
@@ -1165,6 +1180,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1223,6 +1239,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " update-chunk chunk-id datasource-id knowledge-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-chunk chunk-id datasource-id knowledge-id",
 			Short:   "Update a chunk",
@@ -1230,11 +1248,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[3:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"embedding\": [\n    0\n  ],\n  \"metadata\": {},\n  \"text\": \"text\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[3:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "embedding",
@@ -1257,7 +1274,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateChunk(args[0], args[1], args[2], params, body)
@@ -1273,6 +1290,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -1309,6 +1327,8 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " update-datasource knowledge-id datasource-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-datasource knowledge-id datasource-id",
 			Short:   "Update a datasource",
@@ -1316,11 +1336,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -1331,7 +1350,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateDatasource(args[0], args[1], params, body)
@@ -1347,6 +1366,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

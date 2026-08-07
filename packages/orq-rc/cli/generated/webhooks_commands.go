@@ -57,6 +57,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + webhooksCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a webhook",
@@ -64,11 +66,10 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"_id\": \"_id\",\n  \"content_type\": \"application/json\",\n  \"display_name\": \"display_name\",\n  \"events\": [\n    \"events\"\n  ],\n  \"secret\": \"secret\",\n  \"url\": \"https://example.com\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "_id",
@@ -119,7 +120,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookCreate(params, body)
@@ -135,6 +136,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		}
 		webhooksCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -344,6 +346,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + webhooksCmd.CommandPath() + " query --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query webhooks",
@@ -351,11 +355,10 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": [\n    {}\n  ],\n  \"includedFields\": {},\n  \"pagination\": {\n    \"firstId\": \"firstId\",\n    \"lastId\": \"lastId\",\n    \"limit\": 0,\n    \"page\": 0\n  },\n  \"query\": {},\n  \"sortingProps\": [\n    {\n      \"direction\": \"direction\",\n      \"key\": \"key\"\n    }\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filters",
@@ -390,7 +393,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookQuery(params, body)
@@ -406,6 +409,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		}
 		webhooksCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -461,15 +465,11 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookUpdate(args[0], params, body)

@@ -23,6 +23,8 @@ func registerpiiCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + piiCmd.CommandPath() + " detect --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "detect",
 			Short:   "Detect PII",
@@ -30,11 +32,10 @@ func registerpiiCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"include_entities\": false,\n  \"language\": \"language\",\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "include_entities",
@@ -63,7 +64,7 @@ func registerpiiCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPIIDetect(params, body)
@@ -79,6 +80,7 @@ func registerpiiCommands(root *cobra.Command) {
 		}
 		piiCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -121,6 +123,8 @@ func registerpiiCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + piiCmd.CommandPath() + " redact --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "redact",
 			Short:   "Redact PII",
@@ -128,11 +132,10 @@ func registerpiiCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"language\": \"language\",\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "language",
@@ -155,7 +158,7 @@ func registerpiiCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPIIRedact(params, body)
@@ -171,6 +174,7 @@ func registerpiiCommands(root *cobra.Command) {
 		}
 		piiCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -207,6 +211,8 @@ func registerpiiCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + piiCmd.CommandPath() + " restore --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "restore",
 			Short:   "Restore redacted text",
@@ -214,11 +220,10 @@ func registerpiiCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"mappings\": {},\n  \"redacted_text\": \"redacted_text\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "mappings",
@@ -235,7 +240,7 @@ func registerpiiCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPIIRestore(params, body)
@@ -251,6 +256,7 @@ func registerpiiCommands(root *cobra.Command) {
 		}
 		piiCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

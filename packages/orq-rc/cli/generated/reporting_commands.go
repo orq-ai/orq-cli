@@ -23,6 +23,8 @@ func registerreportingCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + reportingCmd.CommandPath() + " query --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query reporting metrics",
@@ -30,11 +32,10 @@ func registerreportingCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"grain\": \"auto\",\n  \"metric\": \"genai.requests\",\n  \"mode\": \"timeseries\",\n  \"sort\": \"desc\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filters",
@@ -139,7 +140,7 @@ func registerreportingCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiReportingQuery(params, body)
@@ -155,6 +156,7 @@ func registerreportingCommands(root *cobra.Command) {
 		}
 		reportingCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

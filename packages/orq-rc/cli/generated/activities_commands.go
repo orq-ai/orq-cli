@@ -23,6 +23,8 @@ func registeractivitiesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + activitiesCmd.CommandPath() + " create entity-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create entity-id",
 			Short:   "Create a new activity",
@@ -30,11 +32,10 @@ func registeractivitiesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"type\": \"ACTIVITY_TYPE_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "checksum",
@@ -104,7 +105,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiActivityCreate(args[0], params, body)
@@ -120,6 +121,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 		}
 		activitiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -241,6 +243,8 @@ func registeractivitiesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + activitiesCmd.CommandPath() + " update entity-id activity-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update entity-id activity-id",
 			Short:   "Update an activity",
@@ -248,11 +252,10 @@ func registeractivitiesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"content\": \"content\",\n  \"environments\": {\n    \"values\": [\n      \"values\"\n    ]\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "content",
@@ -269,7 +272,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiActivityUpdate(args[0], args[1], params, body)
@@ -285,6 +288,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 		}
 		activitiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

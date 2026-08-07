@@ -23,6 +23,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + annotationQueuesCmd.CommandPath() + " add-items annotation-queue-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "add-items annotation-queue-id",
 			Short:   "Add items to an annotation queue",
@@ -30,11 +32,10 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"items\": [\n    {\n      \"span_id\": \"span_id\",\n      \"trace_id\": \"trace_id\"\n    }\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "items",
@@ -45,7 +46,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiAddAnnotationQueueItems(args[0], params, body)
@@ -61,6 +62,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -119,6 +121,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + annotationQueuesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an annotation queue",
@@ -126,11 +130,10 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -153,7 +156,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateAnnotationQueue(params, body)
@@ -169,6 +172,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -385,6 +389,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + annotationQueuesCmd.CommandPath() + " remove-items annotation-queue-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "remove-items annotation-queue-id",
 			Short:   "Remove annotation queue items",
@@ -392,11 +398,10 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"span_ids\": [\n    \"span_ids\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "span_ids",
@@ -407,7 +412,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiRemoveAnnotationQueueItems(args[0], params, body)
@@ -423,6 +428,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -447,6 +453,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + annotationQueuesCmd.CommandPath() + " update annotation-queue-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update annotation-queue-id",
 			Short:   "Edit an annotation queue",
@@ -454,11 +462,10 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"human_review_ids\": [\n    \"human_review_ids\"\n  ],\n  \"project_id\": \"project_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -487,7 +494,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateAnnotationQueue(args[0], params, body)
@@ -503,6 +510,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

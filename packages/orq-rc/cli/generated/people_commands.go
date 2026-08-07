@@ -23,6 +23,8 @@ func registerpeopleCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + peopleCmd.CommandPath() + " person-create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "person-create",
 			Short:   "Invite people to a workspace",
@@ -30,11 +32,10 @@ func registerpeopleCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"emails\": [\n    \"emails\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "emails",
@@ -57,7 +58,7 @@ func registerpeopleCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPersonCreate(params, body)
@@ -73,6 +74,7 @@ func registerpeopleCommands(root *cobra.Command) {
 		}
 		peopleCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -222,15 +224,11 @@ func registerpeopleCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPersonResendInvitation(args[0], params, body)
@@ -263,6 +261,8 @@ func registerpeopleCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + peopleCmd.CommandPath() + " person-update person-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "person-update person-id",
 			Short:   "Update a person",
@@ -270,11 +270,10 @@ func registerpeopleCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"clear_groups\": false,\n  \"clear_roles\": false,\n  \"groups\": [\n    \"groups\"\n  ],\n  \"roles\": [\n    \"roles\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "clear_groups",
@@ -303,7 +302,7 @@ func registerpeopleCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPersonUpdate(args[0], params, body)
@@ -319,6 +318,7 @@ func registerpeopleCommands(root *cobra.Command) {
 		}
 		peopleCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

@@ -58,6 +58,8 @@ func registerfeaturePreviewsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + featurePreviewsCmd.CommandPath() + " toggle slug --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "toggle slug",
 			Short:   "Toggle feature preview",
@@ -66,11 +68,10 @@ func registerfeaturePreviewsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"enabled\": false\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "enabled",
@@ -81,7 +82,7 @@ func registerfeaturePreviewsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiFeaturePreviewToggle(args[0], params, body)
@@ -97,6 +98,7 @@ func registerfeaturePreviewsCommands(root *cobra.Command) {
 		}
 		featurePreviewsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

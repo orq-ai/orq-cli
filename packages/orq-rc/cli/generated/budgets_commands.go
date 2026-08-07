@@ -23,6 +23,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + budgetsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new budget",
@@ -30,11 +32,10 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "alerts",
@@ -81,7 +82,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetCreate(params, body)
@@ -97,6 +98,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		}
 		budgetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -276,15 +278,11 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetResetConsumption(args[0], params, body)
@@ -317,6 +315,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + budgetsCmd.CommandPath() + " update budget-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update budget-id",
 			Short:   "Update a budget",
@@ -324,11 +324,10 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"clear_alerts\": false,\n  \"clear_expires_at\": false,\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "alerts",
@@ -381,7 +380,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetUpdate(args[0], params, body)
@@ -397,6 +396,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		}
 		budgetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

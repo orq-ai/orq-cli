@@ -23,18 +23,19 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + smartRoutersCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a Smart Router",
-			Long:    bartolocli.Markdown("Creates a workspace Smart Router from an ordered pool of autorouter-eligible models. The router key becomes the stable model identifier used by gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a workspace Smart Router from an ordered pool of autorouter-eligible models. The router key becomes the stable model identifier used by gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "key",
@@ -50,9 +51,9 @@ func registersmartRoutersCommands(root *cobra.Command) {
 						},
 						{
 							Name:        "profile",
-							FlagName:    "profile",
+							FlagName:    "body-profile",
 							Type:        "enum-string",
-							Description: "",
+							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
 							Enum: []string{
 								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
@@ -63,7 +64,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSmartRouterCreate(params, body)
@@ -79,6 +80,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		}
 		smartRoutersCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -95,9 +97,9 @@ func registersmartRoutersCommands(root *cobra.Command) {
 				},
 				{
 					Name:        "profile",
-					FlagName:    "profile",
+					FlagName:    "body-profile",
 					Type:        "enum-string",
-					Description: "",
+					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
 					Enum: []string{
 						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
@@ -192,7 +194,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List Smart Routers",
-			Long:    bartolocli.Markdown("Returns Smart Routers in the caller's workspace, ordered newest first. Supports cursor pagination, name search, profile filtering, and enabled-state filtering."),
+			Long:    bartolocli.Markdown("Returns Smart Routers in the caller's workspace, ordered newest first. Supports cursor pagination, name search, profile filtering, and enabled-state filtering.\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--param-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -214,7 +216,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "")
 		cmd.Flags().String("ending-before", "", "")
 		cmd.Flags().String("search", "", "")
-		cmd.Flags().String("profile", "", "")
+		cmd.Flags().String("param-profile", "", " (parameter \"profile\", renamed to keep the global --profile flag available)")
 		cmd.Flags().String("enabled", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -230,6 +232,8 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + smartRoutersCmd.CommandPath() + " set-enabled smart-router-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "set-enabled smart-router-id",
 			Short:   "Enable or disable a Smart Router",
@@ -237,11 +241,10 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"enabled\": false\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "enabled",
@@ -252,7 +255,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSmartRouterSetEnabled(args[0], params, body)
@@ -268,6 +271,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		}
 		smartRoutersCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -292,18 +296,19 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + smartRoutersCmd.CommandPath() + " update smart-router-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update smart-router-id",
 			Short:   "Update a Smart Router",
-			Long:    bartolocli.Markdown("Partially updates the routing models or profile. The router key is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates the routing models or profile. The router key is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "models",
@@ -313,9 +318,9 @@ func registersmartRoutersCommands(root *cobra.Command) {
 						},
 						{
 							Name:        "profile",
-							FlagName:    "profile",
+							FlagName:    "body-profile",
 							Type:        "enum-string",
-							Description: "",
+							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
 							Enum: []string{
 								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
@@ -326,7 +331,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSmartRouterUpdate(args[0], params, body)
@@ -342,6 +347,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		}
 		smartRoutersCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -352,9 +358,9 @@ func registersmartRoutersCommands(root *cobra.Command) {
 				},
 				{
 					Name:        "profile",
-					FlagName:    "profile",
+					FlagName:    "body-profile",
 					Type:        "enum-string",
-					Description: "",
+					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
 					Enum: []string{
 						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",

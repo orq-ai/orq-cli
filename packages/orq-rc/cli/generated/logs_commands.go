@@ -23,6 +23,8 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + logsCmd.CommandPath() + " aggregate --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "aggregate",
 			Short:   "Aggregate logs",
@@ -30,11 +32,10 @@ func registerlogsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"grain\": \"grain\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filters",
@@ -63,7 +64,7 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiAggregateLogs(params, body)
@@ -79,6 +80,7 @@ func registerlogsCommands(root *cobra.Command) {
 		}
 		logsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -155,6 +157,8 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + logsCmd.CommandPath() + " get-context id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "get-context id",
 			Short:   "Get surrounding log context",
@@ -162,11 +166,10 @@ func registerlogsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "after",
@@ -219,7 +222,7 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiGetLogContext(args[0], params, body)
@@ -235,6 +238,7 @@ func registerlogsCommands(root *cobra.Command) {
 		}
 		logsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -301,6 +305,8 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + logsCmd.CommandPath() + " get-patterns --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "get-patterns",
 			Short:   "Find log patterns",
@@ -308,11 +314,10 @@ func registerlogsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filter_operator",
@@ -353,7 +358,7 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiFindLogPatterns(params, body)
@@ -369,6 +374,7 @@ func registerlogsCommands(root *cobra.Command) {
 		}
 		logsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -572,6 +578,8 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + logsCmd.CommandPath() + " query --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query logs with OQL",
@@ -579,11 +587,10 @@ func registerlogsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"oql\": \"oql\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "from",
@@ -618,7 +625,7 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiQueryLogs(params, body)
@@ -634,6 +641,7 @@ func registerlogsCommands(root *cobra.Command) {
 		}
 		logsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -682,6 +690,8 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + logsCmd.CommandPath() + " search --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search logs",
@@ -689,11 +699,10 @@ func registerlogsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"limit\": 0,\n  \"page_token\": \"page_token\",\n  \"query\": \"query\",\n  \"sort\": [\n    {\n      \"field\": \"field\",\n      \"order\": \"order\"\n    }\n  ],\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filter_operator",
@@ -746,7 +755,7 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSearchLogs(params, body)
@@ -762,6 +771,7 @@ func registerlogsCommands(root *cobra.Command) {
 		}
 		logsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

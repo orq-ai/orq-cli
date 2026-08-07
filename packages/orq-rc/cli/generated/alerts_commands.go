@@ -23,6 +23,8 @@ func registeralertsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + alertsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an alert",
@@ -30,11 +32,10 @@ func registeralertsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"30s\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "condition",
@@ -87,7 +88,7 @@ func registeralertsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiAlertCreate(params, body)
@@ -103,6 +104,7 @@ func registeralertsCommands(root *cobra.Command) {
 		}
 		alertsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -352,6 +354,8 @@ func registeralertsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + alertsCmd.CommandPath() + " update alert-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update alert-id",
 			Short:   "Update an alert",
@@ -359,11 +363,10 @@ func registeralertsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"30s\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\"\n  },\n  \"signal\": \"signal\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "condition",
@@ -410,7 +413,7 @@ func registeralertsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiAlertUpdate(args[0], params, body)
@@ -426,6 +429,7 @@ func registeralertsCommands(root *cobra.Command) {
 		}
 		alertsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

@@ -23,6 +23,8 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + agentsResponsesCmd.CommandPath() + " create agent-key --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
 			Short:   "Create response",
@@ -30,11 +32,10 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"background\": false,\n  \"engine\": \"text\",\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"stream\": false\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "background",
@@ -122,7 +123,7 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateAgentResponseRequest(args[0], params, body)
@@ -138,6 +139,7 @@ func registeragentsResponsesCommands(root *cobra.Command) {
 		}
 		agentsResponsesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
