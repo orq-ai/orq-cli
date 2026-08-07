@@ -282,16 +282,17 @@ func TestCandidateCodingModelsFiltersUnusable(t *testing.T) {
 	}
 }
 
-func TestKimiProviderBlockUsesEnvIndirection(t *testing.T) {
+// Kimi 0.34 resolves provider credentials from config.toml only — no env
+// fallback, no ${VAR} interpolation — so the literal key is required.
+func TestKimiProviderBlockWritesLiteralKey(t *testing.T) {
 	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
-	block := kimiProviderBlock("https://api.orq.ai/v2/router", models)
+	block := kimiProviderBlock("https://api.orq.ai/v2/router", "sk-test-key", models)
 
 	for _, want := range []string{
 		`[providers.orq]`,
 		`type = "openai"`,
 		`base_url = "https://api.orq.ai/v2/router"`,
-		`api_key = "${ORQ_API_KEY}"`,
-		`[providers.orq.env]`,
+		`api_key = "sk-test-key"`,
 		`[models."claude-sonnet-4-6"]`,
 		`model = "anthropic/claude-sonnet-4-6"`,
 		`max_context_size = 200000`,
@@ -306,7 +307,7 @@ func TestKimiProviderBlockUsesEnvIndirection(t *testing.T) {
 // produce a loadable config.
 func TestKimiProviderBlockDefaultsMissingContextWindow(t *testing.T) {
 	models := []auth.RouterModel{model("anthropic", "mystery", 0, true, true, "chat")}
-	if !strings.Contains(kimiProviderBlock("https://x/v2/router", models), "max_context_size = 128000") {
+	if !strings.Contains(kimiProviderBlock("https://x/v2/router", "sk-test-key", models), "max_context_size = 128000") {
 		t.Error("missing context window did not fall back to a default")
 	}
 }
@@ -320,7 +321,7 @@ func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
 
 	for i := 0; i < 3; i++ {
-		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", models); err != nil {
+		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-test-key", models); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -333,7 +334,7 @@ func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 	if !strings.Contains(got, "[providers.moonshot]") {
 		t.Error("pre-existing provider was lost")
 	}
-	if strings.Contains(got, "sk-orq-") {
-		t.Error("a raw key was written into the provider config")
+	if n := strings.Count(got, `api_key = "sk-test-key"`); n != 1 {
+		t.Errorf("api_key written %d times, want 1", n)
 	}
 }
