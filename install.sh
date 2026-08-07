@@ -342,6 +342,13 @@ fi
 
 # stdin is the script itself under `curl | sh`, so prompts must read the
 # terminal directly.
+if [ "$RUN_SETUP" = "1" ] && ! "$target" --help 2>/dev/null | grep -q '^  setup '; then
+  # Installed release predates 'orq setup'; don't invoke a command that errors.
+  printf '\n! this release has no '\''orq setup'\'' yet — skipping setup\n'
+  RUN_SETUP=0
+  setup_missing=1
+fi
+
 if [ "$RUN_SETUP" = "1" ] && [ -r /dev/tty ]; then
   printf '\n  Starting setup — press Ctrl-C to skip and run '\''orq setup'\'' later.\n'
   printf '\n────────────────────────────────────────────────────────────────\n'
@@ -359,5 +366,7 @@ elif [ -n "$profile" ]; then
   printf '  Restart your shell, or run:\n'
   printf '      exec %s -l\n\n' "${SHELL:-sh}"
 fi
-printf '  Next:\n'
-printf '      orq setup\n\n'
+if [ "${setup_missing:-0}" != "1" ]; then
+  printf '  Next:\n'
+  printf '      orq setup\n\n'
+fi
