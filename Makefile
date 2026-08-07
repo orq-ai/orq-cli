@@ -8,7 +8,7 @@ BUILD_TARGET := ./cmd/$(BINARY)
 COMPLETIONS_DIR ?= ./completions
 BARTOLO ?= bartolo
 
-.PHONY: help build install-local tidy doctor completions sync
+.PHONY: help build install-local tidy test doctor completions sync
 
 help:
 	@printf '%s\n' \
@@ -16,6 +16,7 @@ help:
 		'  make build          Build ./bin/$(BINARY)' \
 		'  make install-local  Install $(BINARY) into $(INSTALL_DIR)' \
 		'  make tidy           Run go mod tidy' \
+		'  make test           Run unit tests' \
 		'  make doctor         Run the CLI doctor command' \
 		'  make completions    Generate shell completions into $(COMPLETIONS_DIR)' \
 		'  make sync           Refresh Bartolo-owned scaffold files'
@@ -32,6 +33,9 @@ install-local:
 
 tidy:
 	@go mod tidy
+
+test:
+	@go test ./cli/custom/...
 
 doctor:
 	@go run "$(BUILD_TARGET)" --json doctor
