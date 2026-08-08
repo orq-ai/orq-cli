@@ -14,7 +14,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	smartRoutersCmd := &cobra.Command{
 		Use:   "smart-routers",
 		Short: "Smart Routers",
-		Long:  bartolocli.Markdown("Smart Routers distribute an ordered pool of eligible language models across V2 routing bands."),
+		Long:  bartolocli.Markdown("Create and manage workspace Smart Routers. A Smart Router selects a model from an eligible pool for each request according to a quality, balanced, or cost profile."),
 	}
 	root.AddCommand(smartRoutersCmd)
 
@@ -28,7 +28,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a Smart Router",
-			Long:    bartolocli.Markdown("Creates a workspace Smart Router from an ordered pool of autorouter-eligible models. The router key becomes the stable model identifier used by gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("Creates a Smart Router in the current workspace from 2 to 50 distinct eligible models. The key must be unique in the workspace and becomes part of the model reference used in AI Gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -41,13 +41,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Name:        "key",
 							FlagName:    "key",
 							Type:        "string",
-							Description: "Required. Stable lowercase key containing letters, numbers, and hyphens.",
+							Description: "Unique key for the Smart Router within the workspace. Use lowercase letters, numbers, and hyphens.",
 						},
 						{
 							Name:        "models",
 							FlagName:    "models",
 							Type:        "string-slice",
-							Description: "Required. Ordered pool of distinct models in provider/model format.",
+							Description: "Pool of 2 to 50 distinct eligible models. Each value uses `provider/model` format.",
 						},
 						{
 							Name:        "profile",
@@ -87,13 +87,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Name:        "key",
 					FlagName:    "key",
 					Type:        "string",
-					Description: "Required. Stable lowercase key containing letters, numbers, and hyphens.",
+					Description: "Unique key for the Smart Router within the workspace. Use lowercase letters, numbers, and hyphens.",
 				},
 				{
 					Name:        "models",
 					FlagName:    "models",
 					Type:        "string-slice",
-					Description: "Required. Ordered pool of distinct models in provider/model format.",
+					Description: "Pool of 2 to 50 distinct eligible models. Each value uses `provider/model` format.",
 				},
 				{
 					Name:        "profile",
@@ -126,7 +126,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete smart-router-id",
 			Short:   "Delete a Smart Router",
-			Long:    bartolocli.Markdown("Permanently deletes a Smart Router and removes its gateway model configuration."),
+			Long:    bartolocli.Markdown("Permanently deletes a Smart Router and removes its AI Gateway model configuration. A Smart Router referenced by an experiment cannot be deleted."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -160,7 +160,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get smart-router-id",
 			Short:   "Retrieve a Smart Router",
-			Long:    bartolocli.Markdown("Retrieves a Smart Router by ID within the caller's workspace."),
+			Long:    bartolocli.Markdown("Retrieves a Smart Router by ID from the current workspace, including its model reference, model pool, routing profile, and enabled state."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -194,7 +194,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List Smart Routers",
-			Long:    bartolocli.Markdown("Returns Smart Routers in the caller's workspace, ordered newest first. Supports cursor pagination, name search, profile filtering, and enabled-state filtering.\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--param-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("Lists Smart Routers in the current workspace, ordered newest first. Use cursor pagination and optional key, profile, or enabled-state filters to narrow the results.\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--param-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -232,76 +232,12 @@ func registersmartRoutersCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + smartRoutersCmd.CommandPath() + " set-enabled smart-router-id --example\n"
-
-		cmd := &cobra.Command{
-			Use:     "set-enabled smart-router-id",
-			Short:   "Enable or disable a Smart Router",
-			Long:    bartolocli.Markdown("Controls whether the Smart Router is available to gateway requests in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean, required)\n\nRequired fields: `enabled`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
-			Example: examples,
-			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"enabled\": false\n}") {
-					return
-				}
-				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{
-						{
-							Name:        "enabled",
-							FlagName:    "enabled",
-							Type:        "bool",
-							Description: "",
-						},
-					},
-				)
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-
-				_, decoded, err := OpenapiSmartRouterSetEnabled(args[0], params, body)
-				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
-				}
-
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
-				}
-
-			},
-		}
-		smartRoutersCmd.AddCommand(cmd)
-		bartolocli.AddBodyFlags(cmd)
-		bartolocli.AddExampleFlag(cmd)
-		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{
-				{
-					Name:        "enabled",
-					FlagName:    "enabled",
-					Type:        "bool",
-					Description: "",
-				},
-			},
-		)
-
-		bartolocli.SetCustomFlags(cmd)
-
-		if cmd.Flags().HasFlags() {
-			params.BindPFlags(cmd.Flags())
-		}
-
-	}()
-
-	func() {
-		params := viper.New()
-
-		var examples string
-
 		examples += "  " + smartRoutersCmd.CommandPath() + " update smart-router-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update smart-router-id",
 			Short:   "Update a Smart Router",
-			Long:    bartolocli.Markdown("Partially updates the routing models or profile. The router key is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("Updates the model pool, routing profile, or both. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -314,7 +250,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Name:        "models",
 							FlagName:    "models",
 							Type:        "string-slice",
-							Description: "",
+							Description: "Replacement pool of 2 to 50 distinct eligible models. Each value uses `provider/model` format. Omit to keep the current pool.",
 						},
 						{
 							Name:        "profile",
@@ -354,7 +290,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Name:        "models",
 					FlagName:    "models",
 					Type:        "string-slice",
-					Description: "",
+					Description: "Replacement pool of 2 to 50 distinct eligible models. Each value uses `provider/model` format. Omit to keep the current pool.",
 				},
 				{
 					Name:        "profile",
