@@ -27,8 +27,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create",
-			Short:   "Create routing rule",
-			Long:    bartolocli.Markdown("Creates a new routing rule with expression, models configuration, and priority settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n- `project_id` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Create a routing rule",
+			Long:    bartolocli.Markdown("Creates a routing rule with metadata and optional model, plugin, priority, and matching configuration. Rules default to disabled when `enabled` is omitted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_config` (object)\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `plugins` (array)\n- `priority` (integer)\n- ... and 1 more fields\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -38,6 +38,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "cache_config",
+							FlagName:    "cache-config",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "description",
 							FlagName:    "description",
@@ -54,7 +60,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
-							Description: "",
+							Description: "Whether the rule is active. Defaults to false when omitted.",
 						},
 						{
 							Name:        "expression",
@@ -69,6 +75,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "priority",
 							FlagName:    "priority",
 							Type:        "int64",
@@ -78,7 +90,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+							Description: "Optional project scope. Omit for a workspace-wide rule.",
 						},
 					},
 				)
@@ -103,6 +115,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache_config",
+					FlagName:    "cache-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -118,7 +136,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
-					Description: "",
+					Description: "Whether the rule is active. Defaults to false when omitted.",
 				},
 				{
 					Name:        "expression",
@@ -133,6 +151,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "priority",
 					FlagName:    "priority",
 					Type:        "int64",
@@ -142,7 +166,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+					Description: "Optional project scope. Omit for a workspace-wide rule.",
 				},
 			},
 		)
@@ -162,8 +186,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete routing-rule-id",
-			Short:   "Delete routing rule",
-			Long:    bartolocli.Markdown("Deletes an existing routing rule by ID."),
+			Short:   "Delete a routing rule",
+			Long:    bartolocli.Markdown("Permanently deletes a routing rule."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -198,7 +222,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List routing rules",
-			Long:    bartolocli.Markdown("Returns a paginated list of routing rules for the current project, ordered by priority ascending."),
+			Long:    bartolocli.Markdown("Returns routing rules ordered by ascending priority. Supports cursor pagination, search, status, project, and referenced-model filters."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -218,12 +242,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		routingRulesCmd.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination.")
-		cmd.Flags().String("project-id", "", "Optional filter by project ID.")
-		cmd.Flags().String("search", "", "Optional search term matched against name and description.")
-		cmd.Flags().String("enabled", "", "Filter by enabled status.")
-		cmd.Flags().String("model", "", "Filter by referenced model refs (comma-separated).")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+		cmd.Flags().String("project-id", "", "")
+		cmd.Flags().String("search", "", "")
+		cmd.Flags().String("enabled", "", "")
+		cmd.Flags().String("model", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -240,8 +264,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "list-used-models",
-			Short:   "List used models",
-			Long:    bartolocli.Markdown("Returns the distinct model refs referenced across all routing rules in scope."),
+			Short:   "List models used by routing rules",
+			Long:    bartolocli.Markdown("Returns the distinct model references used by routing rules in the requested scope."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -260,6 +284,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		}
 		routingRulesCmd.AddCommand(cmd)
 
+		cmd.Flags().String("project-id", "", "")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -275,8 +301,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "retrieve routing-rule-id",
-			Short:   "Get routing rule",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing routing rule by ID."),
+			Short:   "Retrieve a routing rule",
+			Long:    bartolocli.Markdown("Retrieves a routing rule by its unique identifier."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -312,17 +338,23 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update routing-rule-id",
-			Short:   "Update routing rule",
-			Long:    bartolocli.Markdown("Partially updates an existing routing rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `priority` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Update a routing rule",
+			Long:    bartolocli.Markdown("Partially updates routing-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_config` (object)\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `plugins` (array)\n- `priority` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\"\n  },\n  \"models_config\": {\n    \"mode\": \"fallback\",\n    \"models\": [\n      {\n        \"model\": \"model\"\n      }\n    ]\n  },\n  \"priority\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"cache_config\": {\n    \"ttl\": 0\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"models_config\": {\n    \"mode\": \"mode\",\n    \"models\": [\n      {\n        \"display_name\": \"display_name\",\n        \"integration_id\": \"integration_id\",\n        \"model\": \"model\",\n        \"weight\": 0\n      }\n    ]\n  },\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"mask\": [\n        \"mask\"\n      ],\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ],\n  \"priority\": 0\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "cache_config",
+							FlagName:    "cache-config",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "description",
 							FlagName:    "description",
@@ -350,6 +382,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 						{
 							Name:        "models_config",
 							FlagName:    "models-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
 							Type:        "json",
 							Description: "",
 						},
@@ -382,6 +420,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "cache_config",
+					FlagName:    "cache-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
@@ -408,6 +452,12 @@ func registerroutingRulesCommands(root *cobra.Command) {
 				{
 					Name:        "models_config",
 					FlagName:    "models-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
 					Type:        "json",
 					Description: "",
 				},

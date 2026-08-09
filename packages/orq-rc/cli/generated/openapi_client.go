@@ -8584,7 +8584,7 @@ func OpenapiCreateRerank(params *viper.Viper, body string) (*gentleman.Response,
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleCreate Create routing rule
+// OpenapiRoutingRuleCreate Create a routing rule
 func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules create"
 	server := viper.GetString("server")
@@ -8625,7 +8625,7 @@ func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Resp
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleDelete Delete routing rule
+// OpenapiRoutingRuleDelete Delete a routing rule
 func OpenapiRoutingRuleDelete(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "routing-rules delete routing-rule-id"
 	server := viper.GetString("server")
@@ -8695,8 +8695,8 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 	if paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
-	paramEnabled := params.GetString("enabled")
-	if paramEnabled != "" {
+	paramEnabled := params.GetBool("enabled")
+	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
 	}
 	paramModel := params.GetString("model")
@@ -8729,7 +8729,7 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleListUsedModels List used models
+// OpenapiRoutingRuleListUsedModels List models used by routing rules
 func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules list-used-models"
 	server := viper.GetString("server")
@@ -8740,6 +8740,11 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 	url := server + "/v2/routing-rules/used-models"
 
 	req := bartolocli.Client.Get().URL(url)
+
+	paramProjectId := params.GetString("project-id")
+	if paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -8766,7 +8771,7 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleGet Get routing rule
+// OpenapiRoutingRuleGet Retrieve a routing rule
 func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules retrieve routing-rule-id"
 	server := viper.GetString("server")
@@ -8804,7 +8809,7 @@ func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gen
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleUpdate Update routing rule
+// OpenapiRoutingRuleUpdate Update a routing rule
 func OpenapiRoutingRuleUpdate(paramRoutingRuleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules update routing-rule-id"
 	server := viper.GetString("server")
