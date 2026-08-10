@@ -175,8 +175,17 @@ func emitBugReport(cmd *cobra.Command) error {
 			"### What you expected\n",
 		cmd.Root().Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
 	)
-	issueURL := "https://github.com/orq-ai/orq-cli/issues/new?title=" +
-		url.QueryEscape("bug: ") + "&body=" + url.QueryEscape(body)
+	// Leave the title empty so GitHub shows its placeholder and the user writes
+	// a real one; a literal "bug: " prefill just becomes the issue title verbatim.
+	issueURL := "https://github.com/orq-ai/orq-cli/issues/new?body=" + url.QueryEscape(body)
+	if wantsHumanView(cmd) {
+		// The flag help promises "a pre-filled GitHub issue URL"; a person wants
+		// the URL to open, not a structured object to parse.
+		out := bartolocli.Stdout
+		fmt.Fprintln(out, "Open this URL to file a pre-filled bug report (review the body before submitting):")
+		fmt.Fprintln(out, issueURL)
+		return nil
+	}
 	return emit(map[string]any{
 		"report_url": issueURL,
 		"note":       "Open the URL to file a pre-filled bug report. Review the body before submitting.",
@@ -301,10 +310,20 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 		}
 	}
 	defer res.Body.Close()
+	// A 5xx means the endpoint is reachable but unhealthy; a green check there
+	// reads as "all good" when the server is failing. 4xx (e.g. 401/403 without
+	// credentials) is the expected reachable-but-unauthenticated answer for
+	// these probes, so it stays a pass. Only 5xx degrades.
+	status := "pass"
+	message := fmt.Sprintf("Reachable (HTTP %d)", res.StatusCode)
+	if res.StatusCode >= 500 {
+		status = "fail"
+		message = fmt.Sprintf("Reachable but returned a server error (HTTP %d)", res.StatusCode)
+	}
 	return doctorCheck{
 		ID:      id,
-		Status:  "pass",
-		Message: fmt.Sprintf("Reachable (HTTP %d)", res.StatusCode),
+		Status:  status,
+		Message: message,
 		Details: map[string]any{"url": url, "http_status": res.StatusCode},
 	}
 }

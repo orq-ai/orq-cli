@@ -100,16 +100,23 @@ func newWorkspaceUseCommand() *cobra.Command {
 				return err
 			}
 			workspaceKey := ""
-			if len(args) > 0 {
+			switch {
+			case len(args) > 0:
 				workspaceKey = args[0]
-			} else if session.ActiveWorkspaceKey != nil {
-				workspaceKey = *session.ActiveWorkspaceKey
-			}
-			if workspaceKey == "" && hasInteractiveTTY() {
+			case hasInteractiveTTY():
+				// No argument at a terminal means "let me choose". Do NOT
+				// pre-fill the active workspace here: that made the picker
+				// unreachable for anyone who already had one active, so `use`
+				// with no argument silently re-selected the current workspace
+				// instead of switching.
 				workspaceKey, err = selectWorkspace(session.Workspaces, "Choose the workspace to activate")
 				if err != nil {
 					return err
 				}
+			case session.ActiveWorkspaceKey != nil:
+				// Non-interactive with no argument: re-assert the active
+				// workspace rather than fail, so scripts stay deterministic.
+				workspaceKey = *session.ActiveWorkspaceKey
 			}
 			if workspaceKey == "" {
 				return errors.New("no workspace is available for this user")
