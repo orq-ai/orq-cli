@@ -25,6 +25,8 @@ func registerembeddingsCommands(root *cobra.Command) {
 
 		examples += "  " + embeddingsCmd.CommandPath() + " create input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small\n"
 
+		examples += "  " + embeddingsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create embeddings",
@@ -32,13 +34,10 @@ func registerembeddingsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{
-					"input: The food was delicious, And the waiter was friendly, model: openai/text-embedding-3-small",
-				})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"input\": [\n    \"The food was delicious\",\n    \"And the waiter was friendly\"\n  ],\n  \"model\": \"openai/text-embedding-3-small\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "cache",
@@ -119,7 +118,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateEmbedding(params, body)
@@ -135,6 +134,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 		}
 		embeddingsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

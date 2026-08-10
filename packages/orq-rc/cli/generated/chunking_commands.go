@@ -25,6 +25,8 @@ func registerchunkingCommands(root *cobra.Command) {
 
 		examples += "  " + chunkingCmd.CommandPath() + " parse chunk_size: 256, dimensions: 512, embedding_model: openai/text-embedding-3-small, metadata: true, mode: window, similarity_window: 1, strategy: semantic, text: @file, threshold: 0.8\n"
 
+		examples += "  " + chunkingCmd.CommandPath() + " parse --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "parse",
 			Short:   "Parse text",
@@ -32,13 +34,10 @@ func registerchunkingCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{
-					"chunk_size: 256, dimensions: 512, embedding_model: openai/text-embedding-3-small, metadata: true, mode: window, similarity_window: 1, strategy: semantic, text: @file, threshold: 0.8",
-				})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"chunk_size\": 256,\n  \"dimensions\": 512,\n  \"embedding_model\": \"openai/text-embedding-3-small\",\n  \"metadata\": true,\n  \"mode\": \"window\",\n  \"similarity_window\": 1,\n  \"strategy\": \"semantic\",\n  \"text\": \"The quick brown fox jumps over the lazy dog. This is a sample text that will be chunked into smaller pieces. Each chunk will maintain context while respecting the maximum chunk size.\",\n  \"threshold\": 0.8\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "candidate_size",
@@ -203,7 +202,7 @@ func registerchunkingCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiParse(params, body)
@@ -219,6 +218,7 @@ func registerchunkingCommands(root *cobra.Command) {
 		}
 		chunkingCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

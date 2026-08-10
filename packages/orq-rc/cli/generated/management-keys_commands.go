@@ -23,6 +23,8 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + managementKeysCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new management key",
@@ -30,11 +32,10 @@ func registermanagementKeysCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "access",
@@ -69,7 +70,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiManagementKeyCreate(params, body)
@@ -85,6 +86,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		}
 		managementKeysCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -276,6 +278,8 @@ func registermanagementKeysCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + managementKeysCmd.CommandPath() + " update management-key-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update management-key-id",
 			Short:   "Update a management key",
@@ -283,11 +287,10 @@ func registermanagementKeysCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED\",\n  \"status\": \"MANAGEMENT_KEY_STATUS_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "access",
@@ -340,7 +343,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiManagementKeyUpdate(args[0], params, body)
@@ -356,6 +359,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		}
 		managementKeysCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

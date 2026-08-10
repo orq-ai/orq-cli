@@ -23,6 +23,8 @@ func registerpromptsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + promptsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a prompt",
@@ -30,11 +32,10 @@ func registerpromptsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"metadata\": {\n    \"language\": \"English\"\n  },\n  \"path\": \"Default\",\n  \"prompt\": {\n    \"max_tokens\": 1000,\n    \"messages\": [\n      {\n        \"content\": \"You are a helpful assistant\",\n        \"role\": \"system\"\n      },\n      {\n        \"content\": \"What is the weather today?\",\n        \"role\": \"user\"\n      }\n    ],\n    \"model\": \"openai/gpt-4o\",\n    \"temperature\": 0.7\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -69,7 +70,7 @@ func registerpromptsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreatePrompt(params, body)
@@ -85,6 +86,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		}
 		promptsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -311,6 +313,8 @@ func registerpromptsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + promptsCmd.CommandPath() + " update id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a prompt",
@@ -318,11 +322,10 @@ func registerpromptsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"metadata\": {\n    \"language\": \"English\"\n  },\n  \"path\": \"Default\",\n  \"prompt\": {\n    \"messages\": [\n      {\n        \"content\": \"You are a helpful assistant\",\n        \"role\": \"system\"\n      },\n      {\n        \"content\": \"Hello!\",\n        \"role\": \"user\"\n      }\n    ],\n    \"model\": \"anthropic/claude-3-5-sonnet-20241022\",\n    \"temperature\": 0.5\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "created",
@@ -393,7 +396,7 @@ func registerpromptsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdatePrompt(args[0], params, body)
@@ -409,6 +412,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		}
 		promptsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

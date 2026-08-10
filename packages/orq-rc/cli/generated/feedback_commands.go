@@ -23,6 +23,8 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + feedbackCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create",
@@ -30,11 +32,10 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"product\": \"deployments\",\n  \"property\": \"property\",\n  \"trace_id\": \"trace_id\",\n  \"value\": \"value\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "id",
@@ -88,7 +89,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2Feedback(params, body)
@@ -104,6 +105,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		}
 		feedbackCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -171,6 +173,8 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + feedbackCmd.CommandPath() + " delete --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "delete",
 			Short:   "Delete",
@@ -178,11 +182,10 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"id\": \"id\",\n  \"product\": \"remoteconfigs\",\n  \"trace_id\": \"trace_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "id",
@@ -224,7 +227,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackRemove(params, body)
@@ -240,6 +243,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		}
 		feedbackCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -295,6 +299,8 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + feedbackCmd.CommandPath() + " evaluation --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "evaluation",
 			Short:   "Evaluation",
@@ -302,11 +308,10 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-08-09T21:43:44.658Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "evaluation_type",
@@ -384,7 +389,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackEvaluation(params, body)
@@ -400,6 +405,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		}
 		feedbackCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -491,6 +497,8 @@ func registerfeedbackCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + feedbackCmd.CommandPath() + " evaluation-remove --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "evaluation-remove",
 			Short:   "Evaluation Remove",
@@ -498,11 +506,10 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"id\": \"id\",\n  \"trace_id\": \"trace_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "id",
@@ -519,7 +526,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackEvaluationRemove(params, body)
@@ -535,6 +542,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		}
 		feedbackCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

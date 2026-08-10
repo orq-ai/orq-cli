@@ -30,11 +30,7 @@ func registerskillsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -46,7 +42,7 @@ func registerskillsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, and underscores. Dashes and dots are not allowed.",
+							Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 						},
 						{
 							Name:        "instructions",
@@ -75,7 +71,7 @@ func registerskillsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSkillCreate(params, body)
@@ -103,7 +99,7 @@ func registerskillsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, and underscores. Dashes and dots are not allowed.",
+					Description: "Workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 				},
 				{
 					Name:        "instructions",
@@ -251,6 +247,8 @@ func registerskillsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + skillsCmd.CommandPath() + " update skill-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update skill-id",
 			Short:   "Update a skill",
@@ -258,11 +256,10 @@ func registerskillsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"instructions\": \"instructions\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -274,7 +271,7 @@ func registerskillsCommands(root *cobra.Command) {
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "New workspace-unique display name. Omit to keep the current name.\n Must start with a letter and may contain letters, numbers, and\n underscores. Dashes and dots are not allowed because skill names\n are referenced as template variables.",
+							Description: "New workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 						},
 						{
 							Name:        "instructions",
@@ -303,7 +300,7 @@ func registerskillsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiSkillUpdate(args[0], params, body)
@@ -319,6 +316,7 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		skillsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -331,7 +329,7 @@ func registerskillsCommands(root *cobra.Command) {
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "New workspace-unique display name. Omit to keep the current name.\n Must start with a letter and may contain letters, numbers, and\n underscores. Dashes and dots are not allowed because skill names\n are referenced as template variables.",
+					Description: "New workspace-unique display name. Must start with a letter and may contain letters, numbers, dashes, and underscores. Dots are not allowed.",
 				},
 				{
 					Name:        "instructions",

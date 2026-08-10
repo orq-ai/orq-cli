@@ -23,6 +23,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + routingRulesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create routing rule",
@@ -31,11 +33,10 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -82,7 +83,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiRoutingRuleCreate(params, body)
@@ -98,6 +99,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		}
 		routingRulesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -306,6 +308,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + routingRulesCmd.CommandPath() + " update routing-rule-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update routing-rule-id",
 			Short:   "Update routing rule",
@@ -314,11 +318,10 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\"\n  },\n  \"models_config\": {\n    \"mode\": \"fallback\",\n    \"models\": [\n      {\n        \"model\": \"model\"\n      }\n    ]\n  },\n  \"priority\": 0\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -359,7 +362,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiRoutingRuleUpdate(args[0], params, body)
@@ -375,6 +378,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		}
 		routingRulesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

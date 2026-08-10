@@ -1414,7 +1414,7 @@ func OpenapiApiKeyCreate(params *viper.Viper, body string) (*gentleman.Response,
 }
 
 // OpenapiApiKeyDelete Delete an API key
-func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys delete api-key-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -1433,7 +1433,7 @@ func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1445,7 +1445,7 @@ func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -1495,7 +1495,7 @@ func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Res
 }
 
 // OpenapiApiKeyList List API keys
-func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys list"
 	server := viper.GetString("server")
 	if server == "" {
@@ -1550,7 +1550,7 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]int
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1562,7 +1562,7 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -8584,7 +8584,7 @@ func OpenapiCreateRerank(params *viper.Viper, body string) (*gentleman.Response,
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleCreate Create routing rule
+// OpenapiRoutingRuleCreate Create a routing rule
 func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules create"
 	server := viper.GetString("server")
@@ -8625,7 +8625,7 @@ func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Resp
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleDelete Delete routing rule
+// OpenapiRoutingRuleDelete Delete a routing rule
 func OpenapiRoutingRuleDelete(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "routing-rules delete routing-rule-id"
 	server := viper.GetString("server")
@@ -8695,8 +8695,8 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 	if paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
-	paramEnabled := params.GetString("enabled")
-	if paramEnabled != "" {
+	paramEnabled := params.GetBool("enabled")
+	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
 	}
 	paramModel := params.GetString("model")
@@ -8729,7 +8729,7 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleListUsedModels List used models
+// OpenapiRoutingRuleListUsedModels List models used by routing rules
 func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules list-used-models"
 	server := viper.GetString("server")
@@ -8740,6 +8740,11 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 	url := server + "/v2/routing-rules/used-models"
 
 	req := bartolocli.Client.Get().URL(url)
+
+	paramProjectId := params.GetString("project-id")
+	if paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -8766,7 +8771,7 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleGet Get routing rule
+// OpenapiRoutingRuleGet Retrieve a routing rule
 func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules retrieve routing-rule-id"
 	server := viper.GetString("server")
@@ -8804,7 +8809,7 @@ func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gen
 	return resp, decoded, nil
 }
 
-// OpenapiRoutingRuleUpdate Update routing rule
+// OpenapiRoutingRuleUpdate Update a routing rule
 func OpenapiRoutingRuleUpdate(paramRoutingRuleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules update routing-rule-id"
 	server := viper.GetString("server")
@@ -9200,59 +9205,13 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 	if paramSearch != "" {
 		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
 	}
-	paramProfile := params.GetString("profile")
-	if paramProfile != "" {
-		req = req.AddQuery("profile", fmt.Sprintf("%v", paramProfile))
+	paramParamProfile := params.GetString("param-profile")
+	if paramParamProfile != "" {
+		req = req.AddQuery("profile", fmt.Sprintf("%v", paramParamProfile))
 	}
 	paramEnabled := params.GetBool("enabled")
 	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
-	}
-	paramIncludeMetrics := params.GetBool("include-metrics")
-	if paramIncludeMetrics != false {
-		req = req.AddQuery("include_metrics", fmt.Sprintf("%v", paramIncludeMetrics))
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after.(map[string]interface{})
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiSmartRouterSetEnabled Enable or disable a Smart Router
-func OpenapiSmartRouterSetEnabled(paramSmartRouterId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "smart-routers set-enabled smart-router-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
-
-	url := server + "/v2/smart-routers/{smart_router_id}/enabled"
-	url = strings.Replace(url, "{smart_router_id}", paramSmartRouterId, 1)
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

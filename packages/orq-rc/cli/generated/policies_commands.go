@@ -23,6 +23,8 @@ func registerpoliciesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + policiesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create policy",
@@ -31,11 +33,10 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -94,7 +95,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPolicyCreate(params, body)
@@ -110,6 +111,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		}
 		policiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -292,6 +294,8 @@ func registerpoliciesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + policiesCmd.CommandPath() + " update policy-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update policy-id",
 			Short:   "Update policy",
@@ -300,11 +304,10 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"evaluators\": [\n    {\n      \"execute_on\": \"input\",\n      \"id\": \"id\"\n    }\n  ],\n  \"limits\": {\n    \"budget\": {\n      \"amount\": 0.01,\n      \"currency\": \"usd\",\n      \"period\": \"hour\"\n    },\n    \"requests\": {\n      \"amount\": 1,\n      \"period\": \"hour\"\n    },\n    \"tokens\": {\n      \"amount\": 1,\n      \"period\": \"hour\"\n    }\n  },\n  \"models_config\": {\n    \"mode\": \"fallback\",\n    \"models\": [\n      {\n        \"model\": \"model\"\n      }\n    ]\n  },\n  \"project_id\": \"project_id\",\n  \"retry_config\": {\n    \"count\": 1\n  },\n  \"timeout\": 1000\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -363,7 +366,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPolicyUpdate(args[0], params, body)
@@ -379,6 +382,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		}
 		policiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

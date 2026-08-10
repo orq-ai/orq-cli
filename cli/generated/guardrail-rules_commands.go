@@ -23,6 +23,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + guardrailRulesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create guardrail rule",
@@ -31,11 +33,10 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -82,7 +83,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiGuardrailRuleCreate(params, body)
@@ -98,6 +99,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		}
 		guardrailRulesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -307,6 +309,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + guardrailRulesCmd.CommandPath() + " update guardrail-rule-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update guardrail-rule-id",
 			Short:   "Update guardrail rule",
@@ -315,11 +319,10 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\"\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"input\",\n      \"id\": \"id\"\n    }\n  ],\n  \"timeout\": 1000\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -360,7 +363,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiGuardrailRuleUpdate(args[0], params, body)
@@ -376,6 +379,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		}
 		guardrailRulesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

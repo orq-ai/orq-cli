@@ -23,19 +23,32 @@ func registerresponsesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + responsesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create response",
-			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- `input` (anyOf)\n- `instructions` (string)\n- ... and 27 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a model response for the given input. Returns a response object or a stream of server-sent events.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (boolean)\n- `cache` (object)\n- `cache_control` (object)\n- `conversation` (object)\n- `fallbacks` (array | null)\n- `frequency_penalty` (number)\n- `guardrails` (array)\n- `identity` (object)\n- ... and 36 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"service_tier\": \"auto\",\n  \"template_engine\": \"text\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "background",
+							FlagName:    "background",
+							Type:        "bool",
+							Description: "If true, the response runs asynchronously in the background.",
+						},
+						{
+							Name:        "cache",
+							FlagName:    "cache",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "cache_control",
 							FlagName:    "cache-control",
@@ -85,8 +98,20 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "System prompt / instructions for the model.",
 						},
 						{
+							Name:        "integration_id",
+							FlagName:    "integration-id",
+							Type:        "string",
+							Description: "Integration ID used to resolve provider credentials for this request.",
+						},
+						{
 							Name:        "limits",
 							FlagName:    "limits",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "load_balancer",
+							FlagName:    "load-balancer",
 							Type:        "json",
 							Description: "",
 						},
@@ -130,7 +155,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "plugins",
 							FlagName:    "plugins",
 							Type:        "json",
-							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and response_healing, which repairs malformed JSON in non-streaming model output.",
 						},
 						{
 							Name:        "presence_penalty",
@@ -169,6 +194,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "Safety identifier for content filtering.",
 						},
 						{
+							Name:        "security",
+							FlagName:    "security",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "service_tier",
 							FlagName:    "service-tier",
 							Type:        "enum-string",
@@ -181,6 +212,12 @@ func registerresponsesCommands(root *cobra.Command) {
 								"scale",
 								"priority",
 							},
+						},
+						{
+							Name:        "stop_sequences",
+							FlagName:    "stop-sequences",
+							Type:        "string-slice",
+							Description: "Custom text sequences that cause the model to stop generating. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 						},
 						{
 							Name:        "store",
@@ -199,6 +236,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "stream-options",
 							Type:        "json",
 							Description: "",
+						},
+						{
+							Name:        "tags",
+							FlagName:    "tags",
+							Type:        "string-slice",
+							Description: "Tags attached to the request trace.",
 						},
 						{
 							Name:        "temperature",
@@ -230,6 +273,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "timeout",
+							FlagName:    "timeout",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "tool_choice",
 							FlagName:    "tool-choice",
 							Type:        "json-or-string",
@@ -240,6 +289,12 @@ func registerresponsesCommands(root *cobra.Command) {
 							FlagName:    "tools",
 							Type:        "json",
 							Description: "Tools available to the model.",
+						},
+						{
+							Name:        "top_k",
+							FlagName:    "top-k",
+							Type:        "int64",
+							Description: "Only sample from the top K options for each subsequent token. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 						},
 						{
 							Name:        "top_logprobs",
@@ -262,7 +317,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateRouterResponse(params, body)
@@ -278,8 +333,21 @@ func registerresponsesCommands(root *cobra.Command) {
 		}
 		responsesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "background",
+					FlagName:    "background",
+					Type:        "bool",
+					Description: "If true, the response runs asynchronously in the background.",
+				},
+				{
+					Name:        "cache",
+					FlagName:    "cache",
+					Type:        "json",
+					Description: "",
+				},
 				{
 					Name:        "cache_control",
 					FlagName:    "cache-control",
@@ -329,8 +397,20 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "System prompt / instructions for the model.",
 				},
 				{
+					Name:        "integration_id",
+					FlagName:    "integration-id",
+					Type:        "string",
+					Description: "Integration ID used to resolve provider credentials for this request.",
+				},
+				{
 					Name:        "limits",
 					FlagName:    "limits",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "load_balancer",
+					FlagName:    "load-balancer",
 					Type:        "json",
 					Description: "",
 				},
@@ -374,7 +454,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "plugins",
 					FlagName:    "plugins",
 					Type:        "json",
-					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Supports pii_redaction, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and response_healing, which repairs malformed JSON in non-streaming model output.",
 				},
 				{
 					Name:        "presence_penalty",
@@ -413,6 +493,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "Safety identifier for content filtering.",
 				},
 				{
+					Name:        "security",
+					FlagName:    "security",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "service_tier",
 					FlagName:    "service-tier",
 					Type:        "enum-string",
@@ -425,6 +511,12 @@ func registerresponsesCommands(root *cobra.Command) {
 						"scale",
 						"priority",
 					},
+				},
+				{
+					Name:        "stop_sequences",
+					FlagName:    "stop-sequences",
+					Type:        "string-slice",
+					Description: "Custom text sequences that cause the model to stop generating. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 				},
 				{
 					Name:        "store",
@@ -443,6 +535,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "stream-options",
 					Type:        "json",
 					Description: "",
+				},
+				{
+					Name:        "tags",
+					FlagName:    "tags",
+					Type:        "string-slice",
+					Description: "Tags attached to the request trace.",
 				},
 				{
 					Name:        "temperature",
@@ -474,6 +572,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "timeout",
+					FlagName:    "timeout",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "tool_choice",
 					FlagName:    "tool-choice",
 					Type:        "json-or-string",
@@ -484,6 +588,12 @@ func registerresponsesCommands(root *cobra.Command) {
 					FlagName:    "tools",
 					Type:        "json",
 					Description: "Tools available to the model.",
+				},
+				{
+					Name:        "top_k",
+					FlagName:    "top-k",
+					Type:        "int64",
+					Description: "Only sample from the top K options for each subsequent token. Forwarded to providers that support it (e.g. Anthropic); ignored otherwise.",
 				},
 				{
 					Name:        "top_logprobs",
