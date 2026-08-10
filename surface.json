@@ -3,7 +3,7 @@
   "commands": [
     {
       "path": "orq",
-      "use": "surface-dump",
+      "use": "orq",
       "flags": [
         {
           "name": "jmespath",

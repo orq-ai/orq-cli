@@ -71,10 +71,14 @@ func collectFlags(fs *pflag.FlagSet, persistent bool, out *[]flagSpec, seen map[
 
 func walk(cmd *cobra.Command, prefix string, out *[]commandSpec) {
 	name := cmd.Name()
+	use := cmd.Use
 	if prefix == "" {
-		// The root command's name comes from argv, which would make the
-		// manifest depend on how this tool was invoked. Pin it.
-		name = "orq"
+		// The root command's name AND Use come from argv (the surface-dump
+		// binary), which would make the manifest depend on how this tool was
+		// invoked. Pin both to "orq" — pinning only name left Use recording the
+		// binary name, and any build that names the binary differently
+		// (`go build -o /tmp/sd`) then tripped -check on a non-surface diff.
+		name, use = "orq", "orq"
 	}
 	path := strings.TrimSpace(prefix + " " + name)
 	var flags []flagSpec
@@ -86,7 +90,7 @@ func walk(cmd *cobra.Command, prefix string, out *[]commandSpec) {
 	sort.Slice(flags, func(i, j int) bool { return flags[i].Name < flags[j].Name })
 	*out = append(*out, commandSpec{
 		Path:    path,
-		Use:     cmd.Use,
+		Use:     use,
 		Aliases: append([]string(nil), cmd.Aliases...),
 		Hidden:  cmd.Hidden,
 		Flags:   flags,

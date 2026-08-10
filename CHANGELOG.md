@@ -10,7 +10,13 @@ What you may depend on, and what you may not:
 
 - **`--json` output on stdout is the machine contract.** Field names and
   structure follow the orq API response for the endpoint behind the command.
-  Scripts should parse this and nothing else.
+  Scripts should parse this and nothing else. Caveat on what CI enforces: the
+  `surface.json` gate below covers command paths and flags only, not response
+  field shapes. A renamed or dropped API response field flows through
+  regeneration into `--json` with nothing in CI failing, so response
+  field-shape changes are announced here by hand, not caught automatically.
+  Fingerprinting response types per command so the gate covers them too is
+  tracked in RES-1133.
 - **TOON (the default terminal format) is presentation-only.** It exists for
   human readability and may change rendering between releases without notice.
   The `toon-go` dependency is pinned in `go.mod` and a golden-output test
