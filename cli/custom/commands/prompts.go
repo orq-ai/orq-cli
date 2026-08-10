@@ -12,6 +12,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// promptStdio routes survey prompts to stderr. A prompt is interaction, not
+// output: survey defaults to os.Stdout, so `orq ... --json > out.json` at a
+// terminal would write the question into the JSON payload. Read from stdin,
+// write the prompt and the typed echo to stderr, leaving stdout for the result.
+func promptStdio() survey.AskOpt {
+	return survey.WithStdio(os.Stdin, os.Stderr, os.Stderr)
+}
+
 // hasInteractiveTTY gates every prompt in the CLI. --no-input/ORQ_NO_INPUT
 // forces the non-interactive path even on a real TTY, so scripts can rely on
 // "fail instead of hang" regardless of how they are invoked.
@@ -57,7 +65,7 @@ func selectWorkspace(workspaces []map[string]any, message string) (string, error
 	if err := survey.AskOne(&survey.Select{
 		Message: message,
 		Options: options,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return "", err
 	}
 	for i, opt := range options {

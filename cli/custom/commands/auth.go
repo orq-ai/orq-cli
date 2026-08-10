@@ -20,7 +20,7 @@ func NewLoginCommand() *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate with orq via OAuth device login",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := auth.NewClient(apiBase)
+			client := auth.NewClient(apiBase).WithContext(cmd.Context())
 
 			start, err := client.StartDeviceLogin("orq-cli")
 			if err != nil {
@@ -121,18 +121,28 @@ func NewLogoutCommand() *cobra.Command {
 				if err := survey.AskOne(&survey.Confirm{
 					Message: fmt.Sprintf("Sign out %s?", userLabel),
 					Default: true,
-				}, &confirm); err != nil {
+				}, &confirm, promptStdio()); err != nil {
 					return err
 				}
 				if !confirm {
 					// Declining a confirmation is a choice, not a failure:
-					// exit 0 with a human message, never a bare error.
-					info("Logout cancelled.")
-					return nil
+					// exit 0. In machine mode emit an explicit cancelled payload
+					// so a script can tell "user said no" from "logged out" —
+					// both would otherwise be exit 0 with empty stdout.
+					if wantsHumanView(cmd) {
+						info("Logout cancelled.")
+						return nil
+					}
+					return emit(map[string]any{
+						"authenticated": true,
+						"cleared":       false,
+						"cancelled":     true,
+						"session_file":  auth.SessionFilePath(),
+					})
 				}
 			}
 
-			client := auth.NewClient(sessionAPIBase(apiBase, session))
+			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
 			revokeErr := client.Logout(session.RefreshToken)
 			if revokeErr != nil && !force {
 				// Deleting local credentials while the refresh token is still
@@ -187,7 +197,7 @@ func NewWhoAmICommand() *cobra.Command {
 			if session == nil {
 				return errors.New("you are not logged in")
 			}
-			client := auth.NewClient(sessionAPIBase(apiBase, session))
+			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
 			if err != nil {
 				return err

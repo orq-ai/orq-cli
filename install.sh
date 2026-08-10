@@ -124,7 +124,16 @@ checksum_file="$tmp_file.sha256"
 checksum_status="$(curl -sSL -o "$checksum_file" -w '%{http_code}' "$checksum_url" || echo 000)"
 expected=""
 case "$checksum_status" in
-  200) expected="$(awk '{print $1}' <"$checksum_file")" ;;
+  200)
+    expected="$(awk '{print $1}' <"$checksum_file")"
+    # A 200 with an empty or truncated body is NOT "no checksum published" — the
+    # asset exists but we could not read it, so verification would be skipped
+    # exactly when the download is suspect. Treat it as fatal, not a downgrade.
+    if [ -z "$expected" ]; then
+      err "checksum fetch returned HTTP 200 but an empty body ($checksum_url); refusing to install unverified"
+      exit 1
+    fi
+    ;;
   404) ;; # no checksum published for this release
   *)
     err "failed to fetch checksum ($checksum_url returned HTTP $checksum_status)"
