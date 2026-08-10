@@ -2,8 +2,8 @@ package main
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	custom "orq/cli/custom"
 	generated "orq-rc/cli/generated"
+	custom "orq/cli/custom"
 )
 
 // version is overwritten at release build time via

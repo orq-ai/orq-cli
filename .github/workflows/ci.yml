@@ -1,0 +1,59 @@
+name: CI
+
+# Build + test gate, and the command-surface stability gate (RES-1133).
+#
+# The surface gate is the important one: ~95% of the command tree is
+# regenerated from openapi.yaml, so a renamed API field or endpoint changes
+# commands and flags with nothing forcing a human to look. surface.json is the
+# committed contract; this workflow regenerates it and fails on any mismatch,
+# which turns every surface change into a reviewable diff. See CHANGELOG.md
+# for the stability contract (what users may depend on).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  stable:
+    name: build, vet, test, surface (stable module)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./...
+      - name: command surface matches surface.json
+        run: go run ./cmd/surface-dump -check
+
+  rc:
+    name: build, vet (orq-rc module)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/orq-rc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/orq-rc/go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
