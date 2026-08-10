@@ -23,6 +23,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create memory store",
@@ -30,11 +32,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"embedding_config\": {\n    \"model\": \"model\"\n  },\n  \"key\": \"key\",\n  \"path\": \"Default\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -69,7 +70,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateMemoryStore(params, body)
@@ -85,6 +86,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -133,6 +135,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " create-document memory-store-key memory-entity-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-document memory-store-key memory-entity-id",
 			Short:   "Create a new memory document",
@@ -140,11 +144,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"text\": \"text\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "metadata",
@@ -161,7 +164,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateMemoryDocument(args[0], args[1], params, body)
@@ -177,6 +180,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -207,6 +211,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " create-memory memory-store-key --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-memory memory-store-key",
 			Short:   "Create a new memory",
@@ -214,11 +220,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"entity_id\": \"entity_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "entity_id",
@@ -229,7 +234,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateMemory(args[0], params, body)
@@ -245,6 +250,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -593,6 +599,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " update memory-store-key --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update memory-store-key",
 			Short:   "Update memory store",
@@ -600,11 +608,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"path\": \"path\",\n  \"ttl\": 0\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -627,7 +634,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateMemoryStore(args[0], params, body)
@@ -643,6 +650,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -679,6 +687,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " update-document memory-store-key memory-entity-id document-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-document memory-store-key memory-entity-id document-id",
 			Short:   "Update a specific memory document",
@@ -686,11 +696,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[3:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"metadata\": {},\n  \"text\": \"text\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[3:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "metadata",
@@ -707,7 +716,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateMemoryDocument(args[0], args[1], args[2], params, body)
@@ -723,6 +732,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -753,6 +763,8 @@ func registermemoryStoresCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + memoryStoresCmd.CommandPath() + " update-memory memory-store-key memory-entity-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-memory memory-store-key memory-entity-id",
 			Short:   "Update a specific memory",
@@ -760,11 +772,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"metadata\": {}\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "metadata",
@@ -775,7 +786,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateMemory(args[0], args[1], params, body)
@@ -791,6 +802,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

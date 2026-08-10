@@ -23,6 +23,8 @@ func registermodelSharingCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + modelSharingCmd.CommandPath() + " set model-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "set model-id",
 			Short:   "Set a model's sharing config",
@@ -31,11 +33,10 @@ func registermodelSharingCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"all_projects\": {},\n  \"allow_fork\": false,\n  \"allow_version_pin\": false,\n  \"auto_grant_new_projects\": false,\n  \"selected\": {\n    \"project_ids\": [\n      \"project_ids\"\n    ]\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "all_projects",
@@ -70,7 +71,7 @@ func registermodelSharingCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelSharingSet(args[0], params, body)
@@ -86,6 +87,7 @@ func registermodelSharingCommands(root *cobra.Command) {
 		}
 		modelSharingCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

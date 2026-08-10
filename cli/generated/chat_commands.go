@@ -23,6 +23,8 @@ func registerchatCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + chatCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create chat completion",
@@ -30,11 +32,10 @@ func registerchatCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"load_balancer\": {\n    \"models\": [\n      {\n        \"model\": \"openai/gpt-4o\",\n        \"weight\": 0.7\n      },\n      {\n        \"model\": \"anthropic/claude-3-5-sonnet\",\n        \"weight\": 0.3\n      }\n    ],\n    \"type\": \"weight_based\"\n  },\n  \"messages\": [\n    {\n      \"content\": \"content\",\n      \"role\": \"system\"\n    }\n  ],\n  \"model\": \"model\",\n  \"orq\": {\n    \"cache\": {\n      \"ttl\": 3600,\n      \"type\": \"exact_match\"\n    },\n    \"fallbacks\": [\n      {\n        \"model\": \"openai/gpt-5\"\n      },\n      {\n        \"model\": \"anthropic/claude-4-opus\"\n      }\n    ],\n    \"identity\": {\n      \"display_name\": \"Jane Doe\",\n      \"email\": \"jane.doe@example.com\",\n      \"id\": \"identity_01ARZ3NDEKTSV4RRFFQ69G5FAV\"\n    },\n    \"inputs\": {\n      \"customer_name\": \"John Smith\",\n      \"issue_type\": \"billing\"\n    },\n    \"knowledge_bases\": [\n      {\n        \"knowledge_id\": \"knowledge_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n        \"top_k\": 5\n      }\n    ],\n    \"retry\": {\n      \"count\": 3,\n      \"on_codes\": [\n        429,\n        500,\n        502\n      ]\n    },\n    \"security\": {\n      \"mask\": [\n        \"input\",\n        \"system\"\n      ]\n    },\n    \"thread\": {\n      \"id\": \"thread_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n      \"tags\": [\n        \"customer-support\"\n      ]\n    },\n    \"timeout\": {\n      \"call_timeout\": 30000\n    }\n  },\n  \"reasoning_effort\": \"none\",\n  \"stream\": false,\n  \"variables\": {\n    \"customer_name\": \"John Smith\",\n    \"product_name\": \"Premium Plan\"\n  }\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "audio",
@@ -148,7 +149,7 @@ func registerchatCommands(root *cobra.Command) {
 							Name:        "plugins",
 							FlagName:    "plugins",
 							Type:        "json",
-							Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+							Description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output.",
 						},
 						{
 							Name:        "presence_penalty",
@@ -275,7 +276,7 @@ func registerchatCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateChatCompletion(params, body)
@@ -291,6 +292,7 @@ func registerchatCommands(root *cobra.Command) {
 		}
 		chatCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -405,7 +407,7 @@ func registerchatCommands(root *cobra.Command) {
 					Name:        "plugins",
 					FlagName:    "plugins",
 					Type:        "json",
-					Description: "Request-scoped transforms applied to the text exchanged with the model. Currently supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response.",
+					Description: "Request-scoped transforms applied to the text exchanged with the model. Supports `pii_redaction`, which replaces PII with placeholders before the provider sees it and restores the original values in the response, and `response_healing`, which repairs malformed JSON in non-streaming output.",
 				},
 				{
 					Name:        "presence_penalty",

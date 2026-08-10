@@ -14,7 +14,7 @@ func registertracesCommands(root *cobra.Command) {
 	tracesCmd := &cobra.Command{
 		Use:   "traces",
 		Short: "Traces",
-		Long:  bartolocli.Markdown("Query and inspect ingested trace data: search trace summaries, aggregate metrics, and read individual traces and their spans."),
+		Long:  bartolocli.Markdown("Traces"),
 	}
 	root.AddCommand(tracesCmd)
 
@@ -23,18 +23,19 @@ func registertracesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + tracesCmd.CommandPath() + " aggregate --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "aggregate",
 			Short:   "Aggregate traces",
-			Long:    bartolocli.Markdown("Deprecated: use TelemetryService.Query (POST /v2/telemetry/query, source=TRACES, grain=none) instead. Aggregate trace metrics using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Aggregate trace metrics using the structured trace filter contract. This API remains supported; POST /v3/telemetry/query offers the same aggregate shape in a neutral multi-signal envelope.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"compute\": [\n    {\n      \"metric\": \"metric\",\n      \"op\": \"op\"\n    }\n  ],\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"group_by\": [\n    \"group_by\"\n  ],\n  \"limit\": 0,\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "compute",
@@ -81,7 +82,7 @@ func registertracesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiTracesAggregate(params, body)
@@ -97,6 +98,7 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -157,6 +159,8 @@ func registertracesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + tracesCmd.CommandPath() + " create trace-id span-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create trace-id span-id",
 			Short:   "Annotate a span",
@@ -164,11 +168,10 @@ func registertracesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"annotations\": [\n    {\n      \"key\": \"key\",\n      \"value\": \"value\"\n    }\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "annotations",
@@ -185,7 +188,7 @@ func registertracesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateAnnotation(args[0], args[1], params, body)
@@ -201,6 +204,7 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -231,6 +235,8 @@ func registertracesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + tracesCmd.CommandPath() + " delete trace-id span-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "delete trace-id span-id",
 			Short:   "Remove an annotation from a span",
@@ -238,11 +244,10 @@ func registertracesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"keys\": [\n    \"keys\"\n  ],\n  \"metadata\": {\n    \"identity_id\": \"identity_id\"\n  },\n  \"parent_annotation_ids\": [\n    \"parent_annotation_ids\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "keys",
@@ -265,7 +270,7 @@ func registertracesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeleteAnnotation(args[0], args[1], params, body)
@@ -281,6 +286,7 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -529,6 +535,8 @@ func registertracesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + tracesCmd.CommandPath() + " query-oql --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "query-oql",
 			Short:   "Query traces with OQL",
@@ -536,11 +544,10 @@ func registertracesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"oql\": \"oql\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "from",
@@ -575,7 +582,7 @@ func registertracesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiTracesQueryOql(params, body)
@@ -591,6 +598,7 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -639,6 +647,8 @@ func registertracesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + tracesCmd.CommandPath() + " search --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search traces",
@@ -646,11 +656,10 @@ func registertracesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "filter_operator",
@@ -703,7 +712,7 @@ func registertracesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiTracesSearch(params, body)
@@ -719,6 +728,7 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		tracesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

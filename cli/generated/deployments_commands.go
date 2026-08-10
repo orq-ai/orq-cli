@@ -23,6 +23,8 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + deploymentsCmd.CommandPath() + " get-config --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "get-config",
 			Short:   "Get config",
@@ -30,11 +32,10 @@ func registerdeploymentsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    {\n      \"metadata\": {\n        \"file_name\": \"refund_policy.pdf\",\n        \"file_type\": \"application/pdf\",\n        \"page_number\": 1\n      },\n      \"text\": \"The refund policy allows customers to return items within 30 days of purchase for a full refund.\"\n    },\n    {\n      \"metadata\": {\n        \"file_name\": \"membership_benefits.md\",\n        \"file_type\": \"text/markdown\"\n      },\n      \"text\": \"Premium members receive free shipping on all orders over $50.\"\n    }\n  ],\n  \"key\": \"key\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "context",
@@ -117,7 +118,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeploymentGetConfig(params, body)
@@ -133,6 +134,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 		}
 		deploymentsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -229,6 +231,8 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + deploymentsCmd.CommandPath() + " invoke --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "invoke",
 			Short:   "Invoke",
@@ -236,11 +240,10 @@ func registerdeploymentsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    {\n      \"metadata\": {\n        \"file_name\": \"refund_policy.pdf\",\n        \"file_type\": \"application/pdf\",\n        \"page_number\": 1\n      },\n      \"text\": \"The refund policy allows customers to return items within 30 days of purchase for a full refund.\"\n    },\n    {\n      \"metadata\": {\n        \"file_name\": \"membership_benefits.md\",\n        \"file_type\": \"text/markdown\"\n      },\n      \"text\": \"Premium members receive free shipping on all orders over $50.\"\n    }\n  ],\n  \"key\": \"key\",\n  \"stream\": false\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "context",
@@ -329,7 +332,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeploymentInvoke(params, body)
@@ -345,6 +348,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 		}
 		deploymentsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -485,6 +489,8 @@ func registerdeploymentsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + deploymentsCmd.CommandPath() + " stream --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "stream",
 			Short:   "Stream",
@@ -492,11 +498,10 @@ func registerdeploymentsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    {\n      \"metadata\": {\n        \"file_name\": \"refund_policy.pdf\",\n        \"file_type\": \"application/pdf\",\n        \"page_number\": 1\n      },\n      \"text\": \"The refund policy allows customers to return items within 30 days of purchase for a full refund.\"\n    },\n    {\n      \"metadata\": {\n        \"file_name\": \"membership_benefits.md\",\n        \"file_type\": \"text/markdown\"\n      },\n      \"text\": \"Premium members receive free shipping on all orders over $50.\"\n    }\n  ],\n  \"key\": \"key\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "context",
@@ -579,7 +584,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeploymentStream(params, body)
@@ -595,6 +600,7 @@ func registerdeploymentsCommands(root *cobra.Command) {
 		}
 		deploymentsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

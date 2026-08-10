@@ -57,6 +57,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + datasetsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a dataset",
@@ -64,11 +66,10 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"path\": \"Default\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -85,7 +86,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateDataset(params, body)
@@ -101,6 +102,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -131,6 +133,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + datasetsCmd.CommandPath() + " create-datapoint dataset-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create-datapoint dataset-id",
 			Short:   "Create a datapoint",
@@ -138,15 +142,14 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": [\n      {\n        \"content\": \"content\",\n        \"role\": \"system\"\n      }\n    ]\n  }\n]") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateDatasetItem(args[0], params, body)
@@ -162,6 +165,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},
 		)
@@ -393,6 +397,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + datasetsCmd.CommandPath() + " update dataset-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
 			Short:   "Update a dataset",
@@ -400,11 +406,10 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -427,7 +432,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateDataset(args[0], params, body)
@@ -443,6 +448,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -479,6 +485,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + datasetsCmd.CommandPath() + " update-datapoint dataset-id datapoint-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update-datapoint dataset-id datapoint-id",
 			Short:   "Update a datapoint",
@@ -486,11 +494,10 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[2:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"expected_output\": \"expected_output\",\n  \"inputs\": {},\n  \"messages\": [\n    {\n      \"content\": \"content\",\n      \"role\": \"system\"\n    }\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "expected_output",
@@ -513,7 +520,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateDatapoint(args[0], args[1], params, body)
@@ -529,6 +536,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		}
 		datasetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

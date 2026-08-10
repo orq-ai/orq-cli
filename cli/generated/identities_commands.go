@@ -23,6 +23,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + identitiesCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an identity",
@@ -30,11 +32,10 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"external_id\": \"external_id\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "avatar_url",
@@ -63,7 +64,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 						{
 							Name:        "metadata",
 							FlagName:    "metadata",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Custom JSON metadata stored with the identity.",
 						},
 						{
@@ -75,7 +76,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateIdentity(params, body)
@@ -91,6 +92,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		}
 		identitiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -120,7 +122,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 				{
 					Name:        "metadata",
 					FlagName:    "metadata",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Custom JSON metadata stored with the identity.",
 				},
 				{
@@ -259,6 +261,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + identitiesCmd.CommandPath() + " update id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an identity",
@@ -266,11 +270,10 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"avatar_url\": \"avatar_url\",\n  \"display_name\": \"display_name\",\n  \"email\": \"email\",\n  \"metadata\": {},\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "avatar_url",
@@ -293,7 +296,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 						{
 							Name:        "metadata",
 							FlagName:    "metadata",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Replacement custom JSON metadata.",
 						},
 						{
@@ -305,7 +308,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateIdentity(args[0], params, body)
@@ -321,6 +324,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		}
 		identitiesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -344,7 +348,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 				{
 					Name:        "metadata",
 					FlagName:    "metadata",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Replacement custom JSON metadata.",
 				},
 				{

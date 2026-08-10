@@ -30,11 +30,7 @@ func registertranslationsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("multipart/form-data", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "multipart/form-data", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "diarize",
@@ -147,7 +143,7 @@ func registertranslationsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateTranslation(params, body)

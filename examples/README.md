@@ -11,7 +11,7 @@ orq --json doctor
 ## Explore
 
 ```sh
-orq agents --help
+orq activities --help
 ```
 
 ## Copy-Paste Commands
@@ -37,17 +37,17 @@ orq default-format json
 ### Explore a command group
 
 ```sh
-orq agents --help
+orq activities --help
 ```
 
 ### Run a grouped command
 
 ```sh
-orq agents create
+orq activities create entity-id --help
 ```
 
 ### Use the raw escape hatch
 
 ```sh
-orq request get /v2/agents
+orq request get /v2/activity/{entity_id}
 ```

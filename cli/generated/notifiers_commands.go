@@ -23,6 +23,8 @@ func registernotifiersCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + notifiersCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a notifier",
@@ -30,11 +32,10 @@ func registernotifiersCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"emails\": [\n    \"emails\"\n  ],\n  \"type\": \"NOTIFIER_TYPE_EMAIL\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -93,7 +94,7 @@ func registernotifiersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiNotifierCreate(params, body)
@@ -109,6 +110,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		}
 		notifiersCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -290,6 +292,8 @@ func registernotifiersCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + notifiersCmd.CommandPath() + " update notifier-id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update notifier-id",
 			Short:   "Update a notifier",
@@ -297,11 +301,10 @@ func registernotifiersCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"type\": \"NOTIFIER_TYPE_UNSPECIFIED\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "display_name",
@@ -360,7 +363,7 @@ func registernotifiersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiNotifierUpdate(args[0], params, body)
@@ -376,6 +379,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		}
 		notifiersCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

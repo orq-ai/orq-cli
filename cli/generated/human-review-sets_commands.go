@@ -23,6 +23,8 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + humanReviewSetsCmd.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a human review set",
@@ -31,11 +33,10 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"filter_type\": \"span_type\",\n  \"filter_values\": [\n    \"filter_values\"\n  ],\n  \"human_eval_ids\": [\n    \"human_eval_ids\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -86,7 +87,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2HumanEvalSets(params, body)
@@ -102,6 +103,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		}
 		humanReviewSetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -273,6 +275,8 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + humanReviewSetsCmd.CommandPath() + " update id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a human review set",
@@ -281,11 +285,10 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[1:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"filter_type\": \"span_type\",\n  \"filter_values\": [\n    \"filter_values\"\n  ],\n  \"human_eval_ids\": [\n    \"human_eval_ids\"\n  ]\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "description",
@@ -336,7 +339,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiPatchV2HumanEvalSetsId(args[0], params, body)
@@ -352,6 +355,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		}
 		humanReviewSetsCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{

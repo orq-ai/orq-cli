@@ -30,11 +30,7 @@ func registerimagesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("multipart/form-data", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "multipart/form-data", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "cache",
@@ -133,7 +129,7 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImageEdit(params, body)
@@ -261,18 +257,19 @@ func registerimagesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + imagesCmd.CommandPath() + " generate --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "generate",
 			Short:   "Create image",
-			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 12 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 12 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `output_format` is `--body-output-format` (not `--output-format`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("application/json", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+				if bartolocli.PrintBodyExample(params, "{\n  \"background\": \"transparent\",\n  \"model\": \"model\",\n  \"moderation\": \"low\",\n  \"n\": 1,\n  \"output_format\": \"png\",\n  \"prompt\": \"prompt\",\n  \"quality\": \"auto\",\n  \"response_format\": \"url\",\n  \"style\": \"vivid\"\n}") {
+					return
 				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "application/json", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "background",
@@ -342,9 +339,9 @@ func registerimagesCommands(root *cobra.Command) {
 						},
 						{
 							Name:        "output_format",
-							FlagName:    "output-format",
+							FlagName:    "body-output-format",
 							Type:        "string-nullable",
-							Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`.",
+							Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the global --output-format flag available)",
 						},
 						{
 							Name:        "plugins",
@@ -397,7 +394,7 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImage(params, body)
@@ -413,6 +410,7 @@ func registerimagesCommands(root *cobra.Command) {
 		}
 		imagesCmd.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
@@ -483,9 +481,9 @@ func registerimagesCommands(root *cobra.Command) {
 				},
 				{
 					Name:        "output_format",
-					FlagName:    "output-format",
+					FlagName:    "body-output-format",
 					Type:        "string-nullable",
-					Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`.",
+					Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the global --output-format flag available)",
 				},
 				{
 					Name:        "plugins",
@@ -558,11 +556,7 @@ func registerimagesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				body, err := bartolocli.GetBody("multipart/form-data", args[0:], params, []string{})
-				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
-				}
-				body, err = bartolocli.ApplyBodyFlags(cmd, params, "multipart/form-data", body,
+				body, err := bartolocli.GetBodyWithFlags(cmd, "multipart/form-data", args[0:], params,
 					[]bartolocli.BodyField{
 						{
 							Name:        "cache",
@@ -654,7 +648,7 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to apply body flags")
+					log.Fatal().Err(err).Msg("unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImageVariation(params, body)
