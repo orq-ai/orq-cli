@@ -4,13 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	isatty "github.com/mattn/go-isatty"
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
 )
 
@@ -24,16 +22,18 @@ func hasInteractiveTTY() bool {
 	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
 }
 
-// envAPIKeyConfigured mirrors custom.apiKeyConfigured (register.go); the
-// commands package cannot import the custom package without an import cycle.
-func envAPIKeyConfigured() bool {
-	for _, envVar := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
-		if strings.TrimSpace(os.Getenv(envVar)) != "" {
-			return true
-		}
-	}
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
-}
+// explicitAPIKey records whether the USER configured an API key (env var or
+// credentials profile), snapshotted by the custom package's PreRun BEFORE it
+// injects the session token into ORQ_API_KEY. Reading the env after that
+// injection always finds a key, which made every `workspace use` warn about a
+// shadow that did not exist. A single snapshot also removes the duplicated
+// apiKeyConfigured logic this package used to carry (import-cycle workaround)
+// that let the two copies drift.
+var explicitAPIKey bool
+
+// SetExplicitAPIKey is called once per invocation from custom's PreRun, before
+// the session-token injection.
+func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
 
 func selectWorkspace(workspaces []map[string]any, message string) (string, error) {
 	if len(workspaces) == 0 {

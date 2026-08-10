@@ -17,14 +17,21 @@ var version = "dev"
 
 func main() {
 	// Cancel the command context on SIGINT/SIGTERM so long-running and
-	// streaming commands can clean up. Once the context is cancelled stop()
-	// restores default signal handling, so a second Ctrl+C kills the process
-	// immediately instead of waiting on a stuck cleanup.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// streaming commands can clean up. After the first signal, default
+	// handling is restored, so a second Ctrl+C kills the process immediately
+	// instead of waiting on a stuck cleanup. The signal is recorded so the
+	// exit code can distinguish an interactive interrupt (SIGINT -> 130)
+	// from a supervisor shutdown (SIGTERM -> 143), per the 128+N convention.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	received := make(chan os.Signal, 1)
 	go func() {
-		<-ctx.Done()
-		stop()
+		s := <-sigCh
+		received <- s
+		signal.Stop(sigCh)
+		cancel()
 	}()
 
 	bartolocli.Init(&bartolocli.Config{
@@ -39,9 +46,13 @@ func main() {
 	custom.Register(bartolocli.Root)
 
 	err := bartolocli.Root.ExecuteContext(ctx)
-	if ctx.Err() != nil {
-		// 128 + SIGINT(2): the conventional exit code for "interrupted".
-		os.Exit(130)
+	select {
+	case s := <-received:
+		if s == syscall.SIGTERM {
+			os.Exit(143) // 128 + SIGTERM(15)
+		}
+		os.Exit(130) // 128 + SIGINT(2)
+	default:
 	}
 	if err != nil {
 		// Cobra already printed the error; without this every failure

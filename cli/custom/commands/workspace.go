@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 
@@ -61,8 +62,8 @@ func newWorkspaceListCommand() *cobra.Command {
 					TotalMembers: ws.TotalMembers,
 					Active:       ws.Key == activeKey,
 				})
-				if len(ws.Name) > nameWidth {
-					nameWidth = len(ws.Name)
+				if n := utf8.RuneCountInString(ws.Name); n > nameWidth {
+					nameWidth = n
 				}
 			}
 			if wantsHumanView(cmd) {
@@ -125,7 +126,9 @@ func newWorkspaceUseCommand() *cobra.Command {
 					break
 				}
 			}
-			shadowed := envAPIKeyConfigured()
+			// Snapshotted before PreRun's session-token injection; reading the
+			// env here would always see our own injected key and cry wolf.
+			shadowed := explicitAPIKey
 			if wantsHumanView(cmd) {
 				success("Active workspace: %s (%s)", activeName, workspaceKey)
 				if shadowed {
@@ -150,8 +153,8 @@ func printWorkspaceList(rows []workspaceRow, nameWidth int) {
 	const memHdr = "MEMBERS"
 	keyWidth := len("KEY")
 	for _, r := range rows {
-		if len(r.Key) > keyWidth {
-			keyWidth = len(r.Key)
+		if n := utf8.RuneCountInString(r.Key); n > keyWidth {
+			keyWidth = n
 		}
 	}
 	if nameWidth < len("NAME") {

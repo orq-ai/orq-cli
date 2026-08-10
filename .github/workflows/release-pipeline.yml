@@ -209,7 +209,10 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -e
-          go run -ldflags "-X main.version=${TAG#v}" ./cmd/orq man-pages --dir dist/man
+          # Honor MODULE_DIR like every other step: an RC release must ship
+          # man pages for the RC command tree, not the stable one.
+          workdir="${MODULE_DIR:-.}"
+          ( cd "$workdir" && go run -ldflags "-X main.version=${TAG#v}" ./cmd/orq man-pages --dir "$GITHUB_WORKSPACE/dist/man" )
           tar -czf dist/orq-man-pages.tar.gz -C dist man
           rm -rf dist/man
 

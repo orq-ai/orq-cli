@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strings"
+	"unicode/utf8"
 
 	isatty "github.com/mattn/go-isatty"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -37,14 +39,25 @@ func wantsHumanView(cmd *cobra.Command) bool {
 	return humanOutput() && !machineFormatRequested(cmd)
 }
 
-// machineFormatRequested reports whether the user explicitly asked for a
-// machine format via --json or -o/--output-format.
+// machineFormatRequested reports whether the user asked for a machine format
+// via --json or -o/--output-format. Both flags are viper-bound globals, so the
+// request can arrive as a flag, an env var (ORQ_JSON / ORQ_OUTPUT_FORMAT) or a
+// config-file entry - Flag.Changed alone misses everything but the flag, which
+// silently gave the human view to exactly the users who configured a machine
+// format.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	if f := cmd.Flags().Lookup("json"); f != nil && f.Changed {
+	if viper.GetBool("json") {
 		return true
 	}
-	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
-		return true
+	if f := cmd.Flags().Lookup("output-format"); f != nil {
+		if f.Changed {
+			return true
+		}
+		// The resolved viper value differs from the flag default only when an
+		// env var or config file set it; the implicit default is not a request.
+		if v := strings.TrimSpace(viper.GetString("output-format")); v != "" && !strings.EqualFold(v, f.DefValue) {
+			return true
+		}
 	}
 	return false
 }
@@ -64,9 +77,11 @@ func kv(width int, label, format string, args ...any) {
 	fmt.Fprintf(bartolocli.Stdout, "  %s  %s\n", paint(ansiDim, pad(label+":", width+1)), value)
 }
 
+// pad right-pads to width in RUNES, not bytes: a byte count over-pads any
+// non-ASCII label or workspace name and breaks the table alignment.
 func pad(s string, width int) string {
-	for len(s) < width {
-		s += " "
+	if n := utf8.RuneCountInString(s); n < width {
+		s += strings.Repeat(" ", width-n)
 	}
 	return s
 }

@@ -26,14 +26,23 @@ const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-
 // session yet (creating one, or diagnosing why it is missing), so the
 // unknown-profile guard skips them.
 var profileExemptCommands = map[string]bool{
-	"login":       true,
-	"logout":      true,
+	"login":         true,
+	"logout":        true,
+	"setup":         true,
+	"add-profile":   true,
+	"list-profiles": true, // listing profiles is how you diagnose an unknown one
+	"doctor":        true,
+	"help":          true,
+	"completion":    true,
+	"man-pages":     true,
+}
+
+// interactiveWizardCommands are bartolo-owned commands whose prompts run
+// through bartolo's own TTY check, which knows nothing about --no-input.
+// Refusing them up front keeps the "--no-input never prompts" promise honest.
+var interactiveWizardCommands = map[string]bool{
 	"setup":       true,
 	"add-profile": true,
-	"doctor":      true,
-	"help":        true,
-	"completion":  true,
-	"man-pages":   true,
 }
 
 // Register wires custom commands and session-aware auth onto the provided root
@@ -43,6 +52,12 @@ func Register(root *cobra.Command) {
 	if root == nil {
 		root = bartolocli.Root
 	}
+	// Bartolo routes everything to stdout; errors belong on stderr so
+	// `orq ... | jq` never gets Go error text piped into it (clig.dev).
+	root.SetErr(bartolocli.Stderr)
+	// On error, print the error and point at --help instead of dumping the
+	// full usage block after every runtime failure.
+	root.SilenceUsage = true
 	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
@@ -58,10 +73,10 @@ func registerGlobalFlags() {
 }
 
 func appendHelpFooter(root *cobra.Command) {
-	if root.Long == "" {
-		root.Long = root.Short
-	}
-	root.Long = strings.TrimRight(root.Long, "\n") + "\n\n" + helpFooter
+	// Extend the help TEMPLATE, not root.Long: Long renders above `Usage:`,
+	// which turns the footer into a header. clig.dev wants Docs/Issues as a
+	// trailer after the flag list.
+	root.SetHelpTemplate(root.HelpTemplate() + "\n" + helpFooter + "\n")
 }
 
 // installSessionPreRun runs once per command invocation, after cobra parses
@@ -86,6 +101,18 @@ func installSessionPreRun() {
 			}
 		}
 		applyNoColor()
+		// Snapshot whether the USER configured an API key before this PreRun
+		// injects the session token into ORQ_API_KEY below - commands that
+		// read the env afterwards would see our own injection and cry wolf
+		// on every invocation.
+		commands.SetExplicitAPIKey(apiKeyConfigured())
+		if viper.GetBool("no-input") && interactiveWizardCommands[cmd.Name()] {
+			return fmt.Errorf(
+				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
+					"use `orq auth login` or set ORQ_API_KEY instead",
+				cmd.Name(),
+			)
+		}
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
@@ -146,7 +173,11 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 		return nil
 	}
 	explicit := os.Getenv("ORQ_PROFILE") != ""
-	if f := cmd.Flags().Lookup("profile"); f != nil && f.Changed {
+	// Only the ROOT persistent flag selects a credentials profile. A generated
+	// command may define a LOCAL --profile request field (e.g. `models
+	// create-autorouter --profile balanced`) that shadows the global flag in
+	// cmd.Flags(); that is request data, not a credentials selection.
+	if f := cmd.Root().PersistentFlags().Lookup("profile"); f != nil && f.Changed {
 		explicit = true
 	}
 	if !explicit {
@@ -155,7 +186,10 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 	if auth.InspectSession().Status != auth.StatusMissing {
 		return nil
 	}
-	if strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != "" {
+	// An explicit API key (env var or credentials entry) is a complete,
+	// working credential config - the standard CI shape is ORQ_API_KEY with
+	// no session file, and blocking it would reject legitimate calls.
+	if apiKeyConfigured() {
 		return nil
 	}
 	profile := auth.ActiveProfile()

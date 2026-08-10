@@ -38,12 +38,12 @@ type doctorReport struct {
 
 func NewDoctorCommand() *cobra.Command {
 	var apiBase string
-	var report bool
+	var bugReport bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect config, auth state, and endpoint reachability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if report {
+			if bugReport {
 				return emitBugReport(cmd)
 			}
 			inspect := auth.InspectSession()
@@ -80,14 +80,14 @@ func NewDoctorCommand() *cobra.Command {
 			}
 
 			checks := buildSessionChecks(inspect)
-			checks = append(checks, probeURL("api_base_url", client.URLs.APIBaseURL, ""))
-			checks = append(checks, probeURL("auth_base_url", client.URLs.AuthBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
 			profileBearer := ""
 			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
 				profileBearer = inspect.Session.BootstrapToken.Token
 			}
-			checks = append(checks, probeURL("profile_base_url", client.URLs.ProfileBaseURL, profileBearer))
+			checks = append(checks, probeURL(cmd.Context(), "profile_base_url", client.URLs.ProfileBaseURL, profileBearer))
 
 			authStatus := string(inspect.Status)
 			authSource := "none"
@@ -156,7 +156,7 @@ func NewDoctorCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
-	cmd.Flags().BoolVar(&report, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
+	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
 	return cmd
 }
 
@@ -266,8 +266,13 @@ func isTokenExpired(expiresAt string) bool {
 	return true
 }
 
-func probeURL(id, url, bearer string) doctorCheck {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// probeURL checks reachability with a 5s budget, parented on the command
+// context so Ctrl+C cancels an in-flight probe instead of waiting it out.
+func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

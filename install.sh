@@ -94,7 +94,7 @@ echo "Installing orq ${VERSION} (${os}-${arch}) → ${INSTALL_DIR}/orq"
 
 tmp_file="$(mktemp -t orq-cli.XXXXXX)"
 cleanup() {
-  rm -f "$tmp_file"
+  rm -f "$tmp_file" "$tmp_file.sha256"
 }
 trap cleanup EXIT INT TERM
 
@@ -112,11 +112,25 @@ fi
 
 # --- Verify checksum -------------------------------------------------------
 
-# Releases publish a .sha256 next to each binary. Verify when present; older
-# releases predate the checksum assets, so a missing file is a warning, not a
-# failure (pin ORQ_CLI_VERSION to a recent release to require verification).
+# Releases publish a .sha256 next to each binary. This is an integrity check
+# against corruption or a truncated download - the checksum comes from the
+# same host as the binary, so it is not a defense against a compromised
+# release host. Only a genuine 404 (older releases predate the checksum
+# assets) downgrades to a warning; any other fetch failure - timeout, proxy,
+# 5xx, DNS - is fatal, because failing open would skip verification exactly
+# when the network is least trustworthy.
 checksum_url="${download_url}.sha256"
-expected="$(curl -fsSL "$checksum_url" 2>/dev/null | awk '{print $1}')" || expected=""
+checksum_file="$tmp_file.sha256"
+checksum_status="$(curl -sSL -o "$checksum_file" -w '%{http_code}' "$checksum_url" || echo 000)"
+expected=""
+case "$checksum_status" in
+  200) expected="$(awk '{print $1}' <"$checksum_file")" ;;
+  404) ;; # no checksum published for this release
+  *)
+    err "failed to fetch checksum ($checksum_url returned HTTP $checksum_status)"
+    exit 1
+    ;;
+esac
 if [ -n "$expected" ]; then
   if command -v sha256sum >/dev/null 2>&1; then
     actual="$(sha256sum "$tmp_file" | awk '{print $1}')"
@@ -130,7 +144,7 @@ if [ -n "$expected" ]; then
     err "checksum mismatch for $asset"
     err "expected: $expected"
     err "actual:   $actual"
-    err "refusing to install a corrupted or tampered binary"
+    err "refusing to install a binary that does not match its published checksum"
     exit 1
   fi
   echo "Checksum verified (sha256)"

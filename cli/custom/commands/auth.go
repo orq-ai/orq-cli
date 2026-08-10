@@ -39,7 +39,7 @@ func NewLoginCommand() *cobra.Command {
 			}
 
 			fmt.Fprintln(bartolocli.Stderr, "Waiting for browser approval...")
-			approved, err := client.AwaitDeviceApproval(start.DeviceCode, start.ExpiresIn, start.Interval)
+			approved, err := client.AwaitDeviceApproval(cmd.Context(), start.DeviceCode, start.ExpiresIn, start.Interval)
 			if err != nil {
 				return err
 			}
@@ -95,6 +95,10 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
+				if wantsHumanView(cmd) {
+					info("Not logged in - nothing to clear.")
+					return nil
+				}
 				return emit(map[string]any{
 					"authenticated": false,
 					"cleared":       false,
@@ -121,7 +125,10 @@ func NewLogoutCommand() *cobra.Command {
 					return err
 				}
 				if !confirm {
-					return errors.New("cancelled")
+					// Declining a confirmation is a choice, not a failure:
+					// exit 0 with a human message, never a bare error.
+					info("Logout cancelled.")
+					return nil
 				}
 			}
 
@@ -140,10 +147,17 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 
-			if revokeErr == nil {
-				success("Signed out")
-			} else {
-				success("Local credentials cleared (server-side token was not revoked)")
+			// Same human/machine split as login and whoami: the human view
+			// returns early so a terminal never sees the structured payload,
+			// and --json/-o never sees the check line. A kept-but-unrevoked
+			// token is a warning, not a green success.
+			if wantsHumanView(cmd) {
+				if revokeErr == nil {
+					success("Signed out")
+				} else {
+					Warn("local credentials cleared, but the server-side token was not revoked")
+				}
+				return nil
 			}
 			return emit(map[string]any{
 				"authenticated": false,
