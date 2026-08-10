@@ -27,8 +27,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create",
-			Short:   "Create guardrail rule",
-			Long:    bartolocli.Markdown("Creates a new guardrail rule with expression, guardrails configuration, and timeout settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array | null)\n- `project_id` (string)\n- `timeout` (integer)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Create a guardrail rule",
+			Long:    bartolocli.Markdown("Creates a guardrail rule with metadata and optional evaluator, plugin, timeout, and matching configuration. Rules default to disabled when `enabled` is omitted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n- `project_id` (string)\n- `timeout` (integer)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -54,7 +54,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							Name:        "enabled",
 							FlagName:    "enabled",
 							Type:        "bool",
-							Description: "",
+							Description: "Whether the rule is active. Defaults to false when omitted.",
 						},
 						{
 							Name:        "expression",
@@ -69,10 +69,16 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							Description: "",
 						},
 						{
+							Name:        "plugins",
+							FlagName:    "plugins",
+							Type:        "json",
+							Description: "",
+						},
+						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+							Description: "Optional project scope. Omit for a workspace-wide rule.",
 						},
 						{
 							Name:        "timeout",
@@ -118,7 +124,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					Name:        "enabled",
 					FlagName:    "enabled",
 					Type:        "bool",
-					Description: "",
+					Description: "Whether the rule is active. Defaults to false when omitted.",
 				},
 				{
 					Name:        "expression",
@@ -133,10 +139,16 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					Description: "",
 				},
 				{
+					Name:        "plugins",
+					FlagName:    "plugins",
+					Type:        "json",
+					Description: "",
+				},
+				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "Optional project ID. If null/omitted, the entity is global (workspace-wide).",
+					Description: "Optional project scope. Omit for a workspace-wide rule.",
 				},
 				{
 					Name:        "timeout",
@@ -162,8 +174,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete guardrail-rule-id",
-			Short:   "Delete guardrail rule",
-			Long:    bartolocli.Markdown("Deletes an existing guardrail rule by ID."),
+			Short:   "Delete a guardrail rule",
+			Long:    bartolocli.Markdown("Permanently deletes a guardrail rule."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -198,7 +210,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List guardrail rules",
-			Long:    bartolocli.Markdown("Returns a paginated list of guardrail rules for the current project."),
+			Long:    bartolocli.Markdown("Returns guardrail rules with cursor pagination, search, status, project, sort, and referenced-guardrail filters."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -218,13 +230,13 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		guardrailRulesCmd.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination.")
-		cmd.Flags().String("project-id", "", "Optional filter by project ID.")
-		cmd.Flags().String("search", "", "Filter by display name or description (case-insensitive).")
-		cmd.Flags().String("sort-by", "", "Field to sort by. Defaults to created_at (newest first).")
-		cmd.Flags().String("enabled", "", "Filter by enabled status.")
-		cmd.Flags().String("guardrail-id", "", "Filter by referenced guardrail ids (comma-separated).")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+		cmd.Flags().String("project-id", "", "")
+		cmd.Flags().String("search", "", "")
+		cmd.Flags().String("sort-by", "", "")
+		cmd.Flags().String("enabled", "", "")
+		cmd.Flags().String("guardrail-id", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -241,8 +253,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "list-used-guardrails",
-			Short:   "List used guardrails",
-			Long:    bartolocli.Markdown("Returns the distinct guardrail ids referenced across all guardrail rules in scope."),
+			Short:   "List guardrails used by guardrail rules",
+			Long:    bartolocli.Markdown("Returns the distinct guardrail identifiers used by guardrail rules in the requested scope."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -261,6 +273,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		}
 		guardrailRulesCmd.AddCommand(cmd)
 
+		cmd.Flags().String("project-id", "", "")
+
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -276,8 +290,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "retrieve guardrail-rule-id",
-			Short:   "Get guardrail rule",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing guardrail rule by ID."),
+			Short:   "Retrieve a guardrail rule",
+			Long:    bartolocli.Markdown("Retrieves a guardrail rule by its unique identifier."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -313,13 +327,13 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update guardrail-rule-id",
-			Short:   "Update guardrail rule",
-			Long:    bartolocli.Markdown("Partially updates an existing guardrail rule. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `timeout` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Update a guardrail rule",
+			Long:    bartolocli.Markdown("Partially updates guardrail-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n- `timeout` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\"\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"input\",\n      \"id\": \"id\"\n    }\n  ],\n  \"timeout\": 1000\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ],\n  \"timeout\": 0\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -351,6 +365,12 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 						{
 							Name:        "guardrails",
 							FlagName:    "guardrails",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "plugins",
+							FlagName:    "plugins",
 							Type:        "json",
 							Description: "",
 						},
@@ -409,6 +429,12 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 				{
 					Name:        "guardrails",
 					FlagName:    "guardrails",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "plugins",
+					FlagName:    "plugins",
 					Type:        "json",
 					Description: "",
 				},

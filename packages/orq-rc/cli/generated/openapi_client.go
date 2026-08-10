@@ -3533,7 +3533,7 @@ func OpenapiListFinderEntities(params *viper.Viper) (*gentleman.Response, map[st
 	return resp, decoded, nil
 }
 
-// OpenapiGuardrailRuleCreate Create guardrail rule
+// OpenapiGuardrailRuleCreate Create a guardrail rule
 func OpenapiGuardrailRuleCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules create"
 	server := viper.GetString("server")
@@ -3574,8 +3574,8 @@ func OpenapiGuardrailRuleCreate(params *viper.Viper, body string) (*gentleman.Re
 	return resp, decoded, nil
 }
 
-// OpenapiGuardrailRuleDelete Delete guardrail rule
-func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+// OpenapiGuardrailRuleDelete Delete a guardrail rule
+func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules delete guardrail-rule-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -3594,7 +3594,7 @@ func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -3606,7 +3606,7 @@ func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
@@ -3648,8 +3648,8 @@ func OpenapiGuardrailRuleList(params *viper.Viper) (*gentleman.Response, map[str
 	if paramSortBy != "" {
 		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
 	}
-	paramEnabled := params.GetString("enabled")
-	if paramEnabled != "" {
+	paramEnabled := params.GetBool("enabled")
+	if paramEnabled != false {
 		req = req.AddQuery("enabled", fmt.Sprintf("%v", paramEnabled))
 	}
 	paramGuardrailId := params.GetString("guardrail-id")
@@ -3682,7 +3682,7 @@ func OpenapiGuardrailRuleList(params *viper.Viper) (*gentleman.Response, map[str
 	return resp, decoded, nil
 }
 
-// OpenapiGuardrailRuleListUsedGuardrails List used guardrails
+// OpenapiGuardrailRuleListUsedGuardrails List guardrails used by guardrail rules
 func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules list-used-guardrails"
 	server := viper.GetString("server")
@@ -3693,6 +3693,11 @@ func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Res
 	url := server + "/v2/guardrail-rules/used-guardrails"
 
 	req := bartolocli.Client.Get().URL(url)
+
+	paramProjectId := params.GetString("project-id")
+	if paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -3719,7 +3724,7 @@ func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Res
 	return resp, decoded, nil
 }
 
-// OpenapiGuardrailRuleGet Get guardrail rule
+// OpenapiGuardrailRuleGet Retrieve a guardrail rule
 func OpenapiGuardrailRuleGet(paramGuardrailRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules retrieve guardrail-rule-id"
 	server := viper.GetString("server")
@@ -3757,7 +3762,7 @@ func OpenapiGuardrailRuleGet(paramGuardrailRuleId string, params *viper.Viper) (
 	return resp, decoded, nil
 }
 
-// OpenapiGuardrailRuleUpdate Update guardrail rule
+// OpenapiGuardrailRuleUpdate Update a guardrail rule
 func OpenapiGuardrailRuleUpdate(paramGuardrailRuleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules update guardrail-rule-id"
 	server := viper.GetString("server")
