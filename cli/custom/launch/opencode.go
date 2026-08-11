@@ -51,12 +51,13 @@ func kiloAgent() AgentDef {
 
 func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 	return AgentDef{
-		Name:        family.name,
-		Binary:      family.binary,
-		Label:       family.label,
-		InstallHint: family.installHint,
-		NpmPackage:  family.npmPackage,
-		AllowModels: true,
+		Name:          family.name,
+		Binary:        family.binary,
+		Label:         family.label,
+		InstallHint:   family.installHint,
+		NpmPackage:    family.npmPackage,
+		FetchesModels: true,
+		AllowModels:   true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"run", v} },

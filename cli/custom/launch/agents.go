@@ -36,8 +36,13 @@ type AgentDef struct {
 	InstallHint string
 	NpmPackage  string // sandbox image install target
 	AllowModels bool
-	Prompt      *PromptMapping
-	Resolve     func(*AgentContext) (*LaunchPlan, error)
+	// FetchesModels reports whether Resolve reads the gateway catalogue, and
+	// therefore whether --no-fetch-models does anything. claude speaks the
+	// anthropic-native endpoint and resolves its model from env/defaults, so
+	// advertising the flag for it promised a knob that did nothing.
+	FetchesModels bool
+	Prompt        *PromptMapping
+	Resolve       func(*AgentContext) (*LaunchPlan, error)
 }
 
 // Agents returns the registry, ordered for help output.

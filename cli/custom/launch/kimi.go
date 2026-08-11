@@ -35,12 +35,13 @@ var kimiNormalize = MakeNormalizeModel([]string{KimiResponsesProvider, KimiChatP
 
 func kimiAgent() AgentDef {
 	return AgentDef{
-		Name:        "kimi",
-		Binary:      "kimi",
-		Label:       "Kimi Code",
-		InstallHint: "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
-		NpmPackage:  "@moonshot-ai/kimi-code",
-		AllowModels: true,
+		Name:          "kimi",
+		Binary:        "kimi",
+		Label:         "Kimi Code",
+		InstallHint:   "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
+		NpmPackage:    "@moonshot-ai/kimi-code",
+		FetchesModels: true,
+		AllowModels:   true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"--prompt", v} },

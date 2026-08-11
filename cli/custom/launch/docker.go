@@ -212,6 +212,7 @@ func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, e
 	if err != nil {
 		return 1, err
 	}
+	reportCredentialNotices(creds, flags)
 
 	container := containerName(def.Name)
 	cwd, err := os.Getwd()

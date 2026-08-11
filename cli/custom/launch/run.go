@@ -58,12 +58,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	if creds.ShadowsSession {
-		fmt.Fprintln(os.Stderr, "Note: authenticating with ORQ_API_KEY from the environment; the workspace picked by 'orq auth login' is ignored. Unset it to use the session.")
-	}
-	if !creds.SupportsMCP() && !flags.NoMCP {
-		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
-	}
+	reportCredentialNotices(creds, flags)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -146,9 +141,11 @@ Flags:
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
-	fmt.Print(`  --base-url <url>      Override the gateway base URL
-  --no-fetch-models     Skip fetching the enabled-model catalog
-  --no-mcp              Do not wire the orq MCP server into the agent
+	fmt.Println("  --base-url <url>      Override the gateway base URL")
+	if def.FetchesModels {
+		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
+	}
+	fmt.Print(`  --no-mcp              Do not wire the orq MCP server into the agent
   --no-skills           Do not load the orq skills plugin (claude only)
 `)
 	if def.Prompt != nil {
@@ -157,7 +154,9 @@ Flags:
 	fmt.Print(`  --sandbox             Run inside a throwaway Docker container
   --mount-cwd           Sandbox only: mount current directory at /workspace
   --rebuild             Sandbox only: rebuild the Docker image
-  --dry-run             Print the resolved command and env (key redacted) without launching
+  --dry-run             Print the resolved command and env (key redacted) without
+                        starting the agent. It still resolves credentials and any
+                        model catalogue the agent needs.
   -h, --help            Show this help
 
 Everything after -- is passed to the agent untouched.
@@ -182,5 +181,18 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	}
 	for _, dir := range plan.TempDirs {
 		fmt.Printf("tempdir: %s\n", dir.HostPath)
+	}
+}
+
+// reportCredentialNotices prints the auth surprises worth interrupting for.
+// Shared by the local and sandbox paths: --sandbox used to skip both, so a
+// container silently ran against the ORQ_API_KEY workspace while the user
+// believed their `orq auth login` choice applied.
+func reportCredentialNotices(creds *Credentials, flags GatewayFlags) {
+	if creds.ShadowsSession {
+		fmt.Fprintln(os.Stderr, "Note: authenticating with ORQ_API_KEY from the environment; the workspace picked by 'orq auth login' is ignored. Unset it to use the session.")
+	}
+	if !creds.SupportsMCP() && !flags.NoMCP {
+		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
 	}
 }

@@ -14,12 +14,13 @@ var codexNormalize = MakeNormalizeModel([]string{"orq"})
 
 func codexAgent() AgentDef {
 	return AgentDef{
-		Name:        "codex",
-		Binary:      "codex",
-		Label:       "OpenAI Codex CLI",
-		InstallHint: "npm install -g @openai/codex",
-		NpmPackage:  "@openai/codex",
-		AllowModels: false,
+		Name:          "codex",
+		Binary:        "codex",
+		Label:         "OpenAI Codex CLI",
+		InstallHint:   "npm install -g @openai/codex",
+		NpmPackage:    "@openai/codex",
+		FetchesModels: true,
+		AllowModels:   false,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"exec", "--full-auto", v} },

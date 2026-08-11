@@ -16,12 +16,13 @@ const (
 
 func piAgent() AgentDef {
 	return AgentDef{
-		Name:        "pi",
-		Binary:      "pi",
-		Label:       "Pi Coding Agent",
-		InstallHint: "npm install -g @earendil-works/pi-coding-agent (https://github.com/badlogic/pi-mono)",
-		NpmPackage:  "@earendil-works/pi-coding-agent",
-		AllowModels: true,
+		Name:          "pi",
+		Binary:        "pi",
+		Label:         "Pi Coding Agent",
+		InstallHint:   "npm install -g @earendil-works/pi-coding-agent (https://github.com/badlogic/pi-mono)",
+		NpmPackage:    "@earendil-works/pi-coding-agent",
+		FetchesModels: true,
+		AllowModels:   true,
 		Prompt: &PromptMapping{
 			Flags:  []string{"-p", "--prompt"},
 			ToArgs: func(v string) []string { return []string{"-p", v} },
