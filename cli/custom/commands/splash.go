@@ -11,9 +11,17 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 )
 
-// splashWidth is the inner width of the setup box. Content lines are padded to
-// it so the right border stays aligned whatever the version string looks like.
-const splashWidth = 50
+// orqLogo is the same block mark install.sh prints, so the binary the installer
+// drops in keeps the identity the installer introduced. The trailing line takes
+// a suffix (product name, version) the way install.sh appends "CLI installer".
+var orqLogo = []string{
+	`  ██████╗ ██████╗  ██████╗`,
+	` ██╔═══██╗██╔══██╗██╔═══██╗`,
+	` ██║   ██║██████╔╝██║   ██║`,
+	` ██║   ██║██╔══██╗██║▄▄ ██║`,
+	` ╚██████╔╝██║  ██║╚██████╔╝`,
+	`  ╚═════╝ ╚═╝  ╚═╝ ╚══▀▀═╝`,
+}
 
 // printSplash draws the setup header. It is decoration: every failure mode
 // degrades to less output, never to an error.
@@ -24,37 +32,25 @@ func printSplash(w io.Writer, version string) {
 	if !isatty.IsTerminal(os.Stdout.Fd()) {
 		return
 	}
-	if !supportsBoxDrawing() {
+	if !supportsArt() {
 		fmt.Fprintf(w, "* orq.ai CLI %s - setup\n\n", version)
 		return
 	}
-	lines := []string{
-		fmt.Sprintf("  ◆  orq.ai CLI  ·  %s", version),
-		"",
-		"  Let's get you set up — 4 steps, ~30 seconds.",
-		"  Ctrl-C any time. Nothing is written until a",
-		"  step reports ✓.",
+	fmt.Fprintln(w)
+	for i, line := range orqLogo {
+		if i == len(orqLogo)-1 {
+			fmt.Fprintf(w, "%s   CLI  ·  %s\n", line, version)
+			continue
+		}
+		fmt.Fprintln(w, line)
 	}
-	fmt.Fprintf(w, " ╭%s╮\n", strings.Repeat("─", splashWidth))
-	for _, line := range lines {
-		fmt.Fprintf(w, " │%s│\n", padDisplay(line, splashWidth))
-	}
-	fmt.Fprintf(w, " ╰%s╯\n\n", strings.Repeat("─", splashWidth))
+	fmt.Fprintf(w, "\n  Let's get you set up — %d steps.\n", setupSteps)
+	fmt.Fprint(w, "  Ctrl-C any time. Nothing is written until a step reports ✓.\n\n")
 }
 
-// padDisplay right-pads to width counting runes, not bytes, so the multi-byte
-// glyphs in the box do not shift the border.
-func padDisplay(s string, width int) string {
-	n := len([]rune(s))
-	if n >= width {
-		return string([]rune(s)[:width])
-	}
-	return s + strings.Repeat(" ", width-n)
-}
-
-// supportsBoxDrawing reports whether the terminal can be expected to render the
-// UTF-8 art without turning it into mojibake.
-func supportsBoxDrawing() bool {
+// supportsArt reports whether the terminal can be expected to render the UTF-8
+// art without turning it into mojibake. Mirrors install.sh's supports_art.
+func supportsArt() bool {
 	if term := os.Getenv("TERM"); term == "" || term == "dumb" {
 		return false
 	}
