@@ -21,6 +21,10 @@ type Credentials struct {
 	// the MCP server rejects those with insufficient_scope. Real API keys
 	// (FromSession false) always pass MCP auth and skip this check.
 	MCPScoped bool
+	// ShadowsSession is set when ORQ_API_KEY won over an existing login
+	// session. The workspace the key belongs to is then in force instead of
+	// the one picked at login — invisible unless we say so.
+	ShadowsSession bool
 }
 
 // SupportsMCP reports whether the credential can authenticate against the
@@ -63,7 +67,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	apiBase := firstNonEmpty(getenv("ORQ_API_BASE_URL"), DefaultGatewayAPIBaseURL)
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
-		return &Credentials{APIKey: key, APIBaseURL: apiBase}, nil
+		// The session is not used, but knowing one exists lets the caller warn
+		// that the env key silently outranks the workspace picked at login.
+		session, _ := auth.ReadSession()
+		return &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: session != nil}, nil
 	}
 
 	session, err := auth.ReadSession()
