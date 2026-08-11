@@ -39,8 +39,31 @@ err() {
   echo "orq-cli installer: $*" >&2
 }
 
+# Printed inline rather than sed'd out of this file's header: the documented
+# way to run this is `curl -fsSL ... | sh -s -- --help`, where the script
+# arrives on stdin and "$0" is the shell, so reading "$0" printed nothing.
 usage() {
-  sed -n '3,25p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+  cat <<'USAGE'
+install.sh — curl | sh installer for the orq.ai CLI.
+
+Usage:
+  curl -fsSL https://orq.ai/cli/install.sh | sh
+  curl -fsSL https://orq.ai/cli/install.sh | sh -s -- --no-modify-path
+
+Options:
+  --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
+  --install-dir <dir>  Install directory. Default: $HOME/.orq/bin.
+  --no-modify-path     Do not touch the shell profile.
+  --no-setup           Do not run 'orq setup' after installing.
+  --help               Show this help.
+
+Environment (flags win when both are given):
+  ORQ_CLI_VERSION       Same as --version.
+  ORQ_CLI_INSTALL_DIR   Same as --install-dir.
+
+For Windows, install via npm instead:
+  npm install -g @orq-ai/cli
+USAGE
 }
 
 require_cmd() {

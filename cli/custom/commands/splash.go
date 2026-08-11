@@ -29,7 +29,10 @@ func printSplash(w io.Writer, version string) {
 	if os.Getenv("ORQ_NO_SPLASH") != "" || os.Getenv("ORQ_SETUP_FROM_INSTALLER") != "" {
 		return
 	}
-	if !isatty.IsTerminal(os.Stdout.Fd()) {
+	// Gate on the stream being written to, not stdout: the splash goes to
+	// stderr, so `orq setup --json > file` should still draw it, while
+	// `orq setup 2>/dev/null` should not.
+	if f, ok := w.(*os.File); !ok || !isatty.IsTerminal(f.Fd()) {
 		return
 	}
 	if !supportsArt() {

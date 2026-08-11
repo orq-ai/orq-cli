@@ -22,7 +22,7 @@ Requires Node.js 14 or newer. The matching native binary is downloaded automatic
 curl -fsSL https://raw.githubusercontent.com/orq-ai/orq-cli/main/install.sh | sh
 ```
 
-Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published `SHA256SUMS`, adds the install directory to your shell profile, and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
+Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published per-asset `.sha256`, adds the install directory to your shell profile, and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
 
 ```sh
 # pin a version
@@ -35,7 +35,7 @@ curl -fsSL .../install.sh | sh -s -- --install-dir /usr/local/bin
 curl -fsSL .../install.sh | sh -s -- --no-modify-path --no-setup
 ```
 
-`ORQ_CLI_VERSION` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version` and `--install-dir`. A checksum *mismatch* aborts the install; releases published before `SHA256SUMS` existed simply skip verification with a notice.
+`ORQ_CLI_VERSION` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version` and `--install-dir`. A checksum *mismatch* aborts the install, as does any failure to fetch the checksum other than a 404; releases published before the checksum assets existed simply skip verification with a notice.
 
 ### Pre-built release binaries
 
