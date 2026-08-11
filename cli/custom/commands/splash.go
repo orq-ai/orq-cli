@@ -40,12 +40,14 @@ func printSplash(w io.Writer, version string) {
 		return
 	}
 	fmt.Fprintln(w)
+	// The mark renders in Pulse Orange — the same identity carrier as the
+	// website and the installer's block logo.
 	for i, line := range orqLogo {
 		if i == len(orqLogo)-1 {
-			fmt.Fprintf(w, "%s   CLI  ·  %s\n", line, version)
+			fmt.Fprintf(w, "%s   CLI  ·  %s\n", paint(ansiBrand, line), version)
 			continue
 		}
-		fmt.Fprintln(w, line)
+		fmt.Fprintln(w, paint(ansiBrand, line))
 	}
 	fmt.Fprintf(w, "\n  Let's get you set up — %d steps.\n", setupSteps)
 	fmt.Fprint(w, "  Ctrl-C any time. Nothing is written until a step reports ✓.\n\n")
@@ -85,22 +87,22 @@ func (r *reporter) step(n int, total int, title string) {
 	if r.quiet {
 		return
 	}
-	fmt.Fprintf(r.w, "\nStep %d/%d  %s\n", n, total, title)
+	fmt.Fprintf(r.w, "\n%s  %s\n", paint(ansiBrand, fmt.Sprintf("Step %d/%d", n, total)), title)
 }
 
 func (r *reporter) ok(format string, args ...any) {
 	if r.quiet {
 		return
 	}
-	fmt.Fprintf(r.w, "✓ "+format+"\n", args...)
+	fmt.Fprintf(r.w, paint(ansiOK, "✓")+" "+format+"\n", args...)
 }
 
 func (r *reporter) warn(format string, args ...any) {
-	fmt.Fprintf(r.w, "! "+format+"\n", args...)
+	fmt.Fprintf(r.w, paint(ansiWarn, "!")+" "+format+"\n", args...)
 }
 
 func (r *reporter) fail(format string, args ...any) {
-	fmt.Fprintf(r.w, "✗ "+format+"\n", args...)
+	fmt.Fprintf(r.w, paint(ansiRed, "✗")+" "+format+"\n", args...)
 }
 
 func (r *reporter) note(format string, args ...any) {

@@ -564,3 +564,23 @@ func TestProfileSourcesEnvFileDetectsTildeSpelling(t *testing.T) {
 		t.Error("~/.orq/env spelling was not detected")
 	}
 }
+
+// Terminals differ in color depth; emitting a truecolor sequence on a basic
+// terminal prints garbage instead of a color, so the palette must degrade.
+func TestBrandPaletteDegradesWithTerminal(t *testing.T) {
+	env := func(vals map[string]string) func(string) string {
+		return func(k string) string { return vals[k] }
+	}
+	brand, ok, _ := brandPalette(env(map[string]string{"COLORTERM": "truecolor"}))
+	if !strings.Contains(brand, "38;2;223;83;37") || !strings.Contains(ok, "38;2;0;255;221") {
+		t.Errorf("truecolor tier missing brand hexes: %q %q", brand, ok)
+	}
+	brand, ok, _ = brandPalette(env(map[string]string{"TERM": "xterm-256color"}))
+	if !strings.Contains(brand, "38;5;166") || !strings.Contains(ok, "38;5;50") {
+		t.Errorf("256-color tier wrong: %q %q", brand, ok)
+	}
+	brand, ok, _ = brandPalette(env(map[string]string{"TERM": "vt100"}))
+	if strings.Contains(brand, "38;") || strings.Contains(ok, "38;") {
+		t.Errorf("basic tier leaked extended sequences: %q %q", brand, ok)
+	}
+}

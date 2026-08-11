@@ -25,6 +25,30 @@ const (
 	ansiDim    = "\033[2m"
 )
 
+// Brand palette (orq.ai Brand Guidelines v1.0): Pulse Orange #DF5325 and
+// Glowing Turquoise #00FFDD carry the identity. Status semantics map onto
+// them where the hue still reads right — turquoise ✓ (cool, positive, the
+// brand's "optimism"), orange warnings (energy, attention) — and stay
+// conventional where they don't: failure keeps red, which the brand does not
+// use and a ✗ must be instantly legible.
+//
+// Truecolor terminals get the exact brand hexes, 256-color terminals the
+// nearest xterm cube entries, everything else the basic ANSI neighbours
+// (cyan / yellow). --no-color and NO_COLOR strip all of it in paint().
+var ansiBrand, ansiOK, ansiWarn = brandPalette(os.Getenv)
+
+func brandPalette(getenv func(string) string) (brand, ok, warn string) {
+	colorterm := strings.ToLower(getenv("COLORTERM"))
+	switch {
+	case strings.Contains(colorterm, "truecolor") || strings.Contains(colorterm, "24bit"):
+		return "\033[38;2;223;83;37m", "\033[38;2;0;255;221m", "\033[38;2;223;83;37m"
+	case strings.Contains(getenv("TERM"), "256color"):
+		return "\033[38;5;166m", "\033[38;5;50m", "\033[38;5;166m"
+	default:
+		return ansiYellow, "\033[36m", ansiYellow
+	}
+}
+
 // humanOutput reports whether stdout is an interactive terminal, i.e. a person
 // is watching rather than a pipe or file consuming structured output.
 func humanOutput() bool {
@@ -105,7 +129,7 @@ func success(format string, args ...any) {
 	if !humanOutput() {
 		return
 	}
-	fmt.Fprintln(bartolocli.Stderr, paint(ansiGreen, "✓ ")+fmt.Sprintf(format, args...))
+	fmt.Fprintln(bartolocli.Stderr, paint(ansiOK, "✓ ")+fmt.Sprintf(format, args...))
 }
 
 // info prints a dimmed, unmarked line for secondary context.
@@ -120,16 +144,16 @@ func info(format string, args ...any) {
 // TTY-gated: a shadowed-config warning matters to scripts too. Exported so the
 // custom package (PreRun) shares one warning style with the commands.
 func Warn(format string, args ...any) {
-	fmt.Fprintln(bartolocli.Stderr, paint(ansiYellow, "warning: ")+fmt.Sprintf(format, args...))
+	fmt.Fprintln(bartolocli.Stderr, paint(ansiWarn, "warning: ")+fmt.Sprintf(format, args...))
 }
 
 // statusGlyph maps a doctor check status to a colored marker.
 func statusGlyph(status string) string {
 	switch status {
 	case "pass":
-		return paint(ansiGreen, "✓")
+		return paint(ansiOK, "✓")
 	case "warn":
-		return paint(ansiYellow, "!")
+		return paint(ansiWarn, "!")
 	case "fail":
 		return paint(ansiRed, "✗")
 	default:
