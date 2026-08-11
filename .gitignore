@@ -21,3 +21,8 @@
 /npm/**/node_modules/
 *.tgz
 /surface-dump
+
+# `orq setup` writes project-scoped agent config into the working directory;
+# it is generated, not source.
+/.agents/
+/.kimi-code/

@@ -175,53 +175,6 @@ func TestMaskToken(t *testing.T) {
 	}
 }
 
-// Agents without their own skills directory share .agents/skills, and the
-// caller relies on the bool to avoid installing it once per agent.
-func TestSkillsDestinationSharedVsAgentSpecific(t *testing.T) {
-	claude, ok := lookupAgent("claude")
-	if !ok {
-		t.Fatal("claude missing from the registry")
-	}
-	dest, shared, err := skillsDestination(claude, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if shared {
-		t.Error("claude should use its own skills directory")
-	}
-	if dest != ".claude/skills" {
-		t.Errorf("dest = %q", dest)
-	}
-
-	pi, ok := lookupAgent("pi")
-	if !ok {
-		t.Fatal("pi missing from the registry")
-	}
-	dest, shared, err = skillsDestination(pi, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !shared {
-		t.Error("pi should use the shared skills directory")
-	}
-	if dest != sharedSkillsDir {
-		t.Errorf("dest = %q, want %q", dest, sharedSkillsDir)
-	}
-}
-
-// pi has no MCP support; the registry must report that rather than inventing a
-// config path.
-func TestPiHasNoMCPConfig(t *testing.T) {
-	pi, _ := lookupAgent("pi")
-	path, err := pi.mcpConfig(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if path != "" {
-		t.Errorf("pi returned an MCP config path %q, want none", path)
-	}
-}
-
 // Codex reads only the global TOML, so both scopes must resolve to the same
 // absolute path rather than a project-relative one.
 func TestCodexMCPConfigIsAlwaysGlobal(t *testing.T) {
@@ -242,8 +195,10 @@ func TestCodexMCPConfigIsAlwaysGlobal(t *testing.T) {
 	}
 }
 
+// pi is deliberately absent: it supports neither MCP nor a provider config, so
+// with skills gone setup has nothing to write for it.
 func TestAgentRegistryIsComplete(t *testing.T) {
-	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi"}
+	want := []string{"claude", "codex", "opencode", "kimi", "kilo"}
 	got := agentIDs()
 	if len(got) != len(want) {
 		t.Fatalf("registry has %d agents, want %d", len(got), len(want))

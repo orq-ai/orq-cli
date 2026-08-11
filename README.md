@@ -60,7 +60,7 @@ make build
 orq setup                # sign in, pick a project, wire up your coding agent
 ```
 
-That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server plus skills with your coding agent. After that:
+That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server with your coding agent. After that:
 
 ```sh
 orq whoami               # verify identity
@@ -82,9 +82,11 @@ orq setup --no-input \
   --agent codex          # fully parameterized, for CI
 ```
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format, plus the orq skills copied into the directory it scans. `pi` has no MCP support, so it receives skills only.
+Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
 
-**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v2/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
+Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
+
+**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v3/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
 
 Your API key is **never written into an agent config** — those reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
 

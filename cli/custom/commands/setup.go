@@ -42,8 +42,6 @@ type agentResult struct {
 	MCP        string `json:"mcp,omitempty"`
 	Provider   string `json:"provider,omitempty"`
 	ModelCount int    `json:"model_count,omitempty"`
-	Skills     string `json:"skills,omitempty"`
-	SkillCount int    `json:"skill_count,omitempty"`
 	Error      string `json:"error,omitempty"`
 }
 
@@ -54,7 +52,7 @@ func NewSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Authenticate, pick a project, and wire up your coding agent",
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, selects or creates a ` +
-			`project, mints a project-scoped API key, and registers the orq.ai MCP server plus skills ` +
+			`project, mints a project-scoped API key, and registers the orq.ai MCP server ` +
 			`with your coding agent.
 
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
@@ -161,7 +159,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	verified := verifySetup(rep, client, authState)
 	result["verified"] = verified
 	// A failed gateway call is reported but does not fail setup: everything else
-	// (MCP, skills, API key) still works without a connected provider.
+	// (MCP, API key) still works without a connected provider.
 	result["gateway_verified"] = verifyGateway(rep, client, authState)
 
 	links := buildLinks(authState)
@@ -862,7 +860,6 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	}
 
 	results := make([]agentResult, 0, len(selected))
-	sharedInstalled := false
 
 	for _, id := range selected {
 		spec, ok := lookupAgent(id)
@@ -880,7 +877,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			rep.fail("%-8s %v", id, err)
 			res.Error = err.Error()
 		case configPath == "":
-			rep.note("%-8s no MCP support in this agent — installing skills only", id)
+			rep.note("%-8s no MCP support in this agent — nothing to configure", id)
 		default:
 			if err := spec.writeMCP(configPath, mcpURL); err != nil {
 				rep.fail("%-8s %v", id, err)
@@ -914,38 +911,6 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			}
 		}
 
-		// Skills: agent-specific directory, or the shared one written once.
-		dest, isShared, err := skillsDestination(spec, opts.global)
-		if err != nil {
-			rep.warn("%-8s could not resolve a skills directory: %v", id, err)
-			results = append(results, res)
-			continue
-		}
-		if isShared && sharedInstalled {
-			res.Skills = dest
-			results = append(results, res)
-			continue
-		}
-		var stopSpin func()
-		if !skillsCacheFresh() {
-			stopSpin = rep.busy("%-8s skills  downloading…", id)
-		}
-		count, err := installSkillsInto(dest)
-		if stopSpin != nil {
-			stopSpin()
-		}
-		if err != nil {
-			rep.warn("%-8s skills  %v", id, err)
-		} else {
-			label := id
-			if isShared {
-				label = "shared"
-				sharedInstalled = true
-			}
-			rep.ok("%-8s skills  %s  %d skills", label, dest, count)
-			res.Skills = dest
-			res.SkillCount = count
-		}
 		results = append(results, res)
 	}
 	return results
@@ -994,31 +959,6 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 	return cachedCodingModels
 }
 
-func skillsDestination(spec agentSpec, global bool) (string, bool, error) {
-	if spec.skillsDir == nil {
-		if global {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", true, err
-			}
-			return filepath.Join(home, sharedSkillsDir), true, nil
-		}
-		return sharedSkillsDir, true, nil
-	}
-	dir, err := spec.skillsDir(global)
-	return dir, false, err
-}
-
-// installSkillsInto fetches the skills archive once per process and copies it
-// into dest.
-func installSkillsInto(dest string) (int, error) {
-	src, err := fetchSkills()
-	if err != nil {
-		return 0, err
-	}
-	return installSkills(src, dest)
-}
-
 func promptForAgents(rep *reporter) ([]string, error) {
 	registry := agentRegistry()
 	options := make([]string, 0, len(registry))
@@ -1028,9 +968,6 @@ func promptForAgents(rep *reporter) ([]string, error) {
 	detected := []string{}
 	for _, spec := range registry {
 		label := fmt.Sprintf("%-9s %s", spec.ID, spec.Label)
-		if spec.ID == "pi" {
-			label += "  (skills only — pi has no MCP support)"
-		}
 		options = append(options, label)
 		byOption[label] = spec.ID
 		if spec.detect != nil && spec.detect() {

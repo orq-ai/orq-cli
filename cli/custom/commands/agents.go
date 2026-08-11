@@ -1,17 +1,12 @@
 package commands
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"orq/cli/custom/auth"
 )
@@ -24,14 +19,6 @@ const mcpServerName = "orq-workspace"
 // config, so its model calls route through the orq gateway.
 const providerName = "orq"
 
-// skillsTarballURL is the source of truth for orq skills. orq-ai/orq-skills
-// redirects here.
-const skillsTarballURL = "https://github.com/orq-ai/assistant-plugins/archive/refs/heads/main.tar.gz"
-
-// sharedSkillsDir is the cross-agent skills convention (agentskills.io), read
-// by pi, kimi and opencode. claude and codex need their own copies.
-const sharedSkillsDir = ".agents/skills"
-
 type agentSpec struct {
 	ID    string
 	Label string
@@ -42,9 +29,6 @@ type agentSpec struct {
 	writeMCP func(path, url string) error
 	// manualSnippet is printed when writeMCP fails so the user can finish by hand.
 	manualSnippet func(url string) string
-	// skillsDir is the agent-specific skills directory, or "" when the agent
-	// reads the shared .agents/skills location.
-	skillsDir func(global bool) (string, error)
 	// detect reports whether the agent looks installed on this machine.
 	detect func() bool
 	// providerConfig returns the file that registers orq as an LLM provider, so
@@ -75,7 +59,6 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     pathFor(".mcp.json", ".claude.json"),
 			writeMCP:      writeMCPServersJSON,
 			manualSnippet: snippetMCPServersJSON,
-			skillsDir:     pathFor(".claude/skills", ".claude/skills"),
 			detect:        detectAny(".claude", ".claude.json"),
 		},
 		{
@@ -87,7 +70,6 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     alwaysGlobalPath(".codex/config.toml"),
 			writeMCP:      writeMCPCodexTOML,
 			manualSnippet: snippetMCPCodexTOML,
-			skillsDir:     pathFor(".codex/skills", ".codex/skills"),
 			detect:        detectAny(".codex"),
 		},
 		{
@@ -96,7 +78,6 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     pathFor("opencode.json", ".config/opencode/opencode.json"),
 			writeMCP:      writeMCPRemoteJSON,
 			manualSnippet: snippetMCPRemoteJSON,
-			skillsDir:     nil,
 			detect:        detectAny(".config/opencode"),
 		},
 		{
@@ -105,7 +86,6 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     pathFor(".kimi-code/mcp.json", ".kimi-code/mcp.json"),
 			writeMCP:      writeMCPKimiJSON,
 			manualSnippet: snippetMCPKimiJSON,
-			skillsDir:     nil,
 			detect:        detectAny(".kimi-code", ".kimi"),
 			// Kimi reads config.toml only from the home directory.
 			providerConfig: alwaysGlobalPath(".kimi-code/config.toml"),
@@ -117,16 +97,7 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
 			writeMCP:      writeMCPRemoteJSON,
 			manualSnippet: snippetMCPRemoteJSON,
-			skillsDir:     nil,
 			detect:        detectAny(".config/kilo"),
-		},
-		{
-			ID:    "pi",
-			Label: "pi",
-			// pi has no MCP support; skills only.
-			mcpConfig: func(bool) (string, error) { return "", nil },
-			skillsDir: nil,
-			detect:    detectAny(".pi"),
 		},
 	}
 }
@@ -465,182 +436,6 @@ func snippetMCPCodexTOML(url string) string {
 url = "%s"
 bearer_token_env_var = "ORQ_API_KEY"
 `, mcpServerName, url)
-}
-
-// ============================================================================
-// Skills
-// ============================================================================
-
-// skillsCacheDir keeps one extracted copy per process run so instrumenting five
-// agents does not download the tarball five times.
-func skillsCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".orq", "cache", "skills"), nil
-}
-
-// skillsCacheFresh reports whether fetchSkills will hit the day-old cache, so
-// callers can announce the download that otherwise looks like a hang.
-func skillsCacheFresh() bool {
-	cache, err := skillsCacheDir()
-	if err != nil {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(cache, ".fetched"))
-	return err == nil && time.Since(info.ModTime()) < 24*time.Hour
-}
-
-// fetchSkills downloads and extracts the skills tarball, returning the
-// directory holding the individual skill folders. A cached copy less than a day
-// old is reused.
-func fetchSkills() (string, error) {
-	cache, err := skillsCacheDir()
-	if err != nil {
-		return "", err
-	}
-	marker := filepath.Join(cache, ".fetched")
-	if info, err := os.Stat(marker); err == nil && time.Since(info.ModTime()) < 24*time.Hour {
-		if dir, err := findSkillsRoot(cache); err == nil {
-			return dir, nil
-		}
-	}
-
-	if err := os.RemoveAll(cache); err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(cache, 0o755); err != nil {
-		return "", err
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	res, err := client.Get(skillsTarballURL)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("downloading skills failed with status %d", res.StatusCode)
-	}
-	if err := extractTarGz(res.Body, cache); err != nil {
-		return "", err
-	}
-	_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)), 0o644)
-	return findSkillsRoot(cache)
-}
-
-// archiveSkillsDirs are the paths the skills tarball may keep its skill folders
-// under, most current first. This is deliberately not sharedSkillsDir: that
-// constant is where skills are *installed* (the agentskills.io convention), and
-// conflating the two broke every install when assistant-plugins moved its
-// skills to the repo root and left .agents/ holding only plugin metadata.
-var archiveSkillsDirs = []string{"skills", ".agents/skills"}
-
-// findSkillsRoot locates the skills directory inside the extracted tarball,
-// whose top level is a single repo-name-and-ref folder.
-func findSkillsRoot(cache string) (string, error) {
-	entries, err := os.ReadDir(cache)
-	if err != nil {
-		return "", err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		for _, dir := range archiveSkillsDirs {
-			candidate := filepath.Join(cache, entry.Name(), dir)
-			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-				return candidate, nil
-			}
-		}
-	}
-	return "", errors.New("skills archive contained none of " + strings.Join(archiveSkillsDirs, ", "))
-}
-
-func extractTarGz(r io.Reader, dest string) error {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	for {
-		header, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		target, err := safeJoin(dest, header.Name)
-		if err != nil {
-			return err
-		}
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-			if err != nil {
-				return err
-			}
-			// Cap each entry so a malicious archive cannot fill the disk.
-			if _, err := io.Copy(out, io.LimitReader(tr, 32<<20)); err != nil {
-				out.Close()
-				return err
-			}
-			if err := out.Close(); err != nil {
-				return err
-			}
-		}
-		// Symlinks and everything else are skipped by design.
-	}
-}
-
-// safeJoin rejects archive entries that would escape the destination directory.
-// Traversal is refused outright rather than silently normalised away: a well
-// formed skills archive never contains such an entry, so one means the download
-// is not what we think it is.
-func safeJoin(dest, name string) (string, error) {
-	cleaned := filepath.Clean(filepath.FromSlash(name))
-	if filepath.IsAbs(cleaned) || cleaned == ".." ||
-		strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("refusing to extract %q outside the destination", name)
-	}
-	target := filepath.Join(dest, cleaned)
-	if target != dest && !strings.HasPrefix(target, dest+string(os.PathSeparator)) {
-		return "", fmt.Errorf("refusing to extract %q outside the destination", name)
-	}
-	return target, nil
-}
-
-// installSkills copies every skill folder from src into dest, overwriting files
-// that are already there. Returns the number of skills installed.
-func installSkills(src, dest string) (int, error) {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return 0, err
-	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if err := copyTree(filepath.Join(src, entry.Name()), filepath.Join(dest, entry.Name())); err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, nil
 }
 
 func copyTree(src, dest string) error {
