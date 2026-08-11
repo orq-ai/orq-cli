@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
@@ -18,15 +19,39 @@ type Project struct {
 	IsDefault  bool   `json:"is_default"`
 }
 
+// projectPageLimit is the per-request page size. The endpoint caps it; the
+// exact cap does not matter because ListProjects follows the cursor.
+const projectPageLimit = 100
+
+// maxProjectPages bounds the walk so a paging bug cannot turn into an endless
+// loop. 100 pages is far more projects than any workspace has.
+const maxProjectPages = 100
+
+// ListProjects returns every project in the workspace, following the
+// `starting_after` cursor. Reading only the first page would make a name lookup
+// miss projects further down the list and create a duplicate instead.
 func (c *Client) ListProjects(bearer string) ([]Project, error) {
-	var resp struct {
-		Data []Project `json:"data"`
+	var all []Project
+	cursor := ""
+	for page := 0; page < maxProjectPages; page++ {
+		url := fmt.Sprintf("%s/v2/projects?limit=%d", c.URLs.APIBaseURL, projectPageLimit)
+		if cursor != "" {
+			url += "&starting_after=" + cursor
+		}
+		var resp struct {
+			Data    []Project `json:"data"`
+			HasMore bool      `json:"has_more"`
+		}
+		if err := c.jsonRequest(http.MethodGet, url, bearer, nil, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Data...)
+		if !resp.HasMore || len(resp.Data) == 0 {
+			return all, nil
+		}
+		cursor = resp.Data[len(resp.Data)-1].ProjectID
 	}
-	err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/projects", bearer, nil, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return resp.Data, nil
+	return all, nil
 }
 
 func (c *Client) CreateProject(bearer, name, description string) (*Project, error) {
