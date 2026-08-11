@@ -208,7 +208,7 @@ func RunSandbox(def *AgentDef, flags GatewayFlags, passthrough []string) (int, e
 		}
 	}
 
-	creds, err := ResolveCredentials(os.Getenv)
+	creds, err := resolveCredentialsOrLogin(os.Getenv, !flags.DryRun)
 	if err != nil {
 		return 1, err
 	}

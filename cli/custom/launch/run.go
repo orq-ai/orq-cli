@@ -41,7 +41,9 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return RunSandbox(def, flags, passthrough)
 	}
 
-	creds, err := ResolveCredentials(os.Getenv)
+	// Dry-run stays non-interactive: scripts use it and must get the plain
+	// not-logged-in error, not a prompt.
+	creds, err := resolveCredentialsOrLogin(os.Getenv, !flags.DryRun)
 	if err != nil {
 		return 1, err
 	}

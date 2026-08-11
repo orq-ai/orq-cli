@@ -1,10 +1,15 @@
 package launch
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
+
+	"golang.org/x/term"
 
 	"orq/cli/custom/auth"
 )
@@ -96,6 +101,46 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		FromSession: true,
 		MCPScoped:   tokenHasMCPScope(active.AccessToken),
 	}, nil
+}
+
+// LoginHook, when set, runs the interactive device login and persists the
+// session. The commands package injects it at wiring time — launch cannot
+// call the login flow directly without an import cycle.
+var LoginHook func() error
+
+// isTerminalFd is swappable in tests; prompting depends on a real TTY.
+var isTerminalFd = func(fd int) bool { return term.IsTerminal(fd) }
+
+// resolveCredentialsOrLogin is ResolveCredentials plus a recovery path: when
+// the only problem is "not logged in" and a human is present, offer to run
+// the device login right here instead of dead-ending on an error that tells
+// them to run another command and come back.
+func resolveCredentialsOrLogin(getenv func(string) string, allowPrompt bool) (*Credentials, error) {
+	creds, err := ResolveCredentials(getenv)
+	if err == nil || !errors.Is(err, errNotLoggedIn) || LoginHook == nil || !allowPrompt {
+		return creds, err
+	}
+	// Same interactivity rules as the local-mode warning prompt.
+	if getenv("ORQ_LAUNCH_NON_INTERACTIVE") == "1" ||
+		!isTerminalFd(int(os.Stdin.Fd())) || !isTerminalFd(int(os.Stderr.Fd())) {
+		return creds, err
+	}
+
+	fmt.Fprintln(os.Stderr, "Not logged in.")
+	fmt.Fprint(os.Stderr, "Log in now via browser? [Y/n]: ")
+	line, rerr := bufio.NewReader(os.Stdin).ReadString('\n')
+	if rerr != nil {
+		return nil, err // read failure falls back to the original error
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes", "":
+	default:
+		return nil, err
+	}
+	if lerr := LoginHook(); lerr != nil {
+		return nil, lerr
+	}
+	return ResolveCredentials(getenv)
 }
 
 var errNotLoggedIn = notLoggedInError{}

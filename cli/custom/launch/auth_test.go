@@ -86,3 +86,63 @@ func TestResolveCredentialsNotLoggedIn(t *testing.T) {
 		t.Fatal("expected not-logged-in error")
 	}
 }
+
+// A dead-end "not logged in" error on an interactive run should become an
+// offer to log in; everything else must pass through untouched.
+func TestResolveCredentialsOrLogin(t *testing.T) {
+	origTTY, origHook := isTerminalFd, LoginHook
+	t.Cleanup(func() { isTerminalFd, LoginHook = origTTY, origHook })
+	isTerminalFd = func(int) bool { return true }
+
+	emptyEnv := func(string) string { return "" }
+
+	t.Run("hook absent keeps the plain error", func(t *testing.T) {
+		LoginHook = nil
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if _, err := resolveCredentialsOrLogin(emptyEnv, true); err == nil {
+			t.Fatal("expected not-logged-in error")
+		}
+	})
+
+	t.Run("prompt suppressed when not allowed", func(t *testing.T) {
+		called := false
+		LoginHook = func() error { called = true; return nil }
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if _, err := resolveCredentialsOrLogin(emptyEnv, false); err == nil {
+			t.Fatal("expected not-logged-in error")
+		}
+		if called {
+			t.Error("login hook ran without permission to prompt")
+		}
+	})
+
+	t.Run("env key short-circuits before any prompt", func(t *testing.T) {
+		LoginHook = func() error { t.Fatal("hook must not run"); return nil }
+		creds, err := resolveCredentialsOrLogin(func(k string) string {
+			if k == "ORQ_API_KEY" {
+				return "sk-orq-test"
+			}
+			return ""
+		}, true)
+		if err != nil || creds.APIKey != "sk-orq-test" {
+			t.Fatalf("got (%v, %v)", creds, err)
+		}
+	})
+
+	t.Run("non-interactive env suppresses the prompt", func(t *testing.T) {
+		LoginHook = func() error { t.Fatal("hook must not run"); return nil }
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		env := func(k string) string {
+			if k == "ORQ_LAUNCH_NON_INTERACTIVE" {
+				return "1"
+			}
+			return ""
+		}
+		if _, err := resolveCredentialsOrLogin(env, true); err == nil {
+			t.Fatal("expected not-logged-in error")
+		}
+	})
+}

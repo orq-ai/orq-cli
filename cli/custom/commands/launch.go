@@ -49,7 +49,15 @@ Session tokens expire after an hour; use an API key for long sessions.`,
 				// completion so its path arguments still complete.
 				return nil, cobra.ShellCompDirectiveDefault
 			},
-			RunE: func(_ *cobra.Command, args []string) error {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				// Injected here (not at registration) so the login flow gets
+				// this invocation's context for Ctrl-C during the approval
+				// poll. Launch owns the "offer to log in" decision; this only
+				// supplies the flow it cannot import.
+				launch.LoginHook = func() error {
+					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
+					return err
+				}
 				code, err := launch.Run(&def, args)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
