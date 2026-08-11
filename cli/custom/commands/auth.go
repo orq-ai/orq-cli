@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"strings"
+
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -14,11 +16,31 @@ func NewLoginCommand() *cobra.Command {
 	var apiBase string
 	var workspace string
 	var noOpen bool
+	var apiKey string
 
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate with orq via OAuth device login",
+		Short: "Authenticate with orq via OAuth device login or an API key",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Choose the method: an explicit --api-key skips the question, and
+			// without a TTY there is nobody to ask, so browser login proceeds
+			// directly (it will fail with its own clear error headless).
+			method := "OAuth (browser)"
+			if strings.TrimSpace(apiKey) != "" {
+				method = "API key"
+			} else if hasInteractiveTTY() {
+				if err := survey.AskOne(&survey.Select{
+					Message: "Select login method",
+					Options: []string{"OAuth (browser)", "API key"},
+				}, &method, promptStdio()); err != nil {
+					return err
+				}
+			}
+
+			if method == "API key" {
+				return apiKeyLogin(cmd, apiBase, apiKey)
+			}
+
 			result, err := runDeviceLogin(cmd.Context(), newReporter(false), apiBase, workspace, !noOpen)
 			if err != nil {
 				return err
@@ -40,7 +62,44 @@ func NewLoginCommand() *cobra.Command {
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Preselect a workspace key")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not try to open the browser automatically")
+	cmd.Flags().StringVar(&apiKey, "api-key", "", "Sign in with this API key instead of the browser")
 	return cmd
+}
+
+// apiKeyLogin verifies a pasted or flag-supplied key with one real API call,
+// then persists it to the credentials profile — the same store `orq setup
+// --api-key` writes, so every command resolves it afterwards.
+func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		if err := survey.AskOne(&survey.Password{
+			Message: "API key",
+		}, &key, survey.WithValidator(survey.Required), promptStdio()); err != nil {
+			return err
+		}
+		key = strings.TrimSpace(key)
+	}
+
+	// Verify before saving: persisting a bad key would leave every later
+	// command failing with a 401 the user has to trace back here.
+	client := auth.NewClient(apiBase).WithContext(cmd.Context())
+	projects, err := client.ListProjects(key)
+	if err != nil {
+		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
+	}
+	if err := saveAPIKeyProfile(key); err != nil {
+		return err
+	}
+
+	if wantsHumanView(cmd) {
+		success("Signed in with an API key (profile: %s, %d projects visible)", auth.ActiveProfile(), len(projects))
+		return nil
+	}
+	return emit(map[string]any{
+		"method":   "api_key",
+		"profile":  auth.ActiveProfile(),
+		"verified": true,
+	})
 }
 
 func NewLogoutCommand() *cobra.Command {
