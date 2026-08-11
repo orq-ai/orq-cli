@@ -94,15 +94,26 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A stored API key authenticates on its own, so logging out has to
+			// clear it too — otherwise "logged out" still runs every command.
 			if session == nil {
+				keyCleared, err := clearAPIKeyProfile()
+				if err != nil {
+					return err
+				}
 				if wantsHumanView(cmd) {
-					info("Not logged in - nothing to clear.")
+					if keyCleared {
+						success("Cleared the stored API key")
+					} else {
+						info("Not logged in - nothing to clear.")
+					}
 					return nil
 				}
 				return emit(map[string]any{
-					"authenticated": false,
-					"cleared":       false,
-					"session_file":  auth.SessionFilePath(),
+					"authenticated":           false,
+					"cleared":                 keyCleared,
+					"api_key_profile_cleared": keyCleared,
+					"session_file":            auth.SessionFilePath(),
 				})
 			}
 
@@ -156,6 +167,10 @@ func NewLogoutCommand() *cobra.Command {
 			if err := client.ClearLocalSession(); err != nil {
 				return err
 			}
+			keyCleared, err := clearAPIKeyProfile()
+			if err != nil {
+				return err
+			}
 
 			// Same human/machine split as login and whoami: the human view
 			// returns early so a terminal never sees the structured payload,
@@ -170,10 +185,11 @@ func NewLogoutCommand() *cobra.Command {
 				return nil
 			}
 			return emit(map[string]any{
-				"authenticated": false,
-				"cleared":       true,
-				"revoked":       revokeErr == nil,
-				"session_file":  auth.SessionFilePath(),
+				"authenticated":           false,
+				"cleared":                 true,
+				"revoked":                 revokeErr == nil,
+				"api_key_profile_cleared": keyCleared,
+				"session_file":            auth.SessionFilePath(),
 			})
 		},
 	}

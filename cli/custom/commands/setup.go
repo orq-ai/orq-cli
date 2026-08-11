@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -101,7 +102,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	// --- Step 1: authenticate ------------------------------------------------
 	rep.step(1, setupSteps, "Authenticate")
-	authState, err := resolveAuth(rep, opts)
+	authState, err := resolveAuth(cmd.Context(), rep, opts)
 	if err != nil {
 		return err
 	}
@@ -211,7 +212,7 @@ type authState struct {
 	suppliedKey string
 }
 
-func resolveAuth(rep *reporter, opts *setupOptions) (*authState, error) {
+func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins over everything.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
 		if err := saveAPIKeyProfile(key); err != nil {
@@ -237,7 +238,7 @@ func resolveAuth(rep *reporter, opts *setupOptions) (*authState, error) {
 		if opts.noInput {
 			return nil, errors.New("no TTY available for browser login\n  Pass --api-key <key> or set ORQ_API_KEY, then re-run")
 		}
-		session, err = deviceLogin(rep, opts)
+		session, err = deviceLogin(ctx, rep, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -269,8 +270,10 @@ func apiBaseFromEnv() string {
 	return auth.DefaultAPIBaseURL
 }
 
-func deviceLogin(rep *reporter, opts *setupOptions) (*auth.Session, error) {
-	client := auth.NewClient("")
+func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
+	// Context-aware so Ctrl-C during the approval poll cancels instead of
+	// waiting out the device-code expiry.
+	client := auth.NewClient("").WithContext(ctx)
 	start, err := client.StartDeviceLogin("orq-cli")
 	if err != nil {
 		return nil, err
@@ -282,7 +285,7 @@ func deviceLogin(rep *reporter, opts *setupOptions) (*auth.Session, error) {
 	}
 	rep.note("Waiting for browser approval...")
 
-	approved, err := client.AwaitDeviceApproval(start.DeviceCode, start.ExpiresIn, start.Interval)
+	approved, err := client.AwaitDeviceApproval(ctx, start.DeviceCode, start.ExpiresIn, start.Interval)
 	if err != nil {
 		return nil, err
 	}

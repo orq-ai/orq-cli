@@ -102,6 +102,13 @@ func NewDoctorCommand() *cobra.Command {
 				}
 				activeWS = inspect.Session.ActiveWorkspaceKey
 				workspaceCount = len(inspect.Session.Workspaces)
+			} else if envAPIKeySet() {
+				// No session, but an env key authenticates every command. Saying
+				// "missing" here sends people hunting for a login problem that
+				// does not exist.
+				authStatus, authSource = "authenticated", "env:ORQ_API_KEY"
+			} else if storedAPIKeyProfile() {
+				authStatus, authSource = "authenticated", "credentials.json"
 			}
 
 			authMap := map[string]any{
