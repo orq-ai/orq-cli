@@ -56,6 +56,9 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
+	if creds.ShadowsSession {
+		fmt.Fprintln(os.Stderr, "Note: authenticating with ORQ_API_KEY from the environment; the workspace picked by 'orq auth login' is ignored. Unset it to use the session.")
+	}
 	if !creds.SupportsMCP() && !flags.NoMCP {
 		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
 	}

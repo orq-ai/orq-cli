@@ -17,7 +17,17 @@ func NewLaunchCommand() *cobra.Command {
 		Use:   "launch",
 		Short: "Launch a coding agent routed through the orq.ai AI Router",
 		Long: `Launch a coding-agent CLI preconfigured to route all model calls
-through the orq.ai AI Router. Authenticate with 'orq auth login' or ORQ_API_KEY.`,
+through the orq.ai AI Router.
+
+Credentials are resolved in this order, first match wins:
+
+  1. ORQ_API_KEY from the environment — the login session is not read at all,
+     so an exported key overrides the workspace picked by 'orq auth login'.
+  2. The active workspace token from the 'orq auth login' session, for the
+     workspace shown by 'orq workspace'.
+
+Unset ORQ_API_KEY to launch against the workspace you selected at login.
+Session tokens expire after an hour; use an API key for long sessions.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},

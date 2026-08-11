@@ -20,7 +20,7 @@ import (
 const (
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
-	setupSteps        = 4
+	setupSteps        = 5
 )
 
 type setupOptions struct {
@@ -141,8 +141,15 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		authState.bearer = mintedToken
 	}
 
-	// --- Step 4: coding agents ----------------------------------------------
-	rep.step(4, setupSteps, "Coding agent")
+	// --- Step 4: providers ---------------------------------------------------
+	// The gateway routes to whatever the workspace has connected (BYOK). With
+	// nothing connected there are no models, and every step after this one
+	// degrades into a confusing "no models" instead of "connect a provider".
+	rep.step(4, setupSteps, "Providers")
+	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
+
+	// --- Step 5: coding agents ----------------------------------------------
+	rep.step(5, setupSteps, "Coding agent")
 	agentResults := instrumentAgents(rep, client, authState, opts)
 	result["agents"] = agentResults
 
@@ -151,6 +158,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	rep.note("Verifying…")
 	verified := verifySetup(rep, client, authState)
 	result["verified"] = verified
+	// A failed gateway call is reported but does not fail setup: everything else
+	// (MCP, skills, API key) still works without a connected provider.
+	result["gateway_verified"] = verifyGateway(rep, client, authState)
 
 	links := buildLinks(authState)
 	if len(links) > 0 {
@@ -158,7 +168,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	result["setup_complete"] = verified
 
-	printFinalScreen(rep, agentResults, links, opts)
+	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), opts)
 
 	if err := emit(result); err != nil {
 		return err
@@ -219,6 +229,7 @@ func resolveAuth(rep *reporter, opts *setupOptions) (*authState, error) {
 	// An environment key is usable as-is; do not persist or replace it.
 	if envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY")); envKey != "" && session == nil {
 		rep.ok("api key from ORQ_API_KEY")
+		rep.note("credential order: ORQ_API_KEY (env) → login session. Unset it to sign in instead.")
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
 
@@ -322,7 +333,21 @@ func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session,
 // saveAPIKeyProfile mirrors bartolo's own saveAuthProfile, then tightens the
 // permissions: viper writes 0644 and this file holds a live credential.
 func saveAPIKeyProfile(key string) error {
+	return writeAPIKeyProfile(auth.ActiveProfile(), key)
+}
+
+// clearAPIKeyProfile removes the stored key so logout actually logs the user
+// out. Without this the session file goes but credentials.json keeps a live
+// key, and every generated command stays authenticated.
+func clearAPIKeyProfile() (bool, error) {
 	profile := auth.ActiveProfile()
+	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
+		return false, nil
+	}
+	return true, writeAPIKeyProfile(profile, "")
+}
+
+func writeAPIKeyProfile(profile, key string) error {
 	bartolocli.Creds.Set("profiles."+profile+".type", "apikey")
 	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
 	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
@@ -330,6 +355,23 @@ func saveAPIKeyProfile(key string) error {
 		return err
 	}
 	return os.Chmod(filename, 0o600)
+}
+
+// storedAPIKeyProfile reports whether credentials.json holds a key for the
+// active profile. Callers must not log the key itself.
+func storedAPIKeyProfile() bool {
+	return strings.TrimSpace(bartolocli.Creds.GetString("profiles."+auth.ActiveProfile()+".api_key")) != ""
+}
+
+// envAPIKeySet reports whether an API key is present in the environment. Never
+// report which value — only that one is set.
+func envAPIKeySet() bool {
+	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ============================================================================
@@ -377,13 +419,13 @@ const createProjectOption = "+ Create a new project…"
 
 func promptForProject(rep *reporter, client *auth.Client, state *authState, projects []auth.Project) (*auth.Project, bool, error) {
 	options := make([]string, 0, len(projects)+1)
+	options = append(options, createProjectOption)
 	for _, p := range projects {
 		if p.IsArchived {
 			continue
 		}
 		options = append(options, p.Name)
 	}
-	options = append(options, createProjectOption)
 
 	var chosen string
 	if err := survey.AskOne(&survey.Select{
@@ -545,10 +587,17 @@ func appendEnvKey(rep *reporter, token string) error {
 		return err
 	}
 	for _, line := range strings.Split(string(existing), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "ORQ_API_KEY=") {
-			rep.ok("./.env already sets ORQ_API_KEY — left as is")
-			return nil
+		if !strings.HasPrefix(strings.TrimSpace(line), "ORQ_API_KEY=") {
+			continue
 		}
+		rep.ok("./.env already sets ORQ_API_KEY — left as is")
+		// The key there may be one we minted on an earlier run and have since
+		// replaced; anything reading .env would then authenticate with a dead
+		// credential. We do not overwrite it — it may equally be the user's own.
+		if strings.TrimSpace(line) != "ORQ_API_KEY="+token {
+			rep.warn("  it differs from the key just minted — update it by hand if agents get 401s")
+		}
+		return nil
 	}
 	prefix := ""
 	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
@@ -586,7 +635,89 @@ func envIsGitIgnored() bool {
 }
 
 // ============================================================================
-// Step 4 — coding agents
+// Step 4 — providers
+// ============================================================================
+
+// modelsSettingsPath is where a workspace connects providers (BYOK).
+const modelsSettingsPath = "/settings/models"
+
+// resolveProviders reports how many models the gateway can route to, and walks
+// the user through connecting a provider when the answer is none. Connecting is
+// a browser flow (provider secrets never touch the CLI), so all this can do is
+// detect, deep-link, and re-check.
+func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
+	count, err := countEnabledModels(client, state)
+	if err != nil {
+		rep.warn("could not list gateway models: %v", err)
+		return 0
+	}
+	if count > 0 {
+		rep.ok("%d model(s) enabled on the gateway", count)
+		return count
+	}
+
+	// The link goes in the warning, not a note: notes are suppressed in quiet
+	// mode, which would leave a --no-input user with a problem and no next step.
+	link := modelsSettingsURL(state)
+	rep.warn("no models enabled — connect a provider (BYOK) at %s", link)
+	if opts.noInput {
+		rep.warn("  then re-run 'orq setup'")
+		return 0
+	}
+
+	var retry bool
+	prompt := &survey.Confirm{Message: "Connected a provider? Check again", Default: true}
+	if err := survey.AskOne(prompt, &retry); err != nil || !retry {
+		return 0
+	}
+	count, err = countEnabledModels(client, state)
+	if err != nil {
+		rep.warn("could not list gateway models: %v", err)
+		return 0
+	}
+	if count == 0 {
+		rep.warn("still no models enabled — continuing, but agents will have none to use")
+		return 0
+	}
+	rep.ok("%d model(s) enabled on the gateway", count)
+	return count
+}
+
+// countEnabledModels retries because this runs right after minting a key, and
+// a fresh key is rejected for a second or two — without the wait the step
+// reports "no provider connected" for a workspace that has one.
+func countEnabledModels(client *auth.Client, state *authState) (int, error) {
+	var models []auth.RouterModel
+	var err error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		if models, err = client.ListModels(state.bearer); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return 0, err
+	}
+	enabled := 0
+	for _, m := range models {
+		if m.Active {
+			enabled++
+		}
+	}
+	return enabled, nil
+}
+
+func modelsSettingsURL(state *authState) string {
+	if base := webBaseURL(state); base != "" {
+		return base + modelsSettingsPath
+	}
+	return docsURL + "/docs/ai-gateway/get-started/introduction"
+}
+
+// ============================================================================
+// Step 5 — coding agents
 // ============================================================================
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) []agentResult {
@@ -838,20 +969,50 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 	return false
 }
 
-func buildLinks(state *authState) map[string]string {
-	links := map[string]string{"docs": docsURL}
+// verifyGateway sends one real request through the AI Gateway with the
+// credentials setup just configured. Reaching the API only proves the key is
+// valid; this proves the thing the user actually came for — that a model
+// answers through the router.
+func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
+	models := codingModels(rep, client, state)
+	if len(models) == 0 {
+		rep.warn("gateway        no model answered — connect a provider, then re-run 'orq setup'")
+		return false
+	}
+	ref := models[0].Ref()
+	took, err := client.TimeModel(state.bearer, ref)
+	if err != nil {
+		rep.fail("gateway        %s did not answer: %v", ref, err)
+		return false
+	}
+	rep.ok("gateway        %s answered in %dms via %s", ref, took.Milliseconds(), client.RouterBaseURL())
+	return true
+}
+
+// webBaseURL is the dashboard origin for this install, or "" when it cannot be
+// known (self-hosted without ORQ_WEB_BASE_URL).
+func webBaseURL(state *authState) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
 	// Without an explicit override, only the hosted product has a known web URL.
 	if webBase == "" && state.apiBase == auth.DefaultAPIBaseURL {
 		webBase = defaultWebBaseURL
 	}
+	return webBase
+}
+
+func buildLinks(state *authState) map[string]string {
+	links := map[string]string{"docs": docsURL}
+	webBase := webBaseURL(state)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
+	}
+	if webBase != "" {
+		links["models"] = webBase + modelsSettingsPath
 	}
 	return links
 }
 
-func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, opts *setupOptions) {
+func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, routerBase string, opts *setupOptions) {
 	if opts.noInput {
 		return
 	}
@@ -876,9 +1037,14 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, `      "list my orq.ai agents"`)
 	} else {
-		fmt.Fprintln(w, "  Run your first command:")
+		// No agent wired — the other way in is the gateway itself: point an
+		// existing OpenAI client at the router and change nothing else.
+		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "      orq agents list")
+		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
+			"                      base_url=\"%s\")\n", routerBase)
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
 	}
 	providerWired := false
 	for _, a := range agents {
@@ -896,6 +1062,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	fmt.Fprintln(w)
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  Workspace   %s\n", ws)
+	}
+	if m := links["models"]; m != "" {
+		fmt.Fprintf(w, "  Models      %s\n", m)
 	}
 	fmt.Fprintf(w, "  Docs        %s\n", links["docs"])
 	fmt.Fprintln(w, "  Stuck?      orq doctor")
