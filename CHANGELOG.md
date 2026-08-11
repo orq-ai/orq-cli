@@ -43,6 +43,41 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
+  pi preconfigured to route every model call through the orq AI Router, with
+  `--sandbox` (throwaway Docker container, nothing mounted unless
+  `--mount-cwd`), `--dry-run`, `--model`, and the orq MCP server wired in
+  automatically (`--no-mcp` to opt out). Per-invocation only: nothing is
+  written to your agent's own configuration.
+- Added: `orq setup` — signs you in, selects or creates a project, mints an API
+  key, and registers the orq MCP server and gateway provider in the config
+  files of the coding agents it detects. Unlike `orq launch`, these writes are
+  persistent.
+- Added: `orq man-pages` output and a `.sha256` published next to every release
+  asset, which `install.sh` now verifies.
+- Changed: `orq auth logout` also clears the stored API-key profile, not just
+  the session. Previously a "logged out" CLI kept authenticating from
+  `credentials.json`. **`--json` field change:** the payload gains
+  `api_key_profile_cleared`, and in the no-session case `cleared` is now `true`
+  when a stored key was removed (it was always `false`).
+- Changed: `orq doctor` reports authentication from `ORQ_API_KEY` or
+  `credentials.json` instead of reporting "missing" when only those are present.
+- Fixed: API-key profiles written by `orq setup` carry an auth type the CLI can
+  resolve. Profiles written by earlier builds were unusable — every generated
+  command failed with "no authentication handler configured" — and are now
+  repaired on read.
+
+### Known gap in the surface gate
+
+`orq launch` sets `DisableFlagParsing` so that everything after the agent name
+reaches the agent untouched. Its flags are therefore parsed by hand and do not
+appear in `surface.json`, so the CI gate covers the seven `orq launch` command
+paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
+`--model`, `--mount-cwd`, `--rebuild`, `--no-mcp`, `--no-skills` or
+`--no-fetch-models` will not fail CI. Treat them as covered by the stability
+contract anyway and announce changes here by hand, exactly as with `--json`
+response field shapes.
+
 - Added: `surface.json` command-surface manifest and CI gate; changes to the
   command tree now fail CI until the manifest is regenerated and reviewed
   (`go run ./cmd/surface-dump -write`).
