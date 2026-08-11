@@ -99,6 +99,13 @@ jobs:
           workdir="${MODULE_DIR:-.}"
           spec="$(jq -r '.last_spec_path' "$workdir/.bartolo.json")"
           ( cd "$workdir" && bartolo generate "$spec" )
+          # Keep the committed command-surface manifest in lockstep with the
+          # regenerated tree, or the CI surface gate fails on the regen
+          # commit. The dump tool lives in the stable module only; RC
+          # releases do not carry a manifest.
+          if [ -z "${MODULE_DIR:-}" ]; then
+            go run ./cmd/surface-dump -write
+          fi
 
       - name: Commit regenerated code to main
         env:
@@ -108,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" 2>/dev/null || true
+          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
             exit 0

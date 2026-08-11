@@ -17,3 +17,4 @@
 /npm/cli-*/bin/
 /npm/**/node_modules/
 *.tgz
+/surface-dump

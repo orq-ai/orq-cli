@@ -28,7 +28,7 @@ func registerrerankCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create rerank",
-			Long:    bartolocli.Markdown("Rerank a list of documents based on their relevance to a query.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `documents` (array, required)\n- `fallbacks` (array)\n- `filename` (string | null)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `documents`, `model`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Rerank a list of documents based on their relevance to a query.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `documents` (array, required)\n- `fallbacks` (array)\n- `filename` (string | null)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `name` (string)\n- `orq` (object)\n- ... and 6 more fields\n\nRequired fields: `documents`, `model`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -104,6 +104,12 @@ func registerrerankCommands(root *cobra.Command) {
 							Description: "Retry configuration for the request",
 						},
 						{
+							Name:        "return_documents",
+							FlagName:    "return-documents",
+							Type:        "bool",
+							Description: "Whether to return the documents in the response",
+						},
+						{
 							Name:        "timeout",
 							FlagName:    "timeout",
 							Type:        "json",
@@ -112,7 +118,7 @@ func registerrerankCommands(root *cobra.Command) {
 						{
 							Name:        "top_n",
 							FlagName:    "top-n",
-							Type:        "float64",
+							Type:        "int64",
 							Description: "The number of most relevant documents or indices to return, defaults to the length of the documents",
 						},
 					},
@@ -204,6 +210,12 @@ func registerrerankCommands(root *cobra.Command) {
 					Description: "Retry configuration for the request",
 				},
 				{
+					Name:        "return_documents",
+					FlagName:    "return-documents",
+					Type:        "bool",
+					Description: "Whether to return the documents in the response",
+				},
+				{
 					Name:        "timeout",
 					FlagName:    "timeout",
 					Type:        "json",
@@ -212,7 +224,7 @@ func registerrerankCommands(root *cobra.Command) {
 				{
 					Name:        "top_n",
 					FlagName:    "top-n",
-					Type:        "float64",
+					Type:        "int64",
 					Description: "The number of most relevant documents or indices to return, defaults to the length of the documents",
 				},
 			},
