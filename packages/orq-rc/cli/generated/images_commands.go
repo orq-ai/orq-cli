@@ -26,7 +26,7 @@ func registerimagesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "edit",
 			Short:   "Create image edit",
-			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -47,7 +47,7 @@ func registerimagesCommands(root *cobra.Command) {
 						{
 							Name:        "image",
 							FlagName:    "image",
-							Type:        "json",
+							Type:        "string",
 							Description: "The image(s) to edit. Must be a supported image file or an array of images.  Each image should be a png, webp, or jpg file less than 50MB. You can provide up to 16 images.",
 						},
 						{
@@ -162,7 +162,7 @@ func registerimagesCommands(root *cobra.Command) {
 				{
 					Name:        "image",
 					FlagName:    "image",
-					Type:        "json",
+					Type:        "string",
 					Description: "The image(s) to edit. Must be a supported image file or an array of images.  Each image should be a png, webp, or jpg file less than 50MB. You can provide up to 16 images.",
 				},
 				{
@@ -552,7 +552,7 @@ func registerimagesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "variation",
 			Short:   "Create image variation",
-			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (value)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -573,7 +573,7 @@ func registerimagesCommands(root *cobra.Command) {
 						{
 							Name:        "image",
 							FlagName:    "image",
-							Type:        "json",
+							Type:        "string",
 							Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
 						},
 						{
@@ -681,7 +681,7 @@ func registerimagesCommands(root *cobra.Command) {
 				{
 					Name:        "image",
 					FlagName:    "image",
-					Type:        "json",
+					Type:        "string",
 					Description: "The image to edit. Must be a supported image file. It should be a png, webp, or jpg file less than 50MB.",
 				},
 				{
