@@ -70,17 +70,23 @@ Supported agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.project, "project", "", "Project name to select or create")
-	f.StringVar(&opts.workspace, "workspace", "", "Workspace key to activate")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and minting one")
 	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
 	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
-	f.BoolVar(&opts.noInput, "no-input", false, "Never prompt; missing values become errors")
 	return cmd
 }
 
 func runSetup(cmd *cobra.Command, opts *setupOptions) error {
+	// --no-input and --workspace are global flags (see registerGlobalFlags), so
+	// they are read from viper rather than re-declared here. Declaring local
+	// copies would shadow the globals and split each one in two: the flag would
+	// set ours while ORQ_NO_INPUT / ORQ_WORKSPACE set theirs.
+	opts.noInput = viper.GetBool("no-input")
+	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
+		opts.workspace = ws
+	}
 	// No TTY means no prompts, whatever the flags say.
 	if !hasInteractiveTTY() {
 		opts.noInput = true

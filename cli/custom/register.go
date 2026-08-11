@@ -41,9 +41,19 @@ var profileExemptCommands = map[string]bool{
 // interactiveWizardCommands are bartolo-owned commands whose prompts run
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
+//
+// Keyed by command PATH, not name: orq's own `setup` is a different command
+// from bartolo's `auth setup`, honors --no-input itself, and is meant to run
+// headless in CI. Matching on the bare name refused it.
 var interactiveWizardCommands = map[string]bool{
-	"setup":       true,
-	"add-profile": true,
+	"auth setup":       true,
+	"auth add-profile": true,
+}
+
+// commandPath is the command's path with the root binary name removed, so the
+// maps above read as the user types them ("auth setup", not "orq auth setup").
+func commandPath(cmd *cobra.Command) string {
+	return strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
 }
 
 // Register wires custom commands and session-aware auth onto the provided root
@@ -108,11 +118,11 @@ func installSessionPreRun() {
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
 		commands.SetExplicitAPIKey(apiKeyConfigured())
-		if viper.GetBool("no-input") && interactiveWizardCommands[cmd.Name()] {
+		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
 				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
 					"use `orq auth login` or set ORQ_API_KEY instead",
-				cmd.Name(),
+				commandPath(cmd),
 			)
 		}
 		if err := rejectUnknownProfile(cmd); err != nil {
