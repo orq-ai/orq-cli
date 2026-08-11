@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,5 +305,80 @@ func TestSanitizeKeyName(t *testing.T) {
 	long := sanitizeKeyName(strings.Repeat("a", 200))
 	if len(long) > 64 {
 		t.Errorf("length %d exceeds 64", len(long))
+	}
+}
+
+// The providers step exists to tell "no provider connected" apart from "the
+// catalogue is full of models nobody enabled", so the inactive ones must not
+// be counted.
+func TestCountEnabledModelsIgnoresInactive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/v2/models") {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		// /v2/models answers with a bare array, not a {data: []} envelope.
+		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5-mini","is_active":true},
+		                {"provider":"openai","model_id":"gpt-4","is_active":false}]`)
+	}))
+	defer srv.Close()
+
+	got, err := countEnabledModels(auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
+		t.Fatalf("counted %d enabled models, want 1", got)
+	}
+}
+
+// /v2/projects pages at 25 by default. Stopping at page one makes a name
+// lookup miss an existing project and create a duplicate instead of reusing it.
+func TestListProjectsFollowsPages(t *testing.T) {
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Query().Get("starting_after"))
+		switch r.URL.Query().Get("starting_after") {
+		case "":
+			fmt.Fprint(w, `{"data":[{"project_id":"p1","name":"first"},{"project_id":"p2","name":"second"}],"has_more":true}`)
+		case "p2":
+			fmt.Fprint(w, `{"data":[{"project_id":"p3","name":"Ferranti"}],"has_more":false}`)
+		default:
+			t.Errorf("unexpected cursor %q", r.URL.Query().Get("starting_after"))
+		}
+	}))
+	defer srv.Close()
+
+	projects, err := auth.NewClient(srv.URL).ListProjects("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 3 {
+		t.Fatalf("got %d projects, want 3 across both pages", len(projects))
+	}
+	if projects[2].Name != "Ferranti" {
+		t.Errorf("second page missing: %+v", projects)
+	}
+	if len(seen) != 2 || seen[1] != "p2" {
+		t.Errorf("cursor walk: %v", seen)
+	}
+}
+
+// A self-hosted install has no known dashboard URL, so the BYOK pointer has to
+// degrade to something that still helps rather than to a broken link.
+func TestModelsSettingsURLFallsBackToDocs(t *testing.T) {
+	t.Setenv("ORQ_WEB_BASE_URL", "")
+
+	hosted := modelsSettingsURL(&authState{apiBase: auth.DefaultAPIBaseURL})
+	if hosted != defaultWebBaseURL+modelsSettingsPath {
+		t.Errorf("hosted: got %s", hosted)
+	}
+	selfHosted := modelsSettingsURL(&authState{apiBase: "https://orq.internal"})
+	if !strings.HasPrefix(selfHosted, docsURL) {
+		t.Errorf("self-hosted: got %s, want a docs link", selfHosted)
+	}
+
+	t.Setenv("ORQ_WEB_BASE_URL", "https://orq.internal/app/")
+	if got := modelsSettingsURL(&authState{apiBase: "https://orq.internal"}); got != "https://orq.internal/app"+modelsSettingsPath {
+		t.Errorf("override: got %s", got)
 	}
 }
