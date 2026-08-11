@@ -6,6 +6,14 @@ import (
 	"path/filepath"
 )
 
+// MCPServerName is the key launch registers the orq MCP server under. It is
+// deliberately identical to the one `orq setup` writes into an agent's own
+// config: a session entry then SHADOWS the persisted one instead of sitting
+// beside it. Using a different key made agents load both, so a user who had
+// run setup saw the same server twice and paid for every tool definition
+// twice in their context window.
+const MCPServerName = "orq-workspace"
+
 // DefaultMCPURL is orq's hosted MCP server; agents get it wired automatically
 // so orq tools are available without manual per-harness setup.
 // api.orq.ai is the documented API host, matching auth.Client.MCPServerURL.
@@ -59,7 +67,7 @@ func mcpURL(ctx *AgentContext) string {
 func claudeMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
-			"orq": map[string]any{
+			MCPServerName: map[string]any{
 				"type":    "http",
 				"url":     url,
 				"headers": map[string]string{"Authorization": "Bearer ${ORQ_API_KEY}"},
@@ -86,8 +94,8 @@ func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
 // native streamable-HTTP transport with bearer_token_env_var.
 func codexMCPArgs(url string) []string {
 	return []string{
-		"-c", tomlOverride("mcp_servers.orq.url", url),
-		"-c", tomlOverride("mcp_servers.orq.bearer_token_env_var", "ORQ_API_KEY"),
+		"-c", tomlOverride("mcp_servers."+MCPServerName+".url", url),
+		"-c", tomlOverride("mcp_servers."+MCPServerName+".bearer_token_env_var", "ORQ_API_KEY"),
 	}
 }
 
@@ -95,7 +103,7 @@ func codexMCPArgs(url string) []string {
 // {env:ORQ_API_KEY} keeps the key out of the file.
 func openCodeMCPBlock(url string) map[string]any {
 	return map[string]any{
-		"orq": map[string]any{
+		MCPServerName: map[string]any{
 			"type":    "remote",
 			"url":     url,
 			"oauth":   false,
@@ -109,7 +117,7 @@ func openCodeMCPBlock(url string) map[string]any {
 func kimiMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
-			"orq": map[string]any{
+			MCPServerName: map[string]any{
 				"url":               url,
 				"bearerTokenEnvVar": "ORQ_API_KEY",
 			},

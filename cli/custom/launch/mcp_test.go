@@ -92,8 +92,8 @@ func TestCodexMCPArgs(t *testing.T) {
 		defer plan.Cleanup()
 	}
 	joined := strings.Join(plan.PreArgs, " ")
-	if !strings.Contains(joined, `mcp_servers.orq.url="`+DefaultMCPURL+`"`) ||
-		!strings.Contains(joined, `mcp_servers.orq.bearer_token_env_var="ORQ_API_KEY"`) {
+	if !strings.Contains(joined, `mcp_servers.`+MCPServerName+`.url="`+DefaultMCPURL+`"`) ||
+		!strings.Contains(joined, `mcp_servers.`+MCPServerName+`.bearer_token_env_var="ORQ_API_KEY"`) {
 		t.Fatalf("mcp overrides missing: %s", joined)
 	}
 }
@@ -116,7 +116,7 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	orq := parsed.MCP["orq"]
+	orq := parsed.MCP[MCPServerName]
 	if orq.Type != "remote" || orq.URL != DefaultMCPURL ||
 		orq.Headers["Authorization"] != "Bearer {env:ORQ_API_KEY}" {
 		t.Fatalf("mcp block: %+v", orq)

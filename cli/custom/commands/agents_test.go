@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/launch"
 )
 
 const testMCPURL = "https://api.orq.ai/v2/mcp"
@@ -295,5 +296,16 @@ enabled = false
 		if !strings.Contains(got, want) {
 			t.Errorf("lost unrelated config %q\n---\n%s", want, got)
 		}
+	}
+}
+
+// Launch injects a session-scoped MCP entry; setup writes a persistent one. If
+// the keys differ, an agent loads BOTH and every orq tool appears twice — the
+// same server, double the context. Identical keys make the session entry
+// shadow the persisted one instead.
+func TestLaunchAndSetupShareTheMCPServerName(t *testing.T) {
+	if launch.MCPServerName != mcpServerName {
+		t.Errorf("launch registers %q but setup registers %q; agents would load both",
+			launch.MCPServerName, mcpServerName)
 	}
 }
