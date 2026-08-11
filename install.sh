@@ -121,7 +121,11 @@ fi
 # when the network is least trustworthy.
 checksum_url="${download_url}.sha256"
 checksum_file="$tmp_file.sha256"
-checksum_status="$(curl -sSL -o "$checksum_file" -w '%{http_code}' "$checksum_url" || echo 000)"
+# curl's -w writes the status (000 on a connection failure) even when it exits
+# non-zero, so `|| true` just stops that non-zero from aborting the script. A
+# second `|| echo 000` would append and read as HTTP 000000.
+checksum_status="$(curl -sSL -o "$checksum_file" -w '%{http_code}' "$checksum_url" || true)"
+checksum_status="${checksum_status:-000}"
 expected=""
 case "$checksum_status" in
   200)

@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -133,7 +134,7 @@ func installSessionPreRun() {
 			return nil
 		}
 		if override != "" {
-			client := auth.NewClient(session.APIBaseURL)
+			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
 			token, err := client.WorkspaceToken(session, override)
 			if err != nil {
 				return fmt.Errorf("workspace %q: %w", override, err)
@@ -141,7 +142,7 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 			return nil
 		}
-		if token := activeWorkspaceToken(); token != "" {
+		if token := activeWorkspaceToken(cmd.Context()); token != "" {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
@@ -211,12 +212,12 @@ func apiKeyConfigured() bool {
 	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
-func activeWorkspaceToken() string {
+func activeWorkspaceToken(ctx context.Context) string {
 	session, err := auth.ReadSession()
 	if err != nil || session == nil {
 		return ""
 	}
-	client := auth.NewClient(session.APIBaseURL)
+	client := auth.NewClient(session.APIBaseURL).WithContext(ctx)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return ""
