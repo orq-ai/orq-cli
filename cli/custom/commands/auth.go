@@ -7,7 +7,6 @@ import (
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
 
@@ -20,58 +19,21 @@ func NewLoginCommand() *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate with orq via OAuth device login",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := auth.NewClient(apiBase).WithContext(cmd.Context())
-
-			start, err := client.StartDeviceLogin("orq-cli")
+			result, err := runDeviceLogin(cmd.Context(), newReporter(false), apiBase, workspace, !noOpen)
 			if err != nil {
 				return err
 			}
 
-			fmt.Fprintf(bartolocli.Stderr, "Open: %s\n", start.VerificationURIComplete)
-			fmt.Fprintf(bartolocli.Stderr, "Code: %s\n", start.UserCode)
-
-			browserOpened := false
-			if !noOpen {
-				browserOpened = auth.OpenBrowser(start.VerificationURIComplete)
-				if !browserOpened {
-					fmt.Fprintln(bartolocli.Stderr, "Could not open the browser automatically. Open the URL manually.")
-				}
-			}
-
-			fmt.Fprintln(bartolocli.Stderr, "Waiting for browser approval...")
-			approved, err := client.AwaitDeviceApproval(cmd.Context(), start.DeviceCode, start.ExpiresIn, start.Interval)
-			if err != nil {
-				return err
-			}
-
-			profile, err := client.FetchProfile(approved.AccessToken)
-			if err != nil {
-				return err
-			}
-
-			workspaceKey := workspace
-			if workspaceKey == "" && len(profile.Workspaces) > 1 && hasInteractiveTTY() {
-				workspaceKey, err = selectWorkspace(profile.Workspaces, "Choose an active workspace")
-				if err != nil {
-					return err
-				}
-			}
-
-			session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspaceKey)
-			if err != nil {
-				return err
-			}
-
-			report := BuildIdentityReport(session, &client.URLs)
+			report := BuildIdentityReport(result.Session, &auth.NewClient(apiBase).URLs)
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
 				return nil
 			}
 			return emit(map[string]any{
 				"identity":         report,
-				"browser_opened":   browserOpened,
-				"verification_uri": start.VerificationURIComplete,
-				"user_code":        start.UserCode,
+				"browser_opened":   result.BrowserOpened,
+				"verification_uri": result.VerificationURI,
+				"user_code":        result.UserCode,
 			})
 		},
 	}

@@ -284,17 +284,44 @@ func apiBaseFromEnv() string {
 }
 
 func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
+	result, err := runDeviceLogin(ctx, rep, "", opts.workspace, true)
+	if err != nil {
+		return nil, err
+	}
+	if result.Session.User != nil {
+		rep.ok("signed in as %s", result.Session.User.Email)
+	}
+	return result.Session, nil
+}
+
+// deviceLoginResult carries the session plus the activation details a machine
+// consumer may need to relay (auth login emits them in its JSON payload).
+type deviceLoginResult struct {
+	Session         *auth.Session
+	VerificationURI string
+	UserCode        string
+	BrowserOpened   bool
+}
+
+// runDeviceLogin is the one device-login flow behind `orq auth login`,
+// `orq setup`, and launch's inline login offer. Success reporting is left to
+// the callers — each has its own idea of what "signed in" looks like.
+func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace string, openBrowser bool) (*deviceLoginResult, error) {
 	// Context-aware so Ctrl-C during the approval poll cancels instead of
 	// waiting out the device-code expiry.
-	client := auth.NewClient("").WithContext(ctx)
+	client := auth.NewClient(apiBase).WithContext(ctx)
 	start, err := client.StartDeviceLogin("orq-cli")
 	if err != nil {
 		return nil, err
 	}
 	rep.note("Open: %s", start.VerificationURIComplete)
 	rep.note("Code: %s", start.UserCode)
-	if !auth.OpenBrowser(start.VerificationURIComplete) {
-		rep.note("Could not open the browser automatically. Open the URL manually.")
+	browserOpened := false
+	if openBrowser {
+		browserOpened = auth.OpenBrowser(start.VerificationURIComplete)
+		if !browserOpened {
+			rep.note("Could not open the browser automatically. Open the URL manually.")
+		}
 	}
 	rep.note("Waiting for browser approval...")
 
@@ -306,21 +333,22 @@ func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.
 	if err != nil {
 		return nil, err
 	}
-	workspaceKey := opts.workspace
-	if workspaceKey == "" && len(profile.Workspaces) > 1 {
-		workspaceKey, err = selectWorkspace(profile.Workspaces, "Choose an active workspace")
+	if workspace == "" && len(profile.Workspaces) > 1 && hasInteractiveTTY() {
+		workspace, err = selectWorkspace(profile.Workspaces, "Choose an active workspace")
 		if err != nil {
 			return nil, err
 		}
 	}
-	session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspaceKey)
+	session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspace)
 	if err != nil {
 		return nil, err
 	}
-	if session.User != nil {
-		rep.ok("signed in as %s", session.User.Email)
-	}
-	return session, nil
+	return &deviceLoginResult{
+		Session:         session,
+		VerificationURI: start.VerificationURIComplete,
+		UserCode:        start.UserCode,
+		BrowserOpened:   browserOpened,
+	}, nil
 }
 
 func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions) (*auth.Session, error) {
