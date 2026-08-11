@@ -63,11 +63,13 @@ func TestRunHelp(t *testing.T) {
 	}
 }
 
+// The stability contract documents exactly 0 / 1 / 130 / 143, so a bad flag
+// exits 1 like any other failure rather than inventing a usage code.
 func TestRunBadFlag(t *testing.T) {
 	def := FindAgent("opencode")
 	code, err := Run(def, []string{"--model"})
-	if err == nil || code != 2 {
-		t.Fatalf("missing value should exit 2: code=%d err=%v", code, err)
+	if err == nil || code != 1 {
+		t.Fatalf("missing value should exit 1: code=%d err=%v", code, err)
 	}
 }
 

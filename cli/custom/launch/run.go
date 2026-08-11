@@ -19,7 +19,9 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		AllowModels: def.AllowModels,
 	})
 	if err != nil {
-		return 2, err
+		// 1, not a distinct usage code: CHANGELOG's stability contract defines
+		// exactly 0 / 1 / 130 / 143, and a bad flag is just a failure.
+		return 1, err
 	}
 	if flags.Help {
 		printAgentHelp(def)
