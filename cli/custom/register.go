@@ -101,6 +101,7 @@ func installSessionPreRun() {
 				return err
 			}
 		}
+		repairAuthProfileType()
 		applyNoColor()
 		// Snapshot whether the USER configured an API key before this PreRun
 		// injects the session token into ORQ_API_KEY below - commands that
@@ -198,6 +199,28 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 		"unknown profile %q: no session at %s and no credentials entry; run `orq auth login --profile %s` first",
 		profile, auth.SessionFilePath(), profile,
 	)
+}
+
+// repairAuthProfileType rewrites, in memory only, a stored profile whose "type"
+// no auth handler answers to.
+//
+// Builds before this fix wrote type "apikey" while the generated client
+// registers its handler anonymously, so bartolo resolved no handler and every
+// generated command aborted with "no authentication handler configured".
+// Without this, those users stay broken until they happen to re-run orq setup.
+//
+// Only the in-memory value is corrected: rewriting credentials.json from a
+// PreRun would mean every command silently mutating the user's credential file.
+func repairAuthProfileType() {
+	profile := auth.ActiveProfile()
+	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
+		return
+	}
+	stored := bartolocli.Creds.GetString("profiles." + profile + ".type")
+	if _, ok := bartolocli.AuthHandlers[stored]; ok {
+		return
+	}
+	bartolocli.Creds.Set("profiles."+profile+".type", commands.BartoloAuthType())
 }
 
 // apiKeyConfigured reports whether bartolo would already find an API key from

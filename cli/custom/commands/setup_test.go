@@ -6,9 +6,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 
 	"orq/cli/custom/auth"
@@ -444,5 +447,48 @@ func TestDetectShellAlwaysGivesACommand(t *testing.T) {
 	}
 	if sh.Line == "" {
 		t.Error("Line is empty; the user would be told to run nothing")
+	}
+}
+
+// fakeAuthHandler stands in for the generated client's bearer handler, which is
+// registered by initGeneratedRuntime and so is absent in unit tests.
+type fakeAuthHandler struct{}
+
+func (fakeAuthHandler) ProfileKeys() []string { return []string{"api_key"} }
+func (fakeAuthHandler) OnRequest(*zerolog.Logger, *http.Request) error {
+	return nil
+}
+
+// bartolo resolves a profile's "type" against its handler registry verbatim, so
+// a profile whose type names no handler authenticates nothing: every generated
+// command aborts with "no authentication handler configured". The type we write
+// must be one the registry answers to.
+func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
+	restore := bartolocli.AuthHandlers
+	t.Cleanup(func() { bartolocli.AuthHandlers = restore })
+	if bartolocli.Creds == nil {
+		// initAuth, which normally creates this, runs from the generated
+		// runtime that unit tests do not start.
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+
+	for _, registered := range []string{"", "apikey"} {
+		t.Run("handler registered as "+strconv.Quote(registered), func(t *testing.T) {
+			bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{
+				registered: fakeAuthHandler{},
+			}
+			dir := t.TempDir()
+			viper.Set("config-directory", dir)
+			t.Cleanup(func() { viper.Set("config-directory", "") })
+
+			if err := writeAPIKeyProfile("default", "a-key"); err != nil {
+				t.Fatalf("writeAPIKeyProfile: %v", err)
+			}
+			written := bartolocli.Creds.GetString("profiles.default.type")
+			if _, ok := bartolocli.AuthHandlers[written]; !ok {
+				t.Errorf("wrote type %q, which resolves to no handler", written)
+			}
+		})
 	}
 }

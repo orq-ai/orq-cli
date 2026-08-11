@@ -436,8 +436,33 @@ func clearAPIKeyProfile() (bool, error) {
 	return true, writeAPIKeyProfile(profile, "")
 }
 
+// BartoloAuthType returns the profile "type" that bartolo can resolve back to
+// an auth handler.
+//
+// The generated client registers its bearer handler anonymously
+// (apikey.InitBearer -> cli.UseAuth("", handler)), and resolveAuthHandler looks
+// a profile's type up verbatim, falling back to the sole handler only when the
+// type is empty. Writing a descriptive "apikey" therefore produced a profile no
+// handler could serve, and every generated command — orq agents list, orq
+// deployments, all of them — failed with "no authentication handler
+// configured".
+//
+// The name is read back from the registry rather than hardcoded so that a
+// future bartolo registering its handler under a real type name keeps working.
+func BartoloAuthType() string {
+	if _, ok := bartolocli.AuthHandlers["apikey"]; ok {
+		return "apikey"
+	}
+	if len(bartolocli.AuthHandlers) == 1 {
+		for name := range bartolocli.AuthHandlers {
+			return name
+		}
+	}
+	return ""
+}
+
 func writeAPIKeyProfile(profile, key string) error {
-	bartolocli.Creds.Set("profiles."+profile+".type", "apikey")
+	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
 	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
 	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
