@@ -169,21 +169,36 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 	return groups
 }
 
+// probeMaxTokens must leave room for a complete reply. The gateway rejects a
+// truncated generation with 400 "max_tokens or model output limit was reached",
+// so a smaller budget fails every probe regardless of whether the model works.
+// Reasoning models spend their first tokens on reasoning, hence the headroom.
+const probeMaxTokens = 16
+
 // ProbeModel reports whether the gateway can actually serve this model. The
 // catalogue lists models that return 500 on use, so a config written from the
 // catalogue alone would advertise models that do not work.
 func (c *Client) ProbeModel(bearer, ref string) bool {
+	_, err := c.TimeModel(bearer, ref)
+	return err == nil
+}
+
+// TimeModel is ProbeModel with the round-trip time, for reporting a first
+// successful gateway request back to the user.
+func (c *Client) TimeModel(bearer, ref string) (time.Duration, error) {
 	body := map[string]any{
 		"model":      ref,
 		"messages":   []map[string]string{{"role": "user", "content": "hi"}},
-		"max_tokens": 1,
+		"max_tokens": probeMaxTokens,
 	}
 	client := &Client{URLs: c.URLs, HTTPClient: &http.Client{Timeout: 20 * time.Second}}
-	return client.jsonRequest(
+	started := time.Now()
+	err := client.jsonRequest(
 		http.MethodPost,
 		c.RouterBaseURL()+"/chat/completions",
 		bearer,
 		body,
 		nil,
-	) == nil
+	)
+	return time.Since(started), err
 }
