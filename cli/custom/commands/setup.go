@@ -176,8 +176,14 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), opts)
 
-	if err := emit(result); err != nil {
-		return err
+	// Same human/machine split as login and whoami: a person at a terminal
+	// gets the final screen only — dumping the structured payload after it
+	// buries the summary they just read. Scripts (non-TTY) and --json/-o
+	// still get the payload.
+	if !wantsHumanView(cmd) {
+		if err := emit(result); err != nil {
+			return err
+		}
 	}
 	for _, a := range agentResults {
 		if a.Error != "" {
