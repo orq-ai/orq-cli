@@ -193,6 +193,37 @@ func TestExtractTarGzWritesFiles(t *testing.T) {
 	}
 }
 
+// assistant-plugins keeps its skills at the repo root; older archives kept them
+// under .agents/skills. Both must resolve, or setup reports "skills archive
+// contained none of ..." and silently instruments agents without skills.
+func TestFindSkillsRootAcceptsBothLayouts(t *testing.T) {
+	for _, layout := range archiveSkillsDirs {
+		cache := t.TempDir()
+		skill := filepath.Join(cache, "assistant-plugins-main", layout, "orq-cli")
+		if err := os.MkdirAll(skill, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		got, err := findSkillsRoot(cache)
+		if err != nil {
+			t.Fatalf("%s: findSkillsRoot: %v", layout, err)
+		}
+		want := filepath.Join(cache, "assistant-plugins-main", layout)
+		if got != want {
+			t.Errorf("%s: got %q, want %q", layout, got, want)
+		}
+	}
+}
+
+func TestFindSkillsRootReportsMissingLayout(t *testing.T) {
+	cache := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cache, "assistant-plugins-main", ".agents", "plugins"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := findSkillsRoot(cache); err == nil {
+		t.Fatal("expected an error when the archive holds no skills directory")
+	}
+}
+
 // A tarball is remote input: an entry escaping the destination would let it
 // overwrite arbitrary files.
 func TestExtractTarGzRejectsPathTraversal(t *testing.T) {

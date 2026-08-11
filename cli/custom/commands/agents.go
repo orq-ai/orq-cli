@@ -530,8 +530,15 @@ func fetchSkills() (string, error) {
 	return findSkillsRoot(cache)
 }
 
-// findSkillsRoot locates the .agents/skills directory inside the extracted
-// tarball, whose top level is a single repo-name-and-ref folder.
+// archiveSkillsDirs are the paths the skills tarball may keep its skill folders
+// under, most current first. This is deliberately not sharedSkillsDir: that
+// constant is where skills are *installed* (the agentskills.io convention), and
+// conflating the two broke every install when assistant-plugins moved its
+// skills to the repo root and left .agents/ holding only plugin metadata.
+var archiveSkillsDirs = []string{"skills", ".agents/skills"}
+
+// findSkillsRoot locates the skills directory inside the extracted tarball,
+// whose top level is a single repo-name-and-ref folder.
 func findSkillsRoot(cache string) (string, error) {
 	entries, err := os.ReadDir(cache)
 	if err != nil {
@@ -541,12 +548,14 @@ func findSkillsRoot(cache string) (string, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		candidate := filepath.Join(cache, entry.Name(), sharedSkillsDir)
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate, nil
+		for _, dir := range archiveSkillsDirs {
+			candidate := filepath.Join(cache, entry.Name(), dir)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				return candidate, nil
+			}
 		}
 	}
-	return "", errors.New("skills archive did not contain " + sharedSkillsDir)
+	return "", errors.New("skills archive contained none of " + strings.Join(archiveSkillsDirs, ", "))
 }
 
 func extractTarGz(r io.Reader, dest string) error {
