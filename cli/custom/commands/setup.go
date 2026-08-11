@@ -52,7 +52,7 @@ func NewSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Authenticate, pick a project, and wire up your coding agent",
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, selects or creates a ` +
-			`project, mints a project-scoped API key, and registers the orq.ai MCP server ` +
+			`project, creates a project-scoped API key, and registers the orq.ai MCP server ` +
 			`with your coding agent.
 
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
@@ -70,7 +70,7 @@ Supported agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.project, "project", "", "Project name to select or create")
-	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and minting one")
+	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
@@ -737,23 +737,23 @@ func promptForProject(rep *reporter, client *auth.Client, state *authState, proj
 // resolveAPIKey returns the summary for the emitted payload and, when it minted
 // one, the raw token so the caller can verify with it.
 func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, project *auth.Project) (map[string]any, string, error) {
-	info := map[string]any{"minted": false, "profile": auth.ActiveProfile()}
+	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
 
 	if state.suppliedKey != "" {
-		rep.ok("key already configured (profile: %s) — skipping mint", auth.ActiveProfile())
+		rep.ok("key already configured (profile: %s) — skipping key creation", auth.ActiveProfile())
 		return info, "", nil
 	}
 
 	if opts.interactive {
 		mint := true
 		if err := survey.AskOne(&survey.Confirm{
-			Message: "Mint a project-scoped API key now?",
+			Message: "Create a project-scoped API key now?",
 			Default: true,
 		}, &mint); err != nil {
 			return nil, "", err
 		}
 		if !mint {
-			rep.ok("skipped minting an API key")
+			rep.ok("skipped creating an API key")
 			return info, "", nil
 		}
 	}
@@ -774,15 +774,15 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	// The raw token is returned once. Persist before doing anything else so a
 	// later failure cannot leave a live key with no local record of it.
 	if err := saveAPIKeyProfile(token); err != nil {
-		return nil, "", fmt.Errorf("minted a key but could not save it: %w", err)
+		return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
 	}
-	info["minted"] = true
+	info["created"] = true
 	info["project_scoped"] = scopedToProject
 	if scopedToProject {
-		rep.ok("minted key  %s  (scoped to %s)", maskToken(token), project.Name)
+		rep.ok("created key  %s  (scoped to %s)", maskToken(token), project.Name)
 	} else {
 		// Do not let a broader-than-requested credential pass silently.
-		rep.ok("minted key  %s", maskToken(token))
+		rep.ok("created key  %s", maskToken(token))
 		rep.warn("this key covers the whole workspace, not just %s", project.Name)
 		rep.note("  the API cannot scope a key to this project yet — see 'orq doctor'")
 	}
@@ -871,7 +871,7 @@ func appendEnvKey(rep *reporter, token string) error {
 		// replaced; anything reading .env would then authenticate with a dead
 		// credential. We do not overwrite it — it may equally be the user's own.
 		if strings.TrimSpace(line) != "ORQ_API_KEY="+token {
-			rep.warn("  it differs from the key just minted — update it by hand if agents get 401s")
+			rep.warn("  it differs from the key just created — update it by hand if agents get 401s")
 		}
 		return nil
 	}
