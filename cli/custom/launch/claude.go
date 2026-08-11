@@ -8,7 +8,9 @@ import (
 const (
 	// DefaultClaudeGatewayURL is the anthropic-native gateway path — not the
 	// router URL. Claude Code speaks the Anthropic API directly.
-	DefaultClaudeGatewayURL     = "https://my.orq.ai/v3/anthropic"
+	// api.orq.ai is the documented API host; my.orq.ai is the dashboard and
+	// answers the same routes, but the docs and the rest of the CLI use api.
+	DefaultClaudeGatewayURL     = "https://api.orq.ai/v3/anthropic"
 	DefaultClaudeModel          = "anthropic/claude-sonnet-4-6"
 	DefaultClaudeSmallFastModel = "anthropic/claude-haiku-4-5"
 )

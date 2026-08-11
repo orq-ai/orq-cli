@@ -8,7 +8,9 @@ import (
 
 // DefaultMCPURL is orq's hosted MCP server; agents get it wired automatically
 // so orq tools are available without manual per-harness setup.
-const DefaultMCPURL = "https://my.orq.ai/v2/mcp"
+// api.orq.ai is the documented API host, matching auth.Client.MCPServerURL.
+// my.orq.ai answers the same route but is the dashboard.
+const DefaultMCPURL = "https://api.orq.ai/v2/mcp"
 
 // DefaultSkillsPluginURL is the orq skills plugin (github.com/orq-ai/
 // assistant-plugins) as a zip; claude loads it session-only via --plugin-url.

@@ -131,8 +131,12 @@ func (c *Client) MCPServerURL() string {
 
 // RouterBaseURL is the OpenAI-compatible gateway base. Coding agents that speak
 // OpenAI can point straight at it and have every call routed through orq.
+//
+// v3 is the documented base (https://docs.orq.ai/docs/ai-gateway/features/openai-compatible-api)
+// and what `orq launch` wires into agents; v2 still answers, but the two must
+// not drift apart.
 func (c *Client) RouterBaseURL() string {
-	return c.URLs.APIBaseURL + "/v2/router"
+	return c.URLs.APIBaseURL + "/v3/router"
 }
 
 // RouterModel is one model offered by the AI gateway. The router addresses

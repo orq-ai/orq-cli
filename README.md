@@ -267,7 +267,7 @@ orq launch pi                     # Pi Coding Agent
 
 For local mode the agent CLI itself must be installed (each subcommand prints an install hint when it is missing); `--sandbox` installs it into the container image for you. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-The [orq MCP server](https://my.orq.ai/v2/mcp) is wired into each launched agent automatically using its native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there.
+The [orq MCP server](https://api.orq.ai/v2/mcp) is wired into each launched agent automatically using its native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there.
 
 For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) is loaded **session-only** via `--plugin-url` — nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
