@@ -232,10 +232,18 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return nil, err
 	}
 
-	// An environment key is usable as-is; do not persist or replace it.
+	// An environment key is usable as-is; do not persist or replace it. Name
+	// the real source: bartolo auto-loads ./.env at startup, so "unset it" is
+	// wrong (and provably followed-then-failed) advice when the key comes from
+	// a file that re-injects it on every run.
 	if envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY")); envKey != "" && session == nil {
-		rep.ok("api key from ORQ_API_KEY")
-		rep.note("credential order: ORQ_API_KEY (env) → login session. Unset it to sign in instead.")
+		if file, v := dotEnvAPIKey(); file != "" && v == envKey {
+			rep.ok("api key from ./%s", file)
+			rep.note("orq loads ./%s automatically — remove its ORQ_API_KEY line to sign in instead; unsetting the shell variable is not enough.", file)
+		} else {
+			rep.ok("api key from ORQ_API_KEY")
+			rep.note("credential order: ORQ_API_KEY (env) → login session. Unset it to sign in instead.")
+		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
 
@@ -423,6 +431,58 @@ func writeShellEnvFile(token string) (string, error) {
 	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
 }
 
+// offerProfileSourceLine asks the user whether setup may add the source line
+// for the env file to their shell profile, so agents launched from any future
+// shell see ORQ_API_KEY without manual steps. Editing a profile is the user's
+// call: it only happens on an explicit yes, and never under --no-input.
+func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
+	if opts.noInput {
+		return
+	}
+	sh := detectShell(viper.GetString("config-directory"))
+	if sh.Profile == "" || sh.Line == "" {
+		return // unrecognised shell: the final screen prints the manual line
+	}
+	if profileSourcesEnvFile(sh) {
+		return
+	}
+	add := true
+	if err := survey.AskOne(&survey.Confirm{
+		Message: fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.Line, sh.Profile),
+		Default: true,
+	}, &add, promptStdio()); err != nil || !add {
+		return
+	}
+	f, err := os.OpenFile(sh.Profile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		rep.warn("could not update %s: %v", sh.Profile, err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.WriteString("\n# Added by 'orq setup' — exports ORQ_API_KEY for coding agents.\n" + sh.Line + "\n"); err != nil {
+		rep.warn("could not update %s: %v", sh.Profile, err)
+		return
+	}
+	rep.ok("updated     %s  → sources %s", sh.Profile, sh.EnvFile)
+	rep.note("• takes effect in new shells; run '%s' for this one", sh.Line)
+}
+
+// profileSourcesEnvFile reports whether the profile already references the env
+// file, however the user phrased it — re-appending would stack duplicates.
+// Matching on the home-relative suffix also catches "$HOME/.orq/env" and
+// "~/.orq/env" spellings, which an absolute-path comparison missed.
+func profileSourcesEnvFile(sh shellSetup) bool {
+	data, err := os.ReadFile(sh.Profile)
+	if err != nil {
+		return false
+	}
+	needle := sh.EnvFile
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(needle, home+string(os.PathSeparator)) {
+		needle = strings.TrimPrefix(needle, home+string(os.PathSeparator))
+	}
+	return strings.Contains(string(data), needle)
+}
+
 // saveAPIKeyProfile mirrors bartolo's own saveAuthProfile, then tightens the
 // permissions: viper writes 0644 and this file holds a live credential.
 func saveAPIKeyProfile(key string) error {
@@ -479,6 +539,68 @@ func writeAPIKeyProfile(profile, key string) error {
 // active profile. Callers must not log the key itself.
 func storedAPIKeyProfile() bool {
 	return strings.TrimSpace(bartolocli.Creds.GetString("profiles."+auth.ActiveProfile()+".api_key")) != ""
+}
+
+// dotEnvAPIKey returns the first local dotenv file that sets ORQ_API_KEY and
+// the value it carries, or "" when none does. Bartolo loads these files into
+// the environment at startup (before any command runs), so a key here outlives
+// both `unset ORQ_API_KEY` and `orq auth logout` — the parsing mirrors
+// bartolo's loadDotEnvFile so the answer matches what actually got loaded.
+func dotEnvAPIKey() (file, value string) {
+	for _, name := range []string{".env", ".env.local"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+			k, v, ok := strings.Cut(line, "=")
+			if !ok || strings.TrimSpace(k) != "ORQ_API_KEY" {
+				continue
+			}
+			v = strings.TrimSpace(v)
+			if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
+				v = v[1 : len(v)-1]
+			}
+			// A placeholder line (ORQ_API_KEY=) carries no credential: bartolo
+			// loads the empty value, which authenticates nothing and does not
+			// block a later file from supplying the real key. Reporting it
+			// would warn about a key that does not exist and hide the file
+			// that actually holds one.
+			if v == "" {
+				continue
+			}
+			return name, v
+		}
+	}
+	return "", ""
+}
+
+// warnLingeringAPIKeys points out credentials logout cannot clear: a dotenv
+// file the CLI auto-loads on every run, or a key exported by the shell.
+// Without this the user sees "signed out" while the very next command silently
+// authenticates again.
+func warnLingeringAPIKeys() {
+	file, v := dotEnvAPIKey()
+	if file != "" {
+		Warn("./%s still sets ORQ_API_KEY and orq loads it automatically — remove that line to fully sign out", file)
+	}
+	// The two sources are independent: a shell export survives removing the
+	// .env line (bartolo's loader skips vars the shell already set), so an
+	// early return here would hide the export behind the file warning.
+	//
+	// explicitAPIKey guards against crying wolf on the session token our own
+	// PreRun injects into ORQ_API_KEY; it is snapshotted before the injection.
+	// The value comparison keeps a dotenv-loaded key from also reading as a
+	// shell export — when the shell exports the very value the file carries,
+	// the sources are indistinguishable and the file warning has to do.
+	if explicitAPIKey && envAPIKeySet() && (file == "" || v != strings.TrimSpace(os.Getenv("ORQ_API_KEY"))) {
+		Warn("ORQ_API_KEY is still exported in this shell — logout cannot unset it; run: unset ORQ_API_KEY")
+	}
 }
 
 // envAPIKeySet reports whether an API key is present in the environment. Never
@@ -643,6 +765,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		rep.warn("could not write the shell env file: %v", err)
 	} else {
 		rep.ok("saved       %s  → source it to export ORQ_API_KEY", path)
+		offerProfileSourceLine(rep, opts)
 	}
 
 	if opts.noEnv || opts.global {
@@ -737,6 +860,9 @@ func appendEnvKey(rep *reporter, token string) error {
 		return err
 	}
 	rep.ok("wrote       ./.env  → ORQ_API_KEY")
+	// The write has a side effect worth stating: orq itself auto-loads ./.env,
+	// and that key takes precedence over a login session in this directory.
+	rep.note("• orq loads ./.env automatically — commands run here authenticate with this key, even after 'orq auth logout'")
 	if envIsGitIgnored() {
 		rep.note("• .env is covered by .gitignore")
 	} else {

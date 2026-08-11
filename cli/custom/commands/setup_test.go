@@ -447,3 +447,120 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 		})
 	}
 }
+
+// Bartolo auto-loads ./.env at startup, so a key defined there is what the CLI
+// actually authenticates with — the parser must agree with bartolo's on the
+// forms users write.
+func TestDotEnvAPIKeyMirrorsBartoloParsing(t *testing.T) {
+	cases := map[string]struct {
+		content string
+		file    string
+		value   string
+	}{
+		"plain":         {"ORQ_API_KEY=sk-orq-abc\n", ".env", "sk-orq-abc"},
+		"export prefix": {"export ORQ_API_KEY=sk-orq-abc\n", ".env", "sk-orq-abc"},
+		"quoted":        {`ORQ_API_KEY="sk-orq-abc"` + "\n", ".env", "sk-orq-abc"},
+		"comment only":  {"# ORQ_API_KEY=sk-orq-abc\n", "", ""},
+		"other keys":    {"DATABASE_URL=postgres://x\n", "", ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			chdir(t, t.TempDir())
+			if err := os.WriteFile(".env", []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			file, value := dotEnvAPIKey()
+			if file != tc.file || value != tc.value {
+				t.Errorf("got (%q, %q), want (%q, %q)", file, value, tc.file, tc.value)
+			}
+		})
+	}
+}
+
+// .env.local is the second file bartolo loads; a key there must be found too.
+func TestDotEnvAPIKeyReadsEnvLocal(t *testing.T) {
+	chdir(t, t.TempDir())
+	if err := os.WriteFile(".env.local", []byte("ORQ_API_KEY=sk-orq-local\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, value := dotEnvAPIKey()
+	if file != ".env.local" || value != "sk-orq-local" {
+		t.Errorf("got (%q, %q), want (.env.local, sk-orq-local)", file, value)
+	}
+}
+
+// Re-running setup must not stack duplicate source lines in the profile,
+// however the user phrased the existing one.
+func TestProfileSourcesEnvFileDetectsAnyPhrasing(t *testing.T) {
+	dir := t.TempDir()
+	profile := filepath.Join(dir, ".zshenv")
+	sh := shellSetup{EnvFile: "/home/u/.orq/env", Profile: profile, Line: ". /home/u/.orq/env"}
+
+	if profileSourcesEnvFile(sh) {
+		t.Error("missing profile reported as sourcing the env file")
+	}
+	if err := os.WriteFile(profile, []byte("source /home/u/.orq/env  # by hand\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !profileSourcesEnvFile(sh) {
+		t.Error("hand-written source line was not detected")
+	}
+}
+
+// $HOME- and ~-relative spellings reference the same file; an absolute-path
+// comparison missed them and stacked a duplicate source line.
+func TestProfileSourcesEnvFileDetectsHomeRelativeSpelling(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(t.TempDir(), ".zshenv")
+	sh := shellSetup{
+		EnvFile: filepath.Join(home, ".orq", "env"),
+		Profile: profile,
+		Line:    ". " + filepath.Join(home, ".orq", "env"),
+	}
+	if err := os.WriteFile(profile, []byte(`[ -f "$HOME/.orq/env" ] && . "$HOME/.orq/env"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !profileSourcesEnvFile(sh) {
+		t.Error(`"$HOME/.orq/env" spelling was not detected`)
+	}
+}
+
+// A placeholder line with no value carries no credential; reporting it would
+// warn about a key that does not exist and mask a later file's real key.
+func TestDotEnvAPIKeySkipsEmptyValues(t *testing.T) {
+	chdir(t, t.TempDir())
+	if err := os.WriteFile(".env", []byte("ORQ_API_KEY=\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".env.local", []byte("ORQ_API_KEY=sk-orq-real\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, value := dotEnvAPIKey()
+	if file != ".env.local" || value != "sk-orq-real" {
+		t.Errorf("got (%q, %q), want (.env.local, sk-orq-real)", file, value)
+	}
+}
+
+// The tilde spelling is how users hand-write the line; the suffix match must
+// cover it like the $HOME form.
+func TestProfileSourcesEnvFileDetectsTildeSpelling(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(t.TempDir(), ".zshenv")
+	sh := shellSetup{
+		EnvFile: filepath.Join(home, ".orq", "env"),
+		Profile: profile,
+		Line:    ". " + filepath.Join(home, ".orq", "env"),
+	}
+	if err := os.WriteFile(profile, []byte(". ~/.orq/env\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !profileSourcesEnvFile(sh) {
+		t.Error("~/.orq/env spelling was not detected")
+	}
+}

@@ -101,6 +101,7 @@ func NewLogoutCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
 					if keyCleared {
 						success("Cleared the stored API key")
@@ -171,6 +172,7 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
 			// returns early so a terminal never sees the structured payload,
