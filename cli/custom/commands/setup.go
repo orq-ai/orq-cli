@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -333,6 +334,91 @@ func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session,
 	return updated, nil
 }
 
+// shellSetup describes how to give the user's shell the key: which file to
+// source, which profile to source it from, and how that profile is worded.
+type shellSetup struct {
+	EnvFile string // file orq writes, holding the export
+	Profile string // user's profile file, "" when the shell is unrecognised
+	Line    string // line to add to that profile
+}
+
+// detectShell resolves the above from $SHELL, mirroring install.sh's
+// profile_for_shell so the installer and the CLI agree on where things go.
+//
+// zsh differs from install.sh on purpose: that only needs PATH, which
+// interactive shells set up, so .zshrc is enough. A key read by an agent the
+// user may start from a launcher, an IDE or a login shell has to be in
+// .zshenv — zsh reads .zshrc only for interactive shells.
+//
+// fish gets its own file because it cannot parse `export VAR=value`.
+func detectShell(dir string) shellSetup {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "~"
+	}
+	posix := shellSetup{EnvFile: filepath.Join(dir, "env")}
+	switch filepath.Base(strings.TrimSpace(os.Getenv("SHELL"))) {
+	case "zsh":
+		posix.Profile = filepath.Join(home, ".zshenv")
+	case "bash":
+		// macOS login shells read .bash_profile; Linux ones read .bashrc.
+		if runtime.GOOS == "darwin" {
+			if _, err := os.Stat(filepath.Join(home, ".bash_profile")); err == nil {
+				posix.Profile = filepath.Join(home, ".bash_profile")
+				break
+			}
+		}
+		posix.Profile = filepath.Join(home, ".bashrc")
+	case "fish":
+		return shellSetup{
+			EnvFile: filepath.Join(dir, "env.fish"),
+			Profile: filepath.Join(home, ".config", "fish", "config.fish"),
+			Line:    "source " + filepath.Join(dir, "env.fish"),
+		}
+	case "sh", "dash", "ksh":
+		posix.Profile = filepath.Join(home, ".profile")
+	}
+	// Set regardless of whether the shell was recognised: an unknown shell
+	// still needs something to run, it just has no profile file to name.
+	posix.Line = ". " + posix.EnvFile
+	return posix
+}
+
+// writeShellEnvFile writes a sourceable snippet exporting ORQ_API_KEY next to
+// credentials.json, in the syntax of the user's shell, and returns its path.
+//
+// Agent configs reference the key by env var rather than inlining it — kimi's
+// own guidance is that an mcp.json is "a plain config file on disk", so http
+// servers should use bearerTokenEnvVar. That only works if something actually
+// puts the key in the environment, which nothing did: agents came up with an
+// empty bearer token and every MCP call failed to authenticate.
+//
+// A file the user sources beats printing the key on screen (it stays out of
+// scrollback and shell history) and beats editing their shell profile for them.
+func writeShellEnvFile(token string) (string, error) {
+	dir := viper.GetString("config-directory")
+	if dir == "" {
+		return "", errors.New("no config directory configured")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	sh := detectShell(dir)
+	assign := "export ORQ_API_KEY=" + token
+	if strings.HasSuffix(sh.EnvFile, ".fish") {
+		assign = "set -gx ORQ_API_KEY " + token
+	}
+	header := "# Written by 'orq setup'.\n"
+	if sh.Line != "" {
+		header += "# Add to " + sh.Profile + ":\n#     " + sh.Line + "\n"
+	}
+	if err := os.WriteFile(sh.EnvFile, []byte(header+assign+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	// A pre-existing file may have been created with looser permissions.
+	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
+}
+
 // saveAPIKeyProfile mirrors bartolo's own saveAuthProfile, then tightens the
 // permissions: viper writes 0644 and this file holds a live credential.
 func saveAPIKeyProfile(key string) error {
@@ -522,6 +608,13 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		rep.note("  the API cannot scope a key to this project yet — see 'orq doctor'")
 	}
 	rep.ok("saved       %s", filepath.Join(viper.GetString("config-directory"), "credentials.json"))
+	if path, err := writeShellEnvFile(token); err != nil {
+		// Not fatal: the key is already saved, and the final screen still tells
+		// the user how to export it.
+		rep.warn("could not write the shell env file: %v", err)
+	} else {
+		rep.ok("saved       %s  → source it to export ORQ_API_KEY", path)
+	}
 
 	if opts.noEnv || opts.global {
 		return info, token, nil
@@ -1049,17 +1142,33 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
 	}
-	providerWired := false
+	// Both the provider block and the MCP entry reference ORQ_API_KEY, so an
+	// MCP-only agent needs the export just as much as a provider-wired one.
+	// Checking only the provider is what let kimi come up with a dead MCP
+	// server and no warning.
+	keyReferenced := false
 	for _, a := range agents {
-		if a.Error == "" && a.Provider != "" {
-			providerWired = true
+		if a.Error == "" && (a.Provider != "" || a.MCP != "") {
+			keyReferenced = true
 		}
 	}
-	if providerWired && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
-		fmt.Fprintln(w, "  ! agents read ORQ_API_KEY from the environment; it is not set in this shell.")
-		fmt.Fprintln(w, "    Add to your shell profile (key saved in ~/.orq/credentials.json):")
+	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+		sh := detectShell(viper.GetString("config-directory"))
+		fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
+		fmt.Fprintln(w, "    Export it once, then restart the agent:")
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "      export ORQ_API_KEY=<your key>")
+		if sh.Profile == "" {
+			// Unrecognised shell: naming a profile file would be a guess, so
+			// give the command that works right now and let the user place it.
+			fmt.Fprintf(w, "      %s\n", sh.Line)
+			fmt.Fprintf(w, "      # add that to your shell profile to make it stick\n")
+		} else {
+			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.Line, sh.Profile, sh.Line)
+			if strings.HasSuffix(sh.Profile, ".zshenv") {
+				fmt.Fprintln(w)
+				fmt.Fprintln(w, "    (~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells.)")
+			}
+		}
 		fmt.Fprintln(w)
 	}
 	fmt.Fprintln(w)

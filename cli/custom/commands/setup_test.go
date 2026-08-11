@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/viper"
+
 	"orq/cli/custom/auth"
 )
 
@@ -380,5 +382,67 @@ func TestModelsSettingsURLFallsBackToDocs(t *testing.T) {
 	t.Setenv("ORQ_WEB_BASE_URL", "https://orq.internal/app/")
 	if got := modelsSettingsURL(&authState{apiBase: "https://orq.internal"}); got != "https://orq.internal/app"+modelsSettingsPath {
 		t.Errorf("override: got %s", got)
+	}
+}
+
+// Agent configs reference ORQ_API_KEY instead of inlining the key, so setup has
+// to leave something behind that actually puts it in the environment — in the
+// syntax of the user's shell, since fish cannot parse `export VAR=value`. The
+// file holds a live credential, so it must not be world-readable.
+func TestWriteShellEnvFile(t *testing.T) {
+	cases := []struct {
+		shell    string
+		wantFile string
+		wantLine string
+	}{
+		{"/bin/zsh", "env", "export ORQ_API_KEY=test-token-value"},
+		{"/bin/bash", "env", "export ORQ_API_KEY=test-token-value"},
+		{"/opt/homebrew/bin/fish", "env.fish", "set -gx ORQ_API_KEY test-token-value"},
+		{"/bin/sh", "env", "export ORQ_API_KEY=test-token-value"},
+		{"/usr/bin/some-future-shell", "env", "export ORQ_API_KEY=test-token-value"},
+		{"", "env", "export ORQ_API_KEY=test-token-value"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.shell, func(t *testing.T) {
+			dir := t.TempDir()
+			viper.Set("config-directory", dir)
+			t.Cleanup(func() { viper.Set("config-directory", "") })
+			t.Setenv("SHELL", tc.shell)
+
+			path, err := writeShellEnvFile("test-token-value")
+			if err != nil {
+				t.Fatalf("writeShellEnvFile: %v", err)
+			}
+			if got := filepath.Base(path); got != tc.wantFile {
+				t.Errorf("file = %q, want %q", got, tc.wantFile)
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(body), tc.wantLine) {
+				t.Errorf("env file lacks %q:\n%s", tc.wantLine, body)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode := info.Mode().Perm(); mode != 0o600 {
+				t.Errorf("mode = %o, want 600", mode)
+			}
+		})
+	}
+}
+
+// An unrecognised shell must still get a runnable command; only the profile
+// file is unknown. Printing an empty line would leave the user with nothing.
+func TestDetectShellAlwaysGivesACommand(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/some-future-shell")
+	sh := detectShell("/tmp/orqcfg")
+	if sh.Profile != "" {
+		t.Errorf("Profile = %q, want empty for an unknown shell", sh.Profile)
+	}
+	if sh.Line == "" {
+		t.Error("Line is empty; the user would be told to run nothing")
 	}
 }
