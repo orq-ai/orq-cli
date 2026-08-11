@@ -9,11 +9,39 @@ import (
 
 	survey "github.com/AlecAivazis/survey/v2"
 	isatty "github.com/mattn/go-isatty"
+	"github.com/spf13/viper"
 )
 
+// promptStdio routes survey prompts to stderr. A prompt is interaction, not
+// output: survey defaults to os.Stdout, so `orq ... --json > out.json` at a
+// terminal would write the question into the JSON payload. Read from stdin,
+// write the prompt and the typed echo to stderr, leaving stdout for the result.
+func promptStdio() survey.AskOpt {
+	return survey.WithStdio(os.Stdin, os.Stderr, os.Stderr)
+}
+
+// hasInteractiveTTY gates every prompt in the CLI. --no-input/ORQ_NO_INPUT
+// forces the non-interactive path even on a real TTY, so scripts can rely on
+// "fail instead of hang" regardless of how they are invoked.
 func hasInteractiveTTY() bool {
+	if viper.GetBool("no-input") {
+		return false
+	}
 	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
 }
+
+// explicitAPIKey records whether the USER configured an API key (env var or
+// credentials profile), snapshotted by the custom package's PreRun BEFORE it
+// injects the session token into ORQ_API_KEY. Reading the env after that
+// injection always finds a key, which made every `workspace use` warn about a
+// shadow that did not exist. A single snapshot also removes the duplicated
+// apiKeyConfigured logic this package used to carry (import-cycle workaround)
+// that let the two copies drift.
+var explicitAPIKey bool
+
+// SetExplicitAPIKey is called once per invocation from custom's PreRun, before
+// the session-token injection.
+func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
 
 func selectWorkspace(workspaces []map[string]any, message string) (string, error) {
 	if len(workspaces) == 0 {
@@ -37,7 +65,7 @@ func selectWorkspace(workspaces []map[string]any, message string) (string, error
 	if err := survey.AskOne(&survey.Select{
 		Message: message,
 		Options: options,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return "", err
 	}
 	for i, opt := range options {

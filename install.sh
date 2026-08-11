@@ -94,7 +94,7 @@ echo "Installing orq ${VERSION} (${os}-${arch}) → ${INSTALL_DIR}/orq"
 
 tmp_file="$(mktemp -t orq-cli.XXXXXX)"
 cleanup() {
-  rm -f "$tmp_file"
+  rm -f "$tmp_file" "$tmp_file.sha256"
 }
 trap cleanup EXIT INT TERM
 
@@ -108,6 +108,61 @@ fi
 if [ ! -s "$tmp_file" ]; then
   err "downloaded file is empty"
   exit 1
+fi
+
+# --- Verify checksum -------------------------------------------------------
+
+# Releases publish a .sha256 next to each binary. This is an integrity check
+# against corruption or a truncated download - the checksum comes from the
+# same host as the binary, so it is not a defense against a compromised
+# release host. Only a genuine 404 (older releases predate the checksum
+# assets) downgrades to a warning; any other fetch failure - timeout, proxy,
+# 5xx, DNS - is fatal, because failing open would skip verification exactly
+# when the network is least trustworthy.
+checksum_url="${download_url}.sha256"
+checksum_file="$tmp_file.sha256"
+# curl's -w writes the status (000 on a connection failure) even when it exits
+# non-zero, so `|| true` just stops that non-zero from aborting the script. A
+# second `|| echo 000` would append and read as HTTP 000000.
+checksum_status="$(curl -sSL -o "$checksum_file" -w '%{http_code}' "$checksum_url" || true)"
+checksum_status="${checksum_status:-000}"
+expected=""
+case "$checksum_status" in
+  200)
+    expected="$(awk '{print $1}' <"$checksum_file")"
+    # A 200 with an empty or truncated body is NOT "no checksum published" — the
+    # asset exists but we could not read it, so verification would be skipped
+    # exactly when the download is suspect. Treat it as fatal, not a downgrade.
+    if [ -z "$expected" ]; then
+      err "checksum fetch returned HTTP 200 but an empty body ($checksum_url); refusing to install unverified"
+      exit 1
+    fi
+    ;;
+  404) ;; # no checksum published for this release
+  *)
+    err "failed to fetch checksum ($checksum_url returned HTTP $checksum_status)"
+    exit 1
+    ;;
+esac
+if [ -n "$expected" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$tmp_file" | awk '{print $1}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    actual="$(shasum -a 256 "$tmp_file" | awk '{print $1}')"
+  else
+    err "cannot verify checksum: neither sha256sum nor shasum is available"
+    exit 1
+  fi
+  if [ "$actual" != "$expected" ]; then
+    err "checksum mismatch for $asset"
+    err "expected: $expected"
+    err "actual:   $actual"
+    err "refusing to install a binary that does not match its published checksum"
+    exit 1
+  fi
+  echo "Checksum verified (sha256)"
+else
+  err "warning: no checksum published for ${VERSION}; skipping verification"
 fi
 
 chmod +x "$tmp_file"

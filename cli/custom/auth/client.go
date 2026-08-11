@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,11 +12,17 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
 )
 
 type Client struct {
 	URLs       URLs
 	HTTPClient *http.Client
+	// ctx cancels in-flight requests. Set via WithContext(cmd.Context()) so a
+	// Ctrl+C during a slow call (device-login start, profile fetch) returns
+	// immediately instead of hanging until the 30s HTTP timeout.
+	ctx context.Context
 }
 
 func NewClient(apiBase string) *Client {
@@ -23,6 +30,20 @@ func NewClient(apiBase string) *Client {
 		URLs:       ResolveURLs(apiBase),
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// WithContext binds a cancellation context to every request this client makes.
+// Returns the client for chaining.
+func (c *Client) WithContext(ctx context.Context) *Client {
+	c.ctx = ctx
+	return c
+}
+
+func (c *Client) reqContext() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 // ============================================================================
@@ -68,9 +89,9 @@ type devicePollResult struct {
 	Interval int
 }
 
-func (c *Client) PollDeviceLogin(deviceCode string, interval int) (*devicePollResult, error) {
+func (c *Client) PollDeviceLogin(ctx context.Context, deviceCode string, interval int) (*devicePollResult, error) {
 	body, _ := json.Marshal(map[string]string{"device_code": deviceCode})
-	req, err := http.NewRequest(http.MethodPost, c.URLs.AuthBaseURL+"/cli/device/token", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URLs.AuthBaseURL+"/cli/device/token", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -114,11 +135,14 @@ func (c *Client) PollDeviceLogin(deviceCode string, interval int) (*devicePollRe
 	}
 }
 
-func (c *Client) AwaitDeviceApproval(deviceCode string, expiresIn, initialInterval int) (*ApprovedDeviceLogin, error) {
+// AwaitDeviceApproval polls until the browser approves the device login. It
+// honors ctx between polls and inside the HTTP request, so Ctrl+C interrupts
+// the wait immediately instead of only once the device code expires.
+func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, expiresIn, initialInterval int) (*ApprovedDeviceLogin, error) {
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	interval := initialInterval
 	for time.Now().Before(deadline) {
-		result, err := c.PollDeviceLogin(deviceCode, interval)
+		result, err := c.PollDeviceLogin(ctx, deviceCode, interval)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +150,11 @@ func (c *Client) AwaitDeviceApproval(deviceCode string, expiresIn, initialInterv
 			return result.Approved, nil
 		}
 		interval = result.Interval
-		time.Sleep(time.Duration(interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
 	}
 	return nil, errors.New("timed out waiting for browser approval")
 }
@@ -184,7 +212,7 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 
 func (c *Client) Logout(refreshToken string) error {
 	body, _ := json.Marshal(map[string]string{"refresh_token": refreshToken})
-	req, err := http.NewRequest(http.MethodDelete, c.URLs.AuthBaseURL+"/refresh-token", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(c.reqContext(), http.MethodDelete, c.URLs.AuthBaseURL+"/refresh-token", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -349,6 +377,62 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 	return session, nil
 }
 
+// WorkspaceToken returns an access token for the given workspace WITHOUT
+// changing the stored session's active workspace, so a per-invocation
+// `--workspace`/`ORQ_WORKSPACE` override cannot flip another invocation's
+// active-workspace state. The fetched token is cached by merging ONLY the new
+// WorkspaceTokens entry onto the current on-disk session (re-read immediately
+// before the write), never by saving the caller's start-of-process snapshot —
+// so a concurrent `workspace use` that changed the active workspace between the
+// caller's read and this cache write is not silently reverted. The write itself
+// is atomic (temp file + rename), so no reader ever sees a torn file. Two
+// concurrent token exchanges for different workspaces both survive; two for the
+// SAME workspace last-writer-wins on that one entry, costing at most one extra
+// exchange.
+func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, error) {
+	if tok, ok := session.WorkspaceTokens[workspaceKey]; ok && !isExpired(tok.ExpiresAt, 60) {
+		return tok.Token, nil
+	}
+	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
+	if err != nil {
+		return "", err
+	}
+	// Keep the in-memory session usable for this invocation regardless of the
+	// cache outcome.
+	if session.WorkspaceTokens == nil {
+		session.WorkspaceTokens = map[string]StoredAccessToken{}
+	}
+	session.WorkspaceTokens[workspaceKey] = tok
+	if err := mergeWorkspaceToken(workspaceKey, tok); err != nil {
+		// Not fatal - the token works for this invocation - but a silent drop
+		// (e.g. a read-only session dir) would re-exchange on every single call
+		// with no explanation. Route through bartolo's writer so --no-color and
+		// the ANSI-stripping swap still apply.
+		fmt.Fprintf(bartolocli.Stderr, "warning: could not cache the workspace token (%v); it will be re-exchanged next invocation\n", err)
+	}
+	return tok.Token, nil
+}
+
+// mergeWorkspaceToken persists a single workspace token by re-reading the
+// on-disk session and writing back only the added entry, so a concurrent writer
+// that changed the active workspace (or another token) is not clobbered. A
+// session that vanished between read and now (e.g. a concurrent logout) is left
+// alone rather than recreated.
+func mergeWorkspaceToken(workspaceKey string, tok StoredAccessToken) error {
+	current, err := ReadSession()
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return nil
+	}
+	if current.WorkspaceTokens == nil {
+		current.WorkspaceTokens = map[string]StoredAccessToken{}
+	}
+	current.WorkspaceTokens[workspaceKey] = tok
+	return SaveSession(current)
+}
+
 func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 	session, err := ReadSession()
 	if err != nil {
@@ -423,12 +507,12 @@ func (c *Client) ClearLocalSession() error {
 	return ClearSession()
 }
 
-func (c *Client) Login(workspaceKey, clientName string) (*Session, error) {
+func (c *Client) Login(ctx context.Context, workspaceKey, clientName string) (*Session, error) {
 	start, err := c.StartDeviceLogin(clientName)
 	if err != nil {
 		return nil, err
 	}
-	approved, err := c.AwaitDeviceApproval(start.DeviceCode, start.ExpiresIn, start.Interval)
+	approved, err := c.AwaitDeviceApproval(ctx, start.DeviceCode, start.ExpiresIn, start.Interval)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +532,7 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 		}
 		reqBody = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(method, url, reqBody)
+	req, err := http.NewRequestWithContext(c.reqContext(), method, url, reqBody)
 	if err != nil {
 		return err
 	}

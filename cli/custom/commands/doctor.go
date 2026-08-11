@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"time"
@@ -37,10 +38,14 @@ type doctorReport struct {
 
 func NewDoctorCommand() *cobra.Command {
 	var apiBase string
+	var bugReport bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect config, auth state, and endpoint reachability",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if bugReport {
+				return emitBugReport(cmd)
+			}
 			inspect := auth.InspectSession()
 
 			apiBaseSource := "default"
@@ -75,14 +80,14 @@ func NewDoctorCommand() *cobra.Command {
 			}
 
 			checks := buildSessionChecks(inspect)
-			checks = append(checks, probeURL("api_base_url", client.URLs.APIBaseURL, ""))
-			checks = append(checks, probeURL("auth_base_url", client.URLs.AuthBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
 			profileBearer := ""
 			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
 				profileBearer = inspect.Session.BootstrapToken.Token
 			}
-			checks = append(checks, probeURL("profile_base_url", client.URLs.ProfileBaseURL, profileBearer))
+			checks = append(checks, probeURL(cmd.Context(), "profile_base_url", client.URLs.ProfileBaseURL, profileBearer))
 
 			authStatus := string(inspect.Status)
 			authSource := "none"
@@ -139,11 +144,82 @@ func NewDoctorCommand() *cobra.Command {
 				Auth:   authMap,
 				Checks: checks,
 			}
+			// A person at a terminal gets the scannable colored checklist; the
+			// full structured report is verbose diagnostic data meant for
+			// machines and for `--json`/`-o`. Scripts (non-TTY) and an explicit
+			// format request always get the structured report.
+			if wantsHumanView(cmd) {
+				printDoctorSummary(authStatus, userEmail, checks)
+				return nil
+			}
 			return emit(report)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
+	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
 	return cmd
+}
+
+// emitBugReport prints a GitHub new-issue URL pre-filled with the environment
+// details maintainers always have to ask for. Only non-sensitive facts go in:
+// version, platform, profile name — never tokens, emails, or URLs from the
+// session file.
+func emitBugReport(cmd *cobra.Command) error {
+	body := fmt.Sprintf(
+		"### Environment\n\n"+
+			"- orq version: %s\n"+
+			"- platform: %s/%s\n"+
+			"- go runtime: %s\n"+
+			"- profile: %s\n\n"+
+			"### What happened\n\n<!-- steps to reproduce, actual output -->\n\n"+
+			"### What you expected\n",
+		cmd.Root().Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
+	)
+	// Leave the title empty so GitHub shows its placeholder and the user writes
+	// a real one; a literal "bug: " prefill just becomes the issue title verbatim.
+	issueURL := "https://github.com/orq-ai/orq-cli/issues/new?body=" + url.QueryEscape(body)
+	if wantsHumanView(cmd) {
+		// The flag help promises "a pre-filled GitHub issue URL"; a person wants
+		// the URL to open, not a structured object to parse.
+		out := bartolocli.Stdout
+		fmt.Fprintln(out, "Open this URL to file a pre-filled bug report (review the body before submitting):")
+		fmt.Fprintln(out, issueURL)
+		return nil
+	}
+	return emit(map[string]any{
+		"report_url": issueURL,
+		"note":       "Open the URL to file a pre-filled bug report. Review the body before submitting.",
+	})
+}
+
+// printDoctorSummary is the scannable, colored checklist a person sees at a
+// terminal. It is the primary output in that mode (the verbose structured
+// report is reserved for scripts and --json/-o), so it writes to stdout.
+func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
+	out := bartolocli.Stdout
+	authLine := authStatus
+	if authStatus == "authenticated" && userEmail != "" {
+		authLine = "authenticated as " + userEmail
+	}
+	heading("orq doctor")
+	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
+	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", 16)), paint(ansiDim, "RESULT"))
+	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", 16), authLine)
+	for _, c := range checks {
+		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), pad(c.ID, 16), c.Message)
+	}
+	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
+}
+
+func authStatusToCheck(status string) string {
+	switch status {
+	case "authenticated":
+		return "pass"
+	case "missing":
+		return "warn"
+	default:
+		return "fail"
+	}
 }
 
 func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
@@ -199,8 +275,13 @@ func isTokenExpired(expiresAt string) bool {
 	return true
 }
 
-func probeURL(id, url, bearer string) doctorCheck {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// probeURL checks reachability with a 5s budget, parented on the command
+// context so Ctrl+C cancels an in-flight probe instead of waiting it out.
+func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -229,10 +310,20 @@ func probeURL(id, url, bearer string) doctorCheck {
 		}
 	}
 	defer res.Body.Close()
+	// A 5xx means the endpoint is reachable but unhealthy; a green check there
+	// reads as "all good" when the server is failing. 4xx (e.g. 401/403 without
+	// credentials) is the expected reachable-but-unauthenticated answer for
+	// these probes, so it stays a pass. Only 5xx degrades.
+	status := "pass"
+	message := fmt.Sprintf("Reachable (HTTP %d)", res.StatusCode)
+	if res.StatusCode >= 500 {
+		status = "fail"
+		message = fmt.Sprintf("Reachable but returned a server error (HTTP %d)", res.StatusCode)
+	}
 	return doctorCheck{
 		ID:      id,
-		Status:  "pass",
-		Message: fmt.Sprintf("Reachable (HTTP %d)", res.StatusCode),
+		Status:  status,
+		Message: message,
 		Details: map[string]any{"url": url, "http_status": res.StatusCode},
 	}
 }

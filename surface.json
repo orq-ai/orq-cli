@@ -15,6 +15,14 @@
           "type": "bool"
         },
         {
+          "name": "no-color",
+          "type": "bool"
+        },
+        {
+          "name": "no-input",
+          "type": "bool"
+        },
+        {
           "name": "output-format",
           "shorthand": "o",
           "type": "string"
@@ -34,6 +42,10 @@
         {
           "name": "verbose",
           "type": "bool"
+        },
+        {
+          "name": "workspace",
+          "type": "string"
         }
       ]
     },
@@ -1304,6 +1316,14 @@
         {
           "name": "api-base-url",
           "type": "string"
+        },
+        {
+          "name": "force",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "type": "bool"
         }
       ]
     },
@@ -2320,6 +2340,10 @@
         {
           "name": "api-base-url",
           "type": "string"
+        },
+        {
+          "name": "report",
+          "type": "bool"
         }
       ]
     },
@@ -4169,6 +4193,14 @@
         {
           "name": "api-base-url",
           "type": "string"
+        },
+        {
+          "name": "force",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "type": "bool"
         }
       ]
     },
@@ -4452,6 +4484,17 @@
         },
         {
           "name": "to",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq man-pages",
+      "use": "man-pages",
+      "hidden": true,
+      "flags": [
+        {
+          "name": "dir",
           "type": "string"
         }
       ]

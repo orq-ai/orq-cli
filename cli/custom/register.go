@@ -1,12 +1,15 @@
 package custom
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"strings"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
 
+	colorable "github.com/mattn/go-colorable"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,6 +19,33 @@ import (
 // `Authorization` bearer flow (see apikey.InitBearer in the generated client).
 var apiKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
 
+// helpFooter is appended to the root help output (clig.dev: help should say
+// where the docs live and where to report problems).
+const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-ai/orq-cli/issues"
+
+// profileExemptCommands are commands that must work with a profile that has no
+// session yet (creating one, or diagnosing why it is missing), so the
+// unknown-profile guard skips them.
+var profileExemptCommands = map[string]bool{
+	"login":         true,
+	"logout":        true,
+	"setup":         true,
+	"add-profile":   true,
+	"list-profiles": true, // listing profiles is how you diagnose an unknown one
+	"doctor":        true,
+	"help":          true,
+	"completion":    true,
+	"man-pages":     true,
+}
+
+// interactiveWizardCommands are bartolo-owned commands whose prompts run
+// through bartolo's own TTY check, which knows nothing about --no-input.
+// Refusing them up front keeps the "--no-input never prompts" promise honest.
+var interactiveWizardCommands = map[string]bool{
+	"setup":       true,
+	"add-profile": true,
+}
+
 // Register wires custom commands and session-aware auth onto the provided root
 // command. Must be called after generated.Register so that the
 // bartolo `auth` parent command exists for our subcommands to attach onto.
@@ -23,8 +53,31 @@ func Register(root *cobra.Command) {
 	if root == nil {
 		root = bartolocli.Root
 	}
+	// Bartolo routes everything to stdout; errors belong on stderr so
+	// `orq ... | jq` never gets Go error text piped into it (clig.dev).
+	root.SetErr(bartolocli.Stderr)
+	// On error, print the error and point at --help instead of dumping the
+	// full usage block after every runtime failure.
+	root.SilenceUsage = true
+	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
+	appendHelpFooter(root)
+}
+
+func registerGlobalFlags() {
+	// AddGlobalFlag binds through viper, and bartolo's env replacer maps
+	// `-` to `_`, so these also honor ORQ_NO_INPUT / ORQ_NO_COLOR / ORQ_WORKSPACE.
+	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
+	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
+	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+}
+
+func appendHelpFooter(root *cobra.Command) {
+	// Extend the help TEMPLATE, not root.Long: Long renders above `Usage:`,
+	// which turns the footer into a header. clig.dev wants Docs/Issues as a
+	// trailer after the flag list.
+	root.SetHelpTemplate(root.HelpTemplate() + "\n" + helpFooter + "\n")
 }
 
 // installSessionPreRun runs once per command invocation, after cobra parses
@@ -48,6 +101,28 @@ func installSessionPreRun() {
 				return err
 			}
 		}
+		applyNoColor()
+		// Snapshot whether the USER configured an API key before this PreRun
+		// injects the session token into ORQ_API_KEY below - commands that
+		// read the env afterwards would see our own injection and cry wolf
+		// on every invocation.
+		commands.SetExplicitAPIKey(apiKeyConfigured())
+		if viper.GetBool("no-input") && interactiveWizardCommands[cmd.Name()] {
+			return fmt.Errorf(
+				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
+					"use `orq auth login` or set ORQ_API_KEY instead",
+				cmd.Name(),
+			)
+		}
+		if err := rejectUnknownProfile(cmd); err != nil {
+			return err
+		}
+		override := strings.TrimSpace(viper.GetString("workspace"))
+		// Warn about a shadowed --workspace before anything else, so the no-op
+		// is surfaced even when there is no session at all (API-key-only use).
+		if override != "" && apiKeyConfigured() {
+			commands.Warn("--workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
+		}
 		session, err := auth.ReadSession()
 		if err != nil || session == nil {
 			return nil
@@ -55,13 +130,74 @@ func installSessionPreRun() {
 		if viper.GetString("server") == "" && session.APIBaseURL != "" {
 			viper.Set("server", session.APIBaseURL)
 		}
-		if !apiKeyConfigured() {
-			if token := activeWorkspaceToken(); token != "" {
-				os.Setenv("ORQ_API_KEY", token)
+		if apiKeyConfigured() {
+			return nil
+		}
+		if override != "" {
+			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
+			token, err := client.WorkspaceToken(session, override)
+			if err != nil {
+				return fmt.Errorf("workspace %q: %w", override, err)
 			}
+			os.Setenv("ORQ_API_KEY", token)
+			return nil
+		}
+		if token := activeWorkspaceToken(cmd.Context()); token != "" {
+			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
 	}
+}
+
+// applyNoColor is the orq-cli-side stopgap for --no-color and the NO_COLOR
+// convention (https://no-color.org). Bartolo decides color support in Init(),
+// before flags are parsed, so a flag cannot influence that decision upstream;
+// here we swap the writers for ANSI-stripping ones and rebuild the formatter
+// without a TTY. The root-cause fix (honoring NO_COLOR/TERM in bartolo's
+// color gate) is tracked in the sibling bartolo ticket.
+func applyNoColor() {
+	if !viper.GetBool("no-color") && os.Getenv("NO_COLOR") == "" {
+		return
+	}
+	bartolocli.Stdout = colorable.NewNonColorable(os.Stdout)
+	bartolocli.Stderr = colorable.NewNonColorable(os.Stderr)
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+}
+
+// rejectUnknownProfile errors when the user explicitly selected a profile that
+// has neither a session file nor a credentials entry. Without this the CLI
+// silently falls through to ORQ_API_KEY and returns real data from the wrong
+// context — the worst kind of success. Commands that create or diagnose
+// profiles are exempt.
+func rejectUnknownProfile(cmd *cobra.Command) error {
+	if profileExemptCommands[cmd.Name()] {
+		return nil
+	}
+	explicit := os.Getenv("ORQ_PROFILE") != ""
+	// Only the ROOT persistent flag selects a credentials profile. A generated
+	// command may define a LOCAL --profile request field (e.g. `models
+	// create-autorouter --profile balanced`) that shadows the global flag in
+	// cmd.Flags(); that is request data, not a credentials selection.
+	if f := cmd.Root().PersistentFlags().Lookup("profile"); f != nil && f.Changed {
+		explicit = true
+	}
+	if !explicit {
+		return nil
+	}
+	if auth.InspectSession().Status != auth.StatusMissing {
+		return nil
+	}
+	// An explicit API key (env var or credentials entry) is a complete,
+	// working credential config - the standard CI shape is ORQ_API_KEY with
+	// no session file, and blocking it would reject legitimate calls.
+	if apiKeyConfigured() {
+		return nil
+	}
+	profile := auth.ActiveProfile()
+	return fmt.Errorf(
+		"unknown profile %q: no session at %s and no credentials entry; run `orq auth login --profile %s` first",
+		profile, auth.SessionFilePath(), profile,
+	)
 }
 
 // apiKeyConfigured reports whether bartolo would already find an API key from
@@ -76,12 +212,12 @@ func apiKeyConfigured() bool {
 	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
-func activeWorkspaceToken() string {
+func activeWorkspaceToken(ctx context.Context) string {
 	session, err := auth.ReadSession()
 	if err != nil || session == nil {
 		return ""
 	}
-	client := auth.NewClient(session.APIBaseURL)
+	client := auth.NewClient(session.APIBaseURL).WithContext(ctx)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return ""
@@ -94,6 +230,7 @@ func registerCommands(root *cobra.Command) {
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
 	root.AddCommand(commands.NewWorkspaceCommand())
+	root.AddCommand(commands.NewManPagesCommand())
 }
 
 func replaceDoctor(root *cobra.Command) {

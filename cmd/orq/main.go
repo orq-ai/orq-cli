@@ -1,9 +1,10 @@
 package main
 
 import (
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	custom "orq/cli/custom"
 	generated "orq/cli/generated"
+
+	"github.com/spf13/cobra"
 )
 
 // version is overwritten at release build time via
@@ -11,16 +12,5 @@ import (
 var version = "dev"
 
 func main() {
-	bartolocli.Init(&bartolocli.Config{
-		AppName:             "orq",
-		EnvPrefix:           "ORQ",
-		APIKeyEnvVar:        "ORQ_API_KEY",
-		DefaultOutputFormat: "toon",
-		Version:             version,
-	})
-
-	generated.Register(bartolocli.Root)
-	custom.Register(bartolocli.Root)
-
-	bartolocli.Root.Execute()
+	custom.Run(version, func(root *cobra.Command) { generated.Register(root) })
 }

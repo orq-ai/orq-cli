@@ -1,0 +1,63 @@
+package custom
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
+)
+
+// Run is the shared entrypoint for both the stable (cmd/orq) and RC
+// (packages/orq-rc/cmd/orq) mains, which differ only in which generated command
+// tree they register. It owns the signal handling and the exit-code contract so
+// the two modules cannot drift apart again:
+//
+//   - SIGINT/SIGTERM cancel the command context so streaming/long-running
+//     commands clean up; a second signal restores default handling and kills
+//     the process immediately instead of waiting on a stuck cleanup.
+//   - Exit codes: 0 ok, 1 on a command error (cobra already printed it), 130 on
+//     SIGINT, 143 on SIGTERM (the 128+N convention), so scripts and supervisors
+//     can tell a failure and an interrupt apart.
+//
+// registerGenerated attaches the module's own generated commands onto the root
+// before the custom commands are wired on top.
+func Run(version string, registerGenerated func(root *cobra.Command)) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	received := make(chan os.Signal, 1)
+	go func() {
+		s := <-sigCh
+		received <- s
+		signal.Stop(sigCh)
+		cancel()
+	}()
+
+	bartolocli.Init(&bartolocli.Config{
+		AppName:             "orq",
+		EnvPrefix:           "ORQ",
+		APIKeyEnvVar:        "ORQ_API_KEY",
+		DefaultOutputFormat: "toon",
+		Version:             version,
+	})
+
+	registerGenerated(bartolocli.Root)
+	Register(bartolocli.Root)
+
+	err := bartolocli.Root.ExecuteContext(ctx)
+	select {
+	case s := <-received:
+		if s == syscall.SIGTERM {
+			os.Exit(143) // 128 + SIGTERM(15)
+		}
+		os.Exit(130) // 128 + SIGINT(2)
+	default:
+	}
+	if err != nil {
+		os.Exit(1)
+	}
+}

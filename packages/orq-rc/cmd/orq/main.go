@@ -1,26 +1,19 @@
 package main
 
 import (
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	generated "orq-rc/cli/generated"
 	custom "orq/cli/custom"
+
+	"github.com/spf13/cobra"
 )
 
 // version is overwritten at release build time via
 // `-ldflags "-X main.version=<semver>"`. Local dev builds report "dev".
 var version = "dev"
 
+// main defers to custom.Run (shared with the stable cmd/orq main) so the two
+// modules keep identical signal handling and exit-code behavior; only the
+// generated command tree differs.
 func main() {
-	bartolocli.Init(&bartolocli.Config{
-		AppName:             "orq",
-		EnvPrefix:           "ORQ",
-		APIKeyEnvVar:        "ORQ_API_KEY",
-		DefaultOutputFormat: "toon",
-		Version:             version,
-	})
-
-	generated.Register(bartolocli.Root)
-	custom.Register(bartolocli.Root)
-
-	bartolocli.Root.Execute()
+	custom.Run(version, func(root *cobra.Command) { generated.Register(root) })
 }

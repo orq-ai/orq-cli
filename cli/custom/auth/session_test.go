@@ -1,0 +1,117 @@
+package auth
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// validSession returns a minimal session that passes validateSession, with the
+// active workspace set to activeKey.
+func validSession(activeKey string) *Session {
+	return &Session{
+		Version:            1,
+		APIBaseURL:         "https://api.example",
+		V1BaseURL:          "https://api.example/v1",
+		AuthBaseURL:        "https://auth.example",
+		ProfileBaseURL:     "https://profile.example",
+		RefreshToken:       "refresh-abc",
+		BootstrapToken:     StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		ActiveWorkspaceKey: &activeKey,
+		WorkspaceTokens:    map[string]StoredAccessToken{},
+	}
+}
+
+// isolateHome points the session dir at a temp HOME so tests never touch the
+// real ~/.orq. os.UserHomeDir (which sessionsDir uses) honors $HOME on unix.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+}
+
+func TestSaveSessionRoundTripPermsAndNoTemp(t *testing.T) {
+	isolateHome(t)
+	in := validSession("prod")
+	in.WorkspaceTokens["prod"] = StoredAccessToken{Token: "tok-prod", ExpiresAt: "2099-01-01T00:00:00Z"}
+
+	if err := SaveSession(in); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	got, err := ReadSession()
+	if err != nil {
+		t.Fatalf("ReadSession: %v", err)
+	}
+	if got == nil || got.RefreshToken != in.RefreshToken {
+		t.Fatalf("round-trip lost the session (got %+v)", got)
+	}
+	if got.ActiveWorkspaceKey == nil || *got.ActiveWorkspaceKey != "prod" {
+		t.Errorf("active workspace = %v, want prod", got.ActiveWorkspaceKey)
+	}
+	if got.WorkspaceTokens["prod"].Token != "tok-prod" {
+		t.Errorf("workspace token lost in round-trip: %+v", got.WorkspaceTokens)
+	}
+
+	// The atomic write must leave 0600 and no leftover temp file.
+	info, err := os.Stat(SessionFilePath())
+	if err != nil {
+		t.Fatalf("stat session: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("session file perm = %o, want 600", perm)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(SessionFilePath()))
+	for _, e := range entries {
+		if len(e.Name()) >= 8 && e.Name()[:8] == ".session" {
+			t.Errorf("leftover temp file after atomic write: %s", e.Name())
+		}
+	}
+}
+
+func TestMergeWorkspaceTokenPreservesConcurrentActiveChange(t *testing.T) {
+	isolateHome(t)
+	// Seed the on-disk session with active = prod.
+	if err := SaveSession(validSession("prod")); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Simulate a concurrent `workspace use dev`: the on-disk session's active
+	// workspace changes to dev after our (hypothetical) caller read it as prod.
+	if err := SaveSession(validSession("dev")); err != nil {
+		t.Fatalf("concurrent write: %v", err)
+	}
+
+	// Now cache a token for a per-invocation --workspace=staging override. This
+	// must merge onto the CURRENT on-disk session, not overwrite it with a stale
+	// prod snapshot.
+	tok := StoredAccessToken{Token: "tok-staging", ExpiresAt: "2099-01-01T00:00:00Z"}
+	if err := mergeWorkspaceToken("staging", tok); err != nil {
+		t.Fatalf("mergeWorkspaceToken: %v", err)
+	}
+
+	got, err := ReadSession()
+	if err != nil || got == nil {
+		t.Fatalf("read after merge: %v", err)
+	}
+	// The concurrent active-workspace change must survive.
+	if got.ActiveWorkspaceKey == nil || *got.ActiveWorkspaceKey != "dev" {
+		t.Errorf("active workspace = %v, want dev (concurrent change clobbered)", got.ActiveWorkspaceKey)
+	}
+	// And the new token must be present.
+	if got.WorkspaceTokens["staging"].Token != "tok-staging" {
+		t.Errorf("staging token not merged: %+v", got.WorkspaceTokens)
+	}
+}
+
+func TestMergeWorkspaceTokenSkipsWhenSessionAbsent(t *testing.T) {
+	isolateHome(t)
+	// No session on disk: caching must be a no-op, not recreate a session a
+	// concurrent logout just deleted.
+	tok := StoredAccessToken{Token: "tok", ExpiresAt: "2099-01-01T00:00:00Z"}
+	if err := mergeWorkspaceToken("staging", tok); err != nil {
+		t.Fatalf("mergeWorkspaceToken on absent session: %v", err)
+	}
+	if _, err := os.Stat(SessionFilePath()); !os.IsNotExist(err) {
+		t.Errorf("session file was created for an absent session (err=%v)", err)
+	}
+}

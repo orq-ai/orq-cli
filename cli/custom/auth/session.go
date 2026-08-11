@@ -182,6 +182,11 @@ func ReadSession() (*Session, error) {
 	}
 }
 
+// SaveSession writes the session atomically: temp file in the same directory,
+// then rename. A concurrent reader can never observe a torn/interleaved file,
+// and two concurrent writers end with one intact winner (last writer wins on
+// the token cache, costing at most one extra token exchange) instead of
+// corrupted JSON from a shorter write racing a longer one.
 func SaveSession(s *Session) error {
 	if err := ensureSessionDir(); err != nil {
 		return err
@@ -190,10 +195,25 @@ func SaveSession(s *Session) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(SessionFilePath(), data, 0o600); err != nil {
+	path := SessionFilePath()
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".session-*.json")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(SessionFilePath(), 0o600)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) // no-op once the rename succeeds
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func ClearSession() error {
