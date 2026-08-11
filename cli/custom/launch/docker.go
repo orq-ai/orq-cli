@@ -171,8 +171,8 @@ func copyTempDirs(container string, dirs []TempDir) error {
 }
 
 // setupClaudeSandbox pre-accepts claude's onboarding + workspace-trust
-// prompts inside the throwaway container (pattern from the OpenRouter
-// reference launcher).
+// prompts inside the throwaway container, so a sandbox session does not open
+// on a dialog the user cannot meaningfully answer.
 // Deliberately NOT bypassPermissionsModeAccepted — auto-YOLO stays user opt-in.
 func setupClaudeSandbox(container string) error {
 	// Trust both working dirs: /workspace is the cwd under --mount-cwd, but
