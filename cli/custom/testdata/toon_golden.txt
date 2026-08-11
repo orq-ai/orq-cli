@@ -1,0 +1,14 @@
+empty[0]:
+object:
+  count: 42
+  empty: ""
+  enabled: true
+  id: "01ABC234DEF567GH"
+  key: my-deployment
+  missing: null
+  note: "has spaces, a comma, and a: colon"
+  weight: 0.75
+rows[2]{name,requests,status}:
+  alpha,120,live
+  beta,0,paused
+tags[3]: a,b,c

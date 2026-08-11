@@ -37,7 +37,7 @@ type Session struct {
 	AuthBaseURL        string                       `json:"authBaseUrl"`
 	ProfileBaseURL     string                       `json:"profileBaseUrl"`
 	User               *SessionUser                 `json:"user"`
-	Workspaces         []map[string]any     `json:"workspaces"`
+	Workspaces         []map[string]any             `json:"workspaces"`
 	ActiveWorkspaceKey *string                      `json:"activeWorkspaceKey"`
 	RefreshToken       string                       `json:"refreshToken"`
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`

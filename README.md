@@ -155,6 +155,18 @@ Persist a new default:
 orq default-format json
 ```
 
+### Stability: what scripts may depend on
+
+`--json` on stdout is the only stability-guaranteed machine contract; its
+shape follows the orq API response behind the command. TOON, the default
+terminal format, is presentation-only and may change rendering between
+releases. Exit codes are `0` success, `1` failure, `130`/`143` on
+SIGINT/SIGTERM, and errors go to stderr. The full contract, including how
+command/flag removals are announced, lives in
+[CHANGELOG.md](./CHANGELOG.md). The command surface itself is tracked in
+[`surface.json`](./surface.json), which CI keeps in lockstep with the code so
+surface changes are always a reviewed diff.
+
 ---
 
 ## Command reference
