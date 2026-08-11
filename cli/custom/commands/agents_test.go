@@ -338,3 +338,61 @@ func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 		t.Errorf("api_key written %d times, want 1", n)
 	}
 }
+
+// A config written by an older build carries an `${ORQ_API_KEY}` placeholder
+// kimi never interpolates, so it sends that string as the bearer and every
+// request comes back 401. Re-running setup must repair it, not skip it.
+func TestWriteKimiProviderTOMLReplacesStaleOrqTables(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	stale := `default_model = "kimi-k2.7-code-highspeed"
+
+[providers.orq]
+type = "openai"
+base_url = "https://api.orq.ai/v2/router"
+api_key = "${ORQ_API_KEY}"
+
+[providers.orq.env]
+ORQ_API_KEY = "ORQ_API_KEY"
+
+[models."kimi-k2.7-code-highspeed"]
+provider = "orq"
+model = "moonshotai/kimi-k2.7-code-highspeed"
+max_context_size = 262144
+
+[thinking]
+enabled = false
+`
+	if err := os.WriteFile(path, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	models := []auth.RouterModel{model("moonshotai", "kimi-k2.7-code-highspeed", 262144, true, true, "chat")}
+	if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-fresh-key", models); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(path)
+	got := string(data)
+	if strings.Contains(got, "${ORQ_API_KEY}") {
+		t.Errorf("placeholder key survived\n---\n%s", got)
+	}
+	if strings.Contains(got, "[providers.orq.env]") {
+		t.Errorf("dead env sub-table survived\n---\n%s", got)
+	}
+	if !strings.Contains(got, `api_key = "sk-fresh-key"`) {
+		t.Errorf("fresh key not written\n---\n%s", got)
+	}
+	// Duplicate tables make kimi reject the whole file.
+	if n := strings.Count(got, "[providers.orq]"); n != 1 {
+		t.Errorf("[providers.orq] appears %d times, want 1", n)
+	}
+	if n := strings.Count(got, `[models."kimi-k2.7-code-highspeed"]`); n != 1 {
+		t.Errorf("model table appears %d times, want 1", n)
+	}
+	// Everything we do not own must survive byte for byte.
+	for _, want := range []string{`default_model = "kimi-k2.7-code-highspeed"`, "[thinking]", "enabled = false"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lost unrelated config %q\n---\n%s", want, got)
+		}
+	}
+}

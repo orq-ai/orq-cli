@@ -339,35 +339,73 @@ func writeMCPCodexTOML(path, url string) error {
 }
 
 // writeKimiProviderTOML registers orq as an OpenAI-compatible provider and adds
-// the given models. Appended, never parsed, for the same reason as the Codex
-// config: unrelated TOML must survive untouched.
+// the given models. Only the tables this command owns are rewritten; unrelated
+// TOML survives untouched, for the same reason as the Codex config.
 //
-// The key is referenced through Kimi's `env` sub-table rather than written in
-// plaintext — Kimi does not read the environment on its own, but this mapping
-// tells it which variable to read.
+// The orq tables are regenerated on every run rather than skipped when present.
+// Setup mints a fresh key each time, and builds before v0.2 wrote an
+// `api_key = "${ORQ_API_KEY}"` placeholder that kimi never interpolates — a
+// skip-if-present leaves that dead credential in place forever, and the user
+// gets a 401 on their first prompt with no hint why.
 func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if strings.Contains(string(existing), "[providers."+providerName+"]") {
-		return nil
-	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
+	kept := stripOrqKimiTables(string(existing))
+	if kept = strings.TrimRight(kept, "\n"); kept != "" {
+		kept += "\n\n"
+	}
+	// The file carries a literal credential; a pre-existing copy may have been
+	// created with looser permissions, so chmod as well as write at 0600.
+	if err := os.WriteFile(path, []byte(kept+kimiProviderBlock(routerURL, apiKey, models)), 0o600); err != nil {
 		return err
 	}
-	defer f.Close()
-	// The file now carries a literal credential; a pre-existing copy may have
-	// been created with looser permissions.
-	if err := f.Chmod(0o600); err != nil {
-		return err
+	return os.Chmod(path, 0o600)
+}
+
+// stripOrqKimiTables removes the TOML tables this command owns so they can be
+// written from scratch. Dropping them is not optional: re-appending would give
+// the file duplicate tables, which kimi refuses to parse.
+//
+// ponytail: a `default_model` naming a removed orq model is left dangling — if
+// that model is gone from the catalogue the config is broken either way. Rewrite
+// default_model when its target disappears if that turns out to bite.
+func stripOrqKimiTables(toml string) string {
+	var out, table strings.Builder
+	header := ""
+	flush := func() {
+		if !orqOwnedKimiTable(header, table.String()) {
+			out.WriteString(table.String())
+		}
+		table.Reset()
 	}
-	_, err = f.WriteString("\n" + kimiProviderBlock(routerURL, apiKey, models))
-	return err
+	for _, line := range strings.SplitAfter(toml, "\n") {
+		if h := strings.TrimSpace(strings.TrimSuffix(line, "\n")); strings.HasPrefix(h, "[") {
+			flush()
+			header = h
+		}
+		table.WriteString(line)
+	}
+	flush()
+	return out.String()
+}
+
+// orqOwnedKimiTable reports whether a TOML table was written by this command:
+// the orq provider (including sub-tables such as the `env` map older builds
+// emitted), or a model routed through it.
+func orqOwnedKimiTable(header, body string) bool {
+	switch {
+	case header == "[providers."+providerName+"]",
+		strings.HasPrefix(header, "[providers."+providerName+"."):
+		return true
+	case strings.HasPrefix(header, "[models."):
+		return strings.Contains(body, `provider = "`+providerName+`"`)
+	}
+	return false
 }
 
 func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) string {
