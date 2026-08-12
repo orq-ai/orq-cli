@@ -329,7 +329,7 @@ docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
 | `ORQ_API_KEY` | API key for headless/CI auth |
 | `ORQ_PROFILE` | Default profile (same effect as `--profile`) |
 | `ORQ_SERVER` | Override generated-command base URL (same as `--server`) |
-| `ORQ_API_BASE_URL` | Override auth endpoint base URL (used by `auth login`, `whoami`, `workspace`) |
+| `ORQ_API_BASE_URL` | Override the orq host. Drives auth (`auth login`, `whoami`, `workspace`) **and** the URLs `orq setup` writes and `orq launch` injects — router, anthropic and MCP |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
@@ -353,6 +353,26 @@ The host is stored in the session and reused for every subsequent command on tha
 orq --profile acme prompts list            # talks to acme's backend
 orq --profile default prompts list         # talks to api.orq.ai
 ```
+
+That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway:
+
+| Derived from `--api-base-url` | Used by |
+|---|---|
+| `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
+| `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
+| `<host>/v2/mcp` | the orq MCP server registered in each agent |
+
+```sh
+orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme setup                   # writes acme's URLs into the agent's config
+orq --profile acme launch kimi             # model calls stay on acme's network
+```
+
+Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://api.orq.ai` is only the fallback when there is no session and no override.
+
+Without a session — CI, or an API key alone — set `ORQ_API_BASE_URL` instead, which resolves the same three URLs.
+
+If a deployment serves the AI gateway from a different hostname than the platform API, override just that one with `ORQ_GATEWAY_URL` (all agents) or `--base-url` (one command) — see [per-agent environment overrides](#per-agent-environment-overrides). Both take precedence over the derived value.
 
 ---
 
