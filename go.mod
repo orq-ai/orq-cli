@@ -7,6 +7,7 @@ require (
 	github.com/mattn/go-colorable v0.1.2
 	github.com/mattn/go-isatty v0.0.8
 	github.com/orq-ai/bartolo v0.4.5
+	github.com/pelletier/go-toml v1.2.0
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.11.0
 	github.com/spf13/cobra v1.10.2
@@ -33,7 +34,6 @@ require (
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/mitchellh/mapstructure v1.1.2 // indirect
 	github.com/olekukonko/tablewriter v0.0.0-20180912035003-be2c049b30cc // indirect
-	github.com/pelletier/go-toml v1.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/afero v1.1.2 // indirect

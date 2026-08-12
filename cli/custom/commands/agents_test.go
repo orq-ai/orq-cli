@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pelletier/go-toml"
+
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
@@ -612,4 +614,80 @@ func TestWriteKimiProviderTOMLIsIdempotentAcrossBothProviders(t *testing.T) {
 	if !strings.Contains(got, "[[hooks]]") {
 		t.Error("unrelated user config was dropped")
 	}
+}
+
+// mustParseKimiTOML fails the test unless the written config is valid TOML, and
+// returns the parsed document so assertions can check structure rather than
+// substrings.
+//
+// This exists because both kimi corruption bugs — duplicate model keys
+// (74c16e8) and duplicate provider blocks (e042f8f) — shipped with a fully
+// green suite. Every assertion was strings.Contains, which cannot see a
+// duplicate key: the text is present, the file is still undecodable, and kimi
+// responds by discarding every model rather than the clashing ones. Any new
+// assertion about this file should go through here.
+func mustParseKimiTOML(t *testing.T, config string) *toml.Tree {
+	t.Helper()
+	tree, err := toml.Load(config)
+	if err != nil {
+		t.Fatalf("kimi would refuse this config: %v\n---\n%s", err, config)
+	}
+	return tree
+}
+
+// The writer's output must be loadable by a TOML parser under the conditions
+// that have actually broken it: models whose ids collide across providers, both
+// API shapes present, and a re-run over a config we already wrote.
+func TestKimiConfigIsAlwaysValidTOML(t *testing.T) {
+	collide := []auth.RouterModel{
+		model("google", "gemini-2.5-flash", 1000000, true, true, "chat"),
+		model("google-ai", "gemini-2.5-flash", 1000000, true, true, "chat"),
+		model("azure", "gpt-4o", 128000, true, true, "chat"),
+		model("openai", "gpt-4o", 128000, true, true, "chat"),
+	}
+	collide[3].Metadata.SupportsResponses = true
+
+	t.Run("fresh write", func(t *testing.T) {
+		tree := mustParseKimiTOML(t, kimiProviderBlock("https://api.orq.ai/v3/router", "sk-k", collide))
+		models, _ := tree.Get("models").(*toml.Tree)
+		if models == nil || len(models.Keys()) != len(collide) {
+			t.Errorf("expected %d model tables, parsed %v", len(collide), models)
+		}
+	})
+
+	t.Run("re-run over our own output", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		for i := 0; i < 3; i++ {
+			if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
+				t.Fatalf("run %d: %v", i, err)
+			}
+			tree := mustParseKimiTOML(t, string(mustRead(t, path)))
+			models, _ := tree.Get("models").(*toml.Tree)
+			if models == nil || len(models.Keys()) != len(collide) {
+				t.Fatalf("run %d: expected %d models, got %v", i, len(collide), models)
+			}
+			providers, _ := tree.Get("providers").(*toml.Tree)
+			if providers == nil || len(providers.Keys()) != 2 {
+				t.Fatalf("run %d: expected 2 providers, got %v", i, providers)
+			}
+		}
+	})
+
+	t.Run("alongside config we do not own", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		theirs := "default_model = \"their-pick\"\n\n[[hooks]]\ncommand = \"echo hi\"\n\n[thinking]\nenabled = false\n"
+		if err := os.WriteFile(path, []byte(theirs), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
+			t.Fatal(err)
+		}
+		tree := mustParseKimiTOML(t, string(mustRead(t, path)))
+		if got := tree.Get("default_model"); got != "their-pick" {
+			t.Errorf("default_model = %v, want their-pick (theirs must survive)", got)
+		}
+		if tree.Get("thinking") == nil || tree.Get("hooks") == nil {
+			t.Error("unrelated user config was lost")
+		}
+	})
 }
