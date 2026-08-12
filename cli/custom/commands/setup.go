@@ -675,6 +675,18 @@ func warnLingeringAPIKeys() {
 	}
 }
 
+// configuredAPIKey returns the key this machine would authenticate with, env
+// first (bartolo's own precedence), then the stored profile. Callers must not
+// log it — doctor uses it to probe, never to print.
+func configuredAPIKey() string {
+	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".api_key"))
+}
+
 // envAPIKeySet reports whether an API key is present in the environment. Never
 // report which value — only that one is set.
 func envAPIKeySet() bool {
@@ -1173,6 +1185,11 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
+// provenModel is the first model that answered a probe, with how long it took.
+// The verify step reports these instead of paying for another completion.
+var provenModel string
+var provenTook time.Duration
+
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
 		return cachedCodingModels
@@ -1189,13 +1206,22 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 	}
 
 	// The catalogue advertises models that return 500 on use, so take the best
-	// candidate per family that actually answers. One tiny call each.
+	// candidate per family that actually answers. One tiny call each — these are
+	// real, billed completions against the user's own provider keys, so every
+	// one of them has to earn its place.
 	picked := []auth.RouterModel{}
 	skipped := 0
 	for _, group := range auth.CandidateCodingModels(all, preferredCodingModels) {
 		for _, candidate := range group {
-			if client.ProbeModel(state.bearer, candidate.Ref()) {
+			took, err := client.TimeModel(state.bearer, candidate.Ref())
+			if err == nil {
 				picked = append(picked, candidate)
+				// A successful probe IS the gateway verification: same model,
+				// same credential, seconds earlier. Keeping it means the verify
+				// step does not bill the user a second time for the same answer.
+				if provenModel == "" {
+					provenModel, provenTook = candidate.Ref(), took
+				}
 				break
 			}
 			skipped++
@@ -1288,6 +1314,13 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 	if len(models) == 0 {
 		rep.warn("gateway        no model answered — connect a provider, then re-run 'orq setup'")
 		return false
+	}
+	// Reuse the probe from model selection rather than repeating it. It already
+	// proved the exact thing this step reports — a real completion through the
+	// router on this credential — and repeating it billed the user twice.
+	if provenModel != "" {
+		rep.ok("gateway        %s answered in %dms via %s", provenModel, provenTook.Milliseconds(), client.RouterBaseURL())
+		return true
 	}
 	ref := models[0].Ref()
 	took, err := client.TimeModel(state.bearer, ref)

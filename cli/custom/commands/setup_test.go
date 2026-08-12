@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -601,5 +602,42 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 	if kimi.writeMCP == nil {
 		t.Fatal("kimi has no MCP writer, so --no-mcp would be a no-op")
+	}
+}
+
+// Setup makes real, billed completions. This pins how many: one probe per model
+// family, and none for verification — the verify step reuses a probe result.
+func TestSetupBillsOneCompletionPerFamily(t *testing.T) {
+	var completions int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			atomic.AddInt64(&completions, 1)
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `[
+		 {"provider":"anthropic","model_id":"claude-sonnet-4-6","model_type":"chat","enabled":true,"has_functions":true},
+		 {"provider":"anthropic","model_id":"claude-opus-4-8","model_type":"chat","enabled":true,"has_functions":true},
+		 {"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true},
+		 {"provider":"moonshotai","model_id":"kimi-k2.6","model_type":"chat","enabled":true,"has_functions":true}]`)
+	}))
+	defer srv.Close()
+
+	codingModelsFetched, cachedCodingModels, provenModel = false, nil, ""
+	client := auth.NewClient(srv.URL)
+	state := &authState{apiBase: srv.URL, bearer: "t"}
+	rep := newReporter(true)
+
+	codingModels(rep, client, state)
+	afterProbe := atomic.LoadInt64(&completions)
+	verifyGateway(rep, client, state)
+	total := atomic.LoadInt64(&completions)
+
+	t.Logf("completions: probing=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
+	if afterProbe != 4 {
+		t.Errorf("probing billed %d completions, want 4 (one per family)", afterProbe)
+	}
+	if total != afterProbe {
+		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)
 	}
 }
