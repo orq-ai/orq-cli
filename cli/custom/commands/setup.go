@@ -58,7 +58,13 @@ func NewSetupCommand() *cobra.Command {
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
 			`flagged with ` + "`--no-input`" + ` for CI.
 
-Supported agents: ` + strings.Join(agentIDs(), ", ") + `.`),
+Supported agents: ` + strings.Join(agentIDs(), ", ") + `.
+
+Credential order is ` + "`--api-key`" + ` → login session → ` + "`ORQ_API_KEY`" + `. Note this is
+deliberately not the order ` + "`orq launch`" + ` uses: launch prefers an explicit
+` + "`ORQ_API_KEY`" + ` over the session, because it configures one throwaway process. Setup
+writes persistent configuration, so the workspace you picked in ` + "`orq auth login`" + `
+wins over a key left exported in your shell.`),
 		// A failure here is a runtime problem, not a usage problem; dumping the
 		// flag list on top of the error just buries it.
 		SilenceUsage: true,
@@ -248,9 +254,18 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			rep.note("orq loads ./%s automatically — remove its ORQ_API_KEY line to sign in instead; unsetting the shell variable is not enough.", file)
 		} else {
 			rep.ok("api key from ORQ_API_KEY")
-			rep.note("credential order: ORQ_API_KEY (env) → login session. Unset it to sign in instead.")
+			rep.note("credential order: login session → ORQ_API_KEY (env). No session found, so the environment key is used.")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
+	}
+
+	if session != nil && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != "" {
+		// Deliberately the opposite of `orq launch`, which lets an explicit
+		// ORQ_API_KEY win. Setup persists what it resolves, and it is the
+		// command a user runs right after choosing a workspace in `orq auth
+		// login`; letting a stale exported key silently overwrite that choice
+		// wires the agent to the wrong workspace and leaves it that way.
+		rep.note("credential order: login session → ORQ_API_KEY (env). Using your login session; ORQ_API_KEY is ignored here (orq launch prefers it).")
 	}
 
 	if session == nil {
