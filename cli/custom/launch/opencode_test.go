@@ -7,13 +7,13 @@ import (
 )
 
 func TestToOpenCodeModel(t *testing.T) {
-	if ToOpenCodeModel("openai/gpt-5-mini") != "orq-openai/openai/gpt-5-mini" {
+	if ToOpenCodeModel(IsResponsesModel, "openai/gpt-5-mini") != "orq-openai/openai/gpt-5-mini" {
 		t.Fatal("openai should map to responses provider")
 	}
-	if ToOpenCodeModel("anthropic/claude-sonnet-4-6") != "orq/anthropic/claude-sonnet-4-6" {
+	if ToOpenCodeModel(IsResponsesModel, "anthropic/claude-sonnet-4-6") != "orq/anthropic/claude-sonnet-4-6" {
 		t.Fatal("non-openai should map to chat provider")
 	}
-	if ToOpenCodeModel("orq/anthropic/claude-sonnet-4-6") != "orq/anthropic/claude-sonnet-4-6" {
+	if ToOpenCodeModel(IsResponsesModel, "orq/anthropic/claude-sonnet-4-6") != "orq/anthropic/claude-sonnet-4-6" {
 		t.Fatal("already-prefixed id should normalize first")
 	}
 }
@@ -22,7 +22,7 @@ func TestOpenCodeConfigSplitsProviders(t *testing.T) {
 	content, err := BuildOpenCodeConfigContent(
 		"https://api.orq.ai/v3/router",
 		"openai/gpt-5-mini",
-		[]string{"openai/gpt-5-mini", "anthropic/claude-sonnet-4-6"},
+		[]string{"openai/gpt-5-mini", "anthropic/claude-sonnet-4-6"}, nil,
 		"",
 	)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestOpenCodeConfigOmitsEmptyProvider(t *testing.T) {
 	content, _ := BuildOpenCodeConfigContent(
 		"https://api.orq.ai/v3/router",
 		"anthropic/claude-sonnet-4-6",
-		[]string{"anthropic/claude-sonnet-4-6"},
+		[]string{"anthropic/claude-sonnet-4-6"}, nil,
 		"",
 	)
 	if strings.Contains(content, "orq-openai") {

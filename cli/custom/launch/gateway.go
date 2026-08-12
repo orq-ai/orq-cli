@@ -57,6 +57,11 @@ type ModelInfo struct {
 	ID              string // provider/model_id
 	ContextWindow   int
 	MaxOutputTokens int
+	// SupportsResponses mirrors metadata.supports_responses_api. Agents that
+	// declare providers per API shape need it to put each model on the right
+	// one; see IsResponsesModel for the fallback when a model is not in the
+	// fetched catalogue.
+	SupportsResponses bool
 }
 
 // NormalizeModel strips an agent's provider prefixes (e.g. "orq/",
@@ -64,10 +69,36 @@ type ModelInfo struct {
 type NormalizeModel func(model string) string
 
 // IsResponsesModel reports whether the gateway serves this model via the
-// Responses API. openai/* models support (and for gpt-5.x with tools+reasoning,
-// require) Responses; everything else only has chat completions.
+// Responses API, for models absent from the fetched catalogue: --model,
+// --models and the built-in defaults never carry metadata. Prefer
+// ResponsesModelSet, which uses the catalogue's own
+// metadata.supports_responses_api.
+//
+// The prefix is deliberately under-inclusive here. Putting a Responses-capable
+// model on the chat provider still works — chat completions serves every model
+// — while the reverse fails outright, so guessing "chat" is the safe default.
 func IsResponsesModel(gatewayModel string) bool {
 	return strings.HasPrefix(gatewayModel, "openai/")
+}
+
+// ResponsesModelSet answers IsResponsesModel from catalogue metadata, falling
+// back to the prefix heuristic for ids the catalogue did not describe.
+//
+// The heuristic alone missed 13 of 25 Responses-capable models in a real
+// workspace — every azure/gpt-*, the openai autorouters, and several
+// third-party models — putting them on chat completions and losing the
+// tools+reasoning path the gateway would otherwise serve.
+func ResponsesModelSet(infos []ModelInfo) func(string) bool {
+	known := make(map[string]bool, len(infos))
+	for _, info := range infos {
+		known[info.ID] = info.SupportsResponses
+	}
+	return func(id string) bool {
+		if supports, ok := known[id]; ok {
+			return supports
+		}
+		return IsResponsesModel(id)
+	}
 }
 
 func MakeNormalizeModel(providerPrefixes []string) NormalizeModel {
@@ -217,8 +248,9 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 		ModelType string `json:"model_type"`
 		Enabled   bool   `json:"enabled"`
 		Metadata  *struct {
-			ContextWindow   int `json:"context_window"`
-			MaxOutputTokens int `json:"max_output_tokens"`
+			ContextWindow     int  `json:"context_window"`
+			MaxOutputTokens   int  `json:"max_output_tokens"`
+			SupportsResponses bool `json:"supports_responses_api"`
 		} `json:"metadata"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -242,6 +274,7 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 		if m.Metadata != nil {
 			info.ContextWindow = m.Metadata.ContextWindow
 			info.MaxOutputTokens = m.Metadata.MaxOutputTokens
+			info.SupportsResponses = m.Metadata.SupportsResponses
 		}
 		models = append(models, info)
 	}

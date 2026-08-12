@@ -101,7 +101,7 @@ func TestCodexMCPArgs(t *testing.T) {
 func TestOpenCodeMCPBlock(t *testing.T) {
 	content, err := BuildOpenCodeConfigContent(
 		"https://api.orq.ai/v3/router", "openai/gpt-5-mini",
-		[]string{"openai/gpt-5-mini"}, DefaultMCPURL)
+		[]string{"openai/gpt-5-mini"}, nil, DefaultMCPURL)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -118,9 +118,10 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 		limits[info.ID] = info
 	}
 
+	isResponses := ResponsesModelSet(infos)
 	var chatModels, responsesModels []string
 	for _, m := range gatewayModels {
-		if IsResponsesModel(m) {
+		if isResponses(m) {
 			responsesModels = append(responsesModels, m)
 		} else {
 			chatModels = append(chatModels, m)

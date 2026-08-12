@@ -9,7 +9,7 @@ import (
 
 var kimiInfos = []ModelInfo{
 	{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000},
-	{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
+	{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000, SupportsResponses: true},
 }
 
 func TestKimiTOMLProvidersAndCaps(t *testing.T) {
@@ -97,5 +97,49 @@ func TestKimiResolvePlan(t *testing.T) {
 	plan.Cleanup()
 	if _, err := os.Stat(home); !os.IsNotExist(err) {
 		t.Fatal("cleanup did not remove KIMI_CODE_HOME")
+	}
+}
+
+// The provider split follows metadata.supports_responses_api, not the "openai/"
+// prefix. In a real workspace the prefix missed 13 of 25 Responses-capable
+// models — every azure/gpt-*, the openai autorouters, and several third-party
+// models — parking them on chat completions and losing the tools+reasoning path.
+func TestKimiSplitsOnCatalogueMetadataNotPrefix(t *testing.T) {
+	infos := []ModelInfo{
+		{ID: "azure/gpt-5.4", ContextWindow: 400000, MaxOutputTokens: 128000, SupportsResponses: true},
+		{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000},
+	}
+	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "azure/gpt-5.4",
+		[]string{"azure/gpt-5.4", "anthropic/claude-sonnet-4-6"}, infos)
+
+	// Assert on each model's own provider line: the [providers.*] headers all
+	// precede the [models.*] blocks, so a substring search from a provider
+	// header would match every model that follows it.
+	providerOf := func(model string) string {
+		block := toml[strings.Index(toml, `[models."`+model+`"]`):]
+		line := block[strings.Index(block, "provider = ")+len("provider = "):]
+		return strings.Trim(line[:strings.Index(line, "\n")], `"`)
+	}
+	if got := providerOf("azure/gpt-5.4"); got != KimiResponsesProvider {
+		t.Errorf("azure/gpt-5.4 is Responses-capable but landed on %q:\n%s", got, toml)
+	}
+	if got := providerOf("anthropic/claude-sonnet-4-6"); got != KimiChatProvider {
+		t.Errorf("a chat-only model landed on %q:\n%s", got, toml)
+	}
+}
+
+// A model absent from the catalogue (--model, --models, a built-in default)
+// has no metadata, so the prefix heuristic still decides. It is deliberately
+// under-inclusive: chat completions serves every model, the reverse does not.
+func TestResponsesModelSetFallsBackForUnknownModels(t *testing.T) {
+	isResponses := ResponsesModelSet([]ModelInfo{{ID: "azure/gpt-5.4", SupportsResponses: true}})
+	if !isResponses("azure/gpt-5.4") {
+		t.Error("catalogue entry ignored")
+	}
+	if !isResponses("openai/gpt-5-mini") {
+		t.Error("unknown openai/ model should fall back to the prefix heuristic")
+	}
+	if isResponses("anthropic/claude-sonnet-4-6") {
+		t.Error("unknown non-openai model must default to chat")
 	}
 }

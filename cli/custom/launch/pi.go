@@ -115,10 +115,11 @@ func BuildPiModelsJSON(baseURL string, gatewayModels []string, infos []ModelInfo
 		limits[info.ID] = info
 	}
 
+	isResponses := ResponsesModelSet(infos)
 	var models []piModel
 	for _, id := range gatewayModels {
 		var api string
-		if IsResponsesModel(id) {
+		if isResponses(id) {
 			api = "openai-responses"
 		}
 		contextSize, outputSize := fallbackContextSize, fallbackOutputSize

@@ -68,10 +68,12 @@ func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 	}
 }
 
-// ToOpenCodeModel maps a gateway id onto the right inline provider.
-func ToOpenCodeModel(model string) string {
+// ToOpenCodeModel maps a gateway id onto the right inline provider. isResponses
+// must be the same predicate used to split the model map, or the default model
+// names a provider that does not list it.
+func ToOpenCodeModel(isResponses func(string) bool, model string) string {
 	gatewayModel := opencodeNormalize(model)
-	if IsResponsesModel(gatewayModel) {
+	if isResponses(gatewayModel) {
 		return OpenCodeResponsesProvider + "/" + gatewayModel
 	}
 	return OpenCodeChatProvider + "/" + gatewayModel
@@ -89,12 +91,15 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		BaseURLEnvKey: "ORQ_OPENCODE_BASE_URL",
 		ModelEnvKey:   "OPENCODE_MODEL",
 		ModelsEnvKey:  "OPENCODE_MODELS",
+		// Needed for the chat/responses provider split, not for caps: opencode
+		// takes model names only.
+		CollectModelInfos: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, mcpURL(ctx))
+	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpURL(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +124,7 @@ type openCodeProvider struct {
 // BuildOpenCodeConfigContent serializes the inline OpenCode/Kilo config JSON.
 // The api key stays out of the file via {env:ORQ_API_KEY} interpolation.
 // A non-empty mcpServerURL adds the orq MCP server as a remote entry.
-func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, mcpServerURL string) (string, error) {
+func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []string, infos []ModelInfo, mcpServerURL string) (string, error) {
 	options := map[string]string{"baseURL": baseURL, "apiKey": "{env:ORQ_API_KEY}"}
 	toModelMap := func(models []string) map[string]map[string]any {
 		out := make(map[string]map[string]any, len(models))
@@ -129,9 +134,10 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 		return out
 	}
 
+	isResponses := ResponsesModelSet(infos)
 	var chatModels, responsesModels []string
 	for _, m := range gatewayModels {
-		if IsResponsesModel(m) {
+		if isResponses(m) {
 			responsesModels = append(responsesModels, m)
 		} else {
 			chatModels = append(chatModels, m)
@@ -169,7 +175,7 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	}{
 		Schema:   "https://opencode.ai/config.json",
 		Provider: provider,
-		Model:    ToOpenCodeModel(gatewayModel),
+		Model:    ToOpenCodeModel(isResponses, gatewayModel),
 		MCP:      mcp,
 	})
 	return string(encoded), err
