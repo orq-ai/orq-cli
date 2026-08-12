@@ -23,7 +23,12 @@ What you may depend on, and what you may not:
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
 - **Exit codes:** `0` success, `1` any failure, `130` interrupted (SIGINT),
-  `143` terminated (SIGTERM).
+  `143` terminated (SIGTERM). One exception: `orq launch` runs another program
+  and propagates that program's exit status verbatim, so any value from `2` to
+  `255` can come back — `127` when the agent binary does not start, `128+signum`
+  when it is killed by a signal (`137` for SIGKILL), and otherwise whatever the
+  agent itself returned. Scripts wrapping `orq launch` should treat any non-zero
+  code as failure rather than matching on the four above.
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
