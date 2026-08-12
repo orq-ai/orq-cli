@@ -569,3 +569,47 @@ func kimiModelTables(toml string) map[string]string {
 	flush()
 	return tables
 }
+
+// Re-running setup must be idempotent. The strip step has to recognise every
+// table the write step emits: when the Responses provider was added to the
+// writer and not to orqOwnedKimiTable, each run kept the stale
+// [providers.orq-responses] block and every model pointing at it, then wrote
+// them again. Three runs produced three provider blocks and 172 model tables
+// for 128 models — duplicate keys, so kimi failed to decode the file and
+// started with no models at all.
+func TestWriteKimiProviderTOMLIsIdempotentAcrossBothProviders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[[hooks]]\ncommand = \"echo hi\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	chat := model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")
+	chat.Metadata.MaxOutputTokens = 64000
+	responses := model("azure", "gpt-5.4", 1050000, true, true, "chat")
+	responses.Metadata.MaxOutputTokens = 128000
+	responses.Metadata.SupportsResponses = true
+	models := []auth.RouterModel{chat, responses}
+
+	for i := 0; i < 3; i++ {
+		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+	}
+
+	got := string(mustRead(t, path))
+	seen := map[string]int{}
+	for _, line := range strings.Split(got, "\n") {
+		// [[hooks]] is an array of tables and may legitimately repeat.
+		if strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "[[") {
+			seen[line]++
+		}
+	}
+	for table, n := range seen {
+		if n > 1 {
+			t.Errorf("%s appears %d times after 3 runs — duplicate keys make the file undecodable", table, n)
+		}
+	}
+	if !strings.Contains(got, "[[hooks]]") {
+		t.Error("unrelated user config was dropped")
+	}
+}

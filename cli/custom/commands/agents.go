@@ -412,15 +412,28 @@ func stripOrqKimiTables(toml string) string {
 }
 
 // orqOwnedKimiTable reports whether a TOML table was written by this command:
-// the orq provider (including sub-tables such as the `env` map older builds
-// emitted), or a model routed through it.
+// either orq provider (including sub-tables such as the `env` map older builds
+// emitted), or a model routed through one of them.
+//
+// Both provider names must be listed. When the Responses provider was added,
+// this function still knew only about "orq", so on every re-run the stale
+// [providers.orq-responses] block and every model pointing at it survived the
+// strip and were written again — duplicate tables, which makes the whole file
+// undecodable and leaves kimi with no models at all. Anything added to
+// kimiProviderBlock has to be recognised here in the same change.
 func orqOwnedKimiTable(header, body string) bool {
-	switch {
-	case header == "[providers."+providerName+"]",
-		strings.HasPrefix(header, "[providers."+providerName+"."):
-		return true
-	case strings.HasPrefix(header, "[models."):
-		return strings.Contains(body, `provider = "`+providerName+`"`)
+	for _, provider := range []string{kimiChatProvider, kimiResponsesProvider} {
+		if header == "[providers."+provider+"]" ||
+			strings.HasPrefix(header, "[providers."+provider+".") {
+			return true
+		}
+	}
+	if strings.HasPrefix(header, "[models.") {
+		for _, provider := range []string{kimiChatProvider, kimiResponsesProvider} {
+			if strings.Contains(body, `provider = "`+provider+`"`) {
+				return true
+			}
+		}
 	}
 	return false
 }
