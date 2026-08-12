@@ -146,8 +146,14 @@ type RouterModel struct {
 	Provider  string `json:"provider"`
 	Developer string `json:"model_developer"`
 	Type      string `json:"model_type"`
-	Active    bool   `json:"is_active"`
-	Functions bool   `json:"has_functions"`
+	// Active is a catalogue property: every entry the gateway knows about is
+	// active, including models this workspace has not enabled. Filtering on it
+	// is almost never what you want — use Enabled.
+	Active bool `json:"is_active"`
+	// Enabled is the workspace's enabled set, the one `enforce_enabled_models`
+	// checks and the only models a caller is guaranteed to be allowed to use.
+	Enabled   bool `json:"enabled"`
+	Functions bool `json:"has_functions"`
 	Metadata  struct {
 		ContextWindow int `json:"context_window"`
 	} `json:"metadata"`
@@ -181,7 +187,10 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 	for _, prefix := range preferred {
 		matches := []RouterModel{}
 		for _, m := range models {
-			if !m.Active || m.Type != "chat" || !m.Functions {
+			// Enabled, not Active: is_active is true for the whole catalogue,
+			// so filtering on it offered models the workspace had disabled —
+			// which a workspace with enforce_enabled_models on rejects outright.
+			if !m.Enabled || m.Type != "chat" || !m.Functions {
 				continue
 			}
 			if strings.HasPrefix(m.Ref(), prefix) {

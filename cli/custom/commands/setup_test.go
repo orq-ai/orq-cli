@@ -269,16 +269,19 @@ func TestSanitizeKeyName(t *testing.T) {
 }
 
 // The providers step exists to tell "no provider connected" apart from "the
-// catalogue is full of models nobody enabled", so the inactive ones must not
-// be counted.
+// catalogue is full of models nobody enabled". is_active is true for every
+// entry the gateway knows about, so counting it reported hundreds of models on
+// a workspace with nothing connected and the warning could never fire; only the
+// workspace's enabled set counts.
 func TestCountEnabledModelsIgnoresInactive(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v2/models") {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 		// /v2/models answers with a bare array, not a {data: []} envelope.
-		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5-mini","is_active":true},
-		                {"provider":"openai","model_id":"gpt-4","is_active":false}]`)
+		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5-mini","model_type":"chat","is_active":true,"enabled":true},
+		                {"provider":"openai","model_id":"gpt-4","model_type":"chat","is_active":true,"enabled":false},
+		                {"provider":"openai","model_id":"dall-e","model_type":"image","is_active":true,"enabled":true}]`)
 	}))
 	defer srv.Close()
 

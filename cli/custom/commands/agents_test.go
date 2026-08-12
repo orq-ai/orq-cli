@@ -153,8 +153,11 @@ func TestWriteMCPCodexTOMLAppendsOnce(t *testing.T) {
 		t.Error("pre-existing TOML content was lost")
 	}
 }
-func model(provider, id string, ctx int, active, fns bool, kind string) auth.RouterModel {
-	m := auth.RouterModel{ModelID: id, Provider: provider, Type: kind, Active: active, Functions: fns}
+
+// enabled, not active: is_active is true for every catalogue entry, so the
+// fixtures set the workspace's enabled flag, which is what the code filters on.
+func model(provider, id string, ctx int, enabled, fns bool, kind string) auth.RouterModel {
+	m := auth.RouterModel{ModelID: id, Provider: provider, Type: kind, Active: true, Enabled: enabled, Functions: fns}
 	m.Metadata.ContextWindow = ctx
 	return m
 }
@@ -165,7 +168,7 @@ func TestCandidateCodingModelsFiltersUnusable(t *testing.T) {
 	catalogue := []auth.RouterModel{
 		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"),
 		model("anthropic", "claude-sonnet-4-5", 200000, true, true, "chat"),
-		model("anthropic", "claude-sonnet-legacy", 200000, false, true, "chat"), // inactive
+		model("anthropic", "claude-sonnet-legacy", 200000, false, true, "chat"), // not enabled in this workspace
 		model("openai", "gpt-5-notools", 400000, true, false, "chat"),           // no tools
 		model("openai", "gpt-5-embed", 400000, true, true, "embedding"),         // wrong type
 		model("cohere", "command-r", 128000, true, true, "chat"),                // not preferred

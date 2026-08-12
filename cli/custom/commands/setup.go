@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -950,13 +951,13 @@ const modelsSettingsPath = "/settings/models"
 // a browser flow (provider secrets never touch the CLI), so all this can do is
 // detect, deep-link, and re-check.
 func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
-	count, err := countEnabledModels(client, state)
+	count, providers, err := listEnabledModels(client, state)
 	if err != nil {
 		rep.warn("could not list gateway models: %v", err)
 		return 0
 	}
 	if count > 0 {
-		rep.ok("%d model(s) enabled on the gateway", count)
+		reportProviders(rep, count, providers)
 		return count
 	}
 
@@ -974,7 +975,7 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 	if err := survey.AskOne(prompt, &retry); err != nil || !retry {
 		return 0
 	}
-	count, err = countEnabledModels(client, state)
+	count, providers, err = listEnabledModels(client, state)
 	if err != nil {
 		rep.warn("could not list gateway models: %v", err)
 		return 0
@@ -983,14 +984,63 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		rep.warn("still no models enabled — continuing, but agents will have none to use")
 		return 0
 	}
-	rep.ok("%d model(s) enabled on the gateway", count)
+	reportProviders(rep, count, providers)
 	return count
+}
+
+// reportProviders says what the step actually verified — that BYOK providers
+// are connected and reachable. The bare catalogue count was a number nobody
+// could act on: it is the whole workspace, while setup goes on to write a
+// handful of models into one agent's config.
+func reportProviders(rep *reporter, count int, providers []string) {
+	const show = 6
+	listed := providers
+	suffix := ""
+	if len(listed) > show {
+		listed, suffix = listed[:show], fmt.Sprintf(" +%d more", len(providers)-show)
+	}
+	rep.ok("providers connected: %s%s", strings.Join(listed, ", "), suffix)
+	rep.note("  %d chat model(s) enabled in this workspace", count)
 }
 
 // countEnabledModels retries because this runs right after minting a key, and
 // a fresh key is rejected for a second or two — without the wait the step
 // reports "no provider connected" for a workspace that has one.
+// connectedProviders summarises which BYOK providers actually have usable
+// models, derived from the catalogue rather than GET /v2/integrations: that
+// endpoint is behind a role permission a workspace API key does not carry (403),
+// and setup may be running on `--api-key` with no session at all. What matters
+// here is "can an agent call something", which enabled models answer directly.
+func connectedProviders(models []auth.RouterModel) []string {
+	counts := map[string]int{}
+	for _, m := range models {
+		if m.Enabled && m.Type == "chat" && m.Provider != "" {
+			counts[m.Provider]++
+		}
+	}
+	out := make([]string, 0, len(counts))
+	for p := range counts {
+		out = append(out, p)
+	}
+	// Busiest first: the head of this list is what gets shown, and an
+	// alphabetical head buries the providers the user actually routes through.
+	sort.Slice(out, func(i, j int) bool {
+		if counts[out[i]] != counts[out[j]] {
+			return counts[out[i]] > counts[out[j]]
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
 func countEnabledModels(client *auth.Client, state *authState) (int, error) {
+	count, _, err := listEnabledModels(client, state)
+	return count, err
+}
+
+// listEnabledModels returns the enabled-model count and the providers behind
+// them, retrying because a freshly created key is not always live yet.
+func listEnabledModels(client *auth.Client, state *authState) (int, []string, error) {
 	var models []auth.RouterModel
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
@@ -1002,15 +1052,18 @@ func countEnabledModels(client *auth.Client, state *authState) (int, error) {
 		}
 	}
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
+	// Enabled chat models: is_active covers the entire catalogue, so counting it
+	// reported hundreds of models on a workspace with no provider connected and
+	// the "connect a provider" branch below could never fire.
 	enabled := 0
 	for _, m := range models {
-		if m.Active {
+		if m.Enabled && m.Type == "chat" {
 			enabled++
 		}
 	}
-	return enabled, nil
+	return enabled, connectedProviders(models), nil
 }
 
 func modelsSettingsURL(state *authState) string {
