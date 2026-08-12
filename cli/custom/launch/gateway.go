@@ -247,6 +247,7 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 		RefID     string `json:"refId"`
 		ModelType string `json:"model_type"`
 		Enabled   bool   `json:"enabled"`
+		Functions bool   `json:"has_functions"`
 		Metadata  *struct {
 			ContextWindow     int  `json:"context_window"`
 			MaxOutputTokens   int  `json:"max_output_tokens"`
@@ -259,7 +260,12 @@ func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
 
 	var models []ModelInfo
 	for _, m := range payload {
-		if !m.Enabled || m.ModelType != "chat" {
+		// Tool calling is not optional for a coding agent: it edits files and
+		// runs commands through tools, so a model without it fails on the first
+		// real turn. The workspace can legitimately enable such models
+		// (perplexity/sonar-* are search models) — they just do not belong in a
+		// coding agent's list. Same rule setup applies.
+		if !m.Enabled || m.ModelType != "chat" || !m.Functions {
 			continue
 		}
 		// refId is the canonical invoke id: "provider/model_id" for system

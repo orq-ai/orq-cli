@@ -224,13 +224,16 @@ func TestFetchEnabledModelsHTTP(t *testing.T) {
 		// Top-level array, matching the real endpoint shape. Custom models
 		// (autorouters) have provider "orq" and a workspace-qualified refId;
 		// claude-haiku has no refId to cover the provider/model_id fallback.
+		// sonar-pro is enabled and chat but has no tool calling — a coding
+		// agent cannot use it, so it must be filtered out like the rest.
 		w.Write([]byte(`[
-			{"provider":"openai","model_id":"gpt-5-mini","refId":"openai/gpt-5-mini","model_type":"chat","enabled":true,
+			{"provider":"openai","model_id":"gpt-5-mini","refId":"openai/gpt-5-mini","model_type":"chat","enabled":true,"has_functions":true,
 			 "metadata":{"context_window":400000,"max_output_tokens":128000}},
-			{"provider":"openai","model_id":"dall-e","refId":"openai/dall-e","model_type":"image","enabled":true},
-			{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6","model_type":"chat","enabled":false},
-			{"provider":"anthropic","model_id":"claude-haiku-4-5","model_type":"chat","enabled":true},
-			{"provider":"orq","model_id":"my-router","refId":"ws@orq/my-router","model_type":"chat","enabled":true}
+			{"provider":"openai","model_id":"dall-e","refId":"openai/dall-e","model_type":"image","enabled":true,"has_functions":true},
+			{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6","model_type":"chat","enabled":false,"has_functions":true},
+			{"provider":"anthropic","model_id":"claude-haiku-4-5","model_type":"chat","enabled":true,"has_functions":true},
+			{"provider":"perplexity","model_id":"sonar-pro","refId":"perplexity/sonar-pro","model_type":"chat","enabled":true,"has_functions":false},
+			{"provider":"orq","model_id":"my-router","refId":"ws@orq/my-router","model_type":"chat","enabled":true,"has_functions":true}
 		]`))
 	}))
 	defer srv.Close()
