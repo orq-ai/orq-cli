@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -260,5 +262,49 @@ func TestFetchEnabledModelsHTTPError(t *testing.T) {
 
 	if _, err := FetchEnabledModels("k", srv.URL); err == nil {
 		t.Fatal("want error on 500")
+	}
+}
+
+// orq can be deployed on-prem, where the gateway answers on the customer's own
+// domain. Every agent must send model calls there, not to the public host:
+// getting this wrong sends prompts, code and file contents out of the
+// customer's network, authenticated with a key their own gateway issued.
+func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
+	const onprem = "https://orq.acme.internal"
+	for _, agent := range []string{"kimi", "opencode", "kilo", "codex", "pi", "claude"} {
+		t.Run(agent, func(t *testing.T) {
+			def := FindAgent(agent)
+			plan, err := def.Resolve(&AgentContext{
+				Creds:  &Credentials{APIKey: "k", APIBaseURL: onprem},
+				Getenv: func(string) string { return "" },
+				Flags:  GatewayFlags{NoFetchModels: true},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Cleanup != nil {
+				defer plan.Cleanup()
+			}
+			blob := strings.Join(plan.PreArgs, " ")
+			for _, v := range plan.Env {
+				blob += " " + v
+			}
+			for _, d := range plan.TempDirs {
+				_ = filepath.Walk(d.HostPath, func(p string, info os.FileInfo, err error) error {
+					if err == nil && info != nil && !info.IsDir() {
+						if b, readErr := os.ReadFile(p); readErr == nil {
+							blob += " " + string(b)
+						}
+					}
+					return nil
+				})
+			}
+			if strings.Contains(blob, "api.orq.ai/v3/") {
+				t.Errorf("%s sends model calls to the public gateway despite an on-prem API base", agent)
+			}
+			if !strings.Contains(blob, onprem+"/v3/") {
+				t.Errorf("%s never points at the on-prem gateway", agent)
+			}
+		})
 	}
 }

@@ -58,6 +58,12 @@ the version and this changelog as the source of truth for breaking changes.
   key, and registers the orq MCP server and gateway provider in the config
   files of the coding agents it detects. Unlike `orq launch`, these writes are
   persistent.
+- Fixed: `orq launch` sends model calls to the gateway the session authenticated
+  against, deriving it from the API base. On an on-prem deployment every agent
+  except claude wired its MCP server to the customer's host while sending
+  prompts and file contents to the public api.orq.ai, using a key that host had
+  issued. Explicit `--base-url`, `ORQ_GATEWAY_URL` and the per-agent env vars
+  still take precedence.
 - Changed: `orq setup` writes every chat model the workspace has enabled into an
   agent's provider config, instead of four hand-picked families, matching what
   `orq launch` already does. It also fills `default_model` when the config has

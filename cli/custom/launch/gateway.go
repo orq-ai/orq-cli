@@ -314,9 +314,9 @@ type ResolvedModels struct {
 }
 
 // ResolveGatewayConfig resolves the gateway wiring shared by all agents.
-// Base URL priority: flag > agent env > ORQ_GATEWAY_URL > default; model
-// priority: flag > env > default-if-fetched > first-fetched > first-explicit >
-// fallback.
+// Base URL priority: flag > agent env > ORQ_GATEWAY_URL > agent default >
+// derived from the session's API base > public default; model priority: flag >
+// env > default-if-fetched > first-fetched > first-explicit > fallback.
 func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 	if input.AuthToken == "" {
 		return nil, errors.New("not logged in. Run 'orq auth login' or export ORQ_API_KEY")
@@ -324,11 +324,19 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 	getenv := input.Getenv
 	normalize := input.Normalize
 
+	// Derive from the session's API base before falling back to the public
+	// host. orq can be deployed on-prem, where the gateway lives on the
+	// customer's own domain: without this the agent's MCP server pointed at
+	// their host while every model call — prompts, code, whole file contents —
+	// went to api.orq.ai instead, authenticated with a key their own gateway
+	// issued. claude got this right on its own (see claude.go); the shared
+	// resolver every other agent uses did not.
 	baseURL := firstNonEmpty(
 		input.Flags.BaseURL,
 		getenv(input.BaseURLEnvKey),
 		getenv("ORQ_GATEWAY_URL"),
 		input.DefaultBaseURL,
+		deriveFromAPIBase(input.APIBaseURL, "/v3/router"),
 		DefaultGatewayBaseURL,
 	)
 
