@@ -58,6 +58,10 @@ the version and this changelog as the source of truth for breaking changes.
   key, and registers the orq MCP server and gateway provider in the config
   files of the coding agents it detects. Unlike `orq launch`, these writes are
   persistent.
+- Added: `orq setup --no-mcp` — instrument agents for gateway routing without
+  registering the orq MCP server, for anyone who wants their model calls routed
+  through orq but does not want the agent reading and writing their workspace.
+  `orq setup -i` asks the same question interactively.
 - Added: `orq man-pages` output and a `.sha256` published next to every release
   asset, which `install.sh` now verifies.
 - Changed: `orq auth logout` also clears the stored API-key profile, not just

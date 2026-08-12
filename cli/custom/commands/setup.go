@@ -33,6 +33,7 @@ type setupOptions struct {
 	agents      []string
 	global      bool
 	noAgent     bool
+	noMCP       bool
 	noEnv       bool
 	noInput     bool
 }
@@ -80,6 +81,7 @@ wins over a key left exported in your shell.`),
 	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
+	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
 	return cmd
 }
@@ -1040,6 +1042,21 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 	}
 
+	// Asked once, not once per agent: the MCP server is the same grant for all
+	// of them, and a question per agent turns a five-agent machine into five
+	// prompts. Only under -i — the default path answers yes and reports what it
+	// wrote, which is what --no-mcp is for.
+	if opts.interactive && !opts.noMCP {
+		register := true
+		if err := survey.AskOne(&survey.Confirm{
+			Message: "Register the orq MCP server? Agents can then read and write your orq workspace.",
+			Default: true,
+		}, &register); err != nil {
+			return nil
+		}
+		opts.noMCP = !register
+	}
+
 	results := make([]agentResult, 0, len(selected))
 
 	for _, id := range selected {
@@ -1051,9 +1068,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 		res := agentResult{Agent: id}
 
-		// MCP registration.
+		// MCP registration. Skipping it still leaves the provider config, which
+		// is the coherent "route my calls through orq, but do not give the
+		// agent workspace read/write" case.
 		configPath, err := spec.mcpConfig(opts.global)
 		switch {
+		case opts.noMCP:
+			rep.note("%-8s MCP       skipped (--no-mcp)", id)
 		case err != nil:
 			rep.fail("%-8s %v", id, err)
 			res.Error = err.Error()

@@ -584,3 +584,19 @@ func TestBrandPaletteDegradesWithTerminal(t *testing.T) {
 		t.Errorf("basic tier leaked extended sequences: %q %q", brand, ok)
 	}
 }
+
+// --no-mcp must leave the provider config alone: "route my calls through orq
+// but do not give the agent read/write access to my workspace" is the whole
+// point of the flag, and skipping both would just be --no-agent.
+func TestNoMCPStillWritesProviderConfig(t *testing.T) {
+	kimi, ok := lookupAgent("kimi")
+	if !ok {
+		t.Fatal("kimi not in the registry")
+	}
+	if kimi.writeProvider == nil {
+		t.Fatal("kimi has no provider writer, so --no-mcp would leave nothing to do")
+	}
+	if kimi.writeMCP == nil {
+		t.Fatal("kimi has no MCP writer, so --no-mcp would be a no-op")
+	}
+}

@@ -7157,6 +7157,10 @@
           "type": "bool"
         },
         {
+          "name": "no-mcp",
+          "type": "bool"
+        },
+        {
           "name": "project",
           "type": "string"
         }
