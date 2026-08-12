@@ -605,9 +605,12 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 }
 
-// Setup makes real, billed completions. This pins how many: one probe per model
-// family, and none for verification — the verify step reuses a probe result.
-func TestSetupBillsOneCompletionPerFamily(t *testing.T) {
+// Setup makes real, billed completions against the user's own provider keys.
+// This pins how many: exactly one, for the model the agent will open with — the
+// only one that must work before the user picks anything. The rest of the
+// catalogue is written unprobed, as `orq launch` already does, and verification
+// reuses that single probe rather than buying the same answer twice.
+func TestSetupBillsOneCompletionTotal(t *testing.T) {
 	var completions int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -628,14 +631,22 @@ func TestSetupBillsOneCompletionPerFamily(t *testing.T) {
 	state := &authState{apiBase: srv.URL, bearer: "t"}
 	rep := newReporter(true)
 
-	codingModels(rep, client, state)
+	models := codingModels(rep, client, state)
+	if len(models) != 4 {
+		t.Errorf("wrote %d models, want all 4 enabled ones", len(models))
+	}
+	if n := atomic.LoadInt64(&completions); n != 0 {
+		t.Errorf("listing models billed %d completions, want 0", n)
+	}
+
+	defaultCodingModel(rep, client, state)
 	afterProbe := atomic.LoadInt64(&completions)
 	verifyGateway(rep, client, state)
 	total := atomic.LoadInt64(&completions)
 
-	t.Logf("completions: probing=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
-	if afterProbe != 4 {
-		t.Errorf("probing billed %d completions, want 4 (one per family)", afterProbe)
+	t.Logf("completions: default-model probe=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
+	if afterProbe != 1 {
+		t.Errorf("choosing the default billed %d completions, want 1", afterProbe)
 	}
 	if total != afterProbe {
 		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)

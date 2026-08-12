@@ -226,7 +226,7 @@ func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
 
 	for i := 0; i < 3; i++ {
-		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-test-key", models); err != nil {
+		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-test-key", models, ""); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -272,7 +272,7 @@ enabled = false
 		t.Fatal(err)
 	}
 	models := []auth.RouterModel{model("moonshotai", "kimi-k2.7-code-highspeed", 262144, true, true, "chat")}
-	if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-fresh-key", models); err != nil {
+	if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-fresh-key", models, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -311,4 +311,64 @@ func TestLaunchAndSetupShareTheMCPServerName(t *testing.T) {
 		t.Errorf("launch registers %q but setup registers %q; agents would load both",
 			launch.MCPServerName, mcpServerName)
 	}
+}
+
+// kimi persists the user's model choice in default_model itself. Setup fills it
+// when the file has none — otherwise a freshly wired agent opens on its own
+// built-in model and the first prompt never reaches the gateway — but must
+// never replace a value, because that value is a choice the user made.
+func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
+	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+
+	t.Run("absent: filled", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(path)
+		if !strings.Contains(string(got), `default_model = "claude-sonnet-4-6"`) {
+			t.Errorf("default_model was not written:\n%s", got)
+		}
+	})
+
+	t.Run("present: kept", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(path, []byte("default_model = \"my-own-pick\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+			t.Fatal(err)
+		}
+		got := string(mustRead(t, path))
+		if !strings.Contains(got, `default_model = "my-own-pick"`) {
+			t.Errorf("the user's default_model was lost:\n%s", got)
+		}
+		if strings.Contains(got, `default_model = "claude-sonnet-4-6"`) {
+			t.Errorf("setup overwrote the user's default_model:\n%s", got)
+		}
+	})
+
+	// A default_model inside another table is that table's setting, not kimi's
+	// root config, so the root one must still be written.
+	t.Run("scoped elsewhere: still filled", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		if err := os.WriteFile(path, []byte("[some.table]\ndefault_model = \"not-root\"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(mustRead(t, path)), `default_model = "claude-sonnet-4-6"`) {
+			t.Error("a table-scoped default_model suppressed the root one")
+		}
+	})
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

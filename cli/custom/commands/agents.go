@@ -38,7 +38,11 @@ type agentSpec struct {
 	// writeProvider registers the provider and a set of models in that file.
 	// apiKey is written literally when the agent cannot read it from env
 	// (kimi); the file must be 0600.
-	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel) error
+	// defaultModel is the model the agent should open with, already proven to
+	// answer. Writers fill it only when the config has none: the agent persists
+	// the user's own pick there, and overwriting it would silently undo a
+	// choice they made in the agent's UI.
+	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) error
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in
@@ -325,7 +329,7 @@ func writeMCPCodexTOML(path, url string) error {
 // `api_key = "${ORQ_API_KEY}"` placeholder that kimi never interpolates — a
 // skip-if-present leaves that dead credential in place forever, and the user
 // gets a 401 on their first prompt with no hint why.
-func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel) error {
+func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -334,15 +338,40 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 		return err
 	}
 	kept := stripOrqKimiTables(string(existing))
+	// Fill the default only when the file has none. kimi writes this key itself
+	// when the user picks a model, so a value here is their preference, not
+	// ours to replace. Keyed by ModelID to match the [models."<id>"] tables
+	// below — the full provider/model ref would resolve to nothing.
+	prefix := ""
+	if defaultModel != "" && !hasKimiDefaultModel(kept) {
+		prefix = fmt.Sprintf("default_model = %q\n\n", defaultModel)
+	}
 	if kept = strings.TrimRight(kept, "\n"); kept != "" {
 		kept += "\n\n"
 	}
+	kept = prefix + kept
 	// The file carries a literal credential; a pre-existing copy may have been
 	// created with looser permissions, so chmod as well as write at 0600.
 	if err := os.WriteFile(path, []byte(kept+kimiProviderBlock(routerURL, apiKey, models)), 0o600); err != nil {
 		return err
 	}
 	return os.Chmod(path, 0o600)
+}
+
+// hasKimiDefaultModel reports whether the config already names a default model.
+// Only top-level assignments count: a `default_model` inside some other table
+// belongs to that table, not to kimi's root config.
+func hasKimiDefaultModel(toml string) bool {
+	for _, line := range strings.Split(toml, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			return false // past the root table; anything below is scoped
+		}
+		if strings.HasPrefix(trimmed, "default_model") {
+			return true
+		}
+	}
+	return false
 }
 
 // stripOrqKimiTables removes the TOML tables this command owns so they can be

@@ -58,6 +58,14 @@ the version and this changelog as the source of truth for breaking changes.
   key, and registers the orq MCP server and gateway provider in the config
   files of the coding agents it detects. Unlike `orq launch`, these writes are
   persistent.
+- Changed: `orq setup` writes every chat model the workspace has enabled into an
+  agent's provider config, instead of four hand-picked families, matching what
+  `orq launch` already does. It also fills `default_model` when the config has
+  none — never replacing one, since agents persist the user's own pick there.
+- Changed: `orq setup` now makes **one** billed completion (proving the default
+  model answers) instead of five. Model selection and gateway verification used
+  to probe separately, and probing existed to compensate for selecting from the
+  whole catalogue rather than the workspace's enabled set.
 - Added: `orq setup -y/--yes` — answer yes to every confirmation instead of
   being asked. `orq setup` now asks before registering the orq MCP server in an
   agent's config, since that writes into files you own and grants the agent

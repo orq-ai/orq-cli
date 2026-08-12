@@ -1165,7 +1165,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		if spec.writeProvider != nil {
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
-				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models); werr != nil {
+				// Keyed by ModelID to match the [models."<id>"] tables the writer
+				// emits; the full provider/model ref would resolve to nothing.
+				defaultModel := ""
+				if best, ok := defaultCodingModel(rep, client, state); ok {
+					defaultModel = best.ModelID
+				}
+				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel); werr != nil {
 					rep.warn("%-8s provider  %v", id, werr)
 				} else {
 					rep.ok("%-8s provider  %s → orq gateway (%d models)", id, path, len(models))
@@ -1180,13 +1186,22 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	return results
 }
 
-// codingModels fetches the gateway catalogue once per run and narrows it to the
-// preferred coding models that are actually on offer.
+// codingModels fetches the gateway catalogue once per run and returns every
+// chat model the workspace has enabled.
+//
+// It used to return four hand-picked families and probe each one. The families
+// were arbitrary — nothing about kimi or the gateway implies four — and the
+// probing existed to compensate for selecting from is_active, which included
+// models the workspace had never enabled and which therefore often failed.
+// With the enabled set as the pool, `orq launch` writes the whole list with no
+// probing at all and works; setup now matches it, so the two produce the same
+// config by the same rule, and the user gets their models rather than our four.
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
-// provenModel is the first model that answered a probe, with how long it took.
-// The verify step reports these instead of paying for another completion.
+// provenModel is the model that answered the default-model probe, with how long
+// it took. The verify step reports these instead of paying for a second
+// completion to learn the same thing.
 var provenModel string
 var provenTook time.Duration
 
@@ -1196,45 +1211,65 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 	}
 	codingModelsFetched = true
 
-	stopSpin := rep.busy("probing gateway models for working candidates…")
-
 	all, err := client.ListModels(state.bearer)
 	if err != nil {
-		stopSpin()
 		rep.warn("could not list gateway models: %v", err)
 		return nil
 	}
-
-	// The catalogue advertises models that return 500 on use, so take the best
-	// candidate per family that actually answers. One tiny call each — these are
-	// real, billed completions against the user's own provider keys, so every
-	// one of them has to earn its place.
-	picked := []auth.RouterModel{}
-	skipped := 0
-	for _, group := range auth.CandidateCodingModels(all, preferredCodingModels) {
-		for _, candidate := range group {
-			took, err := client.TimeModel(state.bearer, candidate.Ref())
-			if err == nil {
-				picked = append(picked, candidate)
-				// A successful probe IS the gateway verification: same model,
-				// same credential, seconds earlier. Keeping it means the verify
-				// step does not bill the user a second time for the same answer.
-				if provenModel == "" {
-					provenModel, provenTook = candidate.Ref(), took
-				}
-				break
-			}
-			skipped++
+	for _, m := range all {
+		if m.Enabled && m.Type == "chat" && m.Functions {
+			cachedCodingModels = append(cachedCodingModels, m)
 		}
 	}
-	stopSpin()
-	// Reported at warn level so the omission is visible even in quiet mode —
-	// silently dropping models would read as "these are all that exist".
-	if skipped > 0 {
-		rep.warn("%d catalogue model(s) did not respond and were left out", skipped)
-	}
-	cachedCodingModels = picked
 	return cachedCodingModels
+}
+
+// defaultCodingModel picks the model an agent should open with and proves it
+// answers. Preference order first (a coding agent wants a coding model), then
+// anything else the workspace enabled.
+//
+// Exactly one billed completion: this is the only model that MUST work, since
+// it is what the agent uses before the user chooses anything. The rest of the
+// list is the user's to pick from, and a bad entry there costs them a switch
+// rather than a broken first prompt.
+func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
+	models := codingModels(rep, client, state)
+	if len(models) == 0 {
+		return auth.RouterModel{}, false
+	}
+
+	ordered := []auth.RouterModel{}
+	for _, group := range auth.CandidateCodingModels(models, preferredCodingModels) {
+		ordered = append(ordered, group...)
+	}
+	seen := map[string]bool{}
+	for _, m := range ordered {
+		seen[m.Ref()] = true
+	}
+	for _, m := range models {
+		if !seen[m.Ref()] {
+			ordered = append(ordered, m)
+		}
+	}
+
+	stopSpin := rep.busy("checking the default model answers…")
+	defer stopSpin()
+	tried := 0
+	for _, candidate := range ordered {
+		took, err := client.TimeModel(state.bearer, candidate.Ref())
+		if err == nil {
+			provenModel, provenTook = candidate.Ref(), took
+			return candidate, true
+		}
+		tried++
+		// Stop walking the whole catalogue on a broken workspace: each attempt
+		// is billed, and after a handful of failures the problem is the gateway
+		// or the credential, not the model.
+		if tried >= 3 {
+			break
+		}
+	}
+	return auth.RouterModel{}, false
 }
 
 func promptForAgents(rep *reporter) ([]string, error) {
