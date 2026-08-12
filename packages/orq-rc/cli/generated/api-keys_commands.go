@@ -174,7 +174,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete api-key-id",
 			Short:   "Delete an API key",
-			Long:    bartolocli.Markdown("Permanently deletes an API key. Cache entries in `API_KEYS_KV` are invalidated immediately so an in-flight token cannot ride out the TTL. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
