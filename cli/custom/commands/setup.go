@@ -1042,11 +1042,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 	}
 
-	// Asked once, not once per agent: the MCP server is the same grant for all
-	// of them, and a question per agent turns a five-agent machine into five
-	// prompts. Only under -i — the default path answers yes and reports what it
-	// wrote, which is what --no-mcp is for.
-	if opts.interactive && !opts.noMCP {
+	// Asked on the default path, not just under -i: this writes into config
+	// files the user owns and grants an agent read/write access to their
+	// workspace, which is not something to do silently because a wizard was
+	// convenient. Asked once rather than once per agent — the grant is the same
+	// for all of them, and a question each turns a five-agent machine into five
+	// prompts. --no-mcp and --no-input answer it up front.
+	if !opts.noInput && !opts.noMCP {
 		register := true
 		if err := survey.AskOne(&survey.Confirm{
 			Message: "Register the orq MCP server? Agents can then read and write your orq workspace.",
