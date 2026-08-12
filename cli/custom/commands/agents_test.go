@@ -198,7 +198,7 @@ func TestKimiProviderBlockWritesLiteralKey(t *testing.T) {
 		`type = "openai"`,
 		`base_url = "https://api.orq.ai/v2/router"`,
 		`api_key = "sk-test-key"`,
-		`[models."claude-sonnet-4-6"]`,
+		`[models."anthropic/claude-sonnet-4-6"]`,
 		`model = "anthropic/claude-sonnet-4-6"`,
 		`max_context_size = 200000`,
 	} {
@@ -291,7 +291,7 @@ enabled = false
 	if n := strings.Count(got, "[providers.orq]"); n != 1 {
 		t.Errorf("[providers.orq] appears %d times, want 1", n)
 	}
-	if n := strings.Count(got, `[models."kimi-k2.7-code-highspeed"]`); n != 1 {
+	if n := strings.Count(got, `[models."moonshotai/kimi-k2.7-code-highspeed"]`); n != 1 {
 		t.Errorf("model table appears %d times, want 1", n)
 	}
 	// Everything we do not own must survive byte for byte.
@@ -322,11 +322,11 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 
 	t.Run("absent: filled", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := os.ReadFile(path)
-		if !strings.Contains(string(got), `default_model = "claude-sonnet-4-6"`) {
+		if !strings.Contains(string(got), `default_model = "anthropic/claude-sonnet-4-6"`) {
 			t.Errorf("default_model was not written:\n%s", got)
 		}
 	})
@@ -336,14 +336,14 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 		if err := os.WriteFile(path, []byte("default_model = \"my-own-pick\"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
 		got := string(mustRead(t, path))
 		if !strings.Contains(got, `default_model = "my-own-pick"`) {
 			t.Errorf("the user's default_model was lost:\n%s", got)
 		}
-		if strings.Contains(got, `default_model = "claude-sonnet-4-6"`) {
+		if strings.Contains(got, `default_model = "anthropic/claude-sonnet-4-6"`) {
 			t.Errorf("setup overwrote the user's default_model:\n%s", got)
 		}
 	})
@@ -355,10 +355,10 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 		if err := os.WriteFile(path, []byte("[some.table]\ndefault_model = \"not-root\"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "claude-sonnet-4-6"); err != nil {
+		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(mustRead(t, path)), `default_model = "claude-sonnet-4-6"`) {
+		if !strings.Contains(string(mustRead(t, path)), `default_model = "anthropic/claude-sonnet-4-6"`) {
 			t.Error("a table-scoped default_model suppressed the root one")
 		}
 	})
@@ -371,4 +371,35 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// Duplicate table keys make the whole file invalid TOML, and kimi then reports
+// "failed to decode config.toml" and configures NO models — not just the
+// clashing ones. Several providers serve the same model_id
+// (google/gemini-2.5-flash vs google-ai/gemini-2.5-flash, azure/gpt-4o vs
+// openai/gpt-4o), so keying tables by anything less than the full ref collides
+// the moment the catalogue is written wholesale.
+func TestKimiProviderBlockHasNoDuplicateTables(t *testing.T) {
+	models := []auth.RouterModel{
+		model("google", "gemini-2.5-flash", 1000000, true, true, "chat"),
+		model("google-ai", "gemini-2.5-flash", 1000000, true, true, "chat"),
+		model("azure", "gpt-4o", 128000, true, true, "chat"),
+		model("openai", "gpt-4o", 128000, true, true, "chat"),
+	}
+	block := kimiProviderBlock("https://api.orq.ai/v3/router", "sk-k", models)
+
+	seen := map[string]int{}
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, "[") {
+			seen[line]++
+		}
+	}
+	for table, n := range seen {
+		if n > 1 {
+			t.Errorf("%s appears %d times — duplicate keys make the file undecodable\n---\n%s", table, n, block)
+		}
+	}
+	if len(seen) != len(models)+1 { // one table per model, plus [providers.orq]
+		t.Errorf("got %d tables for %d models, want %d", len(seen), len(models), len(models)+1)
+	}
 }

@@ -1165,11 +1165,11 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		if spec.writeProvider != nil {
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
-				// Keyed by ModelID to match the [models."<id>"] tables the writer
-				// emits; the full provider/model ref would resolve to nothing.
+				// Must match the [models."<key>"] form the writer emits, which is
+				// the full provider/model ref.
 				defaultModel := ""
 				if best, ok := defaultCodingModel(rep, client, state); ok {
-					defaultModel = best.ModelID
+					defaultModel = best.Ref()
 				}
 				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel); werr != nil {
 					rep.warn("%-8s provider  %v", id, werr)

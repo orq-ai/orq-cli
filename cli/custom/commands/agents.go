@@ -429,7 +429,12 @@ func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) stri
 			// Kimi requires the field; a conservative floor beats omitting it.
 			context = 128000
 		}
-		fmt.Fprintf(&b, "\n[models.%q]\n", m.ModelID)
+		// Keyed by the full provider/model ref, not ModelID: several providers
+		// serve the same id (google/gemini-2.5-flash and
+		// google-ai/gemini-2.5-flash, azure/gpt-4o and openai/gpt-4o), and
+		// duplicate table keys make the whole file invalid TOML — kimi then
+		// discards every model, not just the clashing ones.
+		fmt.Fprintf(&b, "\n[models.%q]\n", m.Ref())
 		fmt.Fprintf(&b, "provider = %q\n", providerName)
 		fmt.Fprintf(&b, "model = %q\n", m.Ref())
 		fmt.Fprintf(&b, "max_context_size = %d\n", context)
