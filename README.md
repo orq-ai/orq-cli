@@ -88,7 +88,9 @@ Setup does not install skills. `orq launch` still loads them session-only for cl
 
 **Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v3/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
 
-Your API key is **never written into an agent config** — those reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+
+The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
 | Flag | Effect |
 |---|---|

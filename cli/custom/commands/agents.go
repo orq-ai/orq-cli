@@ -200,8 +200,15 @@ func writeJSONConfig(path string, cfg map[string]any) error {
 	if _, err := os.Stat(path); err == nil {
 		backup := path + ".orq-bak"
 		if _, err := os.Stat(backup); errors.Is(err, os.ErrNotExist) {
-			if original, err := os.ReadFile(path); err == nil {
-				_ = os.WriteFile(backup, original, 0o600)
+			// Fail rather than overwrite: the whole point of the backup is to
+			// survive this write, so a backup that silently did not happen is
+			// worse than not starting.
+			original, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("reading %s to back it up: %w", path, err)
+			}
+			if err := os.WriteFile(backup, original, 0o600); err != nil {
+				return fmt.Errorf("writing %s: %w", backup, err)
 			}
 		}
 	}

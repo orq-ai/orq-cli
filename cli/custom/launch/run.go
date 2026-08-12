@@ -19,8 +19,11 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		AllowModels: def.AllowModels,
 	})
 	if err != nil {
-		// 1, not a distinct usage code: CHANGELOG's stability contract defines
-		// exactly 0 / 1 / 130 / 143, and a bad flag is just a failure.
+		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
+		// 130 / 143 for orq's own failures, and a bad flag is just a failure.
+		// Codes outside that set can still surface here, because a launched
+		// agent's own exit code is propagated verbatim (127 for a missing
+		// binary, 128+signum when the agent is signalled).
 		return 1, err
 	}
 	if flags.Help {

@@ -174,7 +174,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	result["setup_complete"] = verified
 
-	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), opts)
+	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), verified, opts)
 
 	// Same human/machine split as login and whoami: a person at a terminal
 	// gets the final screen only — dumping the structured payload after it
@@ -1236,7 +1236,7 @@ func buildLinks(state *authState) map[string]string {
 	return links
 }
 
-func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, routerBase string, opts *setupOptions) {
+func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, routerBase string, verified bool, opts *setupOptions) {
 	if opts.noInput {
 		return
 	}
@@ -1244,7 +1244,14 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, strings.Repeat("─", 64))
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  ✓ Setup complete")
+	// Do not claim success the verification step just disproved: the checks
+	// above already printed what failed, so this line is the only thing left
+	// telling the user whether to trust the result.
+	if verified {
+		fmt.Fprintln(w, "  ✓ Setup complete")
+	} else {
+		fmt.Fprintln(w, "  ! Setup finished with failed checks — see above")
+	}
 	fmt.Fprintln(w)
 
 	wired := []string{}

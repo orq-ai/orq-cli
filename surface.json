@@ -1300,6 +1300,10 @@
           "type": "string"
         },
         {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
           "name": "no-open",
           "type": "bool"
         },
@@ -4201,6 +4205,10 @@
       "flags": [
         {
           "name": "api-base-url",
+          "type": "string"
+        },
+        {
+          "name": "api-key",
           "type": "string"
         },
         {
