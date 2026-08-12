@@ -156,6 +156,12 @@ type RouterModel struct {
 	Functions bool `json:"has_functions"`
 	Metadata  struct {
 		ContextWindow int `json:"context_window"`
+		// MaxOutputTokens and SupportsResponses are published per model and
+		// were previously dropped here, which left setup unable to write an
+		// output cap or pick the right API shape — data the endpoint returns
+		// and a struct field is all it takes to keep.
+		MaxOutputTokens   int  `json:"max_output_tokens"`
+		SupportsResponses bool `json:"supports_responses_api"`
 	} `json:"metadata"`
 }
 

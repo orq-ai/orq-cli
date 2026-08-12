@@ -403,3 +403,63 @@ func TestKimiProviderBlockHasNoDuplicateTables(t *testing.T) {
 		t.Errorf("got %d tables for %d models, want %d", len(seen), len(models), len(models)+1)
 	}
 }
+
+// kimi needs one provider per API shape. Writing every model as chat
+// completions works but drops the Responses path, which is where gpt-5.x with
+// tools and reasoning belongs — and `orq launch` splits them, so a config from
+// setup would otherwise describe the same models differently.
+func TestKimiProviderBlockSplitsByAPIShape(t *testing.T) {
+	chat := model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")
+	chat.Metadata.MaxOutputTokens = 64000
+	responses := model("azure", "gpt-5.4", 1050000, true, true, "chat")
+	responses.Metadata.MaxOutputTokens = 128000
+	responses.Metadata.SupportsResponses = true
+
+	block := kimiProviderBlock("https://api.orq.ai/v3/router", "sk-k",
+		[]auth.RouterModel{chat, responses})
+
+	for _, want := range []string{
+		`[providers.orq]`,
+		`type = "openai"`,
+		`[providers.orq-responses]`,
+		`type = "openai_responses"`,
+		"max_output_size = 64000",
+		"max_output_size = 128000",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("missing %q\n---\n%s", want, block)
+		}
+	}
+	if got := providerOfModel(t, block, "azure/gpt-5.4"); got != kimiResponsesProvider {
+		t.Errorf("azure/gpt-5.4 is Responses-capable but landed on %q", got)
+	}
+	if got := providerOfModel(t, block, "anthropic/claude-sonnet-4-6"); got != kimiChatProvider {
+		t.Errorf("a chat-only model landed on %q", got)
+	}
+}
+
+// A model with no published caps must still get both fields: kimi requires
+// them, and omitting one makes the config unusable.
+func TestKimiProviderBlockDefaultsMissingOutputCap(t *testing.T) {
+	block := kimiProviderBlock("https://x/v3/router", "sk-k",
+		[]auth.RouterModel{model("anthropic", "mystery", 0, true, true, "chat")})
+	for _, want := range []string{"max_context_size = 128000", "max_output_size = 8192"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("missing fallback %q\n---\n%s", want, block)
+		}
+	}
+}
+
+// providerOfModel reads a model's provider from its own table, since the
+// [providers.*] headers all precede the [models.*] blocks.
+func providerOfModel(t *testing.T, toml, ref string) string {
+	t.Helper()
+	key := `[models."` + ref + `"]`
+	i := strings.Index(toml, key)
+	if i < 0 {
+		t.Fatalf("no table for %s\n---\n%s", ref, toml)
+	}
+	rest := toml[i+len(key):]
+	line := rest[strings.Index(rest, "provider = ")+len("provider = "):]
+	return strings.Trim(line[:strings.Index(line, "\n")], `"`)
+}

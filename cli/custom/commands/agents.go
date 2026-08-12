@@ -19,6 +19,16 @@ const mcpServerName = "orq-workspace"
 // config, so its model calls route through the orq gateway.
 const providerName = "orq"
 
+// kimi declares one provider per API shape. The names and types match
+// launch.KimiChatProvider / KimiResponsesProvider so a config written by
+// `orq setup` and one injected by `orq launch` describe the same thing.
+const (
+	kimiChatProvider      = providerName
+	kimiResponsesProvider = "orq-responses"
+	kimiChatType          = "openai"
+	kimiResponsesType     = "openai_responses"
+)
+
 type agentSpec struct {
 	ID    string
 	Label string
@@ -417,17 +427,51 @@ func orqOwnedKimiTable(header, body string) bool {
 
 func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "[providers.%s]\n", providerName)
-	b.WriteString("type = \"openai\"\n")
-	fmt.Fprintf(&b, "base_url = %q\n", routerURL)
-	// Kimi 0.34 has no env fallback or ${VAR} interpolation for provider
-	// credentials; the literal key is the only working form.
-	fmt.Fprintf(&b, "api_key = %q\n", apiKey)
+
+	// Two providers, one per API shape, matching what `orq launch` writes:
+	// models the gateway serves via the Responses API belong on a provider of
+	// type openai_responses. Writing everything as chat completions still
+	// works — chat serves every model — but loses the tools+reasoning path
+	// that gpt-5.x and the azure gpt-5 line actually want.
+	chat, responses := []auth.RouterModel{}, []auth.RouterModel{}
 	for _, m := range models {
+		if m.Metadata.SupportsResponses {
+			responses = append(responses, m)
+		} else {
+			chat = append(chat, m)
+		}
+	}
+
+	provider := func(name, typ string) {
+		fmt.Fprintf(&b, "[providers.%s]\n", name)
+		fmt.Fprintf(&b, "type = %q\n", typ)
+		fmt.Fprintf(&b, "base_url = %q\n", routerURL)
+		// Kimi 0.34 has no env fallback or ${VAR} interpolation for provider
+		// credentials; the literal key is the only working form.
+		fmt.Fprintf(&b, "api_key = %q\n", apiKey)
+	}
+	if len(chat) > 0 {
+		provider(kimiChatProvider, kimiChatType)
+	}
+	if len(responses) > 0 {
+		if len(chat) > 0 {
+			b.WriteString("\n")
+		}
+		provider(kimiResponsesProvider, kimiResponsesType)
+	}
+
+	writeModel := func(m auth.RouterModel, providerKey string) {
 		context := m.Metadata.ContextWindow
 		if context <= 0 {
 			// Kimi requires the field; a conservative floor beats omitting it.
 			context = 128000
+		}
+		output := m.Metadata.MaxOutputTokens
+		if output <= 0 {
+			// Kimi sends max_tokens = max_output_size on every call, so a guess
+			// above the model's real cap makes the upstream reject every
+			// request. Under-guessing only truncates.
+			output = 8192
 		}
 		// Keyed by the full provider/model ref, not ModelID: several providers
 		// serve the same id (google/gemini-2.5-flash and
@@ -435,9 +479,16 @@ func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) stri
 		// duplicate table keys make the whole file invalid TOML — kimi then
 		// discards every model, not just the clashing ones.
 		fmt.Fprintf(&b, "\n[models.%q]\n", m.Ref())
-		fmt.Fprintf(&b, "provider = %q\n", providerName)
+		fmt.Fprintf(&b, "provider = %q\n", providerKey)
 		fmt.Fprintf(&b, "model = %q\n", m.Ref())
 		fmt.Fprintf(&b, "max_context_size = %d\n", context)
+		fmt.Fprintf(&b, "max_output_size = %d\n", output)
+	}
+	for _, m := range chat {
+		writeModel(m, kimiChatProvider)
+	}
+	for _, m := range responses {
+		writeModel(m, kimiResponsesProvider)
 	}
 	return b.String()
 }
