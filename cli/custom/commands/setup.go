@@ -36,6 +36,29 @@ type setupOptions struct {
 	noMCP       bool
 	noEnv       bool
 	noInput     bool
+	yes         bool
+}
+
+// confirm asks a yes/no question, honouring the two ways a user can answer it
+// up front. clig.dev: "Confirm before doing anything dangerous … prompt for the
+// user to type y or yes if running interactively", and "if --no-input is
+// passed, don't prompt or do anything interactive".
+//
+// --yes takes the affirmative without asking; --no-input (or no TTY) declines
+// to guess and takes the default, because a prompt that cannot be shown must
+// not block a script.
+func (o *setupOptions) confirm(message string, def bool) bool {
+	if o.yes {
+		return true
+	}
+	if o.noInput {
+		return def
+	}
+	answer := def
+	if err := survey.AskOne(&survey.Confirm{Message: message, Default: def}, &answer, promptStdio()); err != nil {
+		return def
+	}
+	return answer
 }
 
 type agentResult struct {
@@ -82,6 +105,7 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
+	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
 	return cmd
 }
@@ -497,11 +521,7 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 	if profileSourcesEnvFile(sh) {
 		return
 	}
-	add := true
-	if err := survey.AskOne(&survey.Confirm{
-		Message: fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.Line, sh.Profile),
-		Default: true,
-	}, &add, promptStdio()); err != nil || !add {
+	if !opts.confirm(fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.Line, sh.Profile), true) {
 		return
 	}
 	f, err := os.OpenFile(sh.Profile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -767,18 +787,9 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		return info, "", nil
 	}
 
-	if opts.interactive {
-		mint := true
-		if err := survey.AskOne(&survey.Confirm{
-			Message: "Create a project-scoped API key now?",
-			Default: true,
-		}, &mint); err != nil {
-			return nil, "", err
-		}
-		if !mint {
-			rep.ok("skipped creating an API key")
-			return info, "", nil
-		}
+	if opts.interactive && !opts.confirm("Create a project-scoped API key now?", true) {
+		rep.ok("skipped creating an API key")
+		return info, "", nil
 	}
 
 	// Plain ASCII and no punctuation beyond spaces and hyphens: the name is
@@ -822,17 +833,8 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	if opts.noEnv || opts.global {
 		return info, token, nil
 	}
-	if opts.interactive {
-		writeEnv := true
-		if err := survey.AskOne(&survey.Confirm{
-			Message: "Write ORQ_API_KEY to ./.env?",
-			Default: true,
-		}, &writeEnv); err != nil {
-			return nil, "", err
-		}
-		if !writeEnv {
-			return info, token, nil
-		}
+	if opts.interactive && !opts.confirm("Write ORQ_API_KEY to ./.env?", true) {
+		return info, token, nil
 	}
 	if err := appendEnvKey(rep, token); err != nil {
 		rep.warn("could not write ./.env: %v", err)
@@ -1048,15 +1050,8 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	// convenient. Asked once rather than once per agent — the grant is the same
 	// for all of them, and a question each turns a five-agent machine into five
 	// prompts. --no-mcp and --no-input answer it up front.
-	if !opts.noInput && !opts.noMCP {
-		register := true
-		if err := survey.AskOne(&survey.Confirm{
-			Message: "Register the orq MCP server? Agents can then read and write your orq workspace.",
-			Default: true,
-		}, &register); err != nil {
-			return nil
-		}
-		opts.noMCP = !register
+	if !opts.noMCP {
+		opts.noMCP = !opts.confirm("Register the orq MCP server? Agents can then read and write your orq workspace.", true)
 	}
 
 	results := make([]agentResult, 0, len(selected))

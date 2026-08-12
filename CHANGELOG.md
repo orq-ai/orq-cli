@@ -58,6 +58,11 @@ the version and this changelog as the source of truth for breaking changes.
   key, and registers the orq MCP server and gateway provider in the config
   files of the coding agents it detects. Unlike `orq launch`, these writes are
   persistent.
+- Added: `orq setup -y/--yes` — answer yes to every confirmation instead of
+  being asked. `orq setup` now asks before registering the orq MCP server in an
+  agent's config, since that writes into files you own and grants the agent
+  read/write access to your workspace; `--yes` is the auto-approve, `--no-mcp`
+  the decline, and `--no-input` still never prompts.
 - Added: `orq setup --no-mcp` — instrument agents for gateway routing without
   registering the orq MCP server, for anyone who wants their model calls routed
   through orq but does not want the agent reading and writing their workspace.
