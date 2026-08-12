@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -462,4 +463,109 @@ func providerOfModel(t *testing.T, toml, ref string) string {
 	rest := toml[i+len(key):]
 	line := rest[strings.Index(rest, "provider = ")+len("provider = "):]
 	return strings.Trim(line[:strings.Index(line, "\n")], `"`)
+}
+
+// Both commands write kimi's config.toml, from the same catalogue, through two
+// entirely separate code paths: `orq setup` via kimiProviderBlock, `orq launch`
+// via launch.BuildKimiConfigTOML. They have diverged four times — the MCP
+// server name, enabled-vs-is_active, tool calling, and the Responses split —
+// every time because one path learned something the other did not, and every
+// time it was found by running the CLI rather than by a test.
+//
+// This asserts the two agree on the things a user can see: which models exist,
+// which provider each is on, and the caps written for it. It does not remove
+// the duplication (that needs the writers to become one), but it makes the next
+// divergence fail here instead of in someone's terminal.
+func TestSetupAndLaunchDescribeKimiIdentically(t *testing.T) {
+	catalogue := []auth.RouterModel{
+		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"),
+		model("azure", "gpt-5.4", 1050000, true, true, "chat"),
+		model("google", "gemini-2.5-flash", 1000000, true, true, "chat"),
+		model("perplexity", "sonar-pro", 128000, true, false, "chat"),    // no tools
+		model("anthropic", "claude-legacy", 200000, false, true, "chat"), // not enabled
+	}
+	catalogue[0].Metadata.MaxOutputTokens = 64000
+	catalogue[1].Metadata.MaxOutputTokens = 128000
+	catalogue[1].Metadata.SupportsResponses = true
+	catalogue[2].Metadata.MaxOutputTokens = 8192
+
+	const routerURL = "https://api.orq.ai/v3/router"
+
+	// What setup writes.
+	setupTOML := kimiProviderBlock(routerURL, "sk-k", usableCodingModels(catalogue))
+
+	// What launch writes, from the same catalogue expressed in its own shape.
+	ids := []string{}
+	infos := []launch.ModelInfo{}
+	for _, m := range usableCodingModels(catalogue) {
+		ids = append(ids, m.Ref())
+		infos = append(infos, launch.ModelInfo{
+			ID:                m.Ref(),
+			ContextWindow:     m.Metadata.ContextWindow,
+			MaxOutputTokens:   m.Metadata.MaxOutputTokens,
+			SupportsResponses: m.Metadata.SupportsResponses,
+		})
+	}
+	launchTOML := launch.BuildKimiConfigTOML(routerURL, "sk-k", ids[0], ids, infos)
+
+	setupModels, launchModels := kimiModelTables(setupTOML), kimiModelTables(launchTOML)
+	if len(setupModels) != len(launchModels) {
+		t.Fatalf("setup wrote %d models, launch wrote %d", len(setupModels), len(launchModels))
+	}
+	for ref, s := range setupModels {
+		l, ok := launchModels[ref]
+		if !ok {
+			t.Errorf("setup wrote %s, launch did not", ref)
+			continue
+		}
+		if s != l {
+			t.Errorf("%s described differently:\n  setup:  %s\n  launch: %s", ref, s, l)
+		}
+	}
+	// Provider names must match too, or a user who ran both ends up with two
+	// definitions of the same gateway in one file.
+	if !strings.Contains(setupTOML, "[providers."+kimiChatProvider+"]") ||
+		!strings.Contains(launchTOML, "[providers."+launch.KimiChatProvider+"]") {
+		t.Error("the two commands name the chat provider differently")
+	}
+}
+
+// usableCodingModels applies the filter both commands use, so the comparison
+// starts from the same set rather than from each path's own idea of it.
+func usableCodingModels(all []auth.RouterModel) []auth.RouterModel {
+	out := []auth.RouterModel{}
+	for _, m := range all {
+		if m.Enabled && m.Type == "chat" && m.Functions {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// kimiModelTables maps each [models."<ref>"] table to its normalised body, so
+// two configs can be compared without depending on ordering or whitespace.
+func kimiModelTables(toml string) map[string]string {
+	tables := map[string]string{}
+	ref, fields := "", []string{}
+	flush := func() {
+		if ref != "" {
+			sort.Strings(fields)
+			tables[ref] = strings.Join(fields, " | ")
+		}
+		ref, fields = "", nil
+	}
+	for _, line := range strings.Split(toml, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, `[models."`):
+			flush()
+			ref = strings.TrimSuffix(strings.TrimPrefix(line, `[models."`), `"]`)
+		case strings.HasPrefix(line, "["):
+			flush()
+		case ref != "" && line != "":
+			fields = append(fields, line)
+		}
+	}
+	flush()
+	return tables
 }
