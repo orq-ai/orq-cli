@@ -1151,12 +1151,27 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				if best, ok := defaultCodingModel(rep, client, state); ok {
 					defaultModel = best.Ref()
 				}
-				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel); werr != nil {
+				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
+				switch {
+				case werr != nil:
 					rep.warn("%-8s provider  %v", id, werr)
-				} else {
-					rep.ok("%-8s provider  %s → orq gateway (%d models)", id, path, len(models))
+				default:
+					// Only claim a model count when the format actually carries
+					// one: codex's profile names a single default and takes its
+					// list from elsewhere.
+					listed := ""
+					if written > 0 {
+						listed = fmt.Sprintf(" (%d models)", written)
+					}
+					rep.ok("%-8s provider  %s → orq gateway%s", id, path, listed)
+					// Setup registers orq as an option rather than making it the
+					// default, so for some agents there is a step the user would
+					// otherwise never find.
+					if spec.providerUsage != "" {
+						rep.note("           %s", spec.providerUsage)
+					}
 					res.Provider = path
-					res.ModelCount = len(models)
+					res.ModelCount = written
 				}
 			}
 		}
