@@ -176,23 +176,42 @@ func TestMaskToken(t *testing.T) {
 	}
 }
 
-// Codex reads only the global TOML, so both scopes must resolve to the same
-// absolute path rather than a project-relative one.
-func TestCodexMCPConfigIsAlwaysGlobal(t *testing.T) {
-	codex, _ := lookupAgent("codex")
-	project, err := codex.mcpConfig(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	global, err := codex.mcpConfig(true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if project != global {
-		t.Errorf("codex project path %q != global path %q", project, global)
-	}
-	if !filepath.IsAbs(global) {
-		t.Errorf("codex config path %q is not absolute", global)
+// Everything setup writes for these agents reaches the credential indirectly —
+// codex through env_key, opencode and kilo through {env:ORQ_API_KEY} — and none
+// of them resolve that from a project-scoped config. Codex reads MCP only from
+// the home TOML; opencode discards a project config containing env references
+// entirely and then silently answers "orq/anthropic/…" from whatever other
+// provider it can find, while kilo reports the file as invalid. A project copy
+// is written and never used, so both scopes resolve to the same absolute path.
+func TestEnvReferencingConfigsAreAlwaysGlobal(t *testing.T) {
+	for _, id := range []string{"codex", "opencode", "kilo"} {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			t.Fatalf("%s is not registered", id)
+		}
+		paths := map[string]func(bool) (string, error){
+			"mcp":      spec.mcpConfig,
+			"provider": spec.providerConfig,
+		}
+		for kind, resolve := range paths {
+			if resolve == nil {
+				continue
+			}
+			project, err := resolve(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			global, err := resolve(true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if project != global {
+				t.Errorf("%s %s: project path %q != global path %q", id, kind, project, global)
+			}
+			if !filepath.IsAbs(global) {
+				t.Errorf("%s %s: path %q is not absolute", id, kind, global)
+			}
+		}
 	}
 }
 
