@@ -517,6 +517,51 @@ func TestCodexDefaultModelMustSupportResponses(t *testing.T) {
 	}
 }
 
+// Size variants sort lexically *above* the model they are cut down from —
+// gpt-5.4-nano > gpt-5.4-mini > gpt-5.4 — so ranking by id alone handed a
+// coding agent the weakest member of the family. It is not only a quality
+// question: nano rejects tools the full model accepts, and codex sends its
+// whole tool set on the first request, so the session died with
+// "[openai] Tool 'tool_search' is not supported with gpt-5.4-nano".
+func TestCodexDefaultModelPrefersFullModelsOverSizeVariants(t *testing.T) {
+	responses := func(refs ...string) []auth.RouterModel {
+		out := make([]auth.RouterModel, 0, len(refs))
+		for _, ref := range refs {
+			provider, id, _ := strings.Cut(ref, "/")
+			m := model(provider, id, 400000, true, true, "chat")
+			m.Metadata.SupportsResponses = true
+			out = append(out, m)
+		}
+		return out
+	}
+
+	// The workspace that broke: no gpt-5.6, so the gpt-5.4 family is all there
+	// is, and -nano used to win it.
+	got := codexDefaultModel(responses(
+		"openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano"), "")
+	if got != "openai/gpt-5.4" {
+		t.Errorf("codex default = %q, want the full openai/gpt-5.4", got)
+	}
+
+	// Version suffixes must still win, which is what the lexical rule was for.
+	got = codexDefaultModel(responses("openai/gpt-5.4", "openai/gpt-5.6"), "")
+	if got != "openai/gpt-5.6" {
+		t.Errorf("codex default = %q, want the newer openai/gpt-5.6", got)
+	}
+
+	// Outside the preferred families the same rule applies.
+	got = codexDefaultModel(responses("acme/model-1-mini", "acme/model-1"), "")
+	if got != "acme/model-1" {
+		t.Errorf("codex default = %q, want the full acme/model-1", got)
+	}
+
+	// Only variants available: better than naming nothing.
+	got = codexDefaultModel(responses("openai/gpt-5.4-mini"), "")
+	if got != "openai/gpt-5.4-mini" {
+		t.Errorf("codex default = %q, want the sole model available", got)
+	}
+}
+
 // The writer must apply that rule, not just the helper.
 func TestCodexProfileNeverNamesAChatOnlyModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
