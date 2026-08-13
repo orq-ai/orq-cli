@@ -253,7 +253,13 @@ jobs:
           set -e
           sed "s|^INSTALLER_VERSION=.*|INSTALLER_VERSION=\"${TAG}\"|" install.sh > dist/install.sh
           # Fail loudly rather than shipping an installer that reports "dev".
+          # This also catches a sed that silently matched nothing.
           grep -q "^INSTALLER_VERSION=\"${TAG}\"$" dist/install.sh
-          sh -n dist/install.sh
-          shasum -a 256 dist/install.sh > dist/install.sh.sha256
+          # Deliberately no `sh -n` here: this runner is macOS, where /bin/sh is
+          # bash in posix mode and accepts constructs dash rejects, so it would
+          # pass regardless. The real gate runs the script under dash in CI
+          # (.github/workflows/ci.yml), where /bin/sh is dash.
+          # cd first: `shasum dist/install.sh` records the path as written, so
+          # `shasum -c` from the download directory would look for dist/.
+          ( cd dist && shasum -a 256 install.sh > install.sh.sha256 )
           gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --clobber

@@ -27,10 +27,9 @@
 set -eu
 
 # Stamped by the release workflow when this script is published as a release
-# asset; stays "dev" when run from a checkout, which is the honest answer.
-# Not exposed as `--version`: that flag already pins the CLI release to install,
-# and overloading it would be ambiguous. It is printed in the run header
-# instead, so it appears in any output a user pastes into a bug report.
+# asset; stays "dev" when run from a checkout. Printed in the run header so it
+# appears in any output pasted into a bug report. Not a `--version` flag —
+# that one already pins the CLI release to install.
 INSTALLER_VERSION="dev"
 
 REPO="orq-ai/orq-cli"
@@ -44,8 +43,9 @@ PATH_MARKER_END="# <<< orq cli <<<"
 
 # Errors go to stderr; progress and results stay on stdout. clig.dev prefers
 # messaging on stderr so stdout stays pipeable, but an installer emits no data
-# for a pipe to consume — the progress *is* the output, and rustup, Homebrew
-# and Docker's installers all print it to stdout. Deliberate, not an oversight.
+# for a pipe to consume — the progress *is* the output. Deliberate, not an
+# oversight. (Practice differs across installers: some route everything to
+# stderr instead. Either is defensible; what matters is that ours is chosen.)
 err() {
   echo "orq-cli installer: $*" >&2
 }
@@ -80,16 +80,25 @@ USAGE
 
 # Every network call goes through here.
 #
-#   --proto '=https'  refuse to be redirected onto plain http. The documented
-#                     entry point is a vanity URL that redirects, so the
-#                     redirect chain is part of our attack surface.
-#   --retry           a dropped connection or a 5xx from a CDN blip should not
-#                     abort an install on the first hiccup; --retry-connrefused
-#                     covers the connection never being established at all.
+#   --proto '=https'    refuse to be redirected onto plain http. The documented
+#                       entry point is a vanity URL that redirects, so the
+#                       redirect chain is part of our attack surface.
+#   --retry             ride out a 5xx or a DNS blip.
+#   --retry-all-errors  without it, curl only retries a specific list: an empty
+#                       reply (52) and a transfer cut mid-stream (18) get zero
+#                       retries, and those are the likeliest way a multi-MB
+#                       binary download dies. Safe here — every caller is an
+#                       idempotent GET and -o truncates before each attempt.
 #
-# Callers add -sS for quiet fetches or --progress-bar for the binary.
+# -f is deliberately not set here: the checksum call needs to read the status
+# code out of a 404 rather than have curl turn it into a generic failure.
+# Callers that want "any non-2xx is fatal" pass -f themselves.
+#
+# Requires curl >= 7.71 (--retry-all-errors). Older builds exit 2 with
+# "option ... is unknown" before issuing a request; that message is left on
+# stderr rather than swallowed, so the cause is visible.
 fetch() {
-  curl -fL --proto '=https' --retry 3 --retry-delay 1 --retry-connrefused "$@"
+  curl -L --proto '=https' --retry 3 --retry-delay 1 --retry-all-errors "$@"
 }
 
 # Whether there is a human to prompt. stdin is the script itself under
@@ -97,8 +106,14 @@ fetch() {
 # `[ -r /dev/tty ]` is not enough: the device node is world-readable, so it
 # passes even in CI where the process has no controlling terminal and opening
 # it fails with ENXIO. Actually opening it is the only honest check.
+#
+# `true`, not `:` — `:` is a POSIX *special* built-in, and a redirection error
+# on one of those makes a non-interactive shell exit immediately. dash (Debian
+# and Ubuntu's /bin/sh) and busybox ash implement that literally, so `:` here
+# killed the installer with a silent exit 2 on every Linux box without a
+# controlling terminal. `true` is a regular built-in and merely returns false.
 have_tty() {
-  { : < /dev/tty; } 2>/dev/null
+  { true < /dev/tty; } 2>/dev/null
 }
 
 require_cmd() {
@@ -220,7 +235,7 @@ if [ -z "$VERSION" ]; then
   # GitHub's latest-release API returns JSON; awk out the tag_name field
   # without requiring jq. Pre-releases are excluded by the endpoint itself.
   api_url="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(fetch -sS "$api_url" 2>/dev/null | awk -F '"' '/"tag_name":/ {print $4; exit}')"
+  VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ {print $4; exit}')"
 
   if [ -z "$VERSION" ]; then
     err "failed to determine latest release from $api_url"
@@ -271,7 +286,7 @@ if [ "${already_current:-0}" != "1" ]; then
   }
   trap cleanup EXIT INT TERM
 
-  if ! fetch --progress-bar -o "$tmp_file" "$download_url"; then
+  if ! fetch -f --progress-bar -o "$tmp_file" "$download_url"; then
     err "failed to download $download_url"
     err "verify the release exists: https://github.com/$REPO/releases"
     exit 1
@@ -305,10 +320,10 @@ if [ "${already_current:-0}" != "1" ]; then
 
   # curl's -w writes the status (000 on a connection failure) even when it exits
   # non-zero, so `|| true` only stops that non-zero from aborting the script.
-  # -f is dropped here on purpose: we need the status code for the 404 case
-  # below, and --fail makes curl discard the body and report a generic error.
-  checksum_status="$(curl -sSL --proto '=https' --retry 3 --retry-delay 1 \
-    --retry-connrefused -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
+  # No -f: a 404 here is a real case (releases predating the checksum
+  # assets) and has to be told apart from a transport failure, which -f
+  # would flatten into the same generic error.
+  checksum_status="$(fetch -sS -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
   expected=""
   case "${checksum_status:-000}" in
     200)
@@ -319,6 +334,22 @@ if [ "${already_current:-0}" != "1" ]; then
       if [ -z "$expected" ]; then
         err "checksum fetch returned HTTP 200 but an empty body ($checksum_url)"
         err "Refusing to install unverified."
+        exit 1
+      fi
+      # Shape check before comparing. A captive portal or proxy interstitial
+      # answers 200 with HTML, which is non-empty and would otherwise be
+      # compared as a hash — reporting a checksum mismatch and pointing the
+      # user at our issue tracker for what is a network problem.
+      case "$expected" in
+        *[!0-9a-fA-F]* | "")
+          err "checksum response from $checksum_url is not a sha256 digest"
+          err "a proxy or captive portal may be intercepting the request"
+          exit 1
+          ;;
+      esac
+      if [ "${#expected}" -ne 64 ]; then
+        err "checksum response from $checksum_url is not a sha256 digest"
+        err "a proxy or captive portal may be intercepting the request"
         exit 1
       fi
       ;;
@@ -356,15 +387,22 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # Reported by running the binary we just wrote, not by echoing the tag we
-  # asked for: this is the only step that proves the download is executable on
-  # this machine — right architecture, not truncated, not quarantined.
+  # Reported by running the binary we just wrote rather than echoing the tag we
+  # asked for. Integrity is already covered by the checksum above; what this
+  # adds is that the binary actually executes here — the failure it catches is
+  # a platform mismatch, or an exec policy that blocks it.
+  #
+  # Failing is fatal, where this used to print a success line regardless. An
+  # unrunnable binary left on PATH is worse than no install, so remove it: the
+  # EXIT trap only covers $tmp_file, which has already been moved away.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
   else
-    err "installed binary at $target does not run (--version failed)"
-    err "the download may be corrupt or built for another platform"
+    rm -f "$target"
+    err "the downloaded binary does not run on this machine (--version failed)"
+    err "it passed the checksum, so this is a platform mismatch or an exec policy"
+    err "nothing was left at $target"
     exit 1
   fi
 fi
@@ -417,12 +455,24 @@ else
     # Without a terminal (CI, piped scripts) we keep the historical behaviour
     # rather than silently leaving an installed binary off PATH.
     if have_tty; then
-      printf '\n  Add %s to PATH in %s?\n' "$INSTALL_DIR" "$profile"
-      printf '      %s\n' "$path_line"
-      printf '  [Y/n] '
-      # `read` returns non-zero at EOF, which would abort the script under -e.
-      read -r reply < /dev/tty || reply=""
-      printf '\n'
+      # The question goes to /dev/tty, not stdout: under `curl … | sh | tee`
+      # stdout is the log file, and asking there would block on a read with
+      # nothing on screen to explain why.
+      {
+        printf '\n  Add %s to PATH in %s?\n' "$INSTALL_DIR" "$profile"
+        printf '      %s\n' "$path_line"
+        printf '  [Y/n] '
+      } > /dev/tty
+      # `read` returns non-zero at EOF — Ctrl-D. That is someone backing out of
+      # the question, so it has to fail closed; treating it as consent would
+      # edit the rcfile this prompt exists to protect.
+      if ! read -r reply < /dev/tty; then
+        reply="n"
+        printf '\n'
+        err "no answer read from the terminal; leaving $profile unchanged"
+      else
+        printf '\n'
+      fi
     else
       reply=""
     fi
@@ -460,13 +510,28 @@ if [ "$RUN_SETUP" = "1" ] && ! "$target" --help 2>/dev/null | grep -q '^  setup 
   setup_missing=1
 fi
 
+setup_ran=0
 if [ "$RUN_SETUP" = "1" ] && have_tty; then
   printf '\n  Starting setup - press Ctrl-C to skip and run '\''orq setup'\'' later.\n'
   printf '\n%s\n' "$G_RULE"
   # The chained run inherits the cwd of the curl invocation, which is rarely a
   # project; setup detects that and defaults to a global install.
-  ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty || true
-  exit 0
+  #
+  # A non-zero exit is reported, not swallowed: setup failing on auth, or the
+  # user pressing Ctrl-C as invited above, must not read as a clean install to
+  # whoever is watching. Execution continues either way so the PATH guidance
+  # below still prints — setup just ran in a shell where the new entry is not
+  # live yet, which is exactly when that advice matters most.
+  setup_ran=1
+  if ! ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty; then
+    setup_status=$?
+    printf '\n'
+    if [ "$setup_status" = "130" ]; then
+      err "setup was interrupted; run 'orq setup' when you are ready"
+    else
+      err "setup exited $setup_status; the CLI is installed — rerun 'orq setup'"
+    fi
+  fi
 fi
 
 printf '\n'
@@ -474,25 +539,27 @@ printf '\n'
 # What the user has to do next depends only on whether `orq` resolves in the
 # shell they are sitting in. Telling someone to restart a shell that already
 # works is noise they have to think about before ignoring.
-if [ "$path_already_set" = "1" ]; then
-  ready=1
-elif [ -n "$profile" ]; then
-  # A profile was written, so new shells will find it — this one will not.
-  ready=0
-  printf '  To use orq in this shell, run:\n'
-  printf '      exec %s -l\n\n' "${SHELL:-sh}"
-else
-  # Nothing was written: unrecognised shell, --no-modify-path, or declined.
-  ready=0
-  printf '  Add to your shell profile:\n'
-  printf '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
+if [ "$path_already_set" != "1" ]; then
+  if [ -n "$profile" ]; then
+    # The profile carries the PATH line — either we just appended it, or it was
+    # already there from an earlier run. Future shells are fine; this one isn't.
+    printf '  To use orq in this shell, run:\n'
+    printf '      exec %s -l\n\n' "${SHELL:-sh}"
+  else
+    # Nothing written: unrecognised shell, --no-modify-path, or declined.
+    printf '  Add to your shell profile:\n'
+    printf '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
+  fi
 fi
 
-if [ "${setup_missing:-0}" != "1" ]; then
+# Setup already ran above; pointing at it again would be telling the user to
+# redo what they just did.
+if [ "${setup_missing:-0}" != "1" ] && [ "$setup_ran" = "0" ]; then
   printf '  Next:\n'
-  if [ "$ready" = "1" ]; then
+  if [ "$path_already_set" = "1" ]; then
     printf '      orq setup\n\n'
   else
+    # `orq` will not resolve yet, so give the command they can actually paste.
     printf '      %s setup\n\n' "$target"
   fi
 fi

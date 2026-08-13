@@ -42,6 +42,34 @@ jobs:
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
 
+  installer:
+    name: install.sh runs under dash
+    # ubuntu-latest, because /bin/sh here is dash. The release job runs on
+    # macOS, where /bin/sh is bash in posix mode and accepts constructs dash
+    # rejects — a parse check there passes on scripts that die on Debian.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: parse under dash
+        run: dash -n install.sh
+      - name: run with no controlling terminal
+        # setsid detaches the controlling terminal, which is the CI/Docker/ssh
+        # case. A POSIX special built-in failing a redirection exits the shell
+        # outright there, so this has to actually execute, not just parse.
+        # --help exits before any network call.
+        run: setsid dash install.sh --help > /dev/null
+      - name: reject non-ASCII in output
+        # The UTF-8 fallback only holds if every glyph is gated; a stray one
+        # renders as mojibake on a non-UTF-8 terminal.
+        run: |
+          set -eu
+          out=$(LC_ALL=C LANG=C dash install.sh --help)
+          if printf '%s' "$out" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
+            echo "--help emits non-ASCII under a C locale:" >&2
+            printf '%s' "$out" | LC_ALL=C grep -nP '[^\x00-\x7F]' >&2
+            exit 1
+          fi
+
   rc:
     name: build, vet (orq-rc module)
     runs-on: ubuntu-latest
