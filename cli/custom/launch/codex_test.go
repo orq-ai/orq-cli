@@ -30,7 +30,7 @@ func TestCodexOverrideArgs(t *testing.T) {
 	want := []string{
 		"-c", `model="openai/gpt-5.4"`,
 		"-c", `model_provider="orq"`,
-		"-c", `model_providers.orq.name="orq Gateway"`,
+		"-c", `model_providers.orq.name="Orq AI Gateway"`,
 		"-c", `model_providers.orq.base_url="https://api.orq.ai/v3/router"`,
 		"-c", `model_providers.orq.env_key="ORQ_API_KEY"`,
 		"-c", `model_providers.orq.wire_api="responses"`,

@@ -41,10 +41,25 @@ func TestKimiTOMLProvidersAndCaps(t *testing.T) {
 	}
 }
 
+// Setup merges this block into the user's own config.toml, where kimi records
+// the model they picked in its UI. It passes no default model so that choice
+// survives — and because a default_model emitted here would sit after the
+// user's tables, where TOML reads a root key as a member of the last one.
+func TestKimiTOMLOmitsDefaultModelWhenUnset(t *testing.T) {
+	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "",
+		[]string{"anthropic/claude-sonnet-4-6"}, nil)
+	if strings.Contains(toml, "default_model") {
+		t.Fatalf("default_model written despite no model being named:\n%s", toml)
+	}
+	if !strings.HasPrefix(toml, "[providers.orq]") {
+		t.Fatalf("block must open on a table so it can be appended to a config:\n%s", toml)
+	}
+}
+
 func TestKimiTOMLFallbackCaps(t *testing.T) {
 	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "anthropic/claude-sonnet-4-6",
 		[]string{"anthropic/claude-sonnet-4-6"}, nil)
-	if !strings.Contains(toml, "max_context_size = 262144") || !strings.Contains(toml, "max_output_size = 8192") {
+	if !strings.Contains(toml, "max_context_size = 128000") || !strings.Contains(toml, "max_output_size = 8192") {
 		t.Fatalf("fallback caps missing:\n%s", toml)
 	}
 	if strings.Contains(toml, "[providers.orq-responses]") {
