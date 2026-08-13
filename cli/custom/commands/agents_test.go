@@ -2,6 +2,8 @@ package commands
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
@@ -163,6 +165,60 @@ func model(provider, id string, ctx int, enabled, fns bool, kind string) auth.Ro
 	m := auth.RouterModel{ModelID: id, Provider: provider, Type: kind, Active: true, Enabled: enabled, Functions: fns}
 	m.Metadata.ContextWindow = ctx
 	return m
+}
+
+// Both commands read the same endpoint and must address a model the same way.
+// They did not: launch uses the published refId, setup composed
+// provider + "/" + model_id. For a workspace's custom models and autorouters
+// the endpoint sends refId "workspace@orq/<name>" while provider is "orq", so
+// setup wrote "orq/<name>" — which the agents' model normalizers strip back to
+// a bare name the gateway cannot resolve. Config that names uncallable models
+// is worse than config that omits them: the model shows up in the picker and
+// fails at the first prompt.
+func TestSetupAndLaunchAddressModelsIdentically(t *testing.T) {
+	const payload = `[
+	  {"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+	   "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+	   "metadata":{"context_window":200000,"max_output_tokens":64000}},
+	  {"provider":"orq","model_id":"router-fast","refId":"acme@orq/router-fast",
+	   "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+	   "metadata":{"context_window":128000,"max_output_tokens":8192}}
+	]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	catalogue, err := auth.NewClient(srv.URL).ListModels("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var setupRefs []string
+	for _, m := range usableCodingModels(catalogue) {
+		setupRefs = append(setupRefs, m.Ref())
+	}
+
+	infos, err := launch.FetchEnabledModels("t", srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var launchRefs []string
+	for _, info := range infos {
+		launchRefs = append(launchRefs, info.ID)
+	}
+
+	sort.Strings(setupRefs)
+	sort.Strings(launchRefs)
+	if strings.Join(setupRefs, ",") != strings.Join(launchRefs, ",") {
+		t.Errorf("the two commands address the catalogue differently:\n  setup:  %v\n  launch: %v",
+			setupRefs, launchRefs)
+	}
+	// Named explicitly so a regression reads as the bug it is, rather than as
+	// two lists that merely stopped matching.
+	if got := setupRefs[0]; got != "acme@orq/router-fast" {
+		t.Errorf("custom model addressed as %q, want the published refId", got)
+	}
 }
 
 // A coding agent needs tool calling, and a retired or chat-less model in the
