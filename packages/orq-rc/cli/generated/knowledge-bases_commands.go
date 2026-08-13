@@ -71,7 +71,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "retrieval_settings",
 							FlagName:    "retrieval-settings",
 							Type:        "json",
-							Description: "The retrieval settings for the knowledge base. If not provider, Hybrid Search will be used as a default query strategy.",
+							Description: "The retrieval settings for the knowledge base. If not provided, Hybrid Search will be used as a default query strategy.",
 						},
 						{
 							Name:        "type",
@@ -139,7 +139,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "retrieval_settings",
 					FlagName:    "retrieval-settings",
 					Type:        "json",
-					Description: "The retrieval settings for the knowledge base. If not provider, Hybrid Search will be used as a default query strategy.",
+					Description: "The retrieval settings for the knowledge base. If not provided, Hybrid Search will be used as a default query strategy.",
 				},
 				{
 					Name:        "type",
@@ -954,11 +954,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search knowledge-id",
 			Short:   "Search knowledge base",
-			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (object)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (object)\n- `search_options` (object)\n- `search_type` (string)\n- `threshold` (number)\n- `top_k` (integer)\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (object)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (object)\n- `search_options` (object)\n- `search_type` (string | null)\n- `threshold` (number | null)\n- `top_k` (integer | null)\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"query\": \"query\",\n  \"search_type\": \"hybrid_search\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"query\": \"query\",\n  \"search_type\": \"vector_search\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -996,25 +996,20 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 						{
 							Name:        "search_type",
 							FlagName:    "search-type",
-							Type:        "enum-string",
-							Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
-							Enum: []string{
-								"vector_search",
-								"keyword_search",
-								"hybrid_search",
-							},
+							Type:        "string-nullable",
+							Description: "The type of search to perform. Send `null` or omit to use the knowledge base configured `retrieval_type`",
 						},
 						{
 							Name:        "threshold",
 							FlagName:    "threshold",
-							Type:        "float64",
-							Description: "The threshold to apply to the search. If not provided, will default to the knowledge base configured `threshold`",
+							Type:        "float64-nullable",
+							Description: "The threshold to apply to the search. Send `null` or omit to use the knowledge base configured `threshold`",
 						},
 						{
 							Name:        "top_k",
 							FlagName:    "top-k",
-							Type:        "int64",
-							Description: "The number of results to return. If not provided, will default to the knowledge base configured `top_k`.",
+							Type:        "int64-nullable",
+							Description: "The number of results to return. Send `null` or omit to use the knowledge base configured `top_k`.",
 						},
 					},
 				)
@@ -1071,25 +1066,20 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				{
 					Name:        "search_type",
 					FlagName:    "search-type",
-					Type:        "enum-string",
-					Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
-					Enum: []string{
-						"vector_search",
-						"keyword_search",
-						"hybrid_search",
-					},
+					Type:        "string-nullable",
+					Description: "The type of search to perform. Send `null` or omit to use the knowledge base configured `retrieval_type`",
 				},
 				{
 					Name:        "threshold",
 					FlagName:    "threshold",
-					Type:        "float64",
-					Description: "The threshold to apply to the search. If not provided, will default to the knowledge base configured `threshold`",
+					Type:        "float64-nullable",
+					Description: "The threshold to apply to the search. Send `null` or omit to use the knowledge base configured `threshold`",
 				},
 				{
 					Name:        "top_k",
 					FlagName:    "top-k",
-					Type:        "int64",
-					Description: "The number of results to return. If not provided, will default to the knowledge base configured `top_k`.",
+					Type:        "int64-nullable",
+					Description: "The number of results to return. Send `null` or omit to use the knowledge base configured `top_k`.",
 				},
 			},
 		)
