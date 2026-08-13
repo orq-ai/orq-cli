@@ -13,8 +13,16 @@
 *.test
 *.out
 
+# scratch space for generated docs, demo kits and binary snapshots
+/outputs/
+
 # release-build.sh drops cross-compiled binaries here; only CI publishes them
 /npm/cli-*/bin/
 /npm/**/node_modules/
 *.tgz
 /surface-dump
+
+# `orq setup` writes project-scoped agent config into the working directory;
+# it is generated, not source.
+/.agents/
+/.kimi-code/

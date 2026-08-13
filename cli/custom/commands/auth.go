@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"strings"
+
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
-	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
 
@@ -15,70 +16,90 @@ func NewLoginCommand() *cobra.Command {
 	var apiBase string
 	var workspace string
 	var noOpen bool
+	var apiKey string
 
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate with orq via OAuth device login",
+		Short: "Authenticate with orq via OAuth device login or an API key",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := auth.NewClient(apiBase).WithContext(cmd.Context())
-
-			start, err := client.StartDeviceLogin("orq-cli")
-			if err != nil {
-				return err
-			}
-
-			fmt.Fprintf(bartolocli.Stderr, "Open: %s\n", start.VerificationURIComplete)
-			fmt.Fprintf(bartolocli.Stderr, "Code: %s\n", start.UserCode)
-
-			browserOpened := false
-			if !noOpen {
-				browserOpened = auth.OpenBrowser(start.VerificationURIComplete)
-				if !browserOpened {
-					fmt.Fprintln(bartolocli.Stderr, "Could not open the browser automatically. Open the URL manually.")
-				}
-			}
-
-			fmt.Fprintln(bartolocli.Stderr, "Waiting for browser approval...")
-			approved, err := client.AwaitDeviceApproval(cmd.Context(), start.DeviceCode, start.ExpiresIn, start.Interval)
-			if err != nil {
-				return err
-			}
-
-			profile, err := client.FetchProfile(approved.AccessToken)
-			if err != nil {
-				return err
-			}
-
-			workspaceKey := workspace
-			if workspaceKey == "" && len(profile.Workspaces) > 1 && hasInteractiveTTY() {
-				workspaceKey, err = selectWorkspace(profile.Workspaces, "Choose an active workspace")
-				if err != nil {
+			// Choose the method: an explicit --api-key skips the question, and
+			// without a TTY there is nobody to ask, so browser login proceeds
+			// directly (it will fail with its own clear error headless).
+			method := "OAuth (browser)"
+			if strings.TrimSpace(apiKey) != "" {
+				method = "API key"
+			} else if hasInteractiveTTY() {
+				if err := survey.AskOne(&survey.Select{
+					Message: "Select login method",
+					Options: []string{"OAuth (browser)", "API key"},
+				}, &method, promptStdio()); err != nil {
 					return err
 				}
 			}
 
-			session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspaceKey)
+			if method == "API key" {
+				return apiKeyLogin(cmd, apiBase, apiKey)
+			}
+
+			result, err := runDeviceLogin(cmd.Context(), newReporter(false), apiBase, workspace, !noOpen)
 			if err != nil {
 				return err
 			}
 
-			report := BuildIdentityReport(session, &client.URLs)
+			report := BuildIdentityReport(result.Session, &auth.NewClient(apiBase).URLs)
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
 				return nil
 			}
 			return emit(map[string]any{
 				"identity":         report,
-				"browser_opened":   browserOpened,
-				"verification_uri": start.VerificationURIComplete,
-				"user_code":        start.UserCode,
+				"browser_opened":   result.BrowserOpened,
+				"verification_uri": result.VerificationURI,
+				"user_code":        result.UserCode,
 			})
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Preselect a workspace key")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not try to open the browser automatically")
+	cmd.Flags().StringVar(&apiKey, "api-key", "", "Sign in with this API key instead of the browser")
 	return cmd
+}
+
+// apiKeyLogin verifies a pasted or flag-supplied key with one real API call,
+// then persists it to the credentials profile — the same store `orq setup
+// --api-key` writes, so every command resolves it afterwards.
+func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		if err := survey.AskOne(&survey.Password{
+			Message: "API key",
+		}, &key, survey.WithValidator(survey.Required), promptStdio()); err != nil {
+			return err
+		}
+		key = strings.TrimSpace(key)
+	}
+
+	// Verify before saving: persisting a bad key would leave every later
+	// command failing with a 401 the user has to trace back here.
+	client := auth.NewClient(apiBase).WithContext(cmd.Context())
+	projects, err := client.ListProjects(key)
+	if err != nil {
+		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
+	}
+	if err := saveAPIKeyProfile(key); err != nil {
+		return err
+	}
+
+	if wantsHumanView(cmd) {
+		success("Signed in with an API key (profile: %s, %d projects visible)", auth.ActiveProfile(), len(projects))
+		return nil
+	}
+	return emit(map[string]any{
+		"method":   "api_key",
+		"profile":  auth.ActiveProfile(),
+		"verified": true,
+	})
 }
 
 func NewLogoutCommand() *cobra.Command {
@@ -94,15 +115,27 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A stored API key authenticates on its own, so logging out has to
+			// clear it too — otherwise "logged out" still runs every command.
 			if session == nil {
+				keyCleared, err := clearAPIKeyProfile()
+				if err != nil {
+					return err
+				}
+				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
-					info("Not logged in - nothing to clear.")
+					if keyCleared {
+						success("Cleared the stored API key")
+					} else {
+						info("Not logged in - nothing to clear.")
+					}
 					return nil
 				}
 				return emit(map[string]any{
-					"authenticated": false,
-					"cleared":       false,
-					"session_file":  auth.SessionFilePath(),
+					"authenticated":           false,
+					"cleared":                 keyCleared,
+					"api_key_profile_cleared": keyCleared,
+					"session_file":            auth.SessionFilePath(),
 				})
 			}
 
@@ -156,6 +189,11 @@ func NewLogoutCommand() *cobra.Command {
 			if err := client.ClearLocalSession(); err != nil {
 				return err
 			}
+			keyCleared, err := clearAPIKeyProfile()
+			if err != nil {
+				return err
+			}
+			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
 			// returns early so a terminal never sees the structured payload,
@@ -170,10 +208,11 @@ func NewLogoutCommand() *cobra.Command {
 				return nil
 			}
 			return emit(map[string]any{
-				"authenticated": false,
-				"cleared":       true,
-				"revoked":       revokeErr == nil,
-				"session_file":  auth.SessionFilePath(),
+				"authenticated":           false,
+				"cleared":                 true,
+				"revoked":                 revokeErr == nil,
+				"api_key_profile_cleared": keyCleared,
+				"session_file":            auth.SessionFilePath(),
 			})
 		},
 	}

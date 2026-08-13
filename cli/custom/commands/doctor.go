@@ -83,11 +83,15 @@ func NewDoctorCommand() *cobra.Command {
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
-			profileBearer := ""
+			// Only meaningful for a login session: the profile endpoint answers
+			// "who is this user", and a workspace API key is not a user — it
+			// 401s there by design. Probing it unauthenticated was worse than
+			// useless (a guaranteed 401 reported as a green "Reachable"), and
+			// probing it with a key would fail every API-key setup.
 			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
-				profileBearer = inspect.Session.BootstrapToken.Token
+				checks = append(checks, probeURL(cmd.Context(), "profile_base_url",
+					client.URLs.ProfileBaseURL, inspect.Session.BootstrapToken.Token))
 			}
-			checks = append(checks, probeURL(cmd.Context(), "profile_base_url", client.URLs.ProfileBaseURL, profileBearer))
 
 			authStatus := string(inspect.Status)
 			authSource := "none"
@@ -102,6 +106,13 @@ func NewDoctorCommand() *cobra.Command {
 				}
 				activeWS = inspect.Session.ActiveWorkspaceKey
 				workspaceCount = len(inspect.Session.Workspaces)
+			} else if envAPIKeySet() {
+				// No session, but an env key authenticates every command. Saying
+				// "missing" here sends people hunting for a login problem that
+				// does not exist.
+				authStatus, authSource = "authenticated", "env:ORQ_API_KEY"
+			} else if storedAPIKeyProfile() {
+				authStatus, authSource = "authenticated", "credentials.json"
 			}
 
 			authMap := map[string]any{
@@ -201,7 +212,6 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
 	}
-	heading("orq doctor")
 	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
 	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", 16)), paint(ansiDim, "RESULT"))
 	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", 16), authLine)
@@ -247,10 +257,18 @@ func buildSessionChecks(inspect auth.SessionInspectResult) []doctorCheck {
 			},
 		}
 	case auth.StatusMissing:
+		// Not a problem when a key authenticates: ORQ_API_KEY with no session
+		// is the standard CI shape, and warning about it sends people looking
+		// for a login they never needed.
+		status, message := "warn", "No local session file found"
+		if envAPIKeySet() || storedAPIKeyProfile() {
+			status = "pass"
+			message = "No session file (authenticated with an API key)"
+		}
 		return []doctorCheck{{
 			ID:      "session_file",
-			Status:  "warn",
-			Message: "No local session file found",
+			Status:  status,
+			Message: message,
 			Details: map[string]any{"session_file": inspect.Path},
 		}}
 	default:
@@ -278,6 +296,7 @@ func isTokenExpired(expiresAt string) bool {
 // probeURL checks reachability with a 5s budget, parented on the command
 // context so Ctrl+C cancels an in-flight probe instead of waiting it out.
 func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
+	authenticated := bearer != ""
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -310,15 +329,23 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 		}
 	}
 	defer res.Body.Close()
-	// A 5xx means the endpoint is reachable but unhealthy; a green check there
-	// reads as "all good" when the server is failing. 4xx (e.g. 401/403 without
-	// credentials) is the expected reachable-but-unauthenticated answer for
-	// these probes, so it stays a pass. Only 5xx degrades.
+	// These probe base URLs, which mostly have no handler — the API root answers
+	// 404 by design. What is being checked is the network path, so the message
+	// says that rather than printing a status code the user reads as a failure.
+	//
+	// A 5xx means reachable but unhealthy; a green check there would read as
+	// "all good" while the server is down. And a 401/403 when we DID send a
+	// credential is the one case worth failing on: the endpoint is fine, the
+	// credential is not — which is exactly what someone runs doctor to find out.
 	status := "pass"
-	message := fmt.Sprintf("Reachable (HTTP %d)", res.StatusCode)
-	if res.StatusCode >= 500 {
+	message := "Reachable"
+	switch {
+	case res.StatusCode >= 500:
 		status = "fail"
 		message = fmt.Sprintf("Reachable but returned a server error (HTTP %d)", res.StatusCode)
+	case authenticated && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden):
+		status = "fail"
+		message = fmt.Sprintf("Reachable, but the credential was rejected (HTTP %d)", res.StatusCode)
 	}
 	return doctorCheck{
 		ID:      id,

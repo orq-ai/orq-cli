@@ -1300,6 +1300,10 @@
           "type": "string"
         },
         {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
           "name": "no-open",
           "type": "bool"
         },
@@ -4167,12 +4171,44 @@
       ]
     },
     {
+      "path": "orq launch",
+      "use": "launch"
+    },
+    {
+      "path": "orq launch claude",
+      "use": "claude"
+    },
+    {
+      "path": "orq launch codex",
+      "use": "codex"
+    },
+    {
+      "path": "orq launch kilo",
+      "use": "kilo"
+    },
+    {
+      "path": "orq launch kimi",
+      "use": "kimi"
+    },
+    {
+      "path": "orq launch opencode",
+      "use": "opencode"
+    },
+    {
+      "path": "orq launch pi",
+      "use": "pi"
+    },
+    {
       "path": "orq login",
       "use": "login",
       "hidden": true,
       "flags": [
         {
           "name": "api-base-url",
+          "type": "string"
+        },
+        {
+          "name": "api-key",
           "type": "string"
         },
         {
@@ -7090,6 +7126,50 @@
     {
       "path": "orq server use",
       "use": "use \u003cindex|url|description\u003e"
+    },
+    {
+      "path": "orq setup",
+      "use": "setup",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "stringSlice"
+        },
+        {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "interactive",
+          "shorthand": "i",
+          "type": "bool"
+        },
+        {
+          "name": "no-agent",
+          "type": "bool"
+        },
+        {
+          "name": "no-env",
+          "type": "bool"
+        },
+        {
+          "name": "no-mcp",
+          "type": "bool"
+        },
+        {
+          "name": "project",
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq skills",

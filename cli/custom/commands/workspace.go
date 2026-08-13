@@ -179,7 +179,7 @@ func printWorkspaceList(rows []workspaceRow, nameWidth int) {
 	for _, r := range rows {
 		marker := "  "
 		if r.Active {
-			marker = paint(ansiGreen, "● ")
+			marker = paint(ansiOK, "● ")
 			anyActive = true
 		}
 		members := fmt.Sprintf("%*d", len(memHdr), r.TotalMembers)

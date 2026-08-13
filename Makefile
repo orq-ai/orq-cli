@@ -9,7 +9,7 @@ COMPLETIONS_DIR ?= ./completions
 MAN_DIR ?= ./man
 BARTOLO ?= bartolo
 
-.PHONY: help build install-local tidy doctor completions man sync
+.PHONY: help build install-local tidy test doctor completions man sync
 
 help:
 	@printf '%s\n' \
@@ -17,6 +17,7 @@ help:
 		'  make build          Build ./bin/$(BINARY)' \
 		'  make install-local  Install $(BINARY) into $(INSTALL_DIR)' \
 		'  make tidy           Run go mod tidy' \
+		'  make test           Run unit tests' \
 		'  make doctor         Run the CLI doctor command' \
 		'  make completions    Generate shell completions into $(COMPLETIONS_DIR)' \
 		'  make man            Generate man pages into $(MAN_DIR)' \
@@ -34,6 +35,9 @@ install-local:
 
 tidy:
 	@go mod tidy
+
+test:
+	@go test ./cli/custom/...
 
 doctor:
 	@go run "$(BUILD_TARGET)" --json doctor
