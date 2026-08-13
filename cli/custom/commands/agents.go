@@ -414,6 +414,47 @@ func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterMo
 // $CODEX_HOME/<name>.config.toml is loaded by `codex --profile <name>`.
 const codexProfileName = "orq"
 
+// codexDefaultModel picks the model codex should open with, which is not the
+// same choice as for every other agent.
+//
+// Codex dropped chat/completions support, so wire_api can only be "responses"
+// and every request carries OpenAI-shaped tool definitions — including the
+// built-in web_search type. A model the gateway serves by translating to
+// another vendor's API rejects those outright: anthropic answers
+// "tools.5: Input tag 'namespace' ... does not match any of the expected tags"
+// and the stream ends in response.failed, which codex surfaces only as
+// "ERROR: Reconnecting... 1/5". So the model must be one the gateway serves
+// natively over Responses.
+//
+// The proven default is reused when it qualifies, and otherwise the best
+// Responses-capable model is taken from the same preference order — never a
+// second probe, since that would bill the user again.
+func codexDefaultModel(models []auth.RouterModel, proven string) string {
+	responses := make([]auth.RouterModel, 0, len(models))
+	for _, m := range models {
+		if m.Metadata.SupportsResponses {
+			responses = append(responses, m)
+		}
+	}
+	for _, m := range responses {
+		if m.Ref() == proven {
+			return proven
+		}
+	}
+	for _, group := range auth.CandidateCodingModels(responses, preferredCodingModels) {
+		return group[0].Ref()
+	}
+	// No preferred family available: any Responses-capable model beats naming
+	// one that cannot answer. Sorted so re-runs do not churn the file.
+	best := ""
+	for _, m := range responses {
+		if ref := m.Ref(); best == "" || ref < best {
+			best = ref
+		}
+	}
+	return best
+}
+
 // writeCodexProviderTOML writes the codex profile that routes through the orq
 // gateway. Unlike every other writer here it does not merge: the profile file
 // is ours alone, `codex` without --profile never reads it, and rewriting it
@@ -426,19 +467,21 @@ const codexProfileName = "orq"
 // a base config pointing at a provider with no key would break plain `codex`
 // for everything, not just orq work.
 //
-// apiKey and models are unused, and deliberately so — the first because of the
-// indirection above, the second because codex takes its model list from a
-// catalog JSON that launch builds by running `codex debug models --bundled`.
+// apiKey is unused, deliberately, because of the indirection above. The model
+// list is used only to choose the default — codex takes the list it shows in
+// its picker from a catalog JSON that launch builds by running
+// `codex debug models --bundled`.
 //
 // ponytail: no model catalog, so the picker lists codex's bundled models rather
-// than the workspace's. The default model below still routes, as does any
-// gateway model passed with -m. Generate the catalog here too if picking from
-// the workspace list turns out to matter.
-func writeCodexProviderTOML(path, routerURL, _ string, _ []auth.RouterModel, defaultModel string) (int, error) {
+// than the workspace's, and codex prints a "model metadata not found" warning
+// for the model we name. Both are cosmetic — the request still routes. Generate
+// the catalog here too if either turns out to matter.
+func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return 0, err
 	}
-	body := renderTOMLSettings(launch.CodexProviderSettings(defaultModel, routerURL, ""))
+	body := renderTOMLSettings(launch.CodexProviderSettings(
+		codexDefaultModel(models, defaultModel), routerURL, ""))
 	header := "# Written by 'orq setup'. Use it with: codex --profile " + codexProfileName + "\n" +
 		"# Regenerated on every run; edit ~/.codex/config.toml instead.\n\n"
 	return 0, os.WriteFile(path, []byte(header+body), 0o600)
