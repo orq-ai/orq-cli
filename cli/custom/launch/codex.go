@@ -85,7 +85,7 @@ func BuildCodexOverrideArgs(model, baseURL, modelCatalogPath string) []string {
 	args := []string{
 		"-c", tomlOverride("model", model),
 		"-c", tomlOverride("model_provider", "orq"),
-		"-c", tomlOverride("model_providers.orq.name", "orq Gateway"),
+		"-c", tomlOverride("model_providers.orq.name", ProviderDisplayName),
 		"-c", tomlOverride("model_providers.orq.base_url", baseURL),
 		"-c", tomlOverride("model_providers.orq.env_key", "ORQ_API_KEY"),
 		// codex removed chat/completions support (hard error since Feb 2026);

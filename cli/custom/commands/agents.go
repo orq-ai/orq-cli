@@ -9,25 +9,37 @@ import (
 	"strings"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/launch"
 )
 
 // mcpServerName is the key every agent config registers orq under. It matches
 // the name used by the orq-mcp plugin so both installs look identical.
 const mcpServerName = "orq-workspace"
 
-// providerName is the key orq is registered under in an agent's LLM provider
-// config, so its model calls route through the orq gateway.
-const providerName = "orq"
-
-// kimi declares one provider per API shape. The names and types match
-// launch.KimiChatProvider / KimiResponsesProvider so a config written by
-// `orq setup` and one injected by `orq launch` describe the same thing.
-const (
-	kimiChatProvider      = providerName
-	kimiResponsesProvider = "orq-responses"
-	kimiChatType          = "openai"
-	kimiResponsesType     = "openai_responses"
-)
+// launchCatalog expresses setup's catalogue in the shape every launch builder
+// takes: the model refs to offer, and the metadata to write caps and pick an
+// API shape from.
+//
+// Both commands configure the same agents against the same gateway, so they
+// must describe them identically. Setup used to reimplement each format; the
+// two copies diverged four times in a single day (MCP server name,
+// enabled-vs-is_active, the tool-calling filter, the Responses split) and every
+// divergence was found by running the CLI, never by a test. One builder per
+// format and this adapter removes the class.
+func launchCatalog(models []auth.RouterModel) ([]string, []launch.ModelInfo) {
+	refs := make([]string, 0, len(models))
+	infos := make([]launch.ModelInfo, 0, len(models))
+	for _, m := range models {
+		refs = append(refs, m.Ref())
+		infos = append(infos, launch.ModelInfo{
+			ID:                m.Ref(),
+			ContextWindow:     m.Metadata.ContextWindow,
+			MaxOutputTokens:   m.Metadata.MaxOutputTokens,
+			SupportsResponses: m.Metadata.SupportsResponses,
+		})
+	}
+	return refs, infos
+}
 
 type agentSpec struct {
 	ID    string
@@ -360,9 +372,15 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 		kept += "\n\n"
 	}
 	kept = prefix + kept
+	// The builder is told no default model: it would emit default_model as its
+	// first line, which lands after the user's tables here and TOML would read
+	// it as a member of the last one. Setup hoists it above them instead, in
+	// `prefix` above.
+	refs, infos := launchCatalog(models)
+	block := launch.BuildKimiConfigTOML(routerURL, apiKey, "", refs, infos)
 	// The file carries a literal credential; a pre-existing copy may have been
 	// created with looser permissions, so chmod as well as write at 0600.
-	if err := os.WriteFile(path, []byte(kept+kimiProviderBlock(routerURL, apiKey, models)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(kept+block), 0o600); err != nil {
 		return err
 	}
 	return os.Chmod(path, 0o600)
@@ -419,91 +437,24 @@ func stripOrqKimiTables(toml string) string {
 // this function still knew only about "orq", so on every re-run the stale
 // [providers.orq-responses] block and every model pointing at it survived the
 // strip and were written again — duplicate tables, which makes the whole file
-// undecodable and leaves kimi with no models at all. Anything added to
-// kimiProviderBlock has to be recognised here in the same change.
+// undecodable and leaves kimi with no models at all. Anything a new provider
+// adds to launch.BuildKimiConfigTOML has to be recognised here in the same
+// change; the names are read from that package so at least they cannot drift.
 func orqOwnedKimiTable(header, body string) bool {
-	for _, provider := range []string{kimiChatProvider, kimiResponsesProvider} {
+	for _, provider := range []string{launch.KimiChatProvider, launch.KimiResponsesProvider} {
 		if header == "[providers."+provider+"]" ||
 			strings.HasPrefix(header, "[providers."+provider+".") {
 			return true
 		}
 	}
 	if strings.HasPrefix(header, "[models.") {
-		for _, provider := range []string{kimiChatProvider, kimiResponsesProvider} {
+		for _, provider := range []string{launch.KimiChatProvider, launch.KimiResponsesProvider} {
 			if strings.Contains(body, `provider = "`+provider+`"`) {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-func kimiProviderBlock(routerURL, apiKey string, models []auth.RouterModel) string {
-	var b strings.Builder
-
-	// Two providers, one per API shape, matching what `orq launch` writes:
-	// models the gateway serves via the Responses API belong on a provider of
-	// type openai_responses. Writing everything as chat completions still
-	// works — chat serves every model — but loses the tools+reasoning path
-	// that gpt-5.x and the azure gpt-5 line actually want.
-	chat, responses := []auth.RouterModel{}, []auth.RouterModel{}
-	for _, m := range models {
-		if m.Metadata.SupportsResponses {
-			responses = append(responses, m)
-		} else {
-			chat = append(chat, m)
-		}
-	}
-
-	provider := func(name, typ string) {
-		fmt.Fprintf(&b, "[providers.%s]\n", name)
-		fmt.Fprintf(&b, "type = %q\n", typ)
-		fmt.Fprintf(&b, "base_url = %q\n", routerURL)
-		// Kimi 0.34 has no env fallback or ${VAR} interpolation for provider
-		// credentials; the literal key is the only working form.
-		fmt.Fprintf(&b, "api_key = %q\n", apiKey)
-	}
-	if len(chat) > 0 {
-		provider(kimiChatProvider, kimiChatType)
-	}
-	if len(responses) > 0 {
-		if len(chat) > 0 {
-			b.WriteString("\n")
-		}
-		provider(kimiResponsesProvider, kimiResponsesType)
-	}
-
-	writeModel := func(m auth.RouterModel, providerKey string) {
-		context := m.Metadata.ContextWindow
-		if context <= 0 {
-			// Kimi requires the field; a conservative floor beats omitting it.
-			context = 128000
-		}
-		output := m.Metadata.MaxOutputTokens
-		if output <= 0 {
-			// Kimi sends max_tokens = max_output_size on every call, so a guess
-			// above the model's real cap makes the upstream reject every
-			// request. Under-guessing only truncates.
-			output = 8192
-		}
-		// Keyed by the full provider/model ref, not ModelID: several providers
-		// serve the same id (google/gemini-2.5-flash and
-		// google-ai/gemini-2.5-flash, azure/gpt-4o and openai/gpt-4o), and
-		// duplicate table keys make the whole file invalid TOML — kimi then
-		// discards every model, not just the clashing ones.
-		fmt.Fprintf(&b, "\n[models.%q]\n", m.Ref())
-		fmt.Fprintf(&b, "provider = %q\n", providerKey)
-		fmt.Fprintf(&b, "model = %q\n", m.Ref())
-		fmt.Fprintf(&b, "max_context_size = %d\n", context)
-		fmt.Fprintf(&b, "max_output_size = %d\n", output)
-	}
-	for _, m := range chat {
-		writeModel(m, kimiChatProvider)
-	}
-	for _, m := range responses {
-		writeModel(m, kimiResponsesProvider)
-	}
-	return b.String()
 }
 
 func snippetMCPServersJSON(url string) string {
