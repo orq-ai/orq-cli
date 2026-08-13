@@ -140,9 +140,14 @@ func (c *Client) RouterBaseURL() string {
 }
 
 // RouterModel is one model offered by the AI gateway. The router addresses
-// models as "<provider>/<model_id>".
+// models by their refId, which is "<provider>/<model_id>" for system models.
 type RouterModel struct {
-	ModelID   string `json:"model_id"`
+	ModelID string `json:"model_id"`
+	// RefID is the canonical invoke id the endpoint publishes. It is
+	// "provider/model_id" for system models but "workspace@orq/model_id" for
+	// custom ones (autorouters), so it cannot be reconstructed from the two
+	// fields below — see Ref.
+	RefID     string `json:"refId"`
 	Provider  string `json:"provider"`
 	Developer string `json:"model_developer"`
 	Type      string `json:"model_type"`
@@ -166,7 +171,16 @@ type RouterModel struct {
 }
 
 // Ref is the identifier the router expects in a request's `model` field.
+//
+// refId wins when the endpoint sends one. Composing provider/model_id instead
+// yields "orq/<name>" for a workspace's custom models and autorouters, which
+// the agents' model normalizers strip back to a bare, un-invokable name — so
+// setup wrote config naming models that cannot be called, while `orq launch`
+// (which reads refId, see launch.FetchEnabledModels) got them right.
 func (m RouterModel) Ref() string {
+	if m.RefID != "" {
+		return m.RefID
+	}
 	return m.Provider + "/" + m.ModelID
 }
 
