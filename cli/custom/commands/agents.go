@@ -445,11 +445,13 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 		return group[0].Ref()
 	}
 	// No preferred family available: any Responses-capable model beats naming
-	// one that cannot answer. Sorted so re-runs do not churn the file.
-	best := ""
+	// one that cannot answer. Full models before their cut-down editions, then
+	// sorted, so re-runs do not churn the file.
+	best, bestIsVariant := "", true
 	for _, m := range responses {
-		if ref := m.Ref(); best == "" || ref < best {
-			best = ref
+		ref, variant := m.Ref(), auth.IsSizeVariant(m.ModelID)
+		if best == "" || (bestIsVariant && !variant) || (variant == bestIsVariant && ref < best) {
+			best, bestIsVariant = ref, variant
 		}
 	}
 	return best
