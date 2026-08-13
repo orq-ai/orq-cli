@@ -148,7 +148,7 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	if len(chatModels) > 0 {
 		provider[OpenCodeChatProvider] = openCodeProvider{
 			Npm:     "@ai-sdk/openai-compatible",
-			Name:    "Orq Gateway",
+			Name:    ProviderDisplayName,
 			Options: options,
 			Models:  toModelMap(chatModels),
 		}
@@ -156,7 +156,7 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	if len(responsesModels) > 0 {
 		provider[OpenCodeResponsesProvider] = openCodeProvider{
 			Npm:     "@ai-sdk/openai",
-			Name:    "Orq Gateway (Responses)",
+			Name:    ProviderResponsesDisplayName,
 			Options: options,
 			Models:  toModelMap(responsesModels),
 		}
