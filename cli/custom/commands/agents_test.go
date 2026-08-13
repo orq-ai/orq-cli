@@ -276,6 +276,107 @@ func TestKimiProviderBlockDefaultsMissingContextWindow(t *testing.T) {
 	}
 }
 
+// The profile is only useful if codex can load it standalone, so it must parse
+// and carry model / model_provider at the root. Dotted keys emitted in place,
+// or root keys written after the [model_providers.orq] header, would both read
+// as members of that table and leave codex on its own default provider.
+func TestCodexProfileIsSelfContained(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orq.config.toml")
+	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", nil,
+		"anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.LoadBytes(mustRead(t, path))
+	if err != nil {
+		t.Fatalf("profile is not valid TOML: %v", err)
+	}
+	for key, want := range map[string]any{
+		"model":                        "anthropic/claude-sonnet-4-6",
+		"model_provider":               "orq",
+		"model_providers.orq.name":     "Orq AI Gateway",
+		"model_providers.orq.base_url": "https://api.orq.ai/v3/router",
+		"model_providers.orq.env_key":  "ORQ_API_KEY",
+		"model_providers.orq.wire_api": "responses",
+	} {
+		if got := tree.Get(key); got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// Codex takes the key from the environment, so nothing here should ever hold
+// it. This is the whole reason the profile can be written to disk at all.
+func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orq.config.toml")
+	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write", nil,
+		"anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mustRead(t, path)), "sk-canary-do-not-write") {
+		t.Error("the api key was written into the codex profile")
+	}
+}
+
+// The profile exists so that plain `codex` keeps working exactly as it did.
+// Writing into the base config instead would repoint codex globally at a
+// provider whose credential setup cannot guarantee is exported.
+func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "config.toml")
+	if err := writeMCPCodexTOML(base, testMCPURL); err != nil {
+		t.Fatal(err)
+	}
+	before := mustRead(t, base)
+
+	if err := writeCodexProviderTOML(filepath.Join(dir, "orq.config.toml"),
+		"https://api.orq.ai/v3/router", "sk-k", nil, "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	if string(mustRead(t, base)) != string(before) {
+		t.Error("writing the orq profile modified codex's own config.toml")
+	}
+}
+
+// Setup mints a fresh key and re-reads the catalogue on every run. The profile
+// is ours, so it is replaced rather than appended to — appending would give the
+// file duplicate keys, which is a hard TOML error and would take codex's whole
+// profile down, not just the stale half.
+func TestCodexProfileRewrittenOnRerun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orq.config.toml")
+	for _, m := range []string{"anthropic/claude-sonnet-4-6", "openai/gpt-5.4"} {
+		if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tree, err := toml.LoadBytes(mustRead(t, path))
+	if err != nil {
+		t.Fatalf("profile is not valid TOML after a second run: %v", err)
+	}
+	if got := tree.Get("model"); got != "openai/gpt-5.4" {
+		t.Errorf("model = %v after rerun, want the newer openai/gpt-5.4", got)
+	}
+}
+
+// A workspace with no usable models leaves nothing to open with. Writing
+// model = "" would have codex fail to resolve a blank slug; omitting the key
+// lets it fall back to its own default while still offering the provider.
+func TestCodexProfileOmitsBlankModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orq.config.toml")
+	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.LoadBytes(mustRead(t, path))
+	if err != nil {
+		t.Fatalf("profile is not valid TOML: %v", err)
+	}
+	if tree.Has("model") {
+		t.Errorf("model written despite none being proven: %v", tree.Get("model"))
+	}
+	if got := tree.Get("model_provider"); got != "orq" {
+		t.Errorf("provider must still be registered, got %v", got)
+	}
+}
+
 func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
