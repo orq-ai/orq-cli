@@ -409,8 +409,8 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 // as members of that table and leave codex on its own default provider.
 func TestCodexProfileIsSelfContained(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", nil,
-		"anthropic/claude-sonnet-4-6"); err != nil {
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", openCodeModels(),
+		"openai/gpt-5.4"); err != nil {
 		t.Fatal(err)
 	}
 	tree, err := toml.LoadBytes(mustRead(t, path))
@@ -418,7 +418,7 @@ func TestCodexProfileIsSelfContained(t *testing.T) {
 		t.Fatalf("profile is not valid TOML: %v", err)
 	}
 	for key, want := range map[string]any{
-		"model":                        "anthropic/claude-sonnet-4-6",
+		"model":                        "openai/gpt-5.4",
 		"model_provider":               "orq",
 		"model_providers.orq.name":     "Orq AI Gateway",
 		"model_providers.orq.base_url": "https://api.orq.ai/v3/router",
@@ -470,8 +470,11 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 // profile down, not just the stale half.
 func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	for _, m := range []string{"anthropic/claude-sonnet-4-6", "openai/gpt-5.4"} {
-		if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, m); err != nil {
+	catalogue := openCodeModels()
+	catalogue = append(catalogue, model("azure", "gpt-5.4", 400000, true, true, "chat"))
+	catalogue[len(catalogue)-1].Metadata.SupportsResponses = true
+	for _, m := range []string{"openai/gpt-5.4", "azure/gpt-5.4"} {
+		if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", catalogue, m); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -479,8 +482,60 @@ func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("profile is not valid TOML after a second run: %v", err)
 	}
+	if got := tree.Get("model"); got != "azure/gpt-5.4" {
+		t.Errorf("model = %v after rerun, want the newer azure/gpt-5.4", got)
+	}
+}
+
+// Codex can only speak the Responses API, and every request it sends carries
+// OpenAI-shaped tool definitions including the built-in web_search type. Naming
+// a model the gateway serves by translating to another vendor makes the
+// upstream reject the tools outright — anthropic answers "tools.5: Input tag
+// 'namespace' ... does not match any of the expected tags", the stream ends in
+// response.failed, and codex reports only "ERROR: Reconnecting... 1/5". So the
+// model this writer names is not the one every other agent gets.
+func TestCodexDefaultModelMustSupportResponses(t *testing.T) {
+	catalogue := []auth.RouterModel{
+		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"), // chat only
+		model("openai", "gpt-5.4", 400000, true, true, "chat"),
+	}
+	catalogue[1].Metadata.SupportsResponses = true
+
+	// The globally proven default is anthropic, which codex cannot use.
+	if got := codexDefaultModel(catalogue, "anthropic/claude-sonnet-4-6"); got != "openai/gpt-5.4" {
+		t.Errorf("codex default = %q, want the Responses-capable openai/gpt-5.4", got)
+	}
+	// When the proven model does qualify, reuse it rather than second-guessing:
+	// it is the one already shown to answer.
+	if got := codexDefaultModel(catalogue, "openai/gpt-5.4"); got != "openai/gpt-5.4" {
+		t.Errorf("codex default = %q, want the proven openai/gpt-5.4", got)
+	}
+	// Nothing Responses-capable enabled: name nothing rather than something
+	// guaranteed to fail on the first prompt.
+	if got := codexDefaultModel(catalogue[:1], "anthropic/claude-sonnet-4-6"); got != "" {
+		t.Errorf("codex default = %q, want none when no model can serve Responses", got)
+	}
+}
+
+// The writer must apply that rule, not just the helper.
+func TestCodexProfileNeverNamesAChatOnlyModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orq.config.toml")
+	catalogue := []auth.RouterModel{
+		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"),
+		model("openai", "gpt-5.4", 400000, true, true, "chat"),
+	}
+	catalogue[1].Metadata.SupportsResponses = true
+
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k",
+		catalogue, "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.LoadBytes(mustRead(t, path))
+	if err != nil {
+		t.Fatalf("profile is not valid TOML: %v", err)
+	}
 	if got := tree.Get("model"); got != "openai/gpt-5.4" {
-		t.Errorf("model = %v after rerun, want the newer openai/gpt-5.4", got)
+		t.Errorf("profile names %v, which codex cannot call over the Responses API", got)
 	}
 }
 
