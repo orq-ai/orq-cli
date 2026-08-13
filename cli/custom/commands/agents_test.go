@@ -276,13 +276,140 @@ func TestKimiProviderBlockDefaultsMissingContextWindow(t *testing.T) {
 	}
 }
 
+func openCodeModels() []auth.RouterModel {
+	models := []auth.RouterModel{
+		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"),
+		model("openai", "gpt-5.4", 400000, true, true, "chat"),
+	}
+	models[1].Metadata.SupportsResponses = true
+	return models
+}
+
+// The config belongs to the user; setup adds one provider to it. Anything else
+// in the document — their own providers, their settings, their keybinds — has
+// to come back out unchanged.
+func TestOpenCodeProviderMergePreservesUserKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "opencode.json")
+	original := `{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "tokyonight",
+  "provider": {"ollama": {"npm": "@ai-sdk/openai-compatible", "models": {"llama3": {}}}},
+  "keybinds": {"leader": "ctrl+x"}
+}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := readBack(t, path)
+	if cfg["theme"] != "tokyonight" {
+		t.Errorf("theme = %v, want tokyonight", cfg["theme"])
+	}
+	if _, ok := cfg["keybinds"]; !ok {
+		t.Error("keybinds were dropped")
+	}
+	providers, ok := cfg["provider"].(map[string]any)
+	if !ok {
+		t.Fatal("provider block missing")
+	}
+	if _, ok := providers["ollama"]; !ok {
+		t.Error("the user's own provider was dropped")
+	}
+	for _, want := range []string{launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider} {
+		if _, ok := providers[want]; !ok {
+			t.Errorf("provider %q was not registered", want)
+		}
+	}
+}
+
+// The decision this whole change rests on: setup makes orq available, never the
+// default. "model" is the user's own default, and neither agent has a profile
+// mechanism to scope a change to — writing it would repoint every session at a
+// provider whose credential setup cannot guarantee is exported.
+func TestOpenCodeProviderNeverSetsTopLevelModel(t *testing.T) {
+	t.Run("absent: stays absent", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "opencode.json")
+		if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+			openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := readBack(t, path)["model"]; ok {
+			t.Errorf("setup made orq the default model (%v); it must only offer it", got)
+		}
+	})
+
+	t.Run("present: untouched", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "opencode.json")
+		if err := os.WriteFile(path, []byte(`{"model": "ollama/llama3"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+			openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+			t.Fatal(err)
+		}
+		if got := readBack(t, path)["model"]; got != "ollama/llama3" {
+			t.Errorf("model = %v, want the user's own ollama/llama3", got)
+		}
+	})
+}
+
+// opencode and kilo interpolate {env:ORQ_API_KEY} at load time, so the key has
+// no business being in a file that often lives in a repo.
+func TestOpenCodeProviderNeverEmbedsTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "opencode.json")
+	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	got := string(mustRead(t, path))
+	if strings.Contains(got, "sk-canary-do-not-write") {
+		t.Error("the api key was written into the opencode config")
+	}
+	if !strings.Contains(got, "{env:ORQ_API_KEY}") {
+		t.Errorf("the config does not reference ORQ_API_KEY:\n%s", got)
+	}
+}
+
+// Setup re-reads the catalogue on every run, so a model the workspace has since
+// disabled must disappear rather than linger as an entry that 403s. Re-running
+// must also not stack duplicate providers.
+func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "opencode.json")
+	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	// Second run: the openai model is gone from the workspace, so the Responses
+	// provider has nothing left to serve.
+	shrunk := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		shrunk, "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+
+	providers := readBack(t, path)["provider"].(map[string]any)
+	if _, ok := providers[launch.OpenCodeResponsesProvider]; ok {
+		t.Error("the responses provider survived with no models to serve")
+	}
+	chat, ok := providers[launch.OpenCodeChatProvider].(map[string]any)
+	if !ok {
+		t.Fatal("chat provider missing after rerun")
+	}
+	if n := len(chat["models"].(map[string]any)); n != 1 {
+		t.Errorf("chat provider lists %d models after rerun, want 1", n)
+	}
+}
+
 // The profile is only useful if codex can load it standalone, so it must parse
 // and carry model / model_provider at the root. Dotted keys emitted in place,
 // or root keys written after the [model_providers.orq] header, would both read
 // as members of that table and leave codex on its own default provider.
 func TestCodexProfileIsSelfContained(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", nil,
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", nil,
 		"anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +435,7 @@ func TestCodexProfileIsSelfContained(t *testing.T) {
 // it. This is the whole reason the profile can be written to disk at all.
 func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write", nil,
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write", nil,
 		"anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +455,7 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	}
 	before := mustRead(t, base)
 
-	if err := writeCodexProviderTOML(filepath.Join(dir, "orq.config.toml"),
+	if _, err := writeCodexProviderTOML(filepath.Join(dir, "orq.config.toml"),
 		"https://api.orq.ai/v3/router", "sk-k", nil, "anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +471,7 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	for _, m := range []string{"anthropic/claude-sonnet-4-6", "openai/gpt-5.4"} {
-		if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, m); err != nil {
+		if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, m); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -362,7 +489,7 @@ func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 // lets it fall back to its own default while still offering the provider.
 func TestCodexProfileOmitsBlankModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, ""); err != nil {
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	tree, err := toml.LoadBytes(mustRead(t, path))
@@ -386,7 +513,7 @@ func TestWriteKimiProviderTOMLAppendsOnceAndPreserves(t *testing.T) {
 	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
 
 	for i := 0; i < 3; i++ {
-		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-test-key", models, ""); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-test-key", models, ""); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -432,7 +559,7 @@ enabled = false
 		t.Fatal(err)
 	}
 	models := []auth.RouterModel{model("moonshotai", "kimi-k2.7-code-highspeed", 262144, true, true, "chat")}
-	if err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-fresh-key", models, ""); err != nil {
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v2/router", "sk-fresh-key", models, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -471,7 +598,7 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 
 	t.Run("absent: filled", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := os.ReadFile(path)
@@ -485,7 +612,7 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 		if err := os.WriteFile(path, []byte("default_model = \"my-own-pick\"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
 		got := string(mustRead(t, path))
@@ -504,7 +631,7 @@ func TestKimiDefaultModelFilledOnlyWhenAbsent(t *testing.T) {
 		if err := os.WriteFile(path, []byte("[some.table]\ndefault_model = \"not-root\"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://x/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(string(mustRead(t, path)), `default_model = "anthropic/claude-sonnet-4-6"`) {
@@ -654,7 +781,7 @@ func TestWriteKimiProviderTOMLIsIdempotentAcrossBothProviders(t *testing.T) {
 	models := []auth.RouterModel{chat, responses}
 
 	for i := 0; i < 3; i++ {
-		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -719,7 +846,7 @@ func TestKimiConfigIsAlwaysValidTOML(t *testing.T) {
 	t.Run("re-run over our own output", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		for i := 0; i < 3; i++ {
-			if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
+			if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
 				t.Fatalf("run %d: %v", i, err)
 			}
 			tree := mustParseKimiTOML(t, string(mustRead(t, path)))
@@ -740,7 +867,7 @@ func TestKimiConfigIsAlwaysValidTOML(t *testing.T) {
 		if err := os.WriteFile(path, []byte(theirs), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
+		if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", collide, "openai/gpt-4o"); err != nil {
 			t.Fatal(err)
 		}
 		tree := mustParseKimiTOML(t, string(mustRead(t, path)))
