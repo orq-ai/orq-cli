@@ -24,6 +24,14 @@ const (
 	DefaultGatewayAPIBaseURL = "https://api.orq.ai"
 )
 
+// The label agents show for the orq provider in their own model pickers. It was
+// spelled three different ways across the agent builders; a user who wires two
+// agents sees this string in both, so it lives in one place.
+const (
+	ProviderDisplayName          = "Orq AI Gateway"
+	ProviderResponsesDisplayName = "Orq AI Gateway (Responses)"
+)
+
 // GatewayFlags are the shared flags every agent subcommand understands.
 type GatewayFlags struct {
 	Model         string

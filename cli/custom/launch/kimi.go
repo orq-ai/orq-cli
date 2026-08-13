@@ -27,7 +27,14 @@ const (
 	// max_tokens = max_output_size on the chat path, so it must be <= the
 	// model's real output cap; 8192 is safe for all but a handful of legacy
 	// models (which do carry metadata).
-	fallbackContextSize = 262144
+	//
+	// Both caps err low for the same reason: over-claiming makes the upstream
+	// reject a request outright, under-claiming only leaves capacity unused.
+	// The context fallback was 262144 here and 128000 in setup's own copy of
+	// this writer — 262144 is kimi-k2's window, not a floor, and it is the
+	// wrong direction to guess in. Models that hit these values are the ones
+	// the endpoint sends null metadata for (ENG-2743).
+	fallbackContextSize = 128000
 	fallbackOutputSize  = 8192
 )
 
@@ -112,6 +119,11 @@ func tomlString(value string) string {
 // unavoidable: kimi resolves provider credentials from the file only (no env
 // fallback or interpolation), so callers must keep the file private and
 // short-lived.
+//
+// An empty gatewayModel omits default_model. Launch always names one — it owns
+// a throwaway config dir — but setup merges into the user's real file, where
+// kimi stores the model they picked in the UI, and that choice is not ours to
+// replace.
 func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []string, infos []ModelInfo) string {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {
@@ -129,7 +141,9 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "default_model = %s\n\n", tomlString(gatewayModel))
+	if gatewayModel != "" {
+		fmt.Fprintf(&b, "default_model = %s\n\n", tomlString(gatewayModel))
+	}
 
 	provider := func(name, typ string) {
 		fmt.Fprintf(&b, "[providers.%s]\n", name)
