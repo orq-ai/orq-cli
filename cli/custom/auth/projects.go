@@ -201,7 +201,8 @@ func (c *Client) ListModels(bearer string) ([]RouterModel, error) {
 // calling.
 //
 // "Best" is the lexically greatest model_id, which tracks version suffixes
-// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5).
+// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but full models are
+// ranked above their size variants first, see isSizeVariant.
 func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterModel {
 	groups := make([][]RouterModel, 0, len(preferred))
 	for _, prefix := range preferred {
@@ -218,6 +219,9 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 			}
 		}
 		sort.Slice(matches, func(i, j int) bool {
+			if a, b := IsSizeVariant(matches[i].ModelID), IsSizeVariant(matches[j].ModelID); a != b {
+				return b
+			}
 			return matches[i].ModelID > matches[j].ModelID
 		})
 		if len(matches) > 0 {
@@ -225,6 +229,37 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 		}
 	}
 	return groups
+}
+
+// sizeVariantSuffixes name the cut-down editions vendors ship alongside a full
+// model.
+//
+// They have to be ranked explicitly because they sort *above* the model they
+// are derived from — "gpt-5.4-nano" > "gpt-5.4-mini" > "gpt-5.4" — so picking
+// the lexically greatest id hands a coding agent the weakest option in the
+// family. That is not just a quality question: gpt-5.4-nano rejects tools the
+// full model accepts, and codex, which sends its whole tool set on the first
+// request, fails outright with "[openai] Tool 'tool_search' is not supported
+// with gpt-5.4-nano".
+//
+// A name heuristic is unsatisfying, and it is here only because the catalogue
+// cannot answer the question. /v2/models does publish
+// metadata.supports_web_search, but for this family it is inverted:
+// gpt-5.4-nano, the model that fails, advertises true, while gpt-5.4 and
+// gpt-5.6-terra, which both work, leave it unset. Filtering on that field would
+// select exactly the broken model. Replace this with a capability filter once
+// the catalogue can be trusted for one.
+var sizeVariantSuffixes = []string{"-nano", "-mini", "-micro", "-small", "-lite", "-tiny", "-flash"}
+
+func IsSizeVariant(modelID string) bool {
+	for _, suffix := range sizeVariantSuffixes {
+		// Suffix rather than Contains: the segment has to end the id, so a model
+		// actually named for its size ("flash-2.5-pro") is not demoted.
+		if strings.HasSuffix(modelID, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 // probeMaxTokens must leave room for a complete reply. The gateway rejects a
