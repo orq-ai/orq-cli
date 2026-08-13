@@ -97,6 +97,12 @@ func agentRegistry() []agentSpec {
 			writeMCP:      writeMCPCodexTOML,
 			manualSnippet: snippetMCPCodexTOML,
 			detect:        detectAny(".codex"),
+			// A named profile rather than the base config: `codex --profile orq`
+			// layers $CODEX_HOME/orq.config.toml over config.toml, so this is a
+			// file we own outright and plain `codex` is untouched. The MCP block
+			// in the base config still applies under the profile.
+			providerConfig: alwaysGlobalPath(".codex/" + codexProfileName + ".config.toml"),
+			writeProvider:  writeCodexProviderTOML,
 		},
 		{
 			ID:            "opencode",
@@ -340,6 +346,84 @@ func writeMCPCodexTOML(path, url string) error {
 	defer f.Close()
 	_, err = f.WriteString("\n" + block)
 	return err
+}
+
+// codexProfileName is both the file stem and the value the user passes:
+// $CODEX_HOME/<name>.config.toml is loaded by `codex --profile <name>`.
+const codexProfileName = "orq"
+
+// writeCodexProviderTOML writes the codex profile that routes through the orq
+// gateway. Unlike every other writer here it does not merge: the profile file
+// is ours alone, `codex` without --profile never reads it, and rewriting it
+// wholesale is what keeps the settings current when setup mints a new key or
+// the workspace's default model changes.
+//
+// The credential is not written. Codex resolves it from ORQ_API_KEY at run
+// time via env_key, which is also why this profile is opt-in rather than the
+// base config's default: setup cannot guarantee that variable is exported, and
+// a base config pointing at a provider with no key would break plain `codex`
+// for everything, not just orq work.
+//
+// apiKey and models are unused, and deliberately so — the first because of the
+// indirection above, the second because codex takes its model list from a
+// catalog JSON that launch builds by running `codex debug models --bundled`.
+//
+// ponytail: no model catalog, so the picker lists codex's bundled models rather
+// than the workspace's. The default model below still routes, as does any
+// gateway model passed with -m. Generate the catalog here too if picking from
+// the workspace list turns out to matter.
+func writeCodexProviderTOML(path, routerURL, _ string, _ []auth.RouterModel, defaultModel string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	body := renderTOMLSettings(launch.CodexProviderSettings(defaultModel, routerURL, ""))
+	header := "# Written by 'orq setup'. Use it with: codex --profile " + codexProfileName + "\n" +
+		"# Regenerated on every run; edit ~/.codex/config.toml instead.\n\n"
+	return os.WriteFile(path, []byte(header+body), 0o600)
+}
+
+// renderTOMLSettings formats dotted key/value pairs as TOML, hoisting the
+// undotted ones above the tables. Emitting them in place as dotted keys would
+// read fine to a modern parser but leaves the file's meaning dependent on
+// nothing preceding them, and root keys after a table header belong to that
+// table — an easy thing to break later by appending one line.
+func renderTOMLSettings(settings [][2]string) string {
+	var root strings.Builder
+	tables := map[string]*strings.Builder{}
+	var order []string
+	for _, kv := range settings {
+		key, value := kv[0], kv[1]
+		dot := strings.LastIndex(key, ".")
+		if dot < 0 {
+			fmt.Fprintf(&root, "%s = %s\n", key, tomlString(value))
+			continue
+		}
+		header, field := key[:dot], key[dot+1:]
+		b, ok := tables[header]
+		if !ok {
+			b = &strings.Builder{}
+			tables[header] = b
+			order = append(order, header)
+			fmt.Fprintf(b, "[%s]\n", header)
+		}
+		fmt.Fprintf(b, "%s = %s\n", field, tomlString(value))
+	}
+	out := root.String()
+	for _, header := range order {
+		if out != "" {
+			out += "\n"
+		}
+		out += tables[header].String()
+	}
+	return out
+}
+
+// tomlString encodes a TOML basic string. JSON string encoding is a valid TOML
+// basic string, so a model id carrying a quote or control character cannot
+// break the file open.
+func tomlString(value string) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
 }
 
 // writeKimiProviderTOML registers orq as an OpenAI-compatible provider and adds
