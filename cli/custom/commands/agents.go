@@ -57,14 +57,22 @@ type agentSpec struct {
 	// the agent's own model calls route through the orq gateway. Empty for
 	// agents where we do not configure one.
 	providerConfig func(global bool) (string, error)
-	// writeProvider registers the provider and a set of models in that file.
+	// writeProvider registers the provider and a set of models in that file,
+	// returning how many models it actually listed — not every format takes a
+	// catalogue, and reporting the number we were handed rather than the number
+	// we wrote would overstate what the user got.
 	// apiKey is written literally when the agent cannot read it from env
 	// (kimi); the file must be 0600.
 	// defaultModel is the model the agent should open with, already proven to
 	// answer. Writers fill it only when the config has none: the agent persists
 	// the user's own pick there, and overwriting it would silently undo a
 	// choice they made in the agent's UI.
-	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) error
+	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
+	// providerUsage says how to actually reach the gateway once it is
+	// registered. Setup makes orq available rather than default, so for some
+	// agents that takes a flag the user would otherwise never discover. Empty
+	// when the agent picks it up with no action.
+	providerUsage string
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in
@@ -103,14 +111,18 @@ func agentRegistry() []agentSpec {
 			// in the base config still applies under the profile.
 			providerConfig: alwaysGlobalPath(".codex/" + codexProfileName + ".config.toml"),
 			writeProvider:  writeCodexProviderTOML,
+			providerUsage:  "run 'codex --profile " + codexProfileName + "' to route through the gateway",
 		},
 		{
-			ID:            "opencode",
-			Label:         "opencode",
-			mcpConfig:     pathFor("opencode.json", ".config/opencode/opencode.json"),
-			writeMCP:      writeMCPRemoteJSON,
-			manualSnippet: snippetMCPRemoteJSON,
-			detect:        detectAny(".config/opencode"),
+			ID:             "opencode",
+			Label:          "opencode",
+			mcpConfig:      pathFor("opencode.json", ".config/opencode/opencode.json"),
+			writeMCP:       writeMCPRemoteJSON,
+			manualSnippet:  snippetMCPRemoteJSON,
+			detect:         detectAny(".config/opencode"),
+			providerConfig: pathFor("opencode.json", ".config/opencode/opencode.json"),
+			writeProvider:  writeOpenCodeProviderJSON,
+			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
 		},
 		{
 			ID:            "kimi",
@@ -124,12 +136,15 @@ func agentRegistry() []agentSpec {
 			writeProvider:  writeKimiProviderTOML,
 		},
 		{
-			ID:            "kilo",
-			Label:         "Kilo Code",
-			mcpConfig:     pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
-			writeMCP:      writeMCPRemoteJSON,
-			manualSnippet: snippetMCPRemoteJSON,
-			detect:        detectAny(".config/kilo"),
+			ID:             "kilo",
+			Label:          "Kilo Code",
+			mcpConfig:      pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
+			writeMCP:       writeMCPRemoteJSON,
+			manualSnippet:  snippetMCPRemoteJSON,
+			detect:         detectAny(".config/kilo"),
+			providerConfig: pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
+			writeProvider:  writeOpenCodeProviderJSON,
+			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
 		},
 	}
 }
@@ -348,6 +363,46 @@ func writeMCPCodexTOML(path, url string) error {
 	return err
 }
 
+// writeOpenCodeProviderJSON registers the orq gateway in the config opencode
+// and kilo share, so its models appear in their pickers. The api key stays out
+// of the file via {env:ORQ_API_KEY}.
+//
+// The top-level "model" key is deliberately never written. That is the user's
+// default, and neither agent has codex's profile mechanism to scope a change
+// to — setting it would repoint every session at orq, including on machines
+// where ORQ_API_KEY is not exported and the provider therefore cannot answer.
+// Offering the models and letting the user pick one is the version of this that
+// cannot leave an agent worse off than it found it.
+func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return 0, err
+	}
+	refs, infos := launchCatalog(models)
+	built, err := launch.BuildOpenCodeConfigContent(routerURL, defaultModel, refs, infos, "")
+	if err != nil {
+		return 0, err
+	}
+	var generated struct {
+		Provider map[string]any `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(built), &generated); err != nil {
+		return 0, err
+	}
+
+	providers := nestedMap(cfg, "provider")
+	// Drop ours first so a provider that no longer has models (every openai
+	// model disabled, say) does not survive as a stale entry pointing at an
+	// empty catalogue.
+	for _, name := range []string{launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider} {
+		delete(providers, name)
+	}
+	for name, block := range generated.Provider {
+		providers[name] = block
+	}
+	return len(refs), writeJSONConfig(path, cfg)
+}
+
 // codexProfileName is both the file stem and the value the user passes:
 // $CODEX_HOME/<name>.config.toml is loaded by `codex --profile <name>`.
 const codexProfileName = "orq"
@@ -372,14 +427,14 @@ const codexProfileName = "orq"
 // than the workspace's. The default model below still routes, as does any
 // gateway model passed with -m. Generate the catalog here too if picking from
 // the workspace list turns out to matter.
-func writeCodexProviderTOML(path, routerURL, _ string, _ []auth.RouterModel, defaultModel string) error {
+func writeCodexProviderTOML(path, routerURL, _ string, _ []auth.RouterModel, defaultModel string) (int, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return 0, err
 	}
 	body := renderTOMLSettings(launch.CodexProviderSettings(defaultModel, routerURL, ""))
 	header := "# Written by 'orq setup'. Use it with: codex --profile " + codexProfileName + "\n" +
 		"# Regenerated on every run; edit ~/.codex/config.toml instead.\n\n"
-	return os.WriteFile(path, []byte(header+body), 0o600)
+	return 0, os.WriteFile(path, []byte(header+body), 0o600)
 }
 
 // renderTOMLSettings formats dotted key/value pairs as TOML, hoisting the
@@ -435,13 +490,13 @@ func tomlString(value string) string {
 // `api_key = "${ORQ_API_KEY}"` placeholder that kimi never interpolates — a
 // skip-if-present leaves that dead credential in place forever, and the user
 // gets a 401 on their first prompt with no hint why.
-func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) error {
+func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error) {
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return 0, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return 0, err
 	}
 	kept := stripOrqKimiTables(string(existing))
 	// Fill the default only when the file has none. kimi writes this key itself
@@ -465,9 +520,9 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 	// The file carries a literal credential; a pre-existing copy may have been
 	// created with looser permissions, so chmod as well as write at 0600.
 	if err := os.WriteFile(path, []byte(kept+block), 0o600); err != nil {
-		return err
+		return 0, err
 	}
-	return os.Chmod(path, 0o600)
+	return len(refs), os.Chmod(path, 0o600)
 }
 
 // hasKimiDefaultModel reports whether the config already names a default model.
