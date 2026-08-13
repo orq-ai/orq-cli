@@ -114,13 +114,19 @@ func agentRegistry() []agentSpec {
 			providerUsage:  "run 'codex --profile " + codexProfileName + "' to route through the gateway",
 		},
 		{
-			ID:             "opencode",
-			Label:          "opencode",
-			mcpConfig:      pathFor("opencode.json", ".config/opencode/opencode.json"),
+			ID:    "opencode",
+			Label: "opencode",
+			// Global only, for the same reason as codex: everything we write
+			// into these files reaches the credential through {env:ORQ_API_KEY},
+			// and both agents reject env references in a *project* config —
+			// opencode discards the whole file and silently resolves
+			// "orq/anthropic/…" against some other provider, kilo reports it as
+			// invalid. A project-scoped copy is worse than none.
+			mcpConfig:      alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeMCP:       writeMCPRemoteJSON,
 			manualSnippet:  snippetMCPRemoteJSON,
 			detect:         detectAny(".config/opencode"),
-			providerConfig: pathFor("opencode.json", ".config/opencode/opencode.json"),
+			providerConfig: alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:  writeOpenCodeProviderJSON,
 			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
 		},
@@ -136,13 +142,14 @@ func agentRegistry() []agentSpec {
 			writeProvider:  writeKimiProviderTOML,
 		},
 		{
-			ID:             "kilo",
-			Label:          "Kilo Code",
-			mcpConfig:      pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
+			ID:    "kilo",
+			Label: "Kilo Code",
+			// Global only — same env-reference restriction as opencode above.
+			mcpConfig:      alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeMCP:       writeMCPRemoteJSON,
 			manualSnippet:  snippetMCPRemoteJSON,
 			detect:         detectAny(".config/kilo"),
-			providerConfig: pathFor(".kilo/kilo.json", ".config/kilo/kilo.json"),
+			providerConfig: alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:  writeOpenCodeProviderJSON,
 			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
 		},
