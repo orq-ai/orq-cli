@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 #
-# install.sh — curl | sh installer for the orq.ai CLI.
+# install.sh - curl | sh installer for the orq.ai CLI.
 #
 # Usage:
 #   curl -fsSL https://orq.ai/cli/install.sh | sh
@@ -26,6 +26,13 @@
 
 set -eu
 
+# Stamped by the release workflow when this script is published as a release
+# asset; stays "dev" when run from a checkout, which is the honest answer.
+# Not exposed as `--version`: that flag already pins the CLI release to install,
+# and overloading it would be ambiguous. It is printed in the run header
+# instead, so it appears in any output a user pastes into a bug report.
+INSTALLER_VERSION="dev"
+
 REPO="orq-ai/orq-cli"
 INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
@@ -35,6 +42,10 @@ RUN_SETUP=1
 PATH_MARKER_START="# >>> orq cli >>>"
 PATH_MARKER_END="# <<< orq cli <<<"
 
+# Errors go to stderr; progress and results stay on stdout. clig.dev prefers
+# messaging on stderr so stdout stays pipeable, but an installer emits no data
+# for a pipe to consume — the progress *is* the output, and rustup, Homebrew
+# and Docker's installers all print it to stdout. Deliberate, not an oversight.
 err() {
   echo "orq-cli installer: $*" >&2
 }
@@ -43,8 +54,9 @@ err() {
 # way to run this is `curl -fsSL ... | sh -s -- --help`, where the script
 # arrives on stdin and "$0" is the shell, so reading "$0" printed nothing.
 usage() {
+  printf 'install.sh %s\n\n' "$INSTALLER_VERSION"
   cat <<'USAGE'
-install.sh — curl | sh installer for the orq.ai CLI.
+install.sh - curl | sh installer for the orq.ai CLI.
 
 Usage:
   curl -fsSL https://orq.ai/cli/install.sh | sh
@@ -64,6 +76,15 @@ Environment (flags win when both are given):
 For Windows, install via npm instead:
   npm install -g @orq-ai/cli
 USAGE
+}
+
+# Whether there is a human to prompt. stdin is the script itself under
+# `curl | sh`, so the terminal has to be reached through /dev/tty. Testing
+# `[ -r /dev/tty ]` is not enough: the device node is world-readable, so it
+# passes even in CI where the process has no controlling terminal and opening
+# it fails with ENXIO. Actually opening it is the only honest check.
+have_tty() {
+  { : < /dev/tty; } 2>/dev/null
 }
 
 require_cmd() {
@@ -117,6 +138,20 @@ supports_art() {
     *) return 1 ;;
   esac
 }
+
+# Status glyphs, resolved once against the same capability check as the banner.
+# Gating only the art and then printing UTF-8 status markers regardless is worse
+# than not gating at all: the header degrades cleanly and every line after it
+# turns to mojibake, which reads as deliberate.
+if supports_art; then
+  G_BULLET='•'
+  G_OK='✓'
+  G_RULE='────────────────────────────────────────────────────────────────'
+else
+  G_BULLET='*'
+  G_OK='ok:'
+  G_RULE='----------------------------------------------------------------'
+fi
 
 banner() {
   if supports_art; then
@@ -188,9 +223,10 @@ checksum_url="${download_url}.sha256"
 target="$INSTALL_DIR/orq"
 
 banner
-printf '  • platform      %s-%s\n' "$os" "$arch"
-printf '  • version       %s\n' "$version_label"
-printf '  • install dir   %s\n' "$INSTALL_DIR"
+printf '  %s installer     %s\n' "$G_BULLET" "$INSTALLER_VERSION"
+printf '  %s platform      %s-%s\n' "$G_BULLET" "$os" "$arch"
+printf '  %s version       %s\n' "$G_BULLET" "$version_label"
+printf '  %s install dir   %s\n' "$G_BULLET" "$INSTALL_DIR"
 printf '\n'
 
 # --- Skip when already current ---------------------------------------------
@@ -201,7 +237,7 @@ if [ -x "$target" ]; then
   current="$("$target" --version 2>/dev/null | tr -d '\n' || echo '')"
   case "$current" in
     *"$expected_version"*)
-      printf '✓ already up to date  (%s)\n' "$current"
+      printf '%s already up to date  (%s)\n' "$G_OK" "$current"
       # Skip the download, but still let the PATH check run: an existing binary
       # does not mean an existing PATH entry.
       RUN_SETUP=0
@@ -287,7 +323,7 @@ if [ "${already_current:-0}" != "1" ]; then
       err "Refusing to install. Report this at https://github.com/$REPO/issues"
       exit 1
     fi
-    printf '✓ checksum verified (sha256)\n'
+    printf '%s checksum verified (sha256)\n' "$G_OK"
   fi
 
   chmod +x "$tmp_file"
@@ -305,9 +341,9 @@ if [ "${already_current:-0}" != "1" ]; then
 
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
-    printf '✓ installed      %s  (%s)\n' "$target" "$installed_version"
+    printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
   else
-    printf '✓ installed      %s\n' "$target"
+    printf '%s installed      %s\n' "$G_OK" "$target"
   fi
 fi
 
@@ -345,19 +381,49 @@ else
   if [ -z "$profile" ]; then
     printf '! PATH not updated (unrecognised shell: %s)\n' "${SHELL:-unknown}"
   elif [ -f "$profile" ] && grep -qF "$PATH_MARKER_START" "$profile" 2>/dev/null; then
-    printf '✓ PATH already configured in %s\n' "$profile"
+    printf '%s PATH already configured in %s\n' "$G_OK" "$profile"
   else
-    mkdir -p "$(dirname "$profile")"
-    {
-      echo ""
-      echo "$PATH_MARKER_START"
-      case "$profile" in
-        *config.fish) echo "fish_add_path \"$INSTALL_DIR\"" ;;
-        *)            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
-      esac
-      echo "$PATH_MARKER_END"
-    } >> "$profile"
-    printf '✓ PATH updated   %s\n' "$profile"
+    case "$profile" in
+      *config.fish) path_line="fish_add_path \"$INSTALL_DIR\"" ;;
+      *)            path_line="export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
+    esac
+
+    # clig.dev: don't modify things outside the project without asking. The
+    # shell profile is the user's, not ours, so ask for it when there is
+    # someone to ask. stdin is the script itself under `curl | sh`, hence
+    # /dev/tty — the same reason the setup handoff below reads from it.
+    # Without a terminal (CI, piped scripts) we keep the historical behaviour
+    # rather than silently leaving an installed binary off PATH.
+    if have_tty; then
+      printf '\n  Add %s to PATH in %s?\n' "$INSTALL_DIR" "$profile"
+      printf '      %s\n' "$path_line"
+      printf '  [Y/n] '
+      # `read` returns non-zero at EOF, which would abort the script under -e.
+      read -r reply < /dev/tty || reply=""
+      printf '\n'
+    else
+      reply=""
+    fi
+
+    case "$reply" in
+      [nN]*)
+        printf '! PATH not updated (declined)\n'
+        # The tail block prints the manual export line when no profile was
+        # written; clearing it is what selects that branch.
+        profile=""
+        ;;
+      *)
+        mkdir -p "$(dirname "$profile")"
+        {
+          echo ""
+          echo "$PATH_MARKER_START"
+          echo "$path_line"
+          echo "$PATH_MARKER_END"
+        } >> "$profile"
+        printf '%s PATH updated   %s\n' "$G_OK" "$profile"
+        printf '      %s\n' "$path_line"
+        ;;
+    esac
   fi
 fi
 
@@ -367,14 +433,14 @@ fi
 # terminal directly.
 if [ "$RUN_SETUP" = "1" ] && ! "$target" --help 2>/dev/null | grep -q '^  setup '; then
   # Installed release predates 'orq setup'; don't invoke a command that errors.
-  printf '\n! this release has no '\''orq setup'\'' yet — skipping setup\n'
+  printf '\n! this release has no '\''orq setup'\'' yet - skipping setup\n'
   RUN_SETUP=0
   setup_missing=1
 fi
 
-if [ "$RUN_SETUP" = "1" ] && [ -r /dev/tty ]; then
-  printf '\n  Starting setup — press Ctrl-C to skip and run '\''orq setup'\'' later.\n'
-  printf '\n────────────────────────────────────────────────────────────────\n'
+if [ "$RUN_SETUP" = "1" ] && have_tty; then
+  printf '\n  Starting setup - press Ctrl-C to skip and run '\''orq setup'\'' later.\n'
+  printf '\n%s\n' "$G_RULE"
   # The chained run inherits the cwd of the curl invocation, which is rarely a
   # project; setup detects that and defaults to a global install.
   ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty || true

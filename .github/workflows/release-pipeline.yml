@@ -241,3 +241,19 @@ jobs:
         run: |
           # --clobber to overwrite asset already exist
           gh release upload "$TAG" dist/orq-* --clobber
+
+      # Publishing the installer as a release asset gives it an immutable,
+      # per-tag URL. Serving it from a branch head instead would mean a bad
+      # commit breaks every install with no version to roll back to.
+      - name: Publish install.sh to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -e
+          sed "s|^INSTALLER_VERSION=.*|INSTALLER_VERSION=\"${TAG}\"|" install.sh > dist/install.sh
+          # Fail loudly rather than shipping an installer that reports "dev".
+          grep -q "^INSTALLER_VERSION=\"${TAG}\"$" dist/install.sh
+          sh -n dist/install.sh
+          shasum -a 256 dist/install.sh > dist/install.sh.sha256
+          gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --clobber
