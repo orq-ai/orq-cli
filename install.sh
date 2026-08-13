@@ -78,6 +78,20 @@ For Windows, install via npm instead:
 USAGE
 }
 
+# Every network call goes through here.
+#
+#   --proto '=https'  refuse to be redirected onto plain http. The documented
+#                     entry point is a vanity URL that redirects, so the
+#                     redirect chain is part of our attack surface.
+#   --retry           a dropped connection or a 5xx from a CDN blip should not
+#                     abort an install on the first hiccup; --retry-connrefused
+#                     covers the connection never being established at all.
+#
+# Callers add -sS for quiet fetches or --progress-bar for the binary.
+fetch() {
+  curl -fL --proto '=https' --retry 3 --retry-delay 1 --retry-connrefused "$@"
+}
+
 # Whether there is a human to prompt. stdin is the script itself under
 # `curl | sh`, so the terminal has to be reached through /dev/tty. Testing
 # `[ -r /dev/tty ]` is not enough: the device node is world-readable, so it
@@ -206,7 +220,7 @@ if [ -z "$VERSION" ]; then
   # GitHub's latest-release API returns JSON; awk out the tag_name field
   # without requiring jq. Pre-releases are excluded by the endpoint itself.
   api_url="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(curl -fsSL "$api_url" 2>/dev/null | awk -F '"' '/"tag_name":/ {print $4; exit}')"
+  VERSION="$(fetch -sS "$api_url" 2>/dev/null | awk -F '"' '/"tag_name":/ {print $4; exit}')"
 
   if [ -z "$VERSION" ]; then
     err "failed to determine latest release from $api_url"
@@ -257,7 +271,7 @@ if [ "${already_current:-0}" != "1" ]; then
   }
   trap cleanup EXIT INT TERM
 
-  if ! curl -fSL --progress-bar -o "$tmp_file" "$download_url"; then
+  if ! fetch --progress-bar -o "$tmp_file" "$download_url"; then
     err "failed to download $download_url"
     err "verify the release exists: https://github.com/$REPO/releases"
     exit 1
@@ -291,7 +305,10 @@ if [ "${already_current:-0}" != "1" ]; then
 
   # curl's -w writes the status (000 on a connection failure) even when it exits
   # non-zero, so `|| true` only stops that non-zero from aborting the script.
-  checksum_status="$(curl -sSL -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
+  # -f is dropped here on purpose: we need the status code for the 404 case
+  # below, and --fail makes curl discard the body and report a generic error.
+  checksum_status="$(curl -sSL --proto '=https' --retry 3 --retry-delay 1 \
+    --retry-connrefused -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
   expected=""
   case "${checksum_status:-000}" in
     200)
@@ -339,11 +356,16 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
+  # Reported by running the binary we just wrote, not by echoing the tag we
+  # asked for: this is the only step that proves the download is executable on
+  # this machine — right architecture, not truncated, not quarantined.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
   else
-    printf '%s installed      %s\n' "$G_OK" "$target"
+    err "installed binary at $target does not run (--version failed)"
+    err "the download may be corrupt or built for another platform"
+    exit 1
   fi
 fi
 
@@ -448,14 +470,29 @@ if [ "$RUN_SETUP" = "1" ] && have_tty; then
 fi
 
 printf '\n'
-if [ "$path_already_set" != "1" ] && [ -z "$profile" ]; then
+
+# What the user has to do next depends only on whether `orq` resolves in the
+# shell they are sitting in. Telling someone to restart a shell that already
+# works is noise they have to think about before ignoring.
+if [ "$path_already_set" = "1" ]; then
+  ready=1
+elif [ -n "$profile" ]; then
+  # A profile was written, so new shells will find it — this one will not.
+  ready=0
+  printf '  To use orq in this shell, run:\n'
+  printf '      exec %s -l\n\n' "${SHELL:-sh}"
+else
+  # Nothing was written: unrecognised shell, --no-modify-path, or declined.
+  ready=0
   printf '  Add to your shell profile:\n'
   printf '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
-elif [ -n "$profile" ]; then
-  printf '  Restart your shell, or run:\n'
-  printf '      exec %s -l\n\n' "${SHELL:-sh}"
 fi
+
 if [ "${setup_missing:-0}" != "1" ]; then
   printf '  Next:\n'
-  printf '      orq setup\n\n'
+  if [ "$ready" = "1" ]; then
+    printf '      orq setup\n\n'
+  else
+    printf '      %s setup\n\n' "$target"
+  fi
 fi
