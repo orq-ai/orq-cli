@@ -675,18 +675,6 @@ func warnLingeringAPIKeys() {
 	}
 }
 
-// configuredAPIKey returns the key this machine would authenticate with, env
-// first (bartolo's own precedence), then the stored profile. Callers must not
-// log it — doctor uses it to probe, never to print.
-func configuredAPIKey() string {
-	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
-		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
-			return v
-		}
-	}
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".api_key"))
-}
-
 // envAPIKeySet reports whether an API key is present in the environment. Never
 // report which value — only that one is set.
 func envAPIKeySet() bool {
@@ -1015,9 +1003,6 @@ func reportProviders(rep *reporter, count int, providers []string) {
 	rep.note("  %d chat model(s) enabled in this workspace", count)
 }
 
-// countEnabledModels retries because this runs right after minting a key, and
-// a fresh key is rejected for a second or two — without the wait the step
-// reports "no provider connected" for a workspace that has one.
 // connectedProviders summarises which BYOK providers actually have usable
 // models, derived from the catalogue rather than GET /v2/integrations: that
 // endpoint is behind a role permission a workspace API key does not carry (403),
@@ -1043,11 +1028,6 @@ func connectedProviders(models []auth.RouterModel) []string {
 		return out[i] < out[j]
 	})
 	return out
-}
-
-func countEnabledModels(client *auth.Client, state *authState) (int, error) {
-	count, _, err := listEnabledModels(client, state)
-	return count, err
 }
 
 // listEnabledModels returns the enabled-model count and the providers behind

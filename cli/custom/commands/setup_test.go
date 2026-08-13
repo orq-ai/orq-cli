@@ -286,7 +286,7 @@ func TestCountEnabledModelsIgnoresInactive(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := countEnabledModels(auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"})
+	got, _, err := listEnabledModels(auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
