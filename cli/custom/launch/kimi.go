@@ -22,20 +22,6 @@ const (
 
 	kimiChatType      = "openai"
 	kimiResponsesType = "openai_responses"
-
-	// Fallbacks for models the catalog has no metadata for. Kimi sends
-	// max_tokens = max_output_size on the chat path, so it must be <= the
-	// model's real output cap; 8192 is safe for all but a handful of legacy
-	// models (which do carry metadata).
-	//
-	// Both caps err low for the same reason: over-claiming makes the upstream
-	// reject a request outright, under-claiming only leaves capacity unused.
-	// The context fallback was 262144 here and 128000 in setup's own copy of
-	// this writer — 262144 is kimi-k2's window, not a floor, and it is the
-	// wrong direction to guess in. Models that hit these values are the ones
-	// the endpoint sends null metadata for (ENG-2743).
-	fallbackContextSize = 128000
-	fallbackOutputSize  = 8192
 )
 
 var kimiNormalize = MakeNormalizeModel([]string{KimiResponsesProvider, KimiChatProvider})
