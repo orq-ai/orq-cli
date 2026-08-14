@@ -94,11 +94,21 @@ USAGE
 # code out of a 404 rather than have curl turn it into a generic failure.
 # Callers that want "any non-2xx is fatal" pass -f themselves.
 #
-# Requires curl >= 7.71 (--retry-all-errors). Older builds exit 2 with
-# "option ... is unknown" before issuing a request; that message is left on
-# stderr rather than swallowed, so the cause is visible.
+# --retry-all-errors arrived in curl 7.71. Requiring it outright would fail
+# before the first request on RHEL 8 (7.61, supported into 2029) and Ubuntu
+# 20.04 (7.68), so it is probed rather than assumed: those platforms keep the
+# retry behaviour curl 7.52 gives, everyone else gets the wider net. Asking
+# curl what it supports beats parsing its version string.
+if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
+  CURL_RETRY_ALL='--retry-all-errors'
+else
+  CURL_RETRY_ALL=''
+fi
+
 fetch() {
-  curl -L --proto '=https' --retry 3 --retry-delay 1 --retry-all-errors "$@"
+  # Unquoted on purpose: empty must expand to no argument at all.
+  # shellcheck disable=SC2086
+  curl -L --proto '=https' --retry 3 --retry-delay 1 $CURL_RETRY_ALL "$@"
 }
 
 # Whether there is a human to prompt. stdin is the script itself under
@@ -340,18 +350,19 @@ if [ "${already_current:-0}" != "1" ]; then
       # answers 200 with HTML, which is non-empty and would otherwise be
       # compared as a hash — reporting a checksum mismatch and pointing the
       # user at our issue tracker for what is a network problem.
+      #
+      # 64 hex characters, expressed as one pattern: the ? repetition is the
+      # only way POSIX case gives a length check, and it keeps this to a single
+      # place to change if the digest ever does.
+      hex16='[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'
       case "$expected" in
-        *[!0-9a-fA-F]* | "")
+        $hex16$hex16$hex16$hex16) ;;
+        *)
           err "checksum response from $checksum_url is not a sha256 digest"
           err "a proxy or captive portal may be intercepting the request"
           exit 1
           ;;
       esac
-      if [ "${#expected}" -ne 64 ]; then
-        err "checksum response from $checksum_url is not a sha256 digest"
-        err "a proxy or captive portal may be intercepting the request"
-        exit 1
-      fi
       ;;
     404)
       printf '! checksum not verified (this release publishes no .sha256)\n'
@@ -523,8 +534,12 @@ if [ "$RUN_SETUP" = "1" ] && have_tty; then
   # below still prints — setup just ran in a shell where the new entry is not
   # live yet, which is exactly when that advice matters most.
   setup_ran=1
-  if ! ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty; then
-    setup_status=$?
+  # Captured with `|| setup_status=$?`, not inside `if ! …; then`: there $? is
+  # the status of the negated compound, which is 0 whenever the negation
+  # succeeded — so every failure reported itself as "exited 0".
+  setup_status=0
+  ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty || setup_status=$?
+  if [ "$setup_status" != "0" ]; then
     printf '\n'
     if [ "$setup_status" = "130" ]; then
       err "setup was interrupted; run 'orq setup' when you are ready"

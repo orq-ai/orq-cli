@@ -52,12 +52,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: parse under dash
         run: dash -n install.sh
-      - name: run with no controlling terminal
+      - name: install with no controlling terminal
         # setsid detaches the controlling terminal, which is the CI/Docker/ssh
-        # case. A POSIX special built-in failing a redirection exits the shell
-        # outright there, so this has to actually execute, not just parse.
-        # --help exits before any network call.
-        run: setsid dash install.sh --help > /dev/null
+        # case: a POSIX special built-in failing a redirection exits the shell
+        # outright there, and only at runtime — parsing cannot see it.
+        #
+        # A full install, not --help: --help returns before the first have_tty
+        # call, so it exits 0 on a script carrying exactly the bug this job
+        # exists to catch. Verified by reverting the fix — --help passes,
+        # this fails with the silent exit 2.
+        #
+        # SHELL is set so the PATH branch resolves a profile and runs; HOME is
+        # redirected so the runner's own dotfiles are left alone.
+        run: |
+          export HOME="$RUNNER_TEMP/installer-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh \
+            --no-setup --install-dir "$HOME/orq" < /dev/null
+          test -x "$HOME/orq/orq"
       - name: reject non-ASCII in output
         # The UTF-8 fallback only holds if every glyph is gated; a stray one
         # renders as mojibake on a non-UTF-8 terminal.

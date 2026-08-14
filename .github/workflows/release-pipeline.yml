@@ -250,7 +250,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          set -e
           sed "s|^INSTALLER_VERSION=.*|INSTALLER_VERSION=\"${TAG}\"|" install.sh > dist/install.sh
           # Fail loudly rather than shipping an installer that reports "dev".
           # This also catches a sed that silently matched nothing.
