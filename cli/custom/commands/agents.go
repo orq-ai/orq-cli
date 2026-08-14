@@ -19,6 +19,11 @@ import (
 // drift, which is what let the test guarding this be deleted.
 const mcpServerName = launch.MCPServerName
 
+// errNoModelsToOffer is returned rather than writing a provider block with no
+// models in it: the writers clear their own keys first, so "write nothing"
+// would mean "delete whatever an earlier run left".
+var errNoModelsToOffer = errors.New("no models to offer")
+
 // launchCatalog expresses setup's catalogue in the shape every launch builder
 // takes: the model refs to offer, and the metadata to write caps and pick an
 // API shape from.
@@ -107,7 +112,10 @@ func agentRegistry() []agentSpec {
 			mcpConfig:     codexPath("config.toml"),
 			writeMCP:      writeMCPCodexTOML,
 			manualSnippet: snippetMCPCodexTOML,
-			detect:        detectAny(".codex"),
+			// Detected through the same resolution the writers use, or a machine
+			// that sets CODEX_HOME elsewhere is never offered the agent whose
+			// config we would then write correctly.
+			detect: detectPath(codexPath("")),
 			// A named profile rather than the base config: `codex --profile orq`
 			// layers $CODEX_HOME/orq.config.toml over config.toml, so this is a
 			// file we own outright and plain `codex` is untouched. The MCP block
@@ -218,6 +226,30 @@ func codexPath(rel string) func(bool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, ".codex", rel), nil
+	}
+}
+
+// codexBaseConfigPath is the config.toml codex actually loads, named in the
+// header we write. A hardcoded ~/.codex there would point a CODEX_HOME user at
+// a file that does not exist, in the one file telling them where to edit.
+func codexBaseConfigPath() string {
+	path, err := codexPath("config.toml")(true)
+	if err != nil {
+		return "codex's config.toml"
+	}
+	return path
+}
+
+// detectPath reports whether a resolver's directory exists, for agents whose
+// location is not a fixed name under $HOME.
+func detectPath(resolve func(bool) (string, error)) func() bool {
+	return func() bool {
+		path, err := resolve(true)
+		if err != nil {
+			return false
+		}
+		_, statErr := os.Stat(path)
+		return statErr == nil
 	}
 }
 
@@ -402,6 +434,12 @@ func writeMCPCodexTOML(path, url string) error {
 // Offering the models and letting the user pick one is the version of this that
 // cannot leave an agent worse off than it found it.
 func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
+	// Every writer below clears the keys it owns before emitting new ones, so
+	// an empty catalogue would delete a working block and report success. The
+	// caller skips this case; this is the backstop for any other caller.
+	if len(models) == 0 {
+		return 0, errNoModelsToOffer
+	}
 	cfg, err := readJSONConfig(path)
 	if err != nil {
 		return 0, err
@@ -503,13 +541,19 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 // model named here — while the request still routes. Generate the catalog too
 // if either turns out to matter.
 func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
+	// Every writer below clears the keys it owns before emitting new ones, so
+	// an empty catalogue would delete a working block and report success. The
+	// caller skips this case; this is the backstop for any other caller.
+	if len(models) == 0 {
+		return 0, errNoModelsToOffer
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return 0, err
 	}
 	body := renderTOMLSettings(launch.CodexProviderSettings(
 		codexDefaultModel(models, defaultModel), routerURL, ""))
 	header := "# Written by 'orq setup'. Use it with: codex --profile " + codexProfileName + "\n" +
-		"# Regenerated on every run; edit ~/.codex/config.toml instead.\n\n"
+		"# Regenerated on every run; edit " + codexBaseConfigPath() + " instead.\n\n"
 	return 0, os.WriteFile(path, []byte(header+body), 0o600)
 }
 
@@ -559,6 +603,12 @@ func renderTOMLSettings(settings [][2]string) string {
 // skip-if-present leaves that dead credential in place forever, and the user
 // gets a 401 on their first prompt with no hint why.
 func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error) {
+	// Every writer below clears the keys it owns before emitting new ones, so
+	// an empty catalogue would delete a working block and report success. The
+	// caller skips this case; this is the backstop for any other caller.
+	if len(models) == 0 {
+		return 0, errNoModelsToOffer
+	}
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return 0, err
