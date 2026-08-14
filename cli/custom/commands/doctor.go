@@ -80,6 +80,10 @@ func NewDoctorCommand() *cobra.Command {
 			}
 
 			checks := buildSessionChecks(inspect)
+			// Coding-agent wiring rides in the same doctor rather than its own
+			// subcommand: a user with a broken setup should not need to know
+			// which doctor to run. All local stat + parse, so unconditional.
+			checks = append(checks, codingAgentChecks()...)
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
