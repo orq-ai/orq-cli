@@ -624,6 +624,27 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 }
 
+// Codex resolves its config directory from $CODEX_HOME, falling back to
+// ~/.codex. Setup must write where codex will read: a profile under a
+// hardcoded ~/.codex on a machine that sets CODEX_HOME is never loaded, and
+// the printed `codex --profile orq` hint sends the user to a profile codex
+// cannot find.
+func TestCodexPathsHonorCodexHome(t *testing.T) {
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	codex, _ := lookupAgent("codex")
+	for kind, resolve := range map[string]func(bool) (string, error){
+		"mcp": codex.mcpConfig, "provider": codex.providerConfig,
+	} {
+		got, err := resolve(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(got, os.Getenv("CODEX_HOME")+string(os.PathSeparator)) {
+			t.Errorf("%s path %q ignores CODEX_HOME", kind, got)
+		}
+	}
+}
+
 // Setup makes real, billed completions against the user's own provider keys.
 // This pins how many: exactly one, for the model the agent will open with — the
 // only one that must work before the user picks anything. The rest of the
@@ -646,6 +667,7 @@ func TestSetupBillsOneCompletionTotal(t *testing.T) {
 	defer srv.Close()
 
 	codingModelsFetched, cachedCodingModels, provenModel = false, nil, ""
+	defaultModelResolved, provenCandidate = false, auth.RouterModel{}
 	client := auth.NewClient(srv.URL)
 	state := &authState{apiBase: srv.URL, bearer: "t"}
 	rep := newReporter(true)
@@ -658,14 +680,22 @@ func TestSetupBillsOneCompletionTotal(t *testing.T) {
 		t.Errorf("listing models billed %d completions, want 0", n)
 	}
 
-	defaultCodingModel(rep, client, state)
+	// Once per agent that has a provider writer, as instrumentAgents does.
+	// Four agents used to mean four billed probes for the same answer.
+	first, _ := defaultCodingModel(rep, client, state)
+	for range 3 {
+		again, ok := defaultCodingModel(rep, client, state)
+		if !ok || again.Ref() != first.Ref() {
+			t.Errorf("memoized default = %q, want %q", again.Ref(), first.Ref())
+		}
+	}
 	afterProbe := atomic.LoadInt64(&completions)
 	verifyGateway(rep, client, state)
 	total := atomic.LoadInt64(&completions)
 
-	t.Logf("completions: default-model probe=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
+	t.Logf("completions: default-model probes=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
 	if afterProbe != 1 {
-		t.Errorf("choosing the default billed %d completions, want 1", afterProbe)
+		t.Errorf("choosing the default across four agents billed %d completions, want 1", afterProbe)
 	}
 	if total != afterProbe {
 		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)
