@@ -624,6 +624,51 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 }
 
+// The single wiring question maps onto the two branch flags, and the flags
+// pre-answer it so scripts never see a prompt. This pins the mapping: which
+// flag combinations wire which branch, and that nothing-to-wire short-circuits
+// before any agent work.
+func TestWiringFlagsMapToBranches(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		noMCP, noGateway     bool
+		yes, noInput         bool
+		wantMCP, wantGateway bool
+		wantNothing          bool
+	}{
+		{name: "no flags, no-input → both (unchanged default)", noInput: true, wantMCP: true, wantGateway: true},
+		{name: "--yes → both", yes: true, wantMCP: true, wantGateway: true},
+		{name: "--no-mcp → gateway only", noMCP: true, noInput: true, wantGateway: true},
+		{name: "--no-gateway → MCP only", noGateway: true, noInput: true, wantMCP: true},
+		{name: "both flags → nothing", noMCP: true, noGateway: true, noInput: true, wantNothing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
+			if tc.wantNothing {
+				// Real call: both flags set must short-circuit before any
+				// per-agent work — no prompt (noInput), no network, no writes.
+				results := instrumentAgents(newReporter(true), auth.NewClient(""), &authState{}, opts)
+				if results != nil {
+					t.Fatalf("nothing-to-wire returned %d results, want none", len(results))
+				}
+				return
+			}
+			gotNothing := opts.noMCP && opts.noGateway
+			if gotNothing != tc.wantNothing {
+				t.Fatalf("nothing-to-wire = %v, want %v", gotNothing, tc.wantNothing)
+			}
+			if !gotNothing {
+				if got := !opts.noMCP; got != tc.wantMCP {
+					t.Errorf("wire MCP = %v, want %v", got, tc.wantMCP)
+				}
+				if got := !opts.noGateway; got != tc.wantGateway {
+					t.Errorf("wire gateway = %v, want %v", got, tc.wantGateway)
+				}
+			}
+		})
+	}
+}
+
 // Codex resolves its config directory from $CODEX_HOME, falling back to
 // ~/.codex. Setup must write where codex will read: a profile under a
 // hardcoded ~/.codex on a machine that sets CODEX_HOME is never loaded, and
