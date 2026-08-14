@@ -76,8 +76,7 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 }
 
 func tomlOverride(key, value string) string {
-	quoted, _ := json.Marshal(value)
-	return key + "=" + string(quoted)
+	return key + "=" + TOMLString(value)
 }
 
 // CodexProvider is the key codex registers the orq gateway under.

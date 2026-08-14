@@ -12,9 +12,12 @@ import (
 	"orq/cli/custom/launch"
 )
 
-// mcpServerName is the key every agent config registers orq under. It matches
-// the name used by the orq-mcp plugin so both installs look identical.
-const mcpServerName = "orq-workspace"
+// mcpServerName is the key every agent config registers orq under. Aliased to
+// launch's constant rather than spelled again: launch injects a session-scoped
+// entry under the same key, and if the two ever differed an agent would load
+// BOTH servers — every orq tool twice, double the context. An alias cannot
+// drift, which is what let the test guarding this be deleted.
+const mcpServerName = launch.MCPServerName
 
 // launchCatalog expresses setup's catalogue in the shape every launch builder
 // takes: the model refs to offer, and the metadata to write caps and pick an
@@ -98,10 +101,10 @@ func agentRegistry() []agentSpec {
 		{
 			ID:    "codex",
 			Label: "Codex",
-			// Codex reads MCP servers only from the home-directory TOML. A
+			// Codex reads MCP servers only from its config directory. A
 			// project-relative copy would be written and never loaded, so both
 			// scopes resolve to the same absolute path.
-			mcpConfig:     alwaysGlobalPath(".codex/config.toml"),
+			mcpConfig:     codexPath("config.toml"),
 			writeMCP:      writeMCPCodexTOML,
 			manualSnippet: snippetMCPCodexTOML,
 			detect:        detectAny(".codex"),
@@ -109,7 +112,7 @@ func agentRegistry() []agentSpec {
 			// layers $CODEX_HOME/orq.config.toml over config.toml, so this is a
 			// file we own outright and plain `codex` is untouched. The MCP block
 			// in the base config still applies under the profile.
-			providerConfig: alwaysGlobalPath(".codex/" + codexProfileName + ".config.toml"),
+			providerConfig: codexPath(codexProfileName + ".config.toml"),
 			writeProvider:  writeCodexProviderTOML,
 			providerUsage:  "run 'codex --profile " + codexProfileName + "' to route through the gateway",
 		},
@@ -197,6 +200,24 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, rel), nil
+	}
+}
+
+// codexPath resolves inside codex's config directory: $CODEX_HOME when set,
+// ~/.codex otherwise. Codex resolves everything — config.toml, profiles —
+// against CODEX_HOME, so writing to a hardcoded ~/.codex on a machine that
+// sets it would produce files codex never reads, along with a hint telling
+// the user to load a profile codex cannot find.
+func codexPath(rel string) func(bool) (string, error) {
+	return func(bool) (string, error) {
+		if dir := strings.TrimSpace(os.Getenv("CODEX_HOME")); dir != "" {
+			return filepath.Join(dir, rel), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".codex", rel), nil
 	}
 }
 
@@ -445,13 +466,14 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 		return group[0].Ref()
 	}
 	// No preferred family available: any Responses-capable model beats naming
-	// one that cannot answer. Full models before their cut-down editions, then
-	// sorted, so re-runs do not churn the file.
-	best, bestIsVariant := "", true
+	// one that cannot answer. Same order as CandidateCodingModels — strongest
+	// edition, then lexically greatest to track version suffixes — so the two
+	// paths cannot disagree about what "best" means, and re-runs are stable.
+	best, bestRank := "", 0
 	for _, m := range responses {
-		ref, variant := m.Ref(), auth.IsSizeVariant(m.ModelID)
-		if best == "" || (bestIsVariant && !variant) || (variant == bestIsVariant && ref < best) {
-			best, bestIsVariant = ref, variant
+		ref, rank := m.Ref(), auth.SizeVariantRank(m.ModelID)
+		if best == "" || rank < bestRank || (rank == bestRank && ref > best) {
+			best, bestRank = ref, rank
 		}
 	}
 	return best
@@ -474,10 +496,12 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 // its picker from a catalog JSON that launch builds by running
 // `codex debug models --bundled`.
 //
-// ponytail: no model catalog, so the picker lists codex's bundled models rather
-// than the workspace's, and codex prints a "model metadata not found" warning
-// for the model we name. Both are cosmetic — the request still routes. Generate
-// the catalog here too if either turns out to matter.
+// Deliberately no model catalog: building one means running `codex debug
+// models --bundled`, and setup cannot assume codex is installed. The cost is
+// cosmetic — the picker lists codex's bundled models rather than the
+// workspace's, and codex prints a "model metadata not found" warning for the
+// model named here — while the request still routes. Generate the catalog too
+// if either turns out to matter.
 func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return 0, err
@@ -502,7 +526,7 @@ func renderTOMLSettings(settings [][2]string) string {
 		key, value := kv[0], kv[1]
 		dot := strings.LastIndex(key, ".")
 		if dot < 0 {
-			fmt.Fprintf(&root, "%s = %s\n", key, tomlString(value))
+			fmt.Fprintf(&root, "%s = %s\n", key, launch.TOMLString(value))
 			continue
 		}
 		header, field := key[:dot], key[dot+1:]
@@ -513,7 +537,7 @@ func renderTOMLSettings(settings [][2]string) string {
 			order = append(order, header)
 			fmt.Fprintf(b, "[%s]\n", header)
 		}
-		fmt.Fprintf(b, "%s = %s\n", field, tomlString(value))
+		fmt.Fprintf(b, "%s = %s\n", field, launch.TOMLString(value))
 	}
 	out := root.String()
 	for _, header := range order {
@@ -523,14 +547,6 @@ func renderTOMLSettings(settings [][2]string) string {
 		out += tables[header].String()
 	}
 	return out
-}
-
-// tomlString encodes a TOML basic string. JSON string encoding is a valid TOML
-// basic string, so a model id carrying a quote or control character cannot
-// break the file open.
-func tomlString(value string) string {
-	encoded, _ := json.Marshal(value)
-	return string(encoded)
 }
 
 // writeKimiProviderTOML registers orq as an OpenAI-compatible provider and adds

@@ -86,7 +86,17 @@ Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `
 
 Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
 
-**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v3/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
+**Setup also registers orq as a model provider** for kimi, codex, opencode and kilo, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
+
+| Agent | Setup writes | Route through orq by |
+|---|---|---|
+| `kimi` | `[providers.orq]` + the model list into `~/.kimi-code/config.toml` | just running `kimi` (default filled when absent) |
+| `codex` | a self-contained profile at `$CODEX_HOME/orq.config.toml` (default `~/.codex/`) | `codex --profile orq` |
+| `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
+| `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
+| `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
+
+Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. One model — the default the agent opens with — is probed with a single billed completion; the rest are written unprobed, exactly as `orq launch` does.
 
 Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
 
@@ -98,7 +108,7 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 | `--workspace <key>` | Activate a workspace |
 | `--api-key <key>` | Use this key instead of logging in and minting one |
 | `--agent <name>` | Instrument a coding agent (repeatable) |
-| `--global` | Write agent config under `$HOME` instead of the current project |
+| `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
 | `--no-agent` / `--no-env` | Skip agent instrumentation / skip writing `.env` |
 | `--no-input` | Never prompt; missing values become errors |
 

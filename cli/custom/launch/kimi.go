@@ -106,11 +106,12 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	return plan, nil
 }
 
-// tomlString encodes a TOML basic string. JSON string encoding is a valid
+// TOMLString encodes a TOML basic string. JSON string encoding is a valid
 // TOML basic string (quotes, backslashes, and control chars all escaped) —
-// raw control characters from a hostile model id would otherwise make kimi
-// reject the whole config file.
-func tomlString(value string) string {
+// raw control characters from a hostile model id would otherwise make an
+// agent reject the whole config file. Every TOML writer in both commands
+// must use it; hand-rolled quoting is how a hostile id breaks a config open.
+func TOMLString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
 }
@@ -142,14 +143,14 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 
 	var b strings.Builder
 	if gatewayModel != "" {
-		fmt.Fprintf(&b, "default_model = %s\n\n", tomlString(gatewayModel))
+		fmt.Fprintf(&b, "default_model = %s\n\n", TOMLString(gatewayModel))
 	}
 
 	provider := func(name, typ string) {
 		fmt.Fprintf(&b, "[providers.%s]\n", name)
-		fmt.Fprintf(&b, "type = %s\n", tomlString(typ))
-		fmt.Fprintf(&b, "base_url = %s\n", tomlString(baseURL))
-		fmt.Fprintf(&b, "api_key = %s\n\n", tomlString(apiKey))
+		fmt.Fprintf(&b, "type = %s\n", TOMLString(typ))
+		fmt.Fprintf(&b, "base_url = %s\n", TOMLString(baseURL))
+		fmt.Fprintf(&b, "api_key = %s\n\n", TOMLString(apiKey))
 	}
 	if len(chatModels) > 0 {
 		provider(KimiChatProvider, kimiChatType)
@@ -168,9 +169,9 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 				outputSize = limit.MaxOutputTokens
 			}
 		}
-		fmt.Fprintf(&b, "[models.%s]\n", tomlString(id))
-		fmt.Fprintf(&b, "provider = %s\n", tomlString(providerName))
-		fmt.Fprintf(&b, "model = %s\n", tomlString(id))
+		fmt.Fprintf(&b, "[models.%s]\n", TOMLString(id))
+		fmt.Fprintf(&b, "provider = %s\n", TOMLString(providerName))
+		fmt.Fprintf(&b, "model = %s\n", TOMLString(id))
 		fmt.Fprintf(&b, "max_context_size = %d\n", contextSize)
 		// Kimi sends max_tokens = max_output_size on the chat path; must be <=
 		// the model's real output cap or the upstream rejects the request.
