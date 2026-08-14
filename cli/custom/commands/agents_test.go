@@ -555,10 +555,19 @@ func TestCodexDefaultModelPrefersFullModelsOverSizeVariants(t *testing.T) {
 		t.Errorf("codex default = %q, want the full acme/model-1", got)
 	}
 
-	// Only variants available: better than naming nothing.
-	got = codexDefaultModel(responses("openai/gpt-5.4-mini"), "")
+	// Only variants available: the stronger edition, not the lexically
+	// greatest. Plain full-vs-variant ranking still handed nano the win here —
+	// the exact model whose tool rejection started all this.
+	got = codexDefaultModel(responses("openai/gpt-5.4-mini", "openai/gpt-5.4-nano"), "")
 	if got != "openai/gpt-5.4-mini" {
-		t.Errorf("codex default = %q, want the sole model available", got)
+		t.Errorf("codex default = %q, want mini over nano", got)
+	}
+
+	// -flash is itself in the suffix list, so gemini's mainline flash must
+	// still beat its own -lite edition rather than being demoted to a tie.
+	got = codexDefaultModel(responses("google/gemini-2.5-flash-lite", "google/gemini-2.5-flash"), "")
+	if got != "google/gemini-2.5-flash" {
+		t.Errorf("codex default = %q, want flash over flash-lite", got)
 	}
 }
 

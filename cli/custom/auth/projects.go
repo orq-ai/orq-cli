@@ -201,8 +201,8 @@ func (c *Client) ListModels(bearer string) ([]RouterModel, error) {
 // calling.
 //
 // "Best" is the lexically greatest model_id, which tracks version suffixes
-// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but full models are
-// ranked above their size variants first, see isSizeVariant.
+// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but stronger editions
+// are ranked above cut-down ones first, see SizeVariantRank.
 func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterModel {
 	groups := make([][]RouterModel, 0, len(preferred))
 	for _, prefix := range preferred {
@@ -219,8 +219,9 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 			}
 		}
 		sort.Slice(matches, func(i, j int) bool {
-			if a, b := IsSizeVariant(matches[i].ModelID), IsSizeVariant(matches[j].ModelID); a != b {
-				return b
+			// Stronger edition first (lower rank), newest version within it.
+			if a, b := SizeVariantRank(matches[i].ModelID), SizeVariantRank(matches[j].ModelID); a != b {
+				return a < b
 			}
 			return matches[i].ModelID > matches[j].ModelID
 		})
@@ -232,15 +233,18 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 }
 
 // sizeVariantSuffixes name the cut-down editions vendors ship alongside a full
-// model.
+// model, ordered strongest to weakest. Order matters twice: -flash before
+// -lite makes gemini-2.5-flash beat gemini-2.5-flash-lite, and -mini before
+// -nano makes gpt-5.4-mini beat gpt-5.4-nano when a workspace enables only
+// variants.
 //
-// They have to be ranked explicitly because they sort *above* the model they
-// are derived from — "gpt-5.4-nano" > "gpt-5.4-mini" > "gpt-5.4" — so picking
-// the lexically greatest id hands a coding agent the weakest option in the
-// family. That is not just a quality question: gpt-5.4-nano rejects tools the
-// full model accepts, and codex, which sends its whole tool set on the first
-// request, fails outright with "[openai] Tool 'tool_search' is not supported
-// with gpt-5.4-nano".
+// They have to be ranked explicitly because size suffixes sort lexically
+// *above* the model they are derived from — "gpt-5.4-nano" > "gpt-5.4-mini" >
+// "gpt-5.4" — so picking the lexically greatest id hands a coding agent the
+// weakest option in the family. That is not just a quality question:
+// gpt-5.4-nano rejects tools the full model accepts, and codex, which sends
+// its whole tool set on the first request, fails outright with "[openai] Tool
+// 'tool_search' is not supported with gpt-5.4-nano".
 //
 // A name heuristic is unsatisfying, and it is here only because the catalogue
 // cannot answer the question. /v2/models does publish
@@ -249,17 +253,20 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 // gpt-5.6-terra, which both work, leave it unset. Filtering on that field would
 // select exactly the broken model. Replace this with a capability filter once
 // the catalogue can be trusted for one.
-var sizeVariantSuffixes = []string{"-nano", "-mini", "-micro", "-small", "-lite", "-tiny", "-flash"}
+var sizeVariantSuffixes = []string{"-flash", "-small", "-mini", "-lite", "-micro", "-tiny", "-nano"}
 
-func IsSizeVariant(modelID string) bool {
-	for _, suffix := range sizeVariantSuffixes {
+// SizeVariantRank orders a family's editions strongest-first: 0 for a full
+// model, 1+ for cut-down ones, weaker editions ranking higher. Callers sort
+// ascending by rank before any lexical comparison.
+func SizeVariantRank(modelID string) int {
+	for i, suffix := range sizeVariantSuffixes {
 		// Suffix rather than Contains: the segment has to end the id, so a model
-		// actually named for its size ("flash-2.5-pro") is not demoted.
+		// merely containing a size word mid-name is not demoted.
 		if strings.HasSuffix(modelID, suffix) {
-			return true
+			return i + 1
 		}
 	}
-	return false
+	return 0
 }
 
 // probeMaxTokens must leave room for a complete reply. The gateway rejects a
