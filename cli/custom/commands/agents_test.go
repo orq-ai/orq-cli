@@ -1111,3 +1111,64 @@ func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
 		})
 	}
 }
+
+// Doctor's coding-agent checks are the read-side of what the writers produce:
+// wired = pass, detected-but-unwired = warn (an agent nobody wired is an
+// offer, not a failure — the exit code must stay healthy), undetected = absent.
+func TestCodingAgentChecksReadWiring(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex")) // keep codex undetected
+	t.Chdir(t.TempDir())                                    // no project-relative configs
+
+	// Nothing installed: no checks at all.
+	if got := codingAgentChecks(); len(got) != 0 {
+		t.Fatalf("no agents installed but got %d checks: %+v", len(got), got)
+	}
+
+	// Kimi installed but unwired → warn naming the wiring command.
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	checks := codingAgentChecks()
+	if len(checks) != 1 || checks[0].ID != "coding_agent_kimi" {
+		t.Fatalf("want one kimi check, got %+v", checks)
+	}
+	if checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "orq setup coding-agents") {
+		t.Fatalf("unwired agent should warn and name the fix, got %+v", checks[0])
+	}
+
+	// Wire both halves the way setup does, then it must pass.
+	mcpPath := filepath.Join(home, ".kimi-code", "mcp.json")
+	if err := writeMCPKimiJSON(mcpPath, "https://api.orq.ai/v2/mcp"); err != nil {
+		t.Fatal(err)
+	}
+	providerPath := filepath.Join(home, ".kimi-code", "config.toml")
+	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
+		t.Fatal(err)
+	}
+	checks = codingAgentChecks()
+	if len(checks) != 1 || checks[0].Status != "pass" {
+		t.Fatalf("wired agent should pass, got %+v", checks)
+	}
+
+	// opencode registers MCP under "mcp", not "mcpServers" — the check must
+	// read each agent's own format, which is the bug a kimi-only test missed.
+	ocDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(ocDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ocPath := filepath.Join(ocDir, "opencode.json")
+	if err := writeMCPRemoteJSON(ocPath, "https://api.orq.ai/v2/mcp"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOpenCodeProviderJSON(ocPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range codingAgentChecks() {
+		if c.ID == "coding_agent_opencode" && c.Status != "pass" {
+			t.Fatalf("opencode wired via its own 'mcp' key should pass, got %+v", c)
+		}
+	}
+}
