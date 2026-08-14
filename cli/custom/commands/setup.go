@@ -23,12 +23,11 @@ import (
 const (
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
-	setupSteps        = 5
+	setupSteps        = 4
 )
 
 type setupOptions struct {
 	interactive bool
-	project     string
 	workspace   string
 	apiKey      string
 	agents      []string
@@ -75,10 +74,13 @@ func NewSetupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Authenticate, pick a project, and wire up your coding agent",
-		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, selects or creates a ` +
-			`project, creates a project-scoped API key, and registers the orq.ai MCP server ` +
-			`with your coding agent.
+		Short: "Authenticate and wire up your coding agents",
+		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
+			`workspace API key, and wires your coding agents to orq — the AI Gateway as a ` +
+			`model provider, and the orq.ai MCP server for workspace tools.
+
+Projects are never asked about here: keys are workspace-scoped, and project ` +
+			`scope belongs where resources are created (agents, deployments).
 
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
 			`flagged with ` + "`--no-input`" + ` for CI.
@@ -100,7 +102,6 @@ wins over a key left exported in your shell.`),
 
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
-	f.StringVar(&opts.project, "project", "", "Project name to select or create")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
@@ -148,28 +149,15 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	client := auth.NewClient(authState.apiBase)
 
-	// --- Step 2: project -----------------------------------------------------
-	rep.step(2, setupSteps, "Project")
-	project, created, err := resolveProject(rep, client, authState, opts)
-	if err != nil {
-		return err
-	}
-	result["project"] = map[string]any{
-		"id":      project.ProjectID,
-		"name":    project.Name,
-		"created": created,
-	}
-	if authState.session != nil {
-		authState.session.ActiveProjectID = project.ProjectID
-		authState.session.ActiveProjectName = project.Name
-		if err := auth.SaveSession(authState.session); err != nil {
-			rep.warn("could not persist the project selection: %v", err)
-		}
-	}
+	// No project step. Keys are workspace-scoped (the key API accepts a
+	// different id format than /v2/projects returns, so project scoping never
+	// actually happened), and free-tier accounts cannot create projects at
+	// all. Project is asked where scope genuinely matters — creating agents
+	// and deployments — never here. Decided 2026-08-14; see RES-1270.
 
-	// --- Step 3: API key -----------------------------------------------------
-	rep.step(3, setupSteps, "API key")
-	keyInfo, mintedToken, err := resolveAPIKey(rep, client, authState, opts, project)
+	// --- Step 2: API key -----------------------------------------------------
+	rep.step(2, setupSteps, "API key")
+	keyInfo, mintedToken, err := resolveAPIKey(rep, client, authState, opts)
 	if err != nil {
 		return err
 	}
@@ -180,15 +168,15 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		authState.bearer = mintedToken
 	}
 
-	// --- Step 4: providers ---------------------------------------------------
+	// --- Step 3: providers ---------------------------------------------------
 	// The gateway routes to whatever the workspace has connected (BYOK). With
 	// nothing connected there are no models, and every step after this one
 	// degrades into a confusing "no models" instead of "connect a provider".
-	rep.step(4, setupSteps, "Providers")
+	rep.step(3, setupSteps, "Providers")
 	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
 
-	// --- Step 5: coding agents ----------------------------------------------
-	rep.step(5, setupSteps, "Coding agent")
+	// --- Step 4: coding agents ----------------------------------------------
+	rep.step(4, setupSteps, "Coding agent")
 	agentResults := instrumentAgents(rep, client, authState, opts)
 	result["agents"] = agentResults
 
@@ -687,100 +675,12 @@ func envAPIKeySet() bool {
 }
 
 // ============================================================================
-// Step 2 — project
-// ============================================================================
-
-func resolveProject(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (*auth.Project, bool, error) {
-	projects, err := client.ListProjects(state.bearer)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if name := strings.TrimSpace(opts.project); name != "" {
-		for i := range projects {
-			if strings.EqualFold(projects[i].Name, name) {
-				rep.ok("project %s (%s)", projects[i].Name, projects[i].ProjectID)
-				return &projects[i], false, nil
-			}
-		}
-		created, err := client.CreateProject(state.bearer, name, "")
-		if err != nil {
-			return nil, false, err
-		}
-		rep.ok("created project %s (%s)", created.Name, created.ProjectID)
-		return created, true, nil
-	}
-
-	// Reuse the session's project unless the user asked to be prompted.
-	if state.session != nil && state.session.ActiveProjectID != "" && !opts.interactive {
-		for i := range projects {
-			if projects[i].ProjectID == state.session.ActiveProjectID {
-				rep.ok("project %s  (from session; --project to change)", projects[i].Name)
-				return &projects[i], false, nil
-			}
-		}
-	}
-
-	if opts.noInput {
-		return nil, false, errors.New("--no-input given but no project selected\n  Pass --project <name>, or run 'orq setup' interactively")
-	}
-	return promptForProject(rep, client, state, projects)
-}
-
-const createProjectOption = "+ Create a new project…"
-
-func promptForProject(rep *reporter, client *auth.Client, state *authState, projects []auth.Project) (*auth.Project, bool, error) {
-	options := make([]string, 0, len(projects)+1)
-	options = append(options, createProjectOption)
-	for _, p := range projects {
-		if p.IsArchived {
-			continue
-		}
-		options = append(options, p.Name)
-	}
-
-	var chosen string
-	if err := survey.AskOne(&survey.Select{
-		Message: "Select a project",
-		Options: options,
-	}, &chosen); err != nil {
-		return nil, false, err
-	}
-
-	if chosen != createProjectOption {
-		for i := range projects {
-			if projects[i].Name == chosen {
-				rep.ok("project %s (%s)", projects[i].Name, projects[i].ProjectID)
-				return &projects[i], false, nil
-			}
-		}
-		return nil, false, errors.New("no project selected")
-	}
-
-	var name string
-	if err := survey.AskOne(&survey.Input{Message: "Project name"}, &name,
-		survey.WithValidator(survey.Required)); err != nil {
-		return nil, false, err
-	}
-	var description string
-	if err := survey.AskOne(&survey.Input{Message: "Description (optional)"}, &description); err != nil {
-		return nil, false, err
-	}
-	created, err := client.CreateProject(state.bearer, strings.TrimSpace(name), strings.TrimSpace(description))
-	if err != nil {
-		return nil, false, err
-	}
-	rep.ok("created project %s (%s)", created.Name, created.ProjectID)
-	return created, true, nil
-}
-
-// ============================================================================
-// Step 3 — API key
+// Step 2 — API key
 // ============================================================================
 
 // resolveAPIKey returns the summary for the emitted payload and, when it minted
 // one, the raw token so the caller can verify with it.
-func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, project *auth.Project) (map[string]any, string, error) {
+func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, error) {
 	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
 
 	if state.suppliedKey != "" {
@@ -788,40 +688,44 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		return info, "", nil
 	}
 
-	if opts.interactive && !opts.confirm("Create a project-scoped API key now?", true) {
-		rep.ok("skipped creating an API key")
-		return info, "", nil
-	}
-
-	// Plain ASCII and no punctuation beyond spaces and hyphens: the name is
-	// echoed back by the dashboard and we do not know its validation rules.
-	hostname, _ := os.Hostname()
-	hostname = strings.TrimSuffix(hostname, ".local")
-	if hostname == "" {
-		hostname = "unknown-host"
-	}
-	keyName := sanitizeKeyName(fmt.Sprintf("orq-cli %s %s", hostname, project.Name))
-
-	token, scopedToProject, err := client.CreateAPIKey(state.bearer, keyName, project.ProjectID)
-	if err != nil {
-		return nil, "", err
-	}
-	// The raw token is returned once. Persist before doing anything else so a
-	// later failure cannot leave a live key with no local record of it.
-	if err := saveAPIKeyProfile(token); err != nil {
-		return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
-	}
-	info["created"] = true
-	info["project_scoped"] = scopedToProject
-	if scopedToProject {
-		rep.ok("created key  %s  (scoped to %s)", maskToken(token), project.Name)
+	// A key from an earlier run is reused, not replaced. Minting per run left
+	// a trail of live keys in the dashboard and made every re-run disagree
+	// with the ./.env written by the previous one. The env-file tail below
+	// still runs on reuse: a fresh project directory needs its ./.env even
+	// when the key itself is old.
+	token := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	if token != "" {
+		rep.ok("key already saved (profile: %s) — reusing it", auth.ActiveProfile())
 	} else {
-		// Do not let a broader-than-requested credential pass silently.
-		rep.ok("created key  %s", maskToken(token))
-		rep.warn("this key covers the whole workspace, not just %s", project.Name)
-		rep.note("  the API cannot scope a key to this project yet — see 'orq doctor'")
+		if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
+			rep.ok("skipped creating an API key")
+			return info, "", nil
+		}
+
+		// Plain ASCII and no punctuation beyond spaces and hyphens: the name is
+		// echoed back by the dashboard and we do not know its validation rules.
+		hostname, _ := os.Hostname()
+		hostname = strings.TrimSuffix(hostname, ".local")
+		if hostname == "" {
+			hostname = "unknown-host"
+		}
+		keyName := sanitizeKeyName("orq-cli " + hostname)
+
+		minted, _, err := client.CreateAPIKey(state.bearer, keyName, "")
+		if err != nil {
+			return nil, "", err
+		}
+		token = minted
+		// The raw token is returned once. Persist before doing anything else so
+		// a later failure cannot leave a live key with no local record of it.
+		if err := saveAPIKeyProfile(token); err != nil {
+			return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
+		}
+		info["created"] = true
+		// Stated as fact, not apology: workspace scope is what the key API mints.
+		rep.ok("created key  %s  (workspace-scoped)", maskToken(token))
+		rep.ok("saved       %s", filepath.Join(viper.GetString("config-directory"), "credentials.json"))
 	}
-	rep.ok("saved       %s", filepath.Join(viper.GetString("config-directory"), "credentials.json"))
 	if path, err := writeShellEnvFile(token); err != nil {
 		// Not fatal: the key is already saved, and the final screen still tells
 		// the user how to export it.
