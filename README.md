@@ -57,10 +57,10 @@ make build
 ## Quick start
 
 ```sh
-orq setup                # sign in, pick a project, wire up your coding agent
+orq setup                # sign in, wire up your coding agents
 ```
 
-That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server with your coding agent. After that:
+That is the whole first run. It signs you in, creates a workspace API key (reused on later runs), and wires your coding agents to orq. Projects are never asked about: keys are workspace-scoped, and project scope belongs where resources are created (agents, deployments). After that:
 
 ```sh
 orq whoami               # verify identity
@@ -77,7 +77,6 @@ Three modes, same command:
 orq setup                # short path — asks only what it cannot infer
 orq setup -i             # asks about every choice
 orq setup --no-input \
-  --project support-bot \
   --api-key "$ORQ_API_KEY" \
   --agent codex          # fully parameterized, for CI
 ```
@@ -104,7 +103,6 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 
 | Flag | Effect |
 |---|---|
-| `--project <name>` | Select the project, creating it when it does not exist |
 | `--workspace <key>` | Activate a workspace |
 | `--api-key <key>` | Use this key instead of logging in and minting one |
 | `--agent <name>` | Instrument a coding agent (repeatable) |
@@ -230,7 +228,7 @@ surface changes are always a reviewed diff.
 
 | Command | Purpose |
 |---|---|
-| `orq setup` | First-run onboarding: auth, project, API key, coding agent |
+| `orq setup` | First-run onboarding: auth, API key, coding agents |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
