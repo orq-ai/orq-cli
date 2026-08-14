@@ -34,6 +34,7 @@ type setupOptions struct {
 	global      bool
 	noAgent     bool
 	noMCP       bool
+	noGateway   bool
 	noEnv       bool
 	noInput     bool
 	yes         bool
@@ -107,6 +108,7 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
+	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
 	return cmd
@@ -1013,14 +1015,43 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 	}
 
-	// Asked on the default path, not just under -i: this writes into config
-	// files the user owns and grants an agent read/write access to their
-	// workspace, which is not something to do silently because a wizard was
-	// convenient. Asked once rather than once per agent — the grant is the same
-	// for all of them, and a question each turns a five-agent machine into five
-	// prompts. --no-mcp and --no-input answer it up front.
-	if !opts.noMCP {
-		opts.noMCP = !opts.confirm("Register the orq MCP server? Agents can then read and write your orq workspace.", true)
+	// One question covers both kinds of write, asked on the default path and
+	// always — even with a single detected agent — because this edits config
+	// files the user owns and the MCP half grants agents read/write access to
+	// their workspace. Asked once rather than per agent: the grant is the same
+	// for all of them. Decided 2026-08-14 (RES-1270); it also closes the old
+	// asymmetry where MCP was gated and provider writes were not.
+	//
+	// Flags pre-answer it, so scripts never see a prompt: --no-mcp → gateway
+	// only, --no-gateway → MCP only, both → nothing to wire. --yes and
+	// --no-input take the default, which is both — unchanged from what a
+	// non-interactive run already did.
+	if !opts.noMCP && !opts.noGateway && !opts.yes && !opts.noInput {
+		const (
+			wireBoth    = "Gateway + MCP tools (recommended)"
+			wireGateway = "Gateway only — route model calls through orq"
+			wireMCP     = "MCP tools only — agents read/write your workspace"
+			wireNothing = "Skip"
+		)
+		choice := wireBoth
+		if err := survey.AskOne(&survey.Select{
+			Message: "Wire your coding agents to orq?",
+			Options: []string{wireBoth, wireGateway, wireMCP, wireNothing},
+			Default: wireBoth,
+		}, &choice, promptStdio()); err == nil {
+			switch choice {
+			case wireGateway:
+				opts.noMCP = true
+			case wireMCP:
+				opts.noGateway = true
+			case wireNothing:
+				opts.noMCP, opts.noGateway = true, true
+			}
+		}
+	}
+	if opts.noMCP && opts.noGateway {
+		rep.ok("skipped coding-agent wiring (nothing selected)")
+		return nil
 	}
 
 	results := make([]agentResult, 0, len(selected))
@@ -1063,15 +1094,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 
 		// Provider registration, so the agent's own model calls go through orq.
-		//
-		// No consent prompt here, deliberately. The MCP question above guards a
-		// capability grant — the agent gets read/write access to the workspace —
-		// not the act of writing a file. Provider config grants the agent
-		// nothing: it adds a selectable option and touches only keys we own
-		// (never the agent's own default). Selecting --agent IS the consent for
-		// that; a second prompt would ask permission for the thing the user just
-		// asked for. TestNoMCPStillWritesProviderConfig encodes the split.
-		if spec.writeProvider != nil {
+		// Consent came from the single wiring question above (or the flags that
+		// pre-answer it); the two branches are independent — gateway-only is the
+		// coherent "route my calls through orq, but do not give the agent
+		// workspace read/write" configuration, and MCP-only the reverse.
+		switch {
+		case opts.noGateway && spec.writeProvider != nil:
+			rep.note("%-8s provider  skipped (--no-gateway)", id)
+		case spec.writeProvider != nil:
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
 				// Must match the [models."<key>"] form the writer emits, which is
