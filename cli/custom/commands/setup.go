@@ -1142,6 +1142,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 
 		// Provider registration, so the agent's own model calls go through orq.
+		//
+		// No consent prompt here, deliberately. The MCP question above guards a
+		// capability grant — the agent gets read/write access to the workspace —
+		// not the act of writing a file. Provider config grants the agent
+		// nothing: it adds a selectable option and touches only keys we own
+		// (never the agent's own default). Selecting --agent IS the consent for
+		// that; a second prompt would ask permission for the thing the user just
+		// asked for. TestNoMCPStillWritesProviderConfig encodes the split.
 		if spec.writeProvider != nil {
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
@@ -1200,6 +1208,14 @@ var codingModelsFetched bool
 var provenModel string
 var provenTook time.Duration
 
+// defaultModelResolved memoizes the whole probe outcome, success or failure.
+// Every agent with a provider writer asks for the default model, and each
+// probe is a billed completion — without this, wiring four agents billed four
+// completions for the same answer (and a broken workspace would have billed
+// up to three failures per agent).
+var defaultModelResolved bool
+var provenCandidate auth.RouterModel
+
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
 		return cachedCodingModels
@@ -1228,10 +1244,14 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 // list is the user's to pick from, and a bad entry there costs them a switch
 // rather than a broken first prompt.
 func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
+	if defaultModelResolved {
+		return provenCandidate, provenModel != ""
+	}
 	models := codingModels(rep, client, state)
 	if len(models) == 0 {
 		return auth.RouterModel{}, false
 	}
+	defaultModelResolved = true
 
 	ordered := []auth.RouterModel{}
 	for _, group := range auth.CandidateCodingModels(models, preferredCodingModels) {
@@ -1253,7 +1273,7 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 	for _, candidate := range ordered {
 		took, err := client.TimeModel(state.bearer, candidate.Ref())
 		if err == nil {
-			provenModel, provenTook = candidate.Ref(), took
+			provenModel, provenTook, provenCandidate = candidate.Ref(), took, candidate
 			return candidate, true
 		}
 		tried++
