@@ -750,3 +750,110 @@ url = "%s"
 bearer_token_env_var = "ORQ_API_KEY"
 `, mcpServerName, url)
 }
+
+// ============================================================================
+// Doctor checks
+// ============================================================================
+
+// codingAgentChecks reports, per detected coding agent, whether the MCP server
+// and the gateway provider are wired. Lives beside the registry because it is
+// the read-side of exactly what the writers above produce.
+//
+// One doctor, not two: a user with a broken setup should not have to know
+// which doctor to run, so these ride inside `orq doctor` as one more check
+// group. Detected-but-unwired is a warn, not a fail — an agent nobody wired is
+// not broken, it is an offer — so the exit code stays healthy and the message
+// names the command that wires it.
+func codingAgentChecks() []doctorCheck {
+	var checks []doctorCheck
+	for _, spec := range agentRegistry() {
+		if !spec.detect() {
+			continue // nothing to say about an agent that is not installed
+		}
+		details := map[string]any{}
+		wired := 0
+		offered := 0
+
+		if spec.writeMCP != nil {
+			offered++
+			path, err := spec.mcpConfig(true)
+			if err == nil && mcpEntryPresent(path) {
+				wired++
+				details["mcp"] = path
+			}
+		}
+		if spec.writeProvider != nil {
+			offered++
+			path, err := spec.providerConfig(true)
+			if err == nil && providerEntryPresent(spec.ID, path) {
+				wired++
+				details["provider"] = path
+			}
+		}
+
+		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
+		switch {
+		case offered == 0:
+			continue
+		case wired == offered:
+			check.Status = "pass"
+			check.Message = spec.Label + " is wired to orq"
+		case wired == 0:
+			check.Status = "warn"
+			check.Message = spec.Label + " detected but not wired — run 'orq setup coding-agents'"
+		default:
+			check.Status = "warn"
+			check.Message = spec.Label + " is partially wired — run 'orq setup coding-agents'"
+		}
+		checks = append(checks, check)
+	}
+	return checks
+}
+
+// mcpEntryPresent reports whether the config at path registers our MCP server.
+// A file that is missing or unparseable simply is not wired — doctor reads,
+// never judges files it does not own.
+//
+// The formats mirror the writers above: claude and kimi register under
+// "mcpServers", opencode and kilo under "mcp", codex in TOML.
+func mcpEntryPresent(path string) bool {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		// Codex keeps MCP servers in TOML, not JSON.
+		data, rerr := os.ReadFile(path)
+		return rerr == nil && strings.Contains(string(data), "[mcp_servers."+mcpServerName+"]")
+	}
+	for _, key := range []string{"mcpServers", "mcp"} {
+		if servers, ok := cfg[key].(map[string]any); ok {
+			if _, present := servers[mcpServerName]; present {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// providerEntryPresent reports whether the agent's provider config carries our
+// gateway registration, in whichever format that agent uses.
+func providerEntryPresent(agentID, path string) bool {
+	switch agentID {
+	case "kimi":
+		data, err := os.ReadFile(path)
+		return err == nil && strings.Contains(string(data), "[providers."+launch.KimiChatProvider+"]")
+	case "codex":
+		// The profile is a whole file we own; existing is wired.
+		_, err := os.Stat(path)
+		return err == nil
+	default: // opencode, kilo: JSON provider map
+		cfg, err := readJSONConfig(path)
+		if err != nil {
+			return false
+		}
+		providers, ok := cfg["provider"].(map[string]any)
+		if !ok {
+			return false
+		}
+		_, present := providers[launch.OpenCodeChatProvider]
+		return present
+	}
+}
