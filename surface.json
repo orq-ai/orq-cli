@@ -7140,6 +7140,10 @@
           "type": "string"
         },
         {
+          "name": "coding-agent",
+          "type": "stringSlice"
+        },
+        {
           "name": "global",
           "type": "bool"
         },
@@ -7154,6 +7158,10 @@
         },
         {
           "name": "no-agent",
+          "type": "bool"
+        },
+        {
+          "name": "no-coding-agents",
           "type": "bool"
         },
         {
@@ -7181,6 +7189,10 @@
       "flags": [
         {
           "name": "agent",
+          "type": "stringSlice"
+        },
+        {
+          "name": "coding-agent",
           "type": "stringSlice"
         },
         {
