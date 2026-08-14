@@ -1159,6 +1159,23 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				if best, ok := defaultCodingModel(rep, client, state); ok {
 					defaultModel = best.Ref()
 				}
+				// An empty catalogue is not a config to write, it is nothing to
+				// offer — ListModels failed, or the workspace has no chat model
+				// with function calling. Every writer clears its own keys before
+				// emitting new ones, so calling through with no models deletes a
+				// working provider block from an earlier run and reports success.
+				// Leaving the file untouched is the only outcome that cannot make
+				// the agent worse off than it already was.
+				//
+				// Not recorded as an agent error: step 4 already reported the
+				// cause with a link and a retry, and MCP wiring above succeeded.
+				// Failing the run here would report a workspace state twice and
+				// call a configured agent broken.
+				if len(models) == 0 {
+					rep.warn("%-8s provider  skipped: no models to offer, %s left unchanged", id, path)
+					results = append(results, res)
+					continue
+				}
 				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 				switch {
 				case werr != nil:
