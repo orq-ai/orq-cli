@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -435,7 +436,8 @@ func TestCodexProfileIsSelfContained(t *testing.T) {
 // it. This is the whole reason the profile can be written to disk at all.
 func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write", nil,
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write",
+		[]auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")},
 		"anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +458,9 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	before := mustRead(t, base)
 
 	if _, err := writeCodexProviderTOML(filepath.Join(dir, "orq.config.toml"),
-		"https://api.orq.ai/v3/router", "sk-k", nil, "anthropic/claude-sonnet-4-6"); err != nil {
+		"https://api.orq.ai/v3/router", "sk-k",
+		[]auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")},
+		"anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
 	if string(mustRead(t, base)) != string(before) {
@@ -593,12 +597,18 @@ func TestCodexProfileNeverNamesAChatOnlyModel(t *testing.T) {
 	}
 }
 
-// A workspace with no usable models leaves nothing to open with. Writing
-// model = "" would have codex fail to resolve a blank slug; omitting the key
-// lets it fall back to its own default while still offering the provider.
+// Codex can only talk Responses, so a catalogue of chat-only models leaves
+// nothing for it to open with. Writing model = "" would have codex fail to
+// resolve a blank slug; omitting the key lets it fall back to its own default
+// while still offering the provider.
+//
+// Reached with models present but none Responses-capable, not with an empty
+// catalogue: that is refused outright now, because every writer clears its own
+// keys first and would otherwise delete a working block.
 func TestCodexProfileOmitsBlankModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
-	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", nil, ""); err != nil {
+	chatOnly := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", chatOnly, ""); err != nil {
 		t.Fatal(err)
 	}
 	tree, err := toml.LoadBytes(mustRead(t, path))
@@ -987,4 +997,85 @@ func TestKimiConfigIsAlwaysValidTOML(t *testing.T) {
 			t.Error("unrelated user config was lost")
 		}
 	})
+}
+
+// An empty catalogue reaches the writers in two ordinary situations: ListModels
+// failed, or the workspace enables no chat model with function calling. Every
+// writer clears the keys it owns before emitting new ones, so passing that
+// through deleted a provider block an earlier run had written — and returned
+// (0, nil), which the caller reported as "provider → orq gateway" followed by
+// instructions to pick a model that no longer existed. Refusing is the only
+// answer that cannot leave the agent worse off than it was found.
+func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
+	seeded := `{"provider":{"orq":{"name":"Orq AI Gateway","models":{"openai/gpt-5":{}}},"vendor":{"keep":true}},"model":"vendor/mine"}`
+
+	for _, tc := range []struct {
+		name  string
+		seed  string
+		write func(path string) (int, error)
+	}{
+		{"opencode", seeded, func(p string) (int, error) {
+			return writeOpenCodeProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
+		{"kimi", "[providers.orq]\ntype = \"openai\"\n", func(p string) (int, error) {
+			return writeKimiProviderTOML(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
+		{"codex", "", func(p string) (int, error) {
+			return writeCodexProviderTOML(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config")
+			if tc.seed != "" {
+				if err := os.WriteFile(path, []byte(tc.seed), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, _ := os.ReadFile(path)
+
+			if _, err := tc.write(path); !errors.Is(err, errNoModelsToOffer) {
+				t.Fatalf("want errNoModelsToOffer, got %v", err)
+			}
+			after, _ := os.ReadFile(path)
+			if string(after) != string(before) {
+				t.Errorf("file changed despite refusing to write:\nbefore %q\nafter  %q", before, after)
+			}
+		})
+	}
+}
+
+// Codex resolves config.toml, profiles and everything else against CODEX_HOME.
+// Detection looked only at ~/.codex, so a machine that moves it was never
+// offered the agent whose profile the writers would then place correctly — and
+// the header pointed at a ~/.codex/config.toml that does not exist there.
+func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "codex-home")
+	t.Setenv("CODEX_HOME", dir)
+
+	spec, ok := lookupAgent("codex")
+	if !ok {
+		t.Fatal("codex missing from the registry")
+	}
+	if spec.detect() {
+		t.Error("detected codex before its directory exists")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !spec.detect() {
+		t.Error("CODEX_HOME exists but codex was not detected")
+	}
+
+	path := filepath.Join(dir, "orq.config.toml")
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k",
+		[]auth.RouterModel{model("openai", "gpt-5", 400000, true, true, "chat")}, ""); err != nil {
+		t.Fatal(err)
+	}
+	body := string(mustRead(t, path))
+	if want := filepath.Join(dir, "config.toml"); !strings.Contains(body, want) {
+		t.Errorf("header does not name the resolved base config %q:\n%s", want, body)
+	}
+	if strings.Contains(body, "~/.codex/config.toml") {
+		t.Error("header still hardcodes ~/.codex despite CODEX_HOME being set")
+	}
 }
