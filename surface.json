@@ -7149,6 +7149,10 @@
           "type": "bool"
         },
         {
+          "name": "local",
+          "type": "bool"
+        },
+        {
           "name": "no-agent",
           "type": "bool"
         },
@@ -7157,16 +7161,42 @@
           "type": "bool"
         },
         {
+          "name": "no-gateway",
+          "type": "bool"
+        },
+        {
           "name": "no-mcp",
           "type": "bool"
         },
         {
-          "name": "project",
-          "type": "string"
-        },
-        {
           "name": "yes",
           "shorthand": "y",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq setup coding-agents",
+      "use": "coding-agents",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "stringSlice"
+        },
+        {
+          "name": "gateway",
+          "type": "bool"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "mcp",
           "type": "bool"
         }
       ]

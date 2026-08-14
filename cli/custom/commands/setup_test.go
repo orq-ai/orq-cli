@@ -746,3 +746,39 @@ func TestSetupBillsOneCompletionTotal(t *testing.T) {
 		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)
 	}
 }
+
+// The subcommand exists to re-run wiring, so its contract is: reuse the saved
+// credential, never create one, and refuse clearly when none exists. Scope
+// flags conflict loudly rather than one silently winning.
+func TestCodingAgentsSubcommand(t *testing.T) {
+	sub := newSetupCodingAgentsCommand()
+	if sub.Name() != "coding-agents" {
+		t.Fatalf("subcommand is %q — the name is load-bearing, 'agents' collides with the platform product", sub.Name())
+	}
+	for _, flag := range []string{"agent", "gateway", "mcp", "global", "local"} {
+		if sub.Flags().Lookup(flag) == nil {
+			t.Errorf("missing flag --%s", flag)
+		}
+	}
+
+	if err := resolveScope(&setupOptions{global: true, local: true}); err == nil {
+		t.Error("--global with --local did not conflict")
+	}
+
+	// --local forces project scope even where inference would pick $HOME.
+	t.Chdir(t.TempDir()) // no project markers here
+	forced := &setupOptions{local: true}
+	if err := resolveScope(forced); err != nil {
+		t.Fatal(err)
+	}
+	if forced.global {
+		t.Error("--local was overridden by home-directory inference")
+	}
+	inferred := &setupOptions{}
+	if err := resolveScope(inferred); err != nil {
+		t.Fatal(err)
+	}
+	if !inferred.global {
+		t.Error("inference in a non-project directory should pick $HOME")
+	}
+}
