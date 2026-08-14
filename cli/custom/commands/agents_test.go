@@ -1079,3 +1079,35 @@ func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 		t.Error("header still hardcodes ~/.codex despite CODEX_HOME being set")
 	}
 }
+
+// Three of the five agents read their config only from the home directory, so
+// --global=false does not get the user what they asked for. That used to be
+// announced for codex alone, by id, while opencode and kilo silently ignored
+// project scope after they became home-only too.
+//
+// Derived from the resolver rather than a list, so an agent added later is
+// covered without anyone remembering to update a string.
+func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
+	for _, spec := range agentRegistry() {
+		t.Run(spec.ID, func(t *testing.T) {
+			project, err := spec.mcpConfig(false)
+			if err != nil {
+				t.Skipf("no MCP config: %v", err)
+			}
+			global, err := spec.mcpConfig(true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			homeOnly := project == global
+
+			// Asking for project scope on a home-only agent must say so.
+			if note := scopeNote(spec.mcpConfig, false); homeOnly == (note == "") {
+				t.Errorf("home-only=%v but note=%q", homeOnly, note)
+			}
+			// Asking for global has no discrepancy to explain.
+			if note := scopeNote(spec.mcpConfig, true); note != "" {
+				t.Errorf("note shown for an explicit --global run: %q", note)
+			}
+		})
+	}
+}
