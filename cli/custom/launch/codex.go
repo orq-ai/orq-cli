@@ -146,7 +146,7 @@ func BuildCodexModelCatalog(templateCatalogJSON string, models []string) (string
 		}
 		entry["slug"] = model
 		entry["display_name"] = model
-		entry["description"] = "Available through orq Gateway: " + model
+		entry["description"] = "Available through " + ProviderDisplayName + ": " + model
 		priority := 1000 - i
 		if priority < 1 {
 			priority = 1

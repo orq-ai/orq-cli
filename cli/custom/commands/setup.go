@@ -1069,6 +1069,26 @@ func modelsSettingsURL(state *authState) string {
 // Step 5 — coding agents
 // ============================================================================
 
+// scopeNote marks a path the agent will only ever read from the home directory,
+// so a user who asked for project scope is told why they did not get it.
+//
+// Derived by asking the resolver both ways rather than listing agent ids: the
+// resolver is what decides, three of the five agents are now home-only, and a
+// hardcoded list is exactly the kind of thing that goes stale the next time one
+// is added. Silent when the user asked for global anyway — then there is no
+// discrepancy to explain, only noise.
+func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
+	if askedGlobal || resolve == nil {
+		return ""
+	}
+	project, perr := resolve(false)
+	global, gerr := resolve(true)
+	if perr != nil || gerr != nil || project != global {
+		return ""
+	}
+	return "  (this agent reads it only from your home directory)"
+}
+
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) []agentResult {
 	if opts.noAgent {
 		rep.ok("skipped coding-agent setup (--no-agent)")
@@ -1132,11 +1152,8 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				}
 				res.Error = err.Error()
 			} else {
-				note := ""
-				if id == "codex" {
-					note = "  (codex is global-only)"
-				}
-				rep.ok("%-8s MCP     %s → %s%s", id, configPath, mcpServerName, note)
+				rep.ok("%-8s MCP     %s → %s%s", id, configPath, mcpServerName,
+					scopeNote(spec.mcpConfig, opts.global))
 				res.MCP = configPath
 			}
 		}
@@ -1188,7 +1205,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					if written > 0 {
 						listed = fmt.Sprintf(" (%d models)", written)
 					}
-					rep.ok("%-8s provider  %s → orq gateway%s", id, path, listed)
+					// No scope note here: when MCP was also written it named the
+					// same file and already carried one, and repeating it per
+					// line would say the same thing twice for one agent.
+					scope := ""
+					if res.MCP == "" {
+						scope = scopeNote(spec.providerConfig, opts.global)
+					}
+					rep.ok("%-8s provider  %s → orq gateway%s%s", id, path, listed, scope)
 					// Setup registers orq as an option rather than making it the
 					// default, so for some agents there is a step the user would
 					// otherwise never find.
