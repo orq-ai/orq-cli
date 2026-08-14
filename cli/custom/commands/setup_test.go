@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -780,5 +781,50 @@ func TestCodingAgentsSubcommand(t *testing.T) {
 	}
 	if !inferred.global {
 		t.Error("inference in a non-project directory should pick $HOME")
+	}
+}
+
+// The noun is "coding agents" everywhere the surface names it, so the flags
+// spell it the same way — `--agent` next to `--no-coding-agents` was the same
+// word twice in two spellings on one command. The old names shipped in a
+// release, so they keep working as hidden aliases rather than breaking a
+// script written against them.
+func TestCodingAgentFlagsAndTheirLegacyAliases(t *testing.T) {
+	for _, cmd := range []*cobra.Command{NewSetupCommand(), newSetupCodingAgentsCommand()} {
+		f := cmd.Flags()
+		if f.Lookup("coding-agent") == nil {
+			t.Errorf("%s: missing --coding-agent", cmd.Name())
+		}
+		legacy := f.Lookup("agent")
+		if legacy == nil {
+			t.Fatalf("%s: --agent must keep working for scripts written against it", cmd.Name())
+		}
+		if !legacy.Hidden {
+			t.Errorf("%s: deprecated --agent should not appear in help", cmd.Name())
+		}
+	}
+
+	setup := NewSetupCommand().Flags()
+	if setup.Lookup("no-coding-agents") == nil {
+		t.Error("missing --no-coding-agents")
+	}
+	old := setup.Lookup("no-agent")
+	if old == nil || !old.Hidden {
+		t.Error("--no-agent should survive as a hidden alias")
+	}
+
+	// Both spellings must land on the same field, or one of them silently
+	// does nothing.
+	for _, name := range []string{"coding-agent", "agent"} {
+		opts := setupOptions{}
+		c := &cobra.Command{}
+		c.Flags().StringSliceVar(&opts.agents, "coding-agent", nil, "")
+		c.Flags().StringSliceVar(&opts.agents, "agent", nil, "")
+		if err := c.Flags().Parse([]string{"--" + name, "codex"}); err != nil {
+			t.Fatal(err)
+		}
+		if len(opts.agents) != 1 || opts.agents[0] != "codex" {
+			t.Errorf("--%s did not populate the agent list: %v", name, opts.agents)
+		}
 	}
 }

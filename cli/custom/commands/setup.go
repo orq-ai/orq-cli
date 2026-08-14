@@ -27,18 +27,18 @@ const (
 )
 
 type setupOptions struct {
-	interactive bool
-	workspace   string
-	apiKey      string
-	agents      []string
-	global      bool
-	local       bool
-	noAgent     bool
-	noMCP       bool
-	noGateway   bool
-	noEnv       bool
-	noInput     bool
-	yes         bool
+	interactive    bool
+	workspace      string
+	apiKey         string
+	agents         []string
+	global         bool
+	local          bool
+	noCodingAgents bool
+	noMCP          bool
+	noGateway      bool
+	noEnv          bool
+	noInput        bool
+	yes            bool
 }
 
 // confirm asks a yes/no question, honouring the two ways a user can answer it
@@ -105,9 +105,16 @@ wins over a key left exported in your shell.`),
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
-	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
+	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
+	f.StringSliceVar(&opts.agents, "agent", nil, "Deprecated alias for --coding-agent")
+	_ = f.MarkHidden("agent")
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
-	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
+	f.BoolVar(&opts.noCodingAgents, "no-coding-agents", false, "Skip coding-agent wiring entirely")
+	// --no-agent shipped in the first release of setup. Kept working, hidden
+	// from help: with no value to disambiguate it, it reads as "do not create
+	// an Orq Agent" — the collision `setup coding-agents` exists to avoid.
+	f.BoolVar(&opts.noCodingAgents, "no-agent", false, "Deprecated alias for --no-coding-agents")
+	_ = f.MarkHidden("no-agent")
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
@@ -148,7 +155,9 @@ Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your
 	}
 
 	f := cmd.Flags()
-	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
+	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
+	f.StringSliceVar(&opts.agents, "agent", nil, "Deprecated alias for --coding-agent")
+	_ = f.MarkHidden("agent")
 	f.BoolVar(&gatewayOnly, "gateway", false, "Wire only the AI Gateway provider")
 	f.BoolVar(&mcpOnly, "mcp", false, "Wire only the MCP server")
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
@@ -1085,8 +1094,8 @@ func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
 }
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) []agentResult {
-	if opts.noAgent {
-		rep.ok("skipped coding-agent setup (--no-agent)")
+	if opts.noCodingAgents {
+		rep.ok("skipped coding-agent wiring (--no-coding-agents)")
 		return nil
 	}
 	mcpURL := client.MCPServerURL()
@@ -1094,7 +1103,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	selected := opts.agents
 	if len(selected) == 0 {
 		if opts.noInput {
-			rep.ok("no agent selected — pass --agent to instrument one")
+			rep.ok("no agent selected — pass --coding-agent to wire one")
 			return nil
 		}
 		var err error

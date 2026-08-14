@@ -78,10 +78,10 @@ orq setup                # short path — asks only what it cannot infer
 orq setup -i             # asks about every choice
 orq setup --no-input \
   --api-key "$ORQ_API_KEY" \
-  --agent codex          # fully parameterized, for CI
+  --coding-agent codex   # fully parameterized, for CI
 ```
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
+Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--coding-agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
 
 Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
 
@@ -105,10 +105,13 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 |---|---|
 | `--workspace <key>` | Activate a workspace |
 | `--api-key <key>` | Use this key instead of logging in and minting one |
-| `--agent <name>` | Instrument a coding agent (repeatable) |
+| `--coding-agent <name>` | Wire a coding agent (repeatable) |
 | `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
-| `--no-agent` / `--no-env` | Skip agent instrumentation / skip writing `.env` |
+| `--no-coding-agents` / `--no-env` | Skip coding-agent wiring / skip writing `.env` |
+| `--no-mcp` / `--no-gateway` | Wire only the gateway / only MCP (both = skip, same as `--no-coding-agents`) |
 | `--no-input` | Never prompt; missing values become errors |
+
+Re-running just the wiring — after installing a new agent, say — is `orq setup coding-agents`, which reuses the key an earlier `orq setup` saved rather than creating another. `--gateway` and `--mcp` narrow it to one half. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; these wire the coding-agent CLIs on this machine.
 
 Scope is chosen automatically: setup writes into the current directory when it looks like a project (`.git`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and falls back to `$HOME` otherwise, so installing from your home directory does not scatter config files there.
 
