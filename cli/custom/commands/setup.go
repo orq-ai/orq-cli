@@ -32,6 +32,7 @@ type setupOptions struct {
 	apiKey      string
 	agents      []string
 	global      bool
+	local       bool
 	noAgent     bool
 	noMCP       bool
 	noGateway   bool
@@ -111,29 +112,117 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
+	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
+	cmd.AddCommand(newSetupCodingAgentsCommand())
 	return cmd
 }
 
-func runSetup(cmd *cobra.Command, opts *setupOptions) error {
-	// --no-input and --workspace are global flags (see registerGlobalFlags), so
-	// they are read from viper rather than re-declared here. Declaring local
-	// copies would shadow the globals and split each one in two: the flag would
-	// set ours while ORQ_NO_INPUT / ORQ_WORKSPACE set theirs.
+// newSetupCodingAgentsCommand re-runs just the coding-agent wiring against an
+// existing credential — the thing you want after installing a new agent,
+// without re-walking auth and key creation.
+//
+// Named coding-agents, never agents: `orq agents` is the platform Agents
+// product, and one word with two meanings in the same surface was the
+// confusion to avoid (decided 2026-08-14, RES-1270).
+func newSetupCodingAgentsCommand() *cobra.Command {
+	opts := setupOptions{}
+	var gatewayOnly, mcpOnly bool
+
+	cmd := &cobra.Command{
+		Use:   "coding-agents",
+		Short: "Wire coding agents to orq (gateway provider and MCP server)",
+		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine: the AI Gateway ` +
+			`as a model provider, and the orq.ai MCP server for workspace tools. Reuses the ` +
+			`credential from a previous ` + "`orq setup`" + ` — it never creates keys or edits your shell.
+
+Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your workspace. ` +
+			`Coding agents are the CLIs on this machine: ` + strings.Join(agentIDs(), ", ") + `.`),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// The narrowing flags pre-answer the wiring question; neither means
+			// both, which is also what the question defaults to.
+			opts.noMCP = gatewayOnly
+			opts.noGateway = mcpOnly
+			return runCodingAgents(cmd, &opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
+	f.BoolVar(&gatewayOnly, "gateway", false, "Wire only the AI Gateway provider")
+	f.BoolVar(&mcpOnly, "mcp", false, "Wire only the MCP server")
+	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
+	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
+	return cmd
+}
+
+func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
+	if err := resolveScope(opts); err != nil {
+		return err
+	}
+
+	rep := newReporter(opts.noInput)
+
+	authState, err := resolveAuth(cmd.Context(), rep, opts)
+	if err != nil {
+		return err
+	}
+	client := auth.NewClient(authState.apiBase)
+
+	// The wiring needs a durable credential: agent configs reference
+	// ORQ_API_KEY, and kimi embeds the literal key. A login session alone is
+	// not enough — its workspace tokens expire within the hour.
+	if key := strings.TrimSpace(bartolocli.GetProfile()["api_key"]); key != "" {
+		authState.bearer = key
+	} else if authState.suppliedKey == "" {
+		return errors.New("no saved API key — run 'orq setup' once to create one")
+	}
+
+	result := map[string]any{}
+	agentResults := instrumentAgents(rep, client, authState, opts)
+	result["agents"] = agentResults
+
+	if !wantsHumanView(cmd) {
+		if err := emit(result); err != nil {
+			return err
+		}
+	}
+	for _, a := range agentResults {
+		if a.Error != "" {
+			return errAgentFailed
+		}
+	}
+	return nil
+}
+
+// resolveScope settles the global/local decision once for every entry point:
+// explicit flags win (and conflict loudly), inference falls back to $HOME so a
+// home-directory run does not scatter project files there.
+func resolveScope(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
 	}
-	// No TTY means no prompts, whatever the flags say.
 	if !hasInteractiveTTY() {
 		opts.noInput = true
 	}
 	if opts.noInput {
 		opts.interactive = false
 	}
-	// A home-directory run (typically the installer chaining into setup) must
-	// not scatter project files into $HOME.
-	if !opts.global && !looksLikeProject() {
+	if opts.global && opts.local {
+		return errors.New("--global and --local are mutually exclusive")
+	}
+	if !opts.global && !opts.local && !looksLikeProject() {
 		opts.global = true
+	}
+	return nil
+}
+
+func runSetup(cmd *cobra.Command, opts *setupOptions) error {
+	// --no-input and --workspace are global flags (see registerGlobalFlags),
+	// read from viper inside resolveScope rather than re-declared here.
+	if err := resolveScope(opts); err != nil {
+		return err
 	}
 
 	rep := newReporter(opts.noInput)
