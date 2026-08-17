@@ -1117,16 +1117,28 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		return count
 	}
 
-	// The link goes in the warning, not a note: notes are suppressed in quiet
-	// mode, which would leave a --no-input user with a problem and no next step.
-	rep.warn("no models enabled — connect a provider (BYOK) at %s", workspaceURL(state, providersPath))
+	// Both remedies, and neither prescribed. The old line named BYOK as the
+	// fix, which is wrong in one real quadrant: `enforce_enabled_models`
+	// defaults to false, and with it off the workspace can call any catalogue
+	// model — so a funded workspace with an empty enabled set needs no provider
+	// key at all, and being told to connect one sends the user to the wrong
+	// page. The flag itself is not readable from this host (the settings
+	// endpoint 404s), so the honest line is the one that is true whichever way
+	// the flag is set.
+	//
+	// Warnings rather than notes for the reason above: notes are suppressed in
+	// quiet mode, and a --no-input user would be left with a problem and no
+	// next step.
+	rep.warn("no models enabled for this workspace")
+	rep.warn("    Enable models  %s", workspaceURL(state, providersPath))
+	rep.warn("    Add credits    %s", workspaceURL(state, creditsPath))
 	if opts.noInput {
 		rep.warn("  then re-run 'orq setup'")
 		return 0
 	}
 
 	var retry bool
-	prompt := &survey.Confirm{Message: "Connected a provider? Check again", Default: true}
+	prompt := &survey.Confirm{Message: "Enabled models or added credits? Check again", Default: true}
 	if err := survey.AskOne(prompt, &retry); err != nil || !retry {
 		return 0
 	}

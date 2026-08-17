@@ -1343,3 +1343,39 @@ func TestCatalogueFailureDoesNotReadAsUnfunded(t *testing.T) {
 		t.Errorf("blamed credits for a fetch failure:\n%s", out.String())
 	}
 }
+
+// An empty enabled set has two possible fixes and the CLI cannot tell which
+// applies: enforce_enabled_models defaults to false, and with it off any
+// catalogue model is callable — so a funded workspace needs no provider key,
+// while an enforcing one does. The flag is not readable from the API host, so
+// the message must name both remedies and prescribe neither.
+func TestNoModelsMessageNamesBothRemedies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`) // funded, so not the unfunded branch
+			return
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	resolveProviders(rep, auth.NewClient(srv.URL), sessionWithToken(srv.URL), &setupOptions{noInput: true})
+
+	got := out.String()
+	if strings.Contains(got, "BYOK") || strings.Contains(got, "connect a provider") {
+		t.Errorf("prescribed BYOK for a state where it may not be the fix:\n%s", got)
+	}
+	for _, want := range []string{"/acme/router/providers", "/acme/admin/credits"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s:\n%s", want, got)
+		}
+	}
+	// Quiet mode must keep both links: they are the entire actionable content.
+	if strings.Count(got, "https://my.orq.ai") != 2 {
+		t.Errorf("both remedies must survive --no-input:\n%s", got)
+	}
+}
