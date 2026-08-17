@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -826,5 +827,42 @@ func TestCodingAgentFlagsAndTheirLegacyAliases(t *testing.T) {
 		if len(opts.agents) != 1 || opts.agents[0] != "codex" {
 			t.Errorf("--%s did not populate the agent list: %v", name, opts.agents)
 		}
+	}
+}
+
+// --gateway and --mcp each narrow to one half. Both together narrow to
+// nothing, which used to exit 0 having silently done no work while
+// --global with --local refused loudly for the same class of mistake.
+func TestCodingAgentsRefusesContradictoryNarrowing(t *testing.T) {
+	cmd := newSetupCodingAgentsCommand()
+	cmd.SetArgs([]string{"--gateway", "--mcp"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("--gateway with --mcp should refuse, not silently wire nothing")
+	}
+	if !strings.Contains(err.Error(), "nothing to wire") {
+		t.Errorf("error should explain the contradiction, got: %v", err)
+	}
+}
+
+// The skip line names the flag of the command the user ran. Naming the
+// parent's --no-gateway from a subcommand that has no such flag sent people
+// looking for something that does not exist.
+func TestSkipFlagNamesTheCommandsOwnSpelling(t *testing.T) {
+	parent := &setupOptions{}
+	if got := parent.skipFlag("mcp"); got != "--no-mcp" {
+		t.Errorf("parent mcp skip names %q", got)
+	}
+	if got := parent.skipFlag("gateway"); got != "--no-gateway" {
+		t.Errorf("parent gateway skip names %q", got)
+	}
+	sub := &setupOptions{narrowing: true}
+	if got := sub.skipFlag("gateway"); got != "--mcp" {
+		t.Errorf("subcommand gateway skip names %q, want the flag that caused it", got)
+	}
+	if got := sub.skipFlag("mcp"); got != "--gateway" {
+		t.Errorf("subcommand mcp skip names %q, want the flag that caused it", got)
 	}
 }
