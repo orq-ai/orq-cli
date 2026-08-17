@@ -326,3 +326,26 @@ func (c *Client) TimeModel(bearer, ref string) (time.Duration, error) {
 	)
 	return time.Since(started), err
 }
+
+// CreditBalance is the workspace's AI Gateway credit balance. Zero balance
+// means the gateway refuses every model call — the docs are explicit that
+// requests are blocked until credits are added — unless a BYOK provider key
+// covers the model's provider.
+type CreditBalance struct {
+	Balance  float64 `json:"balance"`
+	Currency string  `json:"currency"`
+}
+
+// Credits reads the workspace credit balance.
+//
+// The bearer must be a session workspace token, not an API key: reading this
+// endpoint needs the credits.view permission, and that permission is not in
+// the API-key capability catalogue at all, so even a key minted with
+// permission_mode "all" gets 403. Callers therefore treat any error as "not
+// knowable" rather than as "no credits" — reporting a funded workspace as
+// broke because a permission check failed would be worse than staying quiet.
+func (c *Client) Credits(bearer string) (CreditBalance, error) {
+	var out CreditBalance
+	err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/credits", bearer, nil, &out)
+	return out, err
+}
