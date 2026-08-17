@@ -97,7 +97,7 @@ Setup does not install skills. `orq launch` still loads them session-only for cl
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. One model — the default the agent opens with — is probed with a single billed completion; the rest are written unprobed, exactly as `orq launch` does.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, the file your shell profile sources.
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
@@ -107,7 +107,7 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 | `--api-key <key>` | Use this key instead of logging in and creating one |
 | `--coding-agent <name>` | Wire a coding agent (repeatable) |
 | `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
-| `--no-coding-agents` / `--no-env` | Skip coding-agent wiring / skip writing `.env` |
+| `--no-coding-agents` | Skip coding-agent wiring |
 | `--no-mcp` / `--no-gateway` | Wire only the gateway / only MCP (both = skip, same as `--no-coding-agents`) |
 | `--no-input` | Never prompt; missing values become errors |
 
