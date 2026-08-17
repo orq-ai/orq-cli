@@ -34,8 +34,10 @@ func chdir(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 }
 
-// The scope default decides whether setup writes agent configs like
-// .mcp.json into the working directory or into $HOME.
+// The scope default decides whether setup writes .mcp.json into the working
+// directory or into $HOME. Getting it wrong is silent in both directions: a
+// project file the agent never reads, or config scattered through a home
+// directory the user did not mean to configure.
 func TestLooksLikeProject(t *testing.T) {
 	cases := []struct {
 		marker string
