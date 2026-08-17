@@ -1512,7 +1512,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if opts.noInput {
 		return
 	}
-	w := bartolocli.Stderr
+	w := rep.w
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, strings.Repeat("─", 64))
 	fmt.Fprintln(w)
@@ -1559,17 +1559,32 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			keyReferenced = true
 		}
 	}
+	// The env check is "is the key exported in THIS shell", which is false even
+	// on a perfectly wired machine: the profile edit takes effect in new shells,
+	// never this one. So the profile has to be consulted separately — printing
+	// the append command to a profile that already sources the file is how a
+	// user ends up with the same line stacked once per setup run.
 	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
 		sh := detectShell(viper.GetString("config-directory"))
-		fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
-		fmt.Fprintln(w, "    Export it once, then restart the agent:")
-		fmt.Fprintln(w)
-		if sh.Profile == "" {
+		switch {
+		case sh.Profile != "" && profileSourcesEnvFile(sh):
+			// Durably wired already — only this shell is stale.
+			fmt.Fprintf(w, "  ! ORQ_API_KEY reaches new shells via %s, but not this one yet.\n", sh.Profile)
+			fmt.Fprintln(w, "    For this shell:")
+			fmt.Fprintln(w)
+			fmt.Fprintf(w, "      %s\n", sh.Line)
+		case sh.Profile == "":
 			// Unrecognised shell: naming a profile file would be a guess, so
 			// give the command that works right now and let the user place it.
+			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
+			fmt.Fprintln(w, "    Export it once, then restart the agent:")
+			fmt.Fprintln(w)
 			fmt.Fprintf(w, "      %s\n", sh.Line)
 			fmt.Fprintf(w, "      # add that to your shell profile to make it stick\n")
-		} else {
+		default:
+			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
+			fmt.Fprintln(w, "    Export it once, then restart the agent:")
+			fmt.Fprintln(w)
 			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.Line, sh.Profile, sh.Line)
 			if strings.HasSuffix(sh.Profile, ".zshenv") {
 				fmt.Fprintln(w)
