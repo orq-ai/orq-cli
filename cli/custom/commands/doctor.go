@@ -398,11 +398,17 @@ func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult)
 	// Warn, not fail: a BYOK provider key serves calls with a zero balance, and
 	// this endpoint cannot see BYOK. Reporting a working workspace as broken
 	// would be the worse error.
+	credits := "your workspace settings"
+	if base := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/"); base != "" {
+		credits = base + "/" + *inspect.Session.ActiveWorkspaceKey + "/admin/credits"
+	} else if inspect.Session.APIBaseURL == auth.DefaultAPIBaseURL {
+		credits = defaultWebBaseURL + "/" + *inspect.Session.ActiveWorkspaceKey + "/admin/credits"
+	}
 	return doctorCheck{
 		ID:     "gateway_funding",
 		Status: "warn",
 		Message: "No credits — the gateway refuses model calls unless a provider key (BYOK) is connected. " +
-			"Add credits or connect a key in your workspace settings",
-		Details: map[string]any{"credits": balance.Balance},
+			"Add credits at " + credits,
+		Details: map[string]any{"credits": balance.Balance, "credits_url": credits},
 	}, true
 }
