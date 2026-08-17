@@ -872,3 +872,48 @@ func TestSkipFlagNamesTheCommandsOwnSpelling(t *testing.T) {
 		t.Errorf("subcommand mcp skip names %q, want the flag that caused it", got)
 	}
 }
+
+// The final screen must not tell the user to append a source line to a profile
+// that already has one. The "is it exported here" check is always false on the
+// run that just wrote the profile — the edit lands in new shells, not this one
+// — so gating the append instruction on the environment alone printed
+// `echo … >> ~/.zshenv` right under `✓ updated ~/.zshenv`. A user who followed
+// both stacked a duplicate line per setup run.
+func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("ORQ_API_KEY", "")
+	dir := filepath.Join(home, ".orq")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+
+	agents := []agentResult{{Agent: "kimi", MCP: filepath.Join(home, ".kimi-code", "mcp.json")}}
+	render := func() string {
+		var out strings.Builder
+		printFinalScreen(&reporter{w: &out}, agents, map[string]string{"docs": "https://docs.orq.ai"}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+		return out.String()
+	}
+
+	// Profile not wired: the append command is the right advice.
+	if got := render(); !strings.Contains(got, "echo '. "+dir) {
+		t.Fatalf("unwired profile should offer the append command, got:\n%s", got)
+	}
+
+	// Profile already sources the env file — as it does on every run where the
+	// user accepted the step-2 offer.
+	profile := filepath.Join(home, ".zshenv")
+	if err := os.WriteFile(profile, []byte(". "+filepath.Join(dir, "env")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := render()
+	if strings.Contains(got, "echo '") {
+		t.Errorf("wired profile still told to append:\n%s", got)
+	}
+	if !strings.Contains(got, ". "+filepath.Join(dir, "env")) {
+		t.Errorf("wired profile should still name the line to run in this shell:\n%s", got)
+	}
+}
