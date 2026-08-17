@@ -7192,6 +7192,10 @@
           "type": "stringSlice"
         },
         {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
           "name": "coding-agent",
           "type": "stringSlice"
         },

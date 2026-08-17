@@ -182,6 +182,7 @@ Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your
 	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
 	f.StringSliceVar(&opts.agents, "agent", nil, "Deprecated alias for --coding-agent")
 	_ = f.MarkHidden("agent")
+	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of the one a previous setup saved")
 	f.BoolVar(&gatewayOnly, "gateway", false, "Wire only the AI Gateway provider")
 	f.BoolVar(&mcpOnly, "mcp", false, "Wire only the MCP server")
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")

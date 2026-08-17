@@ -10,6 +10,8 @@ import (
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
+
+	"github.com/pelletier/go-toml"
 )
 
 // mcpServerName is the key every agent config registers orq under. Aliased to
@@ -76,6 +78,14 @@ type agentSpec struct {
 	// the user's own pick there, and overwriting it would silently undo a
 	// choice they made in the agent's UI.
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
+	// providerPresent reports whether the file at path carries this agent's
+	// provider registration — the read-side pair of writeProvider, in that
+	// agent's own format. Required whenever writeProvider is set: a detector
+	// switching on agent id in parallel with this registry is exactly the
+	// structure whose drift produced the divergences launchCatalog was
+	// introduced to kill, and a new agent would silently fall into someone
+	// else's format branch.
+	providerPresent func(path string) bool
 	// providerUsage says how to actually reach the gateway once it is
 	// registered. Setup makes orq available rather than default, so for some
 	// agents that takes a flag the user would otherwise never discover. Empty
@@ -122,7 +132,10 @@ func agentRegistry() []agentSpec {
 			// in the base config still applies under the profile.
 			providerConfig: codexPath(codexProfileName + ".config.toml"),
 			writeProvider:  writeCodexProviderTOML,
-			providerUsage:  "run 'codex --profile " + codexProfileName + "' to route through the gateway",
+			// Content, not existence: an empty or truncated profile is not a
+			// wired one, and the file names the provider table it registers.
+			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
+			providerUsage:   "run 'codex --profile " + codexProfileName + "' to route through the gateway",
 		},
 		{
 			ID:    "opencode",
@@ -133,13 +146,14 @@ func agentRegistry() []agentSpec {
 			// opencode discards the whole file and silently resolves
 			// "orq/anthropic/…" against some other provider, kilo reports it as
 			// invalid. A project-scoped copy is worse than none.
-			mcpConfig:      alwaysGlobalPath(".config/opencode/opencode.json"),
-			writeMCP:       writeMCPRemoteJSON,
-			manualSnippet:  snippetMCPRemoteJSON,
-			detect:         detectAny(".config/opencode"),
-			providerConfig: alwaysGlobalPath(".config/opencode/opencode.json"),
-			writeProvider:  writeOpenCodeProviderJSON,
-			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
+			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
+			writeMCP:        writeMCPRemoteJSON,
+			manualSnippet:   snippetMCPRemoteJSON,
+			detect:          detectAny(".config/opencode"),
+			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
+			writeProvider:   writeOpenCodeProviderJSON,
+			providerPresent: jsonProviderPresent,
+			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
 		},
 		{
 			ID:            "kimi",
@@ -149,20 +163,22 @@ func agentRegistry() []agentSpec {
 			manualSnippet: snippetMCPKimiJSON,
 			detect:        detectAny(".kimi-code", ".kimi"),
 			// Kimi reads config.toml only from the home directory.
-			providerConfig: alwaysGlobalPath(".kimi-code/config.toml"),
-			writeProvider:  writeKimiProviderTOML,
+			providerConfig:  alwaysGlobalPath(".kimi-code/config.toml"),
+			writeProvider:   writeKimiProviderTOML,
+			providerPresent: tomlTablePresent("providers." + launch.KimiChatProvider),
 		},
 		{
 			ID:    "kilo",
 			Label: "Kilo Code",
 			// Global only — same env-reference restriction as opencode above.
-			mcpConfig:      alwaysGlobalPath(".config/kilo/kilo.json"),
-			writeMCP:       writeMCPRemoteJSON,
-			manualSnippet:  snippetMCPRemoteJSON,
-			detect:         detectAny(".config/kilo"),
-			providerConfig: alwaysGlobalPath(".config/kilo/kilo.json"),
-			writeProvider:  writeOpenCodeProviderJSON,
-			providerUsage:  "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
+			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
+			writeMCP:        writeMCPRemoteJSON,
+			manualSnippet:   snippetMCPRemoteJSON,
+			detect:          detectAny(".config/kilo"),
+			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
+			writeProvider:   writeOpenCodeProviderJSON,
+			providerPresent: jsonProviderPresent,
+			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
 		},
 	}
 }
@@ -783,8 +799,7 @@ func codingAgentChecks() []doctorCheck {
 		}
 		if spec.writeProvider != nil {
 			offered++
-			present := func(path string) bool { return providerEntryPresent(spec.ID, path) }
-			if path, ok := wiredPath(spec.providerConfig, present); ok {
+			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
 				wired++
 				details["provider"] = path
 			}
@@ -820,7 +835,7 @@ func codingAgentChecks() []doctorCheck {
 // ignores the scope argument return the same path twice, which costs one
 // redundant stat.
 func wiredPath(resolve func(bool) (string, error), present func(string) bool) (string, bool) {
-	if resolve == nil {
+	if resolve == nil || present == nil {
 		return "", false
 	}
 	for _, global := range []bool{false, true} {
@@ -845,8 +860,7 @@ func mcpEntryPresent(path string) bool {
 	cfg, err := readJSONConfig(path)
 	if err != nil {
 		// Codex keeps MCP servers in TOML, not JSON.
-		data, rerr := os.ReadFile(path)
-		return rerr == nil && strings.Contains(string(data), "[mcp_servers."+mcpServerName+"]")
+		return tomlTablePresent("mcp_servers." + mcpServerName)(path)
 	}
 	for _, key := range []string{"mcpServers", "mcp"} {
 		if servers, ok := cfg[key].(map[string]any); ok {
@@ -858,27 +872,33 @@ func mcpEntryPresent(path string) bool {
 	return false
 }
 
-// providerEntryPresent reports whether the agent's provider config carries our
-// gateway registration, in whichever format that agent uses.
-func providerEntryPresent(agentID, path string) bool {
-	switch agentID {
-	case "kimi":
+// jsonProviderPresent reads the opencode-family provider map.
+func jsonProviderPresent(path string) bool {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return false
+	}
+	providers, ok := cfg["provider"].(map[string]any)
+	if !ok {
+		return false
+	}
+	_, present := providers[launch.OpenCodeChatProvider]
+	return present
+}
+
+// tomlTablePresent reports whether the TOML file at path parses and carries
+// the named table. Parsed, not substring-matched: a commented-out block would
+// otherwise read as wired.
+func tomlTablePresent(table string) func(path string) bool {
+	return func(path string) bool {
 		data, err := os.ReadFile(path)
-		return err == nil && strings.Contains(string(data), "[providers."+launch.KimiChatProvider+"]")
-	case "codex":
-		// The profile is a whole file we own; existing is wired.
-		_, err := os.Stat(path)
-		return err == nil
-	default: // opencode, kilo: JSON provider map
-		cfg, err := readJSONConfig(path)
 		if err != nil {
 			return false
 		}
-		providers, ok := cfg["provider"].(map[string]any)
-		if !ok {
+		tree, err := toml.LoadBytes(data)
+		if err != nil {
 			return false
 		}
-		_, present := providers[launch.OpenCodeChatProvider]
-		return present
+		return tree.HasPath(strings.Split(table, "."))
 	}
 }
