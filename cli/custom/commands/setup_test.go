@@ -1151,7 +1151,7 @@ func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer srv.Close()
-			credits, _, known := workspaceCanSpend(auth.NewClient(srv.URL), sessionWithToken(srv.URL))
+			credits, known := workspaceCanSpend(auth.NewClient(srv.URL), sessionWithToken(srv.URL))
 			if known != tc.wantKnown || credits != tc.wantCredits {
 				t.Errorf("got (%v, known=%v), want (%v, known=%v)", credits, known, tc.wantCredits, tc.wantKnown)
 			}
@@ -1159,7 +1159,7 @@ func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
 	}
 
 	// No session means no token that can read the balance at all.
-	if _, _, known := workspaceCanSpend(auth.NewClient("https://api.orq.ai"), &authState{}); known {
+	if _, known := workspaceCanSpend(auth.NewClient("https://api.orq.ai"), &authState{}); known {
 		t.Error("claimed to know the balance without a session")
 	}
 }
@@ -1221,5 +1221,125 @@ func sessionWithToken(apiBase string) *authState {
 				key: {Token: "session-token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
 			},
 		},
+	}
+}
+
+// The funding row is a diagnostic, so every way of failing to read the balance
+// must leave doctor unharmed: no row rather than a scary one, and never a
+// failure. A 403 is the expected answer for an API key, not a problem.
+func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
+	key := "acme"
+	session := func() *auth.Session {
+		return &auth.Session{
+			ActiveWorkspaceKey: &key,
+			WorkspaceTokens: map[string]auth.StoredAccessToken{
+				key: {Token: "ws", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+			},
+		}
+	}
+	for _, tc := range []struct {
+		name       string
+		status     int
+		body       string
+		inspect    auth.SessionInspectResult
+		wantRow    bool
+		wantStatus string
+	}{
+		{name: "funded", status: 200, body: `{"balance":12,"currency":"usd"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "pass"},
+		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
+		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}},
+		{name: "no session", status: 200, body: `{"balance":12}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusMissing}},
+		{name: "expired token", status: 200, body: `{"balance":12}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{
+				ActiveWorkspaceKey: &key,
+				WorkspaceTokens: map[string]auth.StoredAccessToken{
+					key: {Token: "ws", ExpiresAt: time.Now().Add(-time.Hour).Format(time.RFC3339)},
+				}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			check, ok := gatewayFundingCheck(auth.NewClient(srv.URL), tc.inspect)
+			if ok != tc.wantRow {
+				t.Fatalf("row present = %v, want %v", ok, tc.wantRow)
+			}
+			if ok && check.Status != tc.wantStatus {
+				t.Errorf("status = %q, want %q", check.Status, tc.wantStatus)
+			}
+			if ok && check.Status == "fail" {
+				t.Error("funding must never fail doctor — an unfunded workspace is not a broken one")
+			}
+		})
+	}
+}
+
+// The funded path is the one every existing user is on, so the unfunded work
+// must not have changed a line of it: the model count, the proven-model line,
+// and no mention of credits.
+func TestFundedPathOutputIsUnchanged(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
+			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
+		default:
+			fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5.4","refId":"openai/gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`)
+		}
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	client := auth.NewClient(srv.URL)
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+
+	resolveProviders(rep, client, state, &setupOptions{noInput: true})
+	if !gatewayFunded {
+		t.Fatal("a workspace with credits was not treated as funded")
+	}
+	if !verifyGateway(rep, client, state) {
+		t.Error("funded workspace failed verification")
+	}
+	got := out.String()
+	if !strings.Contains(got, "1 chat models available") {
+		t.Errorf("model count line missing:\n%s", got)
+	}
+	if !strings.Contains(got, "openai/gpt-5.4 answered in") {
+		t.Errorf("gateway proof line missing:\n%s", got)
+	}
+	if strings.Contains(got, "credits") {
+		t.Errorf("funded run mentioned credits:\n%s", got)
+	}
+}
+
+// A catalogue that cannot be read is not a funding answer. Leaving the flag at
+// its false default made the verify step blame missing credits for a failed
+// fetch, and point at an explanation that was never printed.
+func TestCatalogueFailureDoesNotReadAsUnfunded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	resolveProviders(rep, auth.NewClient(srv.URL), sessionWithToken(srv.URL), &setupOptions{noInput: true})
+
+	if !gatewayFunded {
+		t.Error("a failed catalogue fetch was reported as an unfunded workspace")
+	}
+	if strings.Contains(out.String(), "no credits") {
+		t.Errorf("blamed credits for a fetch failure:\n%s", out.String())
 	}
 }

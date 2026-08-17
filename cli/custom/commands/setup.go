@@ -435,7 +435,10 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		// command a user runs right after choosing a workspace in `orq auth
 		// login`; letting a stale exported key silently overwrite that choice
 		// wires the agent to the wrong workspace and leaves it that way.
-		rep.note("credential order: login session → ORQ_API_KEY (env). Using your login session; ORQ_API_KEY is ignored here (orq launch prefers it).")
+		// Only said when it changes an outcome: the user exported a key and it
+		// is not the one being used. The full precedence order is documentation,
+		// not something to recite on a run where nothing conflicts.
+		rep.note("ignoring the exported ORQ_API_KEY — your login session wins here")
 	}
 
 	if session == nil {
@@ -446,12 +449,14 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		email := "current user"
-		if session.User != nil && session.User.Email != "" {
-			email = session.User.Email
+		if session.User != nil {
+			signedInAs = session.User.Email
 		}
-		rep.ok("already signed in as %s  (use 'orq auth logout' to switch)", email)
+	} else {
+		signedInAs = "current user"
+		if session.User != nil && session.User.Email != "" {
+			signedInAs = session.User.Email
+		}
 	}
 
 	client := auth.NewClient(session.APIBaseURL)
@@ -561,7 +566,13 @@ func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session,
 	if err != nil {
 		return nil, err
 	}
-	rep.ok("workspace %s", key)
+	// One line for the whole step: who you are and where you are. Printed here
+	// because the workspace is the last of the two to be known.
+	if signedInAs != "" {
+		rep.ok("%s · workspace %s", signedInAs, key)
+	} else {
+		rep.ok("workspace %s", key)
+	}
 	return updated, nil
 }
 
@@ -698,8 +709,7 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 		rep.warn("could not update %s: %v", sh.Profile, err)
 		return
 	}
-	rep.ok("updated     %s  → sources %s", tilde(sh.Profile), tilde(sh.EnvFile))
-	rep.note("• takes effect in new shells; run '%s' for this one", sh.displayLine())
+	rep.ok("updated     %s — new shells only; run '%s' here", tilde(sh.Profile), sh.displayLine())
 }
 
 // profileSourcesEnvFile reports whether the profile already references the env
@@ -890,7 +900,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
 
 	if state.suppliedKey != "" {
-		rep.ok("key already configured (profile: %s) — skipping key creation", auth.ActiveProfile())
+		rep.ok("using the API key you passed")
 		return info, "", nil
 	}
 
@@ -915,9 +925,9 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		rep.note("saved key belongs to workspace %s — creating one for %s", tokenWS, active)
 		token = ""
 	case tokenWS == "":
-		rep.ok("key already saved (profile: %s) — reusing it (workspace unrecorded)", auth.ActiveProfile())
+		rep.ok("reusing the key from an earlier setup (workspace unrecorded)")
 	default:
-		rep.ok("key already saved (profile: %s) — reusing it", auth.ActiveProfile())
+		rep.ok("reusing the key from an earlier setup")
 	}
 	if token == "" {
 		if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
@@ -957,14 +967,14 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		// Stated as fact, not apology: workspace scope is what the key API mints.
 		// The token itself is not echoed: every orq key shares a long prefix, so
 		// a masked one identified nothing the user could act on.
-		rep.ok("saved       %s  (workspace-scoped key)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
+		rep.ok("key saved   %s  (workspace-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
 	}
 	if path, err := writeShellEnvFile(token); err != nil {
 		// Not fatal: the key is already saved, and the final screen still tells
 		// the user how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {
-		rep.ok("saved       %s  → source it to export ORQ_API_KEY", tilde(path))
+		rep.ok("            %s  → exports ORQ_API_KEY", tilde(path))
 		offerProfileSourceLine(rep, opts)
 	}
 
@@ -1018,10 +1028,10 @@ const (
 	creditsPath   = "/admin/credits"
 )
 
-// workspaceCanSpend reports whether the gateway can serve a model call at all:
-// orq-managed credits, or a BYOK provider key. known is false when the question
-// could not be answered, and callers must then behave exactly as before — a
-// failed permission check must never be reported to the user as "no credits".
+// workspaceCanSpend reports whether the gateway can serve a model call at all.
+// known is false when the question could not be answered, and callers must then
+// behave exactly as before — a failed permission check must never be reported
+// to the user as "no credits".
 //
 // Session-only by construction. Reading /v2/credits needs credits.view, a
 // permission the API-key capability catalogue cannot express, so the key setup
@@ -1033,16 +1043,16 @@ const (
 // the warning it feeds is gated on credits == 0 anyway: a workspace with a
 // provider key but no credits still gets told the truth, that the gateway is
 // refusing calls, with both remedies printed.
-func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, byok bool, known bool) {
+func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, known bool) {
 	token := sessionWorkspaceToken(client, state)
 	if token == "" {
-		return 0, false, false
+		return 0, false
 	}
 	balance, err := client.Credits(token)
 	if err != nil {
-		return 0, false, false
+		return 0, false
 	}
-	return balance.Balance, false, true
+	return balance.Balance, true
 }
 
 // sessionWorkspaceToken returns a workspace-scoped session token, preferring
@@ -1079,6 +1089,11 @@ func sessionWorkspaceToken(client *auth.Client, state *authState) string {
 func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
 	count, providers, err := listEnabledModels(client, state)
 	if err != nil {
+		// Funding was never established, so it must not read as "unfunded":
+		// leaving the flag false makes the verify step blame missing credits
+		// for what is a failed catalogue fetch, and point at an explanation
+		// that was never printed. Unknown behaves as before this check existed.
+		gatewayFunded = true
 		rep.warn("could not list gateway models: %v", err)
 		return 0
 	}
@@ -1087,8 +1102,8 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 	// models, short of funding, or both — a fresh account is both — and each
 	// branch used to know about only one of them, so it named one remedy and
 	// stayed silent about the other.
-	credits, byok, known := workspaceCanSpend(client, state)
-	unfunded := known && credits == 0 && !byok
+	credits, known := workspaceCanSpend(client, state)
+	unfunded := known && credits == 0
 	// Unknown counts as funded: that is the behaviour every run had before this
 	// check existed, and a permission failure must not disable the probe.
 	gatewayFunded = !unfunded
@@ -1104,8 +1119,7 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 
 	// The link goes in the warning, not a note: notes are suppressed in quiet
 	// mode, which would leave a --no-input user with a problem and no next step.
-	link := modelsSettingsURL(state)
-	rep.warn("no models enabled — connect a provider (BYOK) at %s", link)
+	rep.warn("no models enabled — connect a provider (BYOK) at %s", workspaceURL(state, providersPath))
 	if opts.noInput {
 		rep.warn("  then re-run 'orq setup'")
 		return 0
@@ -1137,19 +1151,25 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 // Deliberately not a failure. MCP wiring works without funding and is written
 // either way, so the run is a success with one capability switched off.
 func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
+	// The fact and the two ways to fix it. No reassurance that MCP still works:
+	// step 4 prints its own ✓ lines a moment later, which is better evidence
+	// than a promise — and a promise made before the user has been asked what
+	// to wire was wrong for anyone who then chose "Gateway only".
+	//
+	// Both remedies are warnings, not notes, for the reason resolveProviders
+	// gives above: notes are suppressed in quiet mode, so a --no-input run
+	// would otherwise report the problem and withhold every fix for it.
+	credits := workspaceURL(state, creditsPath)
 	rep.warn("no credits and no provider key — orq can't serve model calls yet")
-	// States a property of the product, not a claim about this run: whether MCP
-	// gets wired is the next step's question, and asserting it here read as a
-	// lie to anyone who then chose "Gateway only".
-	rep.note("  MCP tools need no credits — only model calls do.")
-	rep.note("  To turn on the gateway:")
-	rep.note("    Add credits    %s", workspaceURL(state, creditsPath))
-	rep.note("    Connect a key  %s", workspaceURL(state, providersPath))
+	rep.warn("    Add credits    %s", credits)
+	rep.warn("    Connect a key  %s", workspaceURL(state, providersPath))
 
 	if opts.noInput || !opts.confirm("Open the credits page now?", true) {
 		return
 	}
-	if url := workspaceURL(state, creditsPath); url != "" && !auth.OpenBrowser(url) {
+	// No emptiness guard: workspaceURL always returns something, falling back
+	// to the docs page when there is no workspace key to build a link with.
+	if !auth.OpenBrowser(credits) {
 		rep.note("  could not open a browser — the URL above is the one to visit")
 	}
 }
@@ -1159,9 +1179,11 @@ func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
 // could act on: it is the whole workspace, while setup goes on to write a
 // handful of models into one agent's config.
 func reportProviders(rep *reporter, count int, providers []string) {
-	// Names dropped on purpose: a user cannot act on "azure, google-ai +17 more"
-	// during onboarding, and the two counts are what the step actually proved.
-	rep.ok("%d provider(s) connected · %d chat model(s) enabled", len(providers), count)
+	// Only the model count. The provider count was derived from the catalogue,
+	// not from credentials — it printed "google, google-ai connected" on a
+	// workspace with no provider key and no credits, which is the opposite of
+	// what a reader takes from the word "connected".
+	rep.ok("%d chat models available", count)
 }
 
 // connectedProviders summarises which BYOK providers actually have usable
@@ -1231,10 +1253,6 @@ func workspaceURL(state *authState, path string) string {
 		return docsURL + "/docs/ai-gateway/get-started/introduction"
 	}
 	return base + "/" + *state.session.ActiveWorkspaceKey + path
-}
-
-func modelsSettingsURL(state *authState) string {
-	return workspaceURL(state, providersPath)
 }
 
 // ============================================================================
@@ -1344,7 +1362,9 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		configPath, err := spec.mcpConfig(opts.global)
 		switch {
 		case opts.noMCP:
-			rep.note("%-8s MCP       skipped (%s)", id, opts.skipFlag("mcp"))
+			// No per-agent "skipped" line: the user answered that question one
+			// prompt ago, and repeating their own answer once per agent is the
+			// bulk of what made this step long.
 		case err != nil:
 			rep.fail("%-8s %v", id, err)
 			res.Error = err.Error()
@@ -1360,8 +1380,6 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				}
 				res.Error = err.Error()
 			} else {
-				rep.ok("%-8s MCP     %s → %s%s", id, tilde(configPath), mcpServerName,
-					scopeNote(spec.mcpConfig, opts.global))
 				res.MCP = configPath
 			}
 		}
@@ -1373,7 +1391,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		// workspace read/write" configuration, and MCP-only the reverse.
 		switch {
 		case opts.noGateway && spec.writeProvider != nil:
-			rep.note("%-8s provider  skipped (%s)", id, opts.skipFlag("gateway"))
+			// Same reasoning as the MCP skip above.
 		case spec.writeProvider != nil:
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path == "" {
 				// No resolver returns ("", nil) today, but the MCP half guards
@@ -1418,30 +1436,6 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					rep.fail("%-8s provider  %v", id, werr)
 					res.Error = werr.Error()
 				default:
-					// Only claim a model count when the format actually carries
-					// one: codex's profile names a single default and takes its
-					// list from elsewhere.
-					listed := ""
-					if written > 0 {
-						listed = fmt.Sprintf(" (%d models)", written)
-					}
-					// Scope note only when the MCP line carried none. For
-					// opencode/kilo both halves share one file, so a second
-					// note would repeat the first. Kimi's provider config is
-					// always ~/.kimi-code/config.toml while its MCP path is
-					// scope-aware — different files, but the provider path
-					// never varies by scope, so a note would say nothing.
-					scope := ""
-					if res.MCP == "" {
-						scope = scopeNote(spec.providerConfig, opts.global)
-					}
-					rep.ok("%-8s provider  %s → orq gateway%s%s", id, tilde(path), listed, scope)
-					// Setup registers orq as an option rather than making it the
-					// default, so for some agents there is a step the user would
-					// otherwise never find.
-					if spec.providerUsage != "" {
-						rep.note("           %s", spec.providerUsage)
-					}
 					res.Provider = path
 					res.ModelCount = written
 				}
@@ -1454,9 +1448,61 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			}
 		}
 
+		reportAgent(rep, spec, res, opts)
 		results = append(results, res)
 	}
 	return results, nil
+}
+
+// reportAgent prints what an agent ended up with, on one line. Two lines per
+// agent plus a usage note ran to a dozen lines for a five-agent run, most of it
+// paths the user cannot act on and `orq doctor` prints on demand anyway.
+//
+// Failures are not routed through here: they stay on their own lines, where
+// being verbose is the point.
+func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOptions) {
+	wired := []string{}
+	if res.MCP != "" {
+		wired = append(wired, "MCP")
+	}
+	if res.Provider != "" {
+		gateway := "gateway"
+		// Only claim a count when the format carries one: codex's profile names
+		// a single default and takes its list from elsewhere.
+		if res.ModelCount > 0 {
+			gateway = fmt.Sprintf("gateway (%d models)", res.ModelCount)
+		}
+		wired = append(wired, gateway)
+	}
+	if len(wired) == 0 {
+		return
+	}
+
+	// One location when both files share a directory, which is the usual case;
+	// both when a project-scoped MCP file sits apart from a home-only provider.
+	where := tilde(res.MCP)
+	switch {
+	case res.MCP == "":
+		where = tilde(res.Provider)
+	case res.Provider != "" && filepath.Dir(res.MCP) == filepath.Dir(res.Provider):
+		where = tilde(filepath.Dir(res.MCP)) + string(filepath.Separator)
+	case res.Provider != "":
+		where = tilde(res.MCP) + " · " + tilde(res.Provider)
+	}
+
+	scope := ""
+	if res.MCP != "" {
+		scope = scopeNote(spec.mcpConfig, opts.global)
+	} else if res.Provider != "" {
+		scope = scopeNote(spec.providerConfig, opts.global)
+	}
+	rep.ok("%-8s %-24s %s%s", spec.ID, strings.Join(wired, " + "), where, scope)
+
+	// Setup registers orq as an option rather than the default, so for some
+	// agents there is a step the user would otherwise never find.
+	if res.Provider != "" && spec.providerUsage != "" {
+		rep.note("         %s", spec.providerUsage)
+	}
 }
 
 // codingModels fetches the gateway catalogue once per run and returns every
@@ -1485,6 +1531,10 @@ var provenTook time.Duration
 // up to three failures per agent).
 var defaultModelResolved bool
 var provenCandidate auth.RouterModel
+
+// signedInAs is the identity resolved in step 1, printed once alongside the
+// workspace rather than on a line of its own — they are one fact to the reader.
+var signedInAs string
 
 // gatewayFunded records step 3's answer: can this workspace pay for a model
 // call at all? Nothing downstream can ask again — resolveProviders' return
@@ -1698,12 +1748,12 @@ func buildLinks(state *authState) map[string]string {
 	webBase := webBaseURL(state)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
-		// Both are workspace-scoped routes; workspaceURL falls back to the docs
-		// when there is no key to prefix with, which would make these links
-		// point at pages that do not exist.
-		links["models"] = workspaceURL(state, providersPath)
 		links["credits"] = workspaceURL(state, creditsPath)
 	}
+	// Outside the guard: workspaceURL already degrades to the docs page when
+	// there is no workspace key to prefix with, and a keyless run still needs
+	// somewhere to send a user who has no models.
+	links["models"] = workspaceURL(state, providersPath)
 	return links
 }
 
