@@ -7165,10 +7165,6 @@
           "type": "bool"
         },
         {
-          "name": "no-env",
-          "type": "bool"
-        },
-        {
           "name": "no-gateway",
           "type": "bool"
         },
