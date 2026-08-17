@@ -1601,8 +1601,10 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 	// Only the line that differs per install, plus the one command that leads
-	// everywhere else. The docs and models URLs are static and printed on every
-	// single run; `orq doctor` names them when they are actually needed.
+	// everywhere else. The docs and models URLs are static, and both survive
+	// where they earn their place: in result["links"] for machine consumers,
+	// and — for the models settings page — in the providers step's warning,
+	// printed exactly when there is no model to route to.
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  Workspace   %s\n", ws)
 	}
