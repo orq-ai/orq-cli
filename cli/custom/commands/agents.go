@@ -776,16 +776,15 @@ func codingAgentChecks() []doctorCheck {
 
 		if spec.writeMCP != nil {
 			offered++
-			path, err := spec.mcpConfig(true)
-			if err == nil && mcpEntryPresent(path) {
+			if path, ok := wiredPath(spec.mcpConfig, mcpEntryPresent); ok {
 				wired++
 				details["mcp"] = path
 			}
 		}
 		if spec.writeProvider != nil {
 			offered++
-			path, err := spec.providerConfig(true)
-			if err == nil && providerEntryPresent(spec.ID, path) {
+			present := func(path string) bool { return providerEntryPresent(spec.ID, path) }
+			if path, ok := wiredPath(spec.providerConfig, present); ok {
 				wired++
 				details["provider"] = path
 			}
@@ -808,6 +807,32 @@ func codingAgentChecks() []doctorCheck {
 		checks = append(checks, check)
 	}
 	return checks
+}
+
+// wiredPath asks a resolver for both scopes and returns the first path that
+// actually carries our entry.
+//
+// Doctor cannot know which scope setup used: `resolveScope` picks the project
+// directory when one looks like a project and $HOME otherwise, and --local /
+// --global override both ways. Checking only the global path reported a
+// correctly wired project-scoped agent as "detected but not wired" — the
+// report was wrong about the thing it exists to report. Agents whose resolver
+// ignores the scope argument return the same path twice, which costs one
+// redundant stat.
+func wiredPath(resolve func(bool) (string, error), present func(string) bool) (string, bool) {
+	if resolve == nil {
+		return "", false
+	}
+	for _, global := range []bool{false, true} {
+		path, err := resolve(global)
+		if err != nil || path == "" {
+			continue
+		}
+		if present(path) {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 // mcpEntryPresent reports whether the config at path registers our MCP server.
