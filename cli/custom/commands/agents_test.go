@@ -1172,3 +1172,48 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 		}
 	}
 }
+
+// Doctor cannot know which scope setup used — resolveScope picks the project
+// directory when one looks like a project, $HOME otherwise, and --local /
+// --global override both ways. Checking only the global path reported a
+// correctly wired project-scoped agent as "detected but not wired", which is
+// the one thing the check exists to get right.
+func TestCodingAgentChecksFindProjectScopedWiring(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex"))
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A project directory, wired the way `orq setup` does inside one: the
+	// relative ./.mcp.json, never ~/.claude.json.
+	t.Chdir(t.TempDir())
+	claude, _ := lookupAgent("claude")
+	projectPath, err := claude.mcpConfig(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.IsAbs(projectPath) {
+		t.Fatalf("expected a project-relative path, got %q", projectPath)
+	}
+	if err := writeMCPServersJSON(projectPath, "https://api.orq.ai/v2/mcp"); err != nil {
+		t.Fatal(err)
+	}
+
+	var claudeCheck *doctorCheck
+	for i, c := range codingAgentChecks() {
+		if c.ID == "coding_agent_claude" {
+			claudeCheck = &codingAgentChecks()[i]
+		}
+	}
+	if claudeCheck == nil {
+		t.Fatal("claude is installed and wired but produced no check")
+	}
+	if claudeCheck.Status != "pass" {
+		t.Errorf("project-scoped wiring reported as %q: %s", claudeCheck.Status, claudeCheck.Message)
+	}
+	if got := claudeCheck.Details["mcp"]; got != projectPath {
+		t.Errorf("check names %v, want the project path %q", got, projectPath)
+	}
+}

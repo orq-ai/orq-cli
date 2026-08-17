@@ -39,6 +39,24 @@ type setupOptions struct {
 	noEnv          bool
 	noInput        bool
 	yes            bool
+	// narrowing records that the branch flags came from `setup coding-agents`,
+	// whose spellings are --gateway / --mcp rather than the parent's
+	// --no-gateway / --no-mcp. Only affects which flag a skip line names.
+	narrowing bool
+}
+
+// skipFlag names the flag that turned a branch off, in the spelling of the
+// command the user actually ran. Naming the parent's flag from the subcommand
+// sent people looking for a --no-gateway that does not exist there.
+func (o *setupOptions) skipFlag(branch string) string {
+	if o.narrowing {
+		// On the subcommand, a branch is off because the *other* one was named.
+		if branch == "mcp" {
+			return "--gateway"
+		}
+		return "--mcp"
+	}
+	return "--no-" + branch
 }
 
 // confirm asks a yes/no question, honouring the two ways a user can answer it
@@ -147,9 +165,15 @@ Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The narrowing flags pre-answer the wiring question; neither means
-			// both, which is also what the question defaults to.
+			// both, which is also what the question defaults to. Both together
+			// narrow to nothing — refuse rather than exit 0 having done
+			// nothing, the same way --global with --local refuses.
+			if gatewayOnly && mcpOnly {
+				return errors.New("--gateway and --mcp each narrow to one half; passing both leaves nothing to wire (omit them to wire both)")
+			}
 			opts.noMCP = gatewayOnly
 			opts.noGateway = mcpOnly
+			opts.narrowing = gatewayOnly || mcpOnly
 			return runCodingAgents(cmd, &opts)
 		},
 	}
@@ -172,19 +196,24 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 
 	rep := newReporter(opts.noInput)
 
+	// Checked before authenticating, not after. The wiring needs a durable
+	// credential: agent configs reference ORQ_API_KEY and kimi embeds the
+	// literal key, so a login session is not enough — its workspace tokens
+	// expire within the hour, and this command never creates keys. Running
+	// resolveAuth first meant a machine with neither opened a browser, waited
+	// for device approval, saved a session, and only then refused.
+	saved := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+		return errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
+	}
+
 	authState, err := resolveAuth(cmd.Context(), rep, opts)
 	if err != nil {
 		return err
 	}
 	client := auth.NewClient(authState.apiBase)
-
-	// The wiring needs a durable credential: agent configs reference
-	// ORQ_API_KEY, and kimi embeds the literal key. A login session alone is
-	// not enough — its workspace tokens expire within the hour.
-	if key := strings.TrimSpace(bartolocli.GetProfile()["api_key"]); key != "" {
-		authState.bearer = key
-	} else if authState.suppliedKey == "" {
-		return errors.New("no saved API key — run 'orq setup' once to create one")
+	if saved != "" {
+		authState.bearer = saved
 	}
 
 	result := map[string]any{}
@@ -1169,7 +1198,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		configPath, err := spec.mcpConfig(opts.global)
 		switch {
 		case opts.noMCP:
-			rep.note("%-8s MCP       skipped (--no-mcp)", id)
+			rep.note("%-8s MCP       skipped (%s)", id, opts.skipFlag("mcp"))
 		case err != nil:
 			rep.fail("%-8s %v", id, err)
 			res.Error = err.Error()
@@ -1198,7 +1227,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		// workspace read/write" configuration, and MCP-only the reverse.
 		switch {
 		case opts.noGateway && spec.writeProvider != nil:
-			rep.note("%-8s provider  skipped (--no-gateway)", id)
+			rep.note("%-8s provider  skipped (%s)", id, opts.skipFlag("gateway"))
 		case spec.writeProvider != nil:
 			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
 				models := codingModels(rep, client, state)
