@@ -311,8 +311,8 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	result["agents"] = agentResults
 
 	// --- Verify --------------------------------------------------------------
-	rep.note("")
-	rep.note("Verifying…")
+	rep.blank()
+
 	verified := verifySetup(rep, client, authState)
 	result["verified"] = verified
 	// A failed gateway call is reported but does not fail setup: everything else
@@ -540,6 +540,14 @@ func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session,
 	return updated, nil
 }
 
+// displayLine is Line with the env file shortened to its ~ form — the printed
+// command stays paste-able, since every shell expands ~ in a source argument.
+// The file written to the profile keeps the absolute path, which cannot be
+// affected by whatever $HOME the sourcing shell happens to have.
+func (s shellSetup) displayLine() string {
+	return strings.Replace(s.Line, s.EnvFile, tilde(s.EnvFile), 1)
+}
+
 // shellSetup describes how to give the user's shell the key: which file to
 // source, which profile to source it from, and how that profile is worded.
 type shellSetup struct {
@@ -588,6 +596,18 @@ func detectShell(dir string) shellSetup {
 	// still needs something to run, it just has no profile file to name.
 	posix.Line = ". " + posix.EnvFile
 	return posix
+}
+
+// tilde shortens a path under $HOME to its ~ form. Setup prints the same
+// handful of paths a dozen times, and an absolute one wraps the terminal on a
+// machine whose $HOME is a temp dir — which is every CI run and every person
+// testing with a throwaway HOME.
+func tilde(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || !strings.HasPrefix(path, home+string(os.PathSeparator)) {
+		return path
+	}
+	return "~" + path[len(home):]
 }
 
 // writeShellEnvFile writes a sourceable snippet exporting ORQ_API_KEY next to
@@ -640,7 +660,7 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 	if profileSourcesEnvFile(sh) {
 		return
 	}
-	if !opts.confirm(fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.Line, sh.Profile), true) {
+	if !opts.confirm(fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.displayLine(), tilde(sh.Profile)), true) {
 		return
 	}
 	f, err := os.OpenFile(sh.Profile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -653,8 +673,8 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 		rep.warn("could not update %s: %v", sh.Profile, err)
 		return
 	}
-	rep.ok("updated     %s  → sources %s", sh.Profile, sh.EnvFile)
-	rep.note("• takes effect in new shells; run '%s' for this one", sh.Line)
+	rep.ok("updated     %s  → sources %s", tilde(sh.Profile), tilde(sh.EnvFile))
+	rep.note("• takes effect in new shells; run '%s' for this one", sh.displayLine())
 }
 
 // profileSourcesEnvFile reports whether the profile already references the env
@@ -853,15 +873,16 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		}
 		info["created"] = true
 		// Stated as fact, not apology: workspace scope is what the key API mints.
-		rep.ok("created key  %s  (workspace-scoped)", maskToken(token))
-		rep.ok("saved       %s", filepath.Join(viper.GetString("config-directory"), "credentials.json"))
+		// The token itself is not echoed: every orq key shares a long prefix, so
+		// a masked one identified nothing the user could act on.
+		rep.ok("saved       %s  (workspace-scoped key)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
 	}
 	if path, err := writeShellEnvFile(token); err != nil {
 		// Not fatal: the key is already saved, and the final screen still tells
 		// the user how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {
-		rep.ok("saved       %s  → source it to export ORQ_API_KEY", path)
+		rep.ok("saved       %s  → source it to export ORQ_API_KEY", tilde(path))
 		offerProfileSourceLine(rep, opts)
 	}
 
@@ -948,12 +969,10 @@ func appendEnvKey(rep *reporter, token string) error {
 		return err
 	}
 	rep.ok("wrote       ./.env  → ORQ_API_KEY")
-	// The write has a side effect worth stating: orq itself auto-loads ./.env,
-	// and that key takes precedence over a login session in this directory.
-	rep.note("• orq loads ./.env automatically — commands run here authenticate with this key, even after 'orq auth logout'")
-	if envIsGitIgnored() {
-		rep.note("• .env is covered by .gitignore")
-	} else {
+	// Only the bad case is worth a line. That ./.env is gitignored, and that orq
+	// auto-loads it, are both true and neither is news at minute one — `orq
+	// doctor` is where a user goes when the precedence actually bites them.
+	if !envIsGitIgnored() {
 		rep.warn("./.env is NOT covered by .gitignore — do not commit it")
 	}
 	return nil
@@ -1027,14 +1046,9 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 // could act on: it is the whole workspace, while setup goes on to write a
 // handful of models into one agent's config.
 func reportProviders(rep *reporter, count int, providers []string) {
-	const show = 6
-	listed := providers
-	suffix := ""
-	if len(listed) > show {
-		listed, suffix = listed[:show], fmt.Sprintf(" +%d more", len(providers)-show)
-	}
-	rep.ok("providers connected: %s%s", strings.Join(listed, ", "), suffix)
-	rep.note("  %d chat model(s) enabled in this workspace", count)
+	// Names dropped on purpose: a user cannot act on "azure, google-ai +17 more"
+	// during onboarding, and the two counts are what the step actually proved.
+	rep.ok("%d provider(s) connected · %d chat model(s) enabled", len(providers), count)
 }
 
 // connectedProviders summarises which BYOK providers actually have usable
@@ -1208,14 +1222,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		default:
 			if err := spec.writeMCP(configPath, mcpURL); err != nil {
 				rep.fail("%-8s %v", id, err)
-				rep.note("")
-				rep.note("Add this manually to %s:", configPath)
+				rep.blank()
+				rep.note("Add this manually to %s:", tilde(configPath))
 				for _, line := range strings.Split(spec.manualSnippet(mcpURL), "\n") {
 					rep.note("    %s", line)
 				}
 				res.Error = err.Error()
 			} else {
-				rep.ok("%-8s MCP     %s → %s%s", id, configPath, mcpServerName,
+				rep.ok("%-8s MCP     %s → %s%s", id, tilde(configPath), mcpServerName,
 					scopeNote(spec.mcpConfig, opts.global))
 				res.MCP = configPath
 			}
@@ -1251,7 +1265,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				// Failing the run here would report a workspace state twice and
 				// call a configured agent broken.
 				if len(models) == 0 {
-					rep.warn("%-8s provider  skipped: no models to offer, %s left unchanged", id, path)
+					rep.warn("%-8s provider  skipped: no models to offer, %s left unchanged", id, tilde(path))
 					results = append(results, res)
 					continue
 				}
@@ -1274,7 +1288,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					if res.MCP == "" {
 						scope = scopeNote(spec.providerConfig, opts.global)
 					}
-					rep.ok("%-8s provider  %s → orq gateway%s%s", id, path, listed, scope)
+					rep.ok("%-8s provider  %s → orq gateway%s%s", id, tilde(path), listed, scope)
 					// Setup registers orq as an option rather than making it the
 					// default, so for some agents there is a step the user would
 					// otherwise never find.
@@ -1433,24 +1447,19 @@ func promptForAgents(rep *reporter) ([]string, error) {
 // configured. It deliberately avoids whoami: an API-key-only run has no session
 // and whoami would report "not logged in" even though everything works.
 func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
-	if state.session != nil && state.session.User != nil {
-		workspace := ""
-		if state.session.ActiveWorkspaceKey != nil {
-			workspace = *state.session.ActiveWorkspaceKey
-		}
-		rep.ok("whoami          %s / %s", state.session.User.Email, workspace)
-	}
-	// A freshly minted key is not accepted for a second or two, so a single
-	// immediate call would report a working setup as broken.
-	var projects []auth.Project
+	// Silent when it passes. Step 1 already printed the identity this would
+	// repeat, the project count means nothing now that setup never asks about
+	// projects, and the gateway line below cannot succeed against an
+	// unreachable API — so a passing check here tells the user nothing they
+	// were not just told. A failing one is the whole point, and still prints.
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
+		// A freshly minted key is not accepted for a second or two, so a single
+		// immediate call would report a working setup as broken.
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
-		projects, err = client.ListProjects(state.bearer)
-		if err == nil {
-			rep.ok("api reachable   %s  (%d projects)", client.URLs.APIBaseURL, len(projects))
+		if _, err = client.ListProjects(state.bearer); err == nil {
 			return true
 		}
 	}
@@ -1472,7 +1481,7 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 	// proved the exact thing this step reports — a real completion through the
 	// router on this credential — and repeating it billed the user twice.
 	if provenModel != "" {
-		rep.ok("gateway        %s answered in %dms via %s", provenModel, provenTook.Milliseconds(), client.RouterBaseURL())
+		rep.ok("gateway     %s answered in %dms", provenModel, provenTook.Milliseconds())
 		return true
 	}
 	ref := models[0].Ref()
@@ -1481,7 +1490,7 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 		rep.fail("gateway        %s did not answer: %v", ref, err)
 		return false
 	}
-	rep.ok("gateway        %s answered in %dms via %s", ref, took.Milliseconds(), client.RouterBaseURL())
+	rep.ok("gateway     %s answered in %dms", ref, took.Milliseconds())
 	return true
 }
 
@@ -1513,8 +1522,6 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		return
 	}
 	w := rep.w
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, strings.Repeat("─", 64))
 	fmt.Fprintln(w)
 	// Do not claim success the verification step just disproved: the checks
 	// above already printed what failed, so this line is the only thing left
@@ -1566,26 +1573,25 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// user ends up with the same line stacked once per setup run.
 	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
 		sh := detectShell(viper.GetString("config-directory"))
+		fmt.Fprintln(w)
 		switch {
 		case sh.Profile != "" && profileSourcesEnvFile(sh):
 			// Durably wired already — only this shell is stale.
-			fmt.Fprintf(w, "  ! ORQ_API_KEY reaches new shells via %s, but not this one yet.\n", sh.Profile)
-			fmt.Fprintln(w, "    For this shell:")
-			fmt.Fprintln(w)
-			fmt.Fprintf(w, "      %s\n", sh.Line)
+			fmt.Fprintf(w, "  ! ORQ_API_KEY reaches new shells via %s, but not this one yet.\n", tilde(sh.Profile))
+			fmt.Fprintf(w, "    For this shell:  %s\n", sh.displayLine())
 		case sh.Profile == "":
 			// Unrecognised shell: naming a profile file would be a guess, so
 			// give the command that works right now and let the user place it.
 			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
 			fmt.Fprintln(w, "    Export it once, then restart the agent:")
 			fmt.Fprintln(w)
-			fmt.Fprintf(w, "      %s\n", sh.Line)
+			fmt.Fprintf(w, "      %s\n", sh.displayLine())
 			fmt.Fprintf(w, "      # add that to your shell profile to make it stick\n")
 		default:
 			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
 			fmt.Fprintln(w, "    Export it once, then restart the agent:")
 			fmt.Fprintln(w)
-			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.Line, sh.Profile, sh.Line)
+			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
 			if strings.HasSuffix(sh.Profile, ".zshenv") {
 				fmt.Fprintln(w)
 				fmt.Fprintln(w, "    (~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells.)")
@@ -1594,13 +1600,12 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w)
 	}
 	fmt.Fprintln(w)
+	// Only the line that differs per install, plus the one command that leads
+	// everywhere else. The docs and models URLs are static and printed on every
+	// single run; `orq doctor` names them when they are actually needed.
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  Workspace   %s\n", ws)
 	}
-	if m := links["models"]; m != "" {
-		fmt.Fprintf(w, "  Models      %s\n", m)
-	}
-	fmt.Fprintf(w, "  Docs        %s\n", links["docs"])
 	fmt.Fprintln(w, "  Stuck?      orq doctor")
 	fmt.Fprintln(w)
 }
