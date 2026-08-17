@@ -898,8 +898,9 @@ func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
 		return out.String()
 	}
 
-	// Profile not wired: the append command is the right advice.
-	if got := render(); !strings.Contains(got, "echo '. "+dir) {
+	// Profile not wired: the append command is the right advice, and it names
+	// the ~ form, which every shell expands in a source argument.
+	if got := render(); !strings.Contains(got, "echo '. ~/.orq/env'") {
 		t.Fatalf("unwired profile should offer the append command, got:\n%s", got)
 	}
 
@@ -913,7 +914,25 @@ func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
 	if strings.Contains(got, "echo '") {
 		t.Errorf("wired profile still told to append:\n%s", got)
 	}
-	if !strings.Contains(got, ". "+filepath.Join(dir, "env")) {
+	if !strings.Contains(got, ". ~/.orq/env") {
 		t.Errorf("wired profile should still name the line to run in this shell:\n%s", got)
+	}
+}
+
+// Setup prints the same few paths a dozen times; under a throwaway HOME the
+// absolute form wraps the terminal, which is exactly the case every test run
+// and every trial install hits.
+func TestTildeShortensHomePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got, want := tilde(filepath.Join(home, ".orq", "env")), filepath.Join("~", ".orq", "env"); got != want {
+		t.Errorf("tilde() = %q, want %q", got, want)
+	}
+	// Outside $HOME, and $HOME itself, are left exactly as they are: a prefix
+	// match on the bare home string would turn /tmp/homework into ~work.
+	for _, p := range []string{"/etc/orq/env", home, home + "work/.orq/env"} {
+		if got := tilde(p); got != p {
+			t.Errorf("tilde(%q) = %q, want it unchanged", p, got)
+		}
 	}
 }
