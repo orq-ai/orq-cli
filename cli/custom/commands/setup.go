@@ -1574,22 +1574,24 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
 		sh := detectShell(viper.GetString("config-directory"))
 		fmt.Fprintln(w)
+		// Lead with the consequence, not the mechanism. "not set in this shell"
+		// stated a fact about the terminal and left the user to work out that an
+		// agent started from it inherits the same empty variable — which is
+		// exactly how a wired machine still produces "bearer token env var
+		// ORQ_API_KEY is not set" inside the agent.
+		fmt.Fprintln(w, "  ! Agents inherit ORQ_API_KEY from the shell that starts them.")
 		switch {
 		case sh.Profile != "" && profileSourcesEnvFile(sh):
-			// Durably wired already — only this shell is stale.
-			fmt.Fprintf(w, "  ! ORQ_API_KEY reaches new shells via %s, but not this one yet.\n", tilde(sh.Profile))
-			fmt.Fprintf(w, "    For this shell:  %s\n", sh.displayLine())
+			// Durably wired already — only this shell is stale, so both ways out
+			// are cheap and the user should see both.
+			fmt.Fprintf(w, "    New shells get it from %s. For this one:  %s\n", tilde(sh.Profile), sh.displayLine())
 		case sh.Profile == "":
 			// Unrecognised shell: naming a profile file would be a guess, so
 			// give the command that works right now and let the user place it.
-			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
-			fmt.Fprintln(w, "    Export it once, then restart the agent:")
-			fmt.Fprintln(w)
-			fmt.Fprintf(w, "      %s\n", sh.displayLine())
-			fmt.Fprintf(w, "      # add that to your shell profile to make it stick\n")
+			fmt.Fprintf(w, "    It is not set here. For this shell:  %s\n", sh.displayLine())
+			fmt.Fprintln(w, "    Add that line to your shell profile so new shells get it too.")
 		default:
-			fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
-			fmt.Fprintln(w, "    Export it once, then restart the agent:")
+			fmt.Fprintln(w, "    It is not set here. For this shell and every new one:")
 			fmt.Fprintln(w)
 			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
 			if strings.HasSuffix(sh.Profile, ".zshenv") {
