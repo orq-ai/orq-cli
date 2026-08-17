@@ -1082,12 +1082,22 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		rep.warn("could not list gateway models: %v", err)
 		return 0
 	}
+
+	// Asked once, before either branch below. A workspace can be short of
+	// models, short of funding, or both — a fresh account is both — and each
+	// branch used to know about only one of them, so it named one remedy and
+	// stayed silent about the other.
+	credits, byok, known := workspaceCanSpend(client, state)
+	unfunded := known && credits == 0 && !byok
+	// Unknown counts as funded: that is the behaviour every run had before this
+	// check existed, and a permission failure must not disable the probe.
+	gatewayFunded = !unfunded
+
+	if unfunded {
+		reportUnfunded(rep, state, opts)
+		return count
+	}
 	if count > 0 {
-		if credits, byok, known := workspaceCanSpend(client, state); known && credits == 0 && !byok {
-			reportUnfunded(rep, state, opts)
-			return count
-		}
-		gatewayFunded = true
 		reportProviders(rep, count, providers)
 		return count
 	}
@@ -1115,11 +1125,6 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		rep.warn("still no models enabled — continuing, but agents will have none to use")
 		return 0
 	}
-	if credits, byok, known := workspaceCanSpend(client, state); known && credits == 0 && !byok {
-		reportUnfunded(rep, state, opts)
-		return count
-	}
-	gatewayFunded = true
 	reportProviders(rep, count, providers)
 	return count
 }
@@ -1133,7 +1138,10 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 // either way, so the run is a success with one capability switched off.
 func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
 	rep.warn("no credits and no provider key — orq can't serve model calls yet")
-	rep.note("  MCP tools still work: your agent can read and write this workspace.")
+	// States a property of the product, not a claim about this run: whether MCP
+	// gets wired is the next step's question, and asserting it here read as a
+	// lie to anyone who then chose "Gateway only".
+	rep.note("  MCP tools need no credits — only model calls do.")
 	rep.note("  To turn on the gateway:")
 	rep.note("    Add credits    %s", workspaceURL(state, creditsPath))
 	rep.note("    Connect a key  %s", workspaceURL(state, providersPath))
@@ -1728,7 +1736,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w, "  Ask one of them:")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, `      "list my orq.ai agents"`)
-	} else {
+	} else if gatewayFunded {
 		// No agent wired — the other way in is the gateway itself: point an
 		// existing OpenAI client at the router and change nothing else.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
@@ -1737,6 +1745,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
+	} else {
+		// Nothing wired and nothing to route with. Offering the router snippet
+		// here would advertise the one thing step 3 just said cannot work.
+		fmt.Fprintln(w, "  Your key is saved. Add credits or connect a provider key,")
+		fmt.Fprintln(w, "  then re-run 'orq setup' to wire your agents:")
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "      %s\n", links["credits"])
 	}
 	// Both the provider block and the MCP entry reference ORQ_API_KEY, so an
 	// MCP-only agent needs the export just as much as a provider-wired one.
