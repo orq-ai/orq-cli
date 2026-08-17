@@ -104,7 +104,7 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 | Flag | Effect |
 |---|---|
 | `--workspace <key>` | Activate a workspace |
-| `--api-key <key>` | Use this key instead of logging in and minting one |
+| `--api-key <key>` | Use this key instead of logging in and creating one |
 | `--coding-agent <name>` | Wire a coding agent (repeatable) |
 | `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
 | `--no-coding-agents` / `--no-env` | Skip coding-agent wiring / skip writing `.env` |
