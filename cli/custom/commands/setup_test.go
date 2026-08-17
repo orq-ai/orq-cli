@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/rs/zerolog"
@@ -246,23 +247,38 @@ func TestListProjectsFollowsPages(t *testing.T) {
 	}
 }
 
-// A self-hosted install has no known dashboard URL, so the BYOK pointer has to
-// degrade to something that still helps rather than to a broken link.
-func TestModelsSettingsURLFallsBackToDocs(t *testing.T) {
+// Every dashboard settings page lives under the workspace key. An unprefixed
+// link — which is what setup printed on every run — lands on a route that does
+// not exist, and a self-hosted install has no dashboard URL at all, so both
+// cases have to degrade to something that still helps.
+func TestWorkspaceURLPrefixesTheWorkspaceOrFallsBackToDocs(t *testing.T) {
 	t.Setenv("ORQ_WEB_BASE_URL", "")
-
-	hosted := modelsSettingsURL(&authState{apiBase: auth.DefaultAPIBaseURL})
-	if hosted != defaultWebBaseURL+modelsSettingsPath {
-		t.Errorf("hosted: got %s", hosted)
+	key := "acme"
+	signedIn := &authState{
+		apiBase: auth.DefaultAPIBaseURL,
+		session: &auth.Session{ActiveWorkspaceKey: &key},
 	}
-	selfHosted := modelsSettingsURL(&authState{apiBase: "https://orq.internal"})
-	if !strings.HasPrefix(selfHosted, docsURL) {
-		t.Errorf("self-hosted: got %s, want a docs link", selfHosted)
+
+	if got, want := workspaceURL(signedIn, providersPath), defaultWebBaseURL+"/acme/router/providers"; got != want {
+		t.Errorf("BYOK link: got %s, want %s", got, want)
+	}
+	if got, want := workspaceURL(signedIn, creditsPath), defaultWebBaseURL+"/acme/admin/credits"; got != want {
+		t.Errorf("credits link: got %s, want %s", got, want)
+	}
+
+	// No session means no workspace to name — an --api-key run. Emitting the
+	// unprefixed page would be worse than sending them to the docs.
+	if got := workspaceURL(&authState{apiBase: auth.DefaultAPIBaseURL}, providersPath); !strings.HasPrefix(got, docsURL) {
+		t.Errorf("keyless: got %s, want a docs link", got)
+	}
+	if got := workspaceURL(&authState{apiBase: "https://orq.internal"}, providersPath); !strings.HasPrefix(got, docsURL) {
+		t.Errorf("self-hosted: got %s, want a docs link", got)
 	}
 
 	t.Setenv("ORQ_WEB_BASE_URL", "https://orq.internal/app/")
-	if got := modelsSettingsURL(&authState{apiBase: "https://orq.internal"}); got != "https://orq.internal/app"+modelsSettingsPath {
-		t.Errorf("override: got %s", got)
+	selfHosted := &authState{apiBase: "https://orq.internal", session: &auth.Session{ActiveWorkspaceKey: &key}}
+	if got, want := workspaceURL(selfHosted, providersPath), "https://orq.internal/app/acme/router/providers"; got != want {
+		t.Errorf("override: got %s, want %s", got, want)
 	}
 }
 
@@ -769,6 +785,10 @@ func TestSetupBillsOneCompletionTotal(t *testing.T) {
 
 	codingModelsFetched, cachedCodingModels, provenModel = false, nil, ""
 	defaultModelResolved, provenCandidate = false, auth.RouterModel{}
+	// A funded workspace: the probe is what this test counts, and step 3 is
+	// what would normally set this.
+	gatewayFunded, skipVerification = true, false
+	t.Cleanup(func() { gatewayFunded, skipVerification = false, false })
 	client := auth.NewClient(srv.URL)
 	state := &authState{apiBase: srv.URL, bearer: "t"}
 	rep := newReporter(true)
@@ -1050,5 +1070,156 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	got, _ := tree.Get("providers.orq.api_key").(string)
 	if got != "sk-orq-NEW-SUPPLIED" {
 		t.Errorf("agent config carries api_key %q, want the supplied key — the saved key overrode --api-key", got)
+	}
+}
+
+// A brand-new workspace lists models it cannot pay for: the fixture seeds two
+// enabled gemini entries while credits are $0.00 and no provider key exists, so
+// a non-zero model count is not evidence that any call will succeed. Setup used
+// to go on and bill a probe that could only fail, and reported the failure as a
+// bare 500. Nothing here may reach the router.
+func TestUnfundedWorkspaceSkipsTheBilledProbe(t *testing.T) {
+	var completions int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			atomic.AddInt64(&completions, 1)
+			http.Error(w, `{"error":{"message":"Internal server error"}}`, http.StatusInternalServerError)
+		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
+			fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
+		default:
+			fmt.Fprint(w, `[{"provider":"google","model_id":"gemini-3.5-flash","model_type":"chat","enabled":true,"has_functions":true}]`)
+		}
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	// The test server is not the hosted API, so name the dashboard explicitly —
+	// otherwise both links correctly degrade to docs and the prefix assertion
+	// below would be testing the fallback instead of the fix.
+	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	client := auth.NewClient(srv.URL)
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+
+	// The model catalogue is still read — instrumentAgents needs it, and
+	// skipping it would stop provider config being written at all.
+	if got := resolveProviders(rep, client, state, &setupOptions{noInput: true}); got != 1 {
+		t.Errorf("model count = %d, want the catalogue's 1", got)
+	}
+	if gatewayFunded {
+		t.Error("gatewayFunded set on a workspace with no credits")
+	}
+	if _, ok := defaultCodingModel(rep, client, state); ok {
+		t.Error("default-model probe ran on a workspace that cannot pay for it")
+	}
+	if verifyGateway(rep, client, state) {
+		t.Error("verifyGateway reported success without calling the gateway")
+	}
+	if n := atomic.LoadInt64(&completions); n != 0 {
+		t.Fatalf("billed %d completions on an unfunded workspace, want 0", n)
+	}
+	if !strings.Contains(out.String(), "no credits and no provider key") {
+		t.Errorf("user was not told why the gateway is off:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "/acme/admin/credits") {
+		t.Errorf("credits link missing or unprefixed:\n%s", out.String())
+	}
+}
+
+// The check answers "can this workspace pay", and every way of failing to
+// answer has to be reported as "do not know" — a 403 from the permission the
+// API key cannot hold must never be rendered to the user as "no credits".
+func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		wantKnown   bool
+		wantCredits float64
+	}{
+		{name: "funded", status: 200, body: `{"balance":12.5,"currency":"usd"}`, wantKnown: true, wantCredits: 12.5},
+		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`, wantKnown: true},
+		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`},
+		{name: "server error", status: 500, body: `{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			credits, _, known := workspaceCanSpend(auth.NewClient(srv.URL), sessionWithToken(srv.URL))
+			if known != tc.wantKnown || credits != tc.wantCredits {
+				t.Errorf("got (%v, known=%v), want (%v, known=%v)", credits, known, tc.wantCredits, tc.wantKnown)
+			}
+		})
+	}
+
+	// No session means no token that can read the balance at all.
+	if _, _, known := workspaceCanSpend(auth.NewClient("https://api.orq.ai"), &authState{}); known {
+		t.Error("claimed to know the balance without a session")
+	}
+}
+
+// --no-verify is the user declining to spend a completion. Distinct from an
+// unfunded workspace: the config is written and simply reported as unproven.
+func TestNoVerifySkipsTheProbeOnAFundedWorkspace(t *testing.T) {
+	var completions int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			atomic.AddInt64(&completions, 1)
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`)
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	gatewayFunded, skipVerification = true, true
+	rep := newReporter(true)
+	client := auth.NewClient(srv.URL)
+	state := &authState{apiBase: srv.URL, bearer: "t"}
+
+	if _, ok := defaultCodingModel(rep, client, state); ok {
+		t.Error("probed despite --no-verify")
+	}
+	if verifyGateway(rep, client, state) {
+		t.Error("verifyGateway claimed proof it never obtained")
+	}
+	if n := atomic.LoadInt64(&completions); n != 0 {
+		t.Fatalf("--no-verify billed %d completions, want 0", n)
+	}
+}
+
+// resetSetupMemos clears the package-level state that carries decisions across
+// setup's steps, so tests cannot leak funding or probe results into each other.
+func resetSetupMemos(t *testing.T) {
+	t.Helper()
+	codingModelsFetched, cachedCodingModels = false, nil
+	provenModel, provenCandidate, defaultModelResolved = "", auth.RouterModel{}, false
+	gatewayFunded, skipVerification = false, false
+	t.Cleanup(func() {
+		codingModelsFetched, cachedCodingModels = false, nil
+		provenModel, provenCandidate, defaultModelResolved = "", auth.RouterModel{}, false
+		gatewayFunded, skipVerification = false, false
+	})
+}
+
+// sessionWithToken is an authState carrying a live workspace session token, the
+// shape setup has by the time step 3 runs.
+func sessionWithToken(apiBase string) *authState {
+	key := "acme"
+	return &authState{
+		apiBase: apiBase,
+		session: &auth.Session{
+			ActiveWorkspaceKey: &key,
+			WorkspaceTokens: map[string]auth.StoredAccessToken{
+				key: {Token: "session-token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+			},
+		},
 	}
 }

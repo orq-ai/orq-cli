@@ -36,6 +36,7 @@ type setupOptions struct {
 	noCodingAgents bool
 	noMCP          bool
 	noGateway      bool
+	noVerify       bool
 	noInput        bool
 	yes            bool
 	// narrowing records that the branch flags came from `setup coding-agents`,
@@ -138,6 +139,7 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
+	f.BoolVar(&opts.noVerify, "no-verify", false, "Skip the test call that proves the gateway answers (it bills one completion)")
 	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
 	cmd.AddCommand(newSetupCodingAgentsCommand())
 	return cmd
@@ -319,7 +321,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// nothing connected there are no models, and every step after this one
 	// degrades into a confusing "no models" instead of "connect a provider".
 	rep.step(3, setupSteps, "Providers")
+	skipVerification = opts.noVerify
 	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
+	result["gateway_funded"] = gatewayFunded
 
 	// --- Step 4: coding agents ----------------------------------------------
 	rep.step(4, setupSteps, "Coding agent")
@@ -1006,13 +1010,72 @@ func maskToken(token string) string {
 // Step 4 — providers
 // ============================================================================
 
-// modelsSettingsPath is where a workspace connects providers (BYOK).
-const modelsSettingsPath = "/settings/models"
+// providersPath is where a workspace connects its own provider keys (BYOK), and
+// creditsPath is where it buys orq-managed capacity. Either one makes the
+// gateway able to serve a model call; neither is needed for MCP.
+const (
+	providersPath = "/router/providers"
+	creditsPath   = "/admin/credits"
+)
+
+// workspaceCanSpend reports whether the gateway can serve a model call at all:
+// orq-managed credits, or a BYOK provider key. known is false when the question
+// could not be answered, and callers must then behave exactly as before — a
+// failed permission check must never be reported to the user as "no credits".
+//
+// Session-only by construction. Reading /v2/credits needs credits.view, a
+// permission the API-key capability catalogue cannot express, so the key setup
+// just minted gets 403 no matter how it was scoped. state.bearer is that key by
+// the time this runs, so the session's own workspace token is fetched instead.
+//
+// BYOK state has no endpoint reachable from the API host at all — the only
+// source is a session-scoped dashboard route. It is therefore left false, and
+// the warning it feeds is gated on credits == 0 anyway: a workspace with a
+// provider key but no credits still gets told the truth, that the gateway is
+// refusing calls, with both remedies printed.
+func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, byok bool, known bool) {
+	token := sessionWorkspaceToken(client, state)
+	if token == "" {
+		return 0, false, false
+	}
+	balance, err := client.Credits(token)
+	if err != nil {
+		return 0, false, false
+	}
+	return balance.Balance, false, true
+}
+
+// sessionWorkspaceToken returns a workspace-scoped session token, preferring
+// the one the session already holds. Setup obtained that token minutes ago in
+// step 1, so asking the auth service for another is a round trip to learn what
+// is already in memory — and it would persist a refreshed session as a side
+// effect of a read.
+func sessionWorkspaceToken(client *auth.Client, state *authState) string {
+	if state == nil || state.session == nil || state.session.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	if tok, ok := state.session.WorkspaceTokens[*state.session.ActiveWorkspaceKey]; ok &&
+		tok.Token != "" && !isTokenExpired(tok.ExpiresAt) {
+		return tok.Token
+	}
+	active, err := client.GetActiveWorkspaceAccessToken()
+	if err != nil || active == nil {
+		return ""
+	}
+	return active.AccessToken
+}
 
 // resolveProviders reports how many models the gateway can route to, and walks
 // the user through connecting a provider when the answer is none. Connecting is
 // a browser flow (provider secrets never touch the CLI), so all this can do is
 // detect, deep-link, and re-check.
+//
+// It also decides whether the gateway can serve anything at all. A brand-new
+// workspace lists models — two, seeded by the example fixture — while having no
+// credits and no provider key, so a count above zero is not evidence that a
+// single call will succeed. Without this check setup went on to bill a probe
+// that could only fail, and reported the failure as a 500 the user could do
+// nothing with.
 func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
 	count, providers, err := listEnabledModels(client, state)
 	if err != nil {
@@ -1020,6 +1083,11 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		return 0
 	}
 	if count > 0 {
+		if credits, byok, known := workspaceCanSpend(client, state); known && credits == 0 && !byok {
+			reportUnfunded(rep, state, opts)
+			return count
+		}
+		gatewayFunded = true
 		reportProviders(rep, count, providers)
 		return count
 	}
@@ -1047,8 +1115,35 @@ func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts
 		rep.warn("still no models enabled — continuing, but agents will have none to use")
 		return 0
 	}
+	if credits, byok, known := workspaceCanSpend(client, state); known && credits == 0 && !byok {
+		reportUnfunded(rep, state, opts)
+		return count
+	}
+	gatewayFunded = true
 	reportProviders(rep, count, providers)
 	return count
+}
+
+// reportUnfunded states the one fact that explains everything downstream: the
+// workspace lists models but cannot pay for a call, so the gateway refuses all
+// of them. Said here, once, with both remedies — rather than surfacing later as
+// an unexplained 500 from the verification probe.
+//
+// Deliberately not a failure. MCP wiring works without funding and is written
+// either way, so the run is a success with one capability switched off.
+func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
+	rep.warn("no credits and no provider key — orq can't serve model calls yet")
+	rep.note("  MCP tools still work: your agent can read and write this workspace.")
+	rep.note("  To turn on the gateway:")
+	rep.note("    Add credits    %s", workspaceURL(state, creditsPath))
+	rep.note("    Connect a key  %s", workspaceURL(state, providersPath))
+
+	if opts.noInput || !opts.confirm("Open the credits page now?", true) {
+		return
+	}
+	if url := workspaceURL(state, creditsPath); url != "" && !auth.OpenBrowser(url) {
+		rep.note("  could not open a browser — the URL above is the one to visit")
+	}
 }
 
 // reportProviders says what the step actually verified — that BYOK providers
@@ -1116,11 +1211,22 @@ func listEnabledModels(client *auth.Client, state *authState) (int, []string, er
 	return enabled, connectedProviders(models), nil
 }
 
-func modelsSettingsURL(state *authState) string {
-	if base := webBaseURL(state); base != "" {
-		return base + modelsSettingsPath
+// workspaceURL builds a dashboard link for this workspace. Every settings page
+// lives under the workspace key — an unprefixed path lands on a route that does
+// not exist, which is what the old "/settings/models" link did on every run.
+// Without a key (an --api-key run has no session to name a workspace) the docs
+// page is the only honest destination.
+func workspaceURL(state *authState, path string) string {
+	base := webBaseURL(state)
+	if base == "" || state == nil || state.session == nil ||
+		state.session.ActiveWorkspaceKey == nil || *state.session.ActiveWorkspaceKey == "" {
+		return docsURL + "/docs/ai-gateway/get-started/introduction"
 	}
-	return docsURL + "/docs/ai-gateway/get-started/introduction"
+	return base + "/" + *state.session.ActiveWorkspaceKey + path
+}
+
+func modelsSettingsURL(state *authState) string {
+	return workspaceURL(state, providersPath)
 }
 
 // ============================================================================
@@ -1372,6 +1478,19 @@ var provenTook time.Duration
 var defaultModelResolved bool
 var provenCandidate auth.RouterModel
 
+// gatewayFunded records step 3's answer: can this workspace pay for a model
+// call at all? Nothing downstream can ask again — resolveProviders' return
+// value is only the model count, and neither instrumentAgents nor verifyGateway
+// receives it — so the answer is kept here beside the other step-crossing
+// memos. Default false is deliberately the safe direction: a run that never
+// reached step 3 bills nothing.
+var gatewayFunded bool
+
+// skipVerification is --no-verify: the user declining to spend a completion on
+// proving the config works. Distinct from gatewayFunded, which is the workspace
+// being unable to serve one.
+var skipVerification bool
+
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
 		return cachedCodingModels
@@ -1402,6 +1521,13 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
 	if defaultModelResolved {
 		return provenCandidate, provenModel != ""
+	}
+	// Probing costs a completion, and on a workspace that cannot pay for one it
+	// costs a guaranteed failure instead of an answer. Writers handle an empty
+	// default (codex omits the model key, kimi omits default_model), so the
+	// config is still written — it simply claims no proven model.
+	if !gatewayFunded || skipVerification {
+		return auth.RouterModel{}, false
 	}
 	models := codingModels(rep, client, state)
 	if len(models) == 0 {
@@ -1512,6 +1638,18 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 // valid; this proves the thing the user actually came for — that a model
 // answers through the router.
 func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
+	// Both exits below reach TimeModel, which is a billed completion. Step 3
+	// already established the workspace cannot pay for one; attempting it
+	// anyway is what produced the unexplained 500 at the end of a new user's
+	// first run. Not a failure — nothing is broken, one capability is off.
+	if !gatewayFunded {
+		rep.warn("gateway     skipped — no credits or provider key (see above)")
+		return false
+	}
+	if skipVerification {
+		rep.note("gateway     not verified (--no-verify) — config written, not proven")
+		return false
+	}
 	models := codingModels(rep, client, state)
 	if len(models) == 0 {
 		rep.warn("gateway        no model answered — connect a provider, then re-run 'orq setup'")
@@ -1521,7 +1659,8 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 	// proved the exact thing this step reports — a real completion through the
 	// router on this credential — and repeating it billed the user twice.
 	if provenModel != "" {
-		rep.ok("gateway     %s answered in %dms", provenModel, provenTook.Milliseconds())
+		rep.ok("gateway     %s answered in %dms  (one test call, billed to your workspace)",
+			provenModel, provenTook.Milliseconds())
 		return true
 	}
 	ref := models[0].Ref()
@@ -1530,7 +1669,8 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 		rep.fail("gateway        %s did not answer: %v", ref, err)
 		return false
 	}
-	rep.ok("gateway     %s answered in %dms", ref, took.Milliseconds())
+	rep.ok("gateway     %s answered in %dms  (one test call, billed to your workspace)",
+		ref, took.Milliseconds())
 	return true
 }
 
@@ -1550,9 +1690,11 @@ func buildLinks(state *authState) map[string]string {
 	webBase := webBaseURL(state)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
-	}
-	if webBase != "" {
-		links["models"] = webBase + modelsSettingsPath
+		// Both are workspace-scoped routes; workspaceURL falls back to the docs
+		// when there is no key to prefix with, which would make these links
+		// point at pages that do not exist.
+		links["models"] = workspaceURL(state, providersPath)
+		links["credits"] = workspaceURL(state, creditsPath)
 	}
 	return links
 }
