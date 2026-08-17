@@ -36,7 +36,6 @@ type setupOptions struct {
 	noCodingAgents bool
 	noMCP          bool
 	noGateway      bool
-	noEnv          bool
 	noInput        bool
 	yes            bool
 	// narrowing records that the branch flags came from `setup coding-agents`,
@@ -139,7 +138,6 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
-	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
 	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
 	cmd.AddCommand(newSetupCodingAgentsCommand())
 	return cmd
@@ -893,10 +891,8 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	}
 
 	// A key from an earlier run is reused, not replaced. Minting per run left
-	// a trail of live keys in the dashboard and made every re-run disagree
-	// with the ./.env written by the previous one. The env-file tail below
-	// still runs on reuse: a fresh project directory needs its ./.env even
-	// when the key itself is old.
+	// a trail of live keys in the dashboard, and every re-run then disagreed
+	// with whatever the previous one had already written into agent configs.
 	//
 	// Reused only when it belongs to the workspace this run resolved. Keys are
 	// workspace-scoped at mint time and resolveWorkspace has already switched
@@ -967,17 +963,6 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		offerProfileSourceLine(rep, opts)
 	}
 
-	if opts.noEnv || opts.global {
-		return info, token, nil
-	}
-	if opts.interactive && !opts.confirm("Write ORQ_API_KEY to ./.env?", true) {
-		return info, token, nil
-	}
-	if err := appendEnvKey(rep, token); err != nil {
-		rep.warn("could not write ./.env: %v", err)
-		return info, token, nil
-	}
-	info["env_file"] = "./.env"
 	return info, token, nil
 }
 
@@ -1014,63 +999,6 @@ func maskToken(token string) string {
 		return "sk-orq-…"
 	}
 	return token[:12] + "…"
-}
-
-// appendEnvKey adds ORQ_API_KEY to ./.env, leaving an existing entry alone, and
-// warns when the file is not ignored by git.
-func appendEnvKey(rep *reporter, token string) error {
-	const envFile = ".env"
-	existing, err := os.ReadFile(envFile)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for _, line := range strings.Split(string(existing), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "ORQ_API_KEY=") {
-			continue
-		}
-		rep.ok("./.env already sets ORQ_API_KEY — left as is")
-		// The key there may be one we minted on an earlier run and have since
-		// replaced; anything reading .env would then authenticate with a dead
-		// credential. We do not overwrite it — it may equally be the user's own.
-		if strings.TrimSpace(line) != "ORQ_API_KEY="+token {
-			rep.warn("  it differs from the key just created — update it by hand if agents get 401s")
-		}
-		return nil
-	}
-	prefix := ""
-	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-		prefix = "\n"
-	}
-	f, err := os.OpenFile(envFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.WriteString(prefix + "ORQ_API_KEY=" + token + "\n"); err != nil {
-		return err
-	}
-	rep.ok("wrote       ./.env  → ORQ_API_KEY")
-	// Only the bad case is worth a line. That ./.env is gitignored, and that orq
-	// auto-loads it, are both true and neither is news at minute one — `orq
-	// doctor` is where a user goes when the precedence actually bites them.
-	if !envIsGitIgnored() {
-		rep.warn("./.env is NOT covered by .gitignore — do not commit it")
-	}
-	return nil
-}
-
-func envIsGitIgnored() bool {
-	data, err := os.ReadFile(".gitignore")
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		switch strings.TrimSpace(line) {
-		case ".env", "/.env", "*.env", ".env*":
-			return true
-		}
-	}
-	return false
 }
 
 // ============================================================================
