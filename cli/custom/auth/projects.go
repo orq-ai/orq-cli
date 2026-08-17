@@ -84,19 +84,28 @@ func ProjectScopable(projectID string) bool {
 	return ulidPattern.MatchString(strings.TrimPrefix(projectID, "proj_"))
 }
 
-// CreateAPIKey mints a key and returns the raw token, which the API returns
-// exactly once — callers must persist it before doing anything else.
+// createAPIKeyBody builds the request the live API validates against, split out
+// from CreateAPIKey so the owner and scope decisions are testable without a
+// network call.
 //
-// The key is scoped to projectID when that ID is in the format this endpoint
-// accepts, and to the whole workspace otherwise. scopedToProject reports which
-// happened so the caller can tell the user.
+// Owner choice is the important part. A service-account key is workspace-owned
+// and outlives its creator, but only workspace admins may create one — so
+// asking for it unconditionally makes `orq setup` fail outright for a Developer
+// or Researcher in an Enterprise workspace, which is most of the people the
+// installer is aimed at. A user key is what the product documents for "personal
+// use and local development", and any member can mint one. It is revoked if the
+// user leaves the org, which for a key that only ever sits in one person's
+// ~/.orq and coding-agent configs is the correct lifecycle, not a limitation.
+//
+// Falls back to a service account when the caller has no user id — an
+// API-key-only run has no session and therefore nobody to attribute the key to.
 //
 // The request shape here deliberately does not match openapi.yaml: the live API
 // uses discriminated unions keyed on `type`/`mode` and lowercase permission
 // values, while the committed spec documents wrapper objects and
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
-// actually validates against.
-func (c *Client) CreateAPIKey(bearer, name, projectID string) (token string, scopedToProject bool, err error) {
+// actually validates against (verified against /v2/api-keys, both owner types).
+func createAPIKeyBody(name, projectID, userID string) (body map[string]any, scopedToProject bool) {
 	scope := map[string]any{"mode": "all"}
 	if ProjectScopable(projectID) {
 		scope = map[string]any{
@@ -105,12 +114,27 @@ func (c *Client) CreateAPIKey(bearer, name, projectID string) (token string, sco
 		}
 		scopedToProject = true
 	}
-	body := map[string]any{
+	owner := map[string]any{"type": "service_account"}
+	if id := strings.TrimSpace(userID); id != "" {
+		owner = map[string]any{"type": "user", "user_id": id}
+	}
+	return map[string]any{
 		"name":            name,
-		"owner":           map[string]any{"type": "service_account"},
+		"owner":           owner,
 		"project_scope":   scope,
 		"permission_mode": "all",
-	}
+	}, scopedToProject
+}
+
+// CreateAPIKey mints a key and returns the raw token, which the API returns
+// exactly once — callers must persist it before doing anything else.
+//
+// The key is scoped to projectID when that ID is in the format this endpoint
+// accepts, and to the whole workspace otherwise. scopedToProject reports which
+// happened so the caller can tell the user. userID attributes the key to a
+// person; see createAPIKeyBody for why that is the default.
+func (c *Client) CreateAPIKey(bearer, name, projectID, userID string) (token string, scopedToProject bool, err error) {
+	body, scopedToProject := createAPIKeyBody(name, projectID, userID)
 	var resp struct {
 		Token string `json:"token"`
 	}
