@@ -373,7 +373,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 var errAgentFailed = errors.New("one or more coding agents could not be configured")
 
 // looksLikeProject reports whether the working directory is somewhere it makes
-// sense to drop .mcp.json and .agents/.
+// sense to write agent config rather than $HOME — today that means .mcp.json,
+// the only file setup still writes into a project. It also decided where to put
+// .env and .agents/, and both are gone: skills left in 03baa27, and setup no
+// longer writes ./.env at all.
 func looksLikeProject() bool {
 	for _, marker := range []string{".git", "package.json", "pyproject.toml", "go.mod", "Cargo.toml"} {
 		if _, err := os.Stat(marker); err == nil {
@@ -1175,6 +1178,9 @@ func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
 	rep.warn("no credits and no provider key — orq can't serve model calls yet")
 	rep.warn("    Add credits    %s", credits)
 	rep.warn("    Connect a key  %s", workspaceURL(state, providersPath))
+	// Names the command that confirms the fix landed, so the user does not have
+	// to re-run setup to find out whether their credits took effect.
+	rep.warn("  then: orq doctor")
 
 	if opts.noInput || !opts.confirm("Open the credits page now?", true) {
 		return
@@ -1438,6 +1444,11 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					results = append(results, res)
 					continue
 				}
+				// defaultModel is empty whenever the probe was skipped — an
+				// unfunded workspace or --no-verify. Writers handle that: codex
+				// omits the model key entirely, kimi omits default_model. The
+				// config is still written and starts working the moment the
+				// gateway can serve a call; it simply claims no proven model.
 				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 				switch {
 				case werr != nil:
@@ -1760,12 +1771,13 @@ func buildLinks(state *authState) map[string]string {
 	webBase := webBaseURL(state)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
-		links["credits"] = workspaceURL(state, creditsPath)
 	}
 	// Outside the guard: workspaceURL already degrades to the docs page when
 	// there is no workspace key to prefix with, and a keyless run still needs
-	// somewhere to send a user who has no models.
+	// somewhere to send a user who has no models or no credits. Inside it, a
+	// keyless run got an empty string here and printed a blank URL.
 	links["models"] = workspaceURL(state, providersPath)
+	links["credits"] = workspaceURL(state, creditsPath)
 	return links
 }
 
