@@ -861,7 +861,16 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		}
 		keyName := sanitizeKeyName("orq-cli " + hostname)
 
-		minted, _, err := client.CreateAPIKey(state.bearer, keyName, "")
+		// Attribute the key to the person who logged in. Without a session
+		// there is nobody to attribute it to, and the API falls back to a
+		// service account — which only admins may create, so that path can
+		// still fail for a non-admin. It is only reachable on an
+		// --api-key/env run, which already has a key and does not mint.
+		userID := ""
+		if state.session != nil && state.session.User != nil {
+			userID = state.session.User.ID
+		}
+		minted, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID)
 		if err != nil {
 			return nil, "", err
 		}
