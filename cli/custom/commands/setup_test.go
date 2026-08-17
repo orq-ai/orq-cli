@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"github.com/spf13/cobra"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"orq/cli/custom/auth"
@@ -630,6 +630,12 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 // pre-answer it so scripts never see a prompt. This pins the mapping: which
 // flag combinations wire which branch, and that nothing-to-wire short-circuits
 // before any agent work.
+// Every case runs instrumentAgents for real and asserts on what it did —
+// the MCP file it wrote (or didn't) and the provider branch it entered (or
+// skipped). Kimi is the probe agent, run from a throwaway HOME and CWD so
+// every write lands there. The gateway branch's marker is its own per-agent
+// "no models to offer" line — the client is empty, so entering the branch
+// always ends there, and unlike the list-models warning it is not memoized.
 func TestWiringFlagsMapToBranches(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
@@ -645,27 +651,27 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 		{name: "both flags → nothing", noMCP: true, noGateway: true, noInput: true, wantNothing: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			// Kimi's MCP path is project-scoped, so the write lands in CWD.
+			chdir(t, t.TempDir())
+			var out strings.Builder
+			rep := &reporter{w: &out}
 			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
+			results := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts)
 			if tc.wantNothing {
-				// Real call: both flags set must short-circuit before any
-				// per-agent work — no prompt (noInput), no network, no writes.
-				results := instrumentAgents(newReporter(true), auth.NewClient(""), &authState{}, opts)
+				// Both flags set must short-circuit before any per-agent work
+				// — no prompt (noInput), no network, no writes.
 				if results != nil {
 					t.Fatalf("nothing-to-wire returned %d results, want none", len(results))
 				}
 				return
 			}
-			gotNothing := opts.noMCP && opts.noGateway
-			if gotNothing != tc.wantNothing {
-				t.Fatalf("nothing-to-wire = %v, want %v", gotNothing, tc.wantNothing)
+			_, err := os.Stat(filepath.Join(".kimi-code", "mcp.json"))
+			if gotMCP := err == nil; gotMCP != tc.wantMCP {
+				t.Errorf("MCP file written = %v, want %v\noutput:\n%s", gotMCP, tc.wantMCP, out.String())
 			}
-			if !gotNothing {
-				if got := !opts.noMCP; got != tc.wantMCP {
-					t.Errorf("wire MCP = %v, want %v", got, tc.wantMCP)
-				}
-				if got := !opts.noGateway; got != tc.wantGateway {
-					t.Errorf("wire gateway = %v, want %v", got, tc.wantGateway)
-				}
+			if gotGateway := strings.Contains(out.String(), "no models to offer"); gotGateway != tc.wantGateway {
+				t.Errorf("gateway branch entered = %v, want %v\noutput:\n%s", gotGateway, tc.wantGateway, out.String())
 			}
 		})
 	}

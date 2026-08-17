@@ -1112,6 +1112,37 @@ func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
 	}
 }
 
+// Every provider writer must ship with its read-side detector, in the same
+// registry entry. Without one, doctor silently reports the agent unwired
+// forever — the drift class the field exists to kill.
+func TestProviderWritersPairWithDetectors(t *testing.T) {
+	for _, spec := range agentRegistry() {
+		if spec.writeProvider != nil && spec.providerPresent == nil {
+			t.Errorf("%s has writeProvider but no providerPresent — doctor cannot see its wiring", spec.ID)
+		}
+	}
+}
+
+// Codex's detector must read the profile's content, not its existence: an
+// empty or truncated file at the right path is not a wired agent.
+func TestCodexProviderDetectorReadsContentNotExistence(t *testing.T) {
+	codex, _ := lookupAgent("codex")
+	path := filepath.Join(t.TempDir(), codexProfileName+".config.toml")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if codex.providerPresent(path) {
+		t.Fatal("empty profile file read as wired")
+	}
+	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", openCodeModels(),
+		"openai/gpt-5.4"); err != nil {
+		t.Fatal(err)
+	}
+	if !codex.providerPresent(path) {
+		t.Fatal("profile the writer just produced read as unwired")
+	}
+}
+
 // Doctor's coding-agent checks are the read-side of what the writers produce:
 // wired = pass, detected-but-unwired = warn (an agent nobody wired is an
 // offer, not a failure — the exit code must stay healthy), undetected = absent.
@@ -1202,9 +1233,10 @@ func TestCodingAgentChecksFindProjectScopedWiring(t *testing.T) {
 	}
 
 	var claudeCheck *doctorCheck
-	for i, c := range codingAgentChecks() {
-		if c.ID == "coding_agent_claude" {
-			claudeCheck = &codingAgentChecks()[i]
+	checks := codingAgentChecks()
+	for i := range checks {
+		if checks[i].ID == "coding_agent_claude" {
+			claudeCheck = &checks[i]
 		}
 	}
 	if claudeCheck == nil {
