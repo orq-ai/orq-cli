@@ -321,7 +321,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// nothing connected there are no models, and every step after this one
 	// degrades into a confusing "no models" instead of "connect a provider".
 	rep.step(3, setupSteps, "Providers")
-	skipVerification = opts.noVerify
+	authState.skipVerify = opts.noVerify
 	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
 	result["gateway_funded"] = gatewayFunded
 
@@ -398,6 +398,11 @@ type authState struct {
 	// suppliedKey is set when the user brought their own key, in which case we
 	// never mint one.
 	suppliedKey string
+	// skipVerify is --no-verify travelling with the run rather than as a
+	// package global: it is the user declining to spend a completion, not
+	// state that crosses steps. Distinct from gatewayFunded, which is the
+	// workspace being unable to serve one.
+	skipVerify bool
 }
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
@@ -452,18 +457,19 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		if err != nil {
 			return nil, err
 		}
-		if session.User != nil {
-			signedInAs = session.User.Email
-		}
-	} else {
-		signedInAs = "current user"
-		if session.User != nil && session.User.Email != "" {
-			signedInAs = session.User.Email
-		}
+
+	}
+	// Identity and workspace are one fact to the reader, so the email travels
+	// to resolveWorkspace and both are printed on one line there. A package
+	// global would cross two functions in a single call chain, which is not
+	// what the step-crossing memos below are for.
+	signedInAs := "current user"
+	if session.User != nil && session.User.Email != "" {
+		signedInAs = session.User.Email
 	}
 
 	client := auth.NewClient(session.APIBaseURL)
-	session, err = resolveWorkspace(rep, client, session, opts)
+	session, err = resolveWorkspace(rep, client, session, opts, signedInAs)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +556,7 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}, nil
 }
 
-func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions) (*auth.Session, error) {
+func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions, signedInAs string) (*auth.Session, error) {
 	key := opts.workspace
 	if key == "" && session.ActiveWorkspaceKey != nil {
 		key = *session.ActiveWorkspaceKey
@@ -1064,18 +1070,42 @@ func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, 
 // is already in memory — and it would persist a refreshed session as a side
 // effect of a read.
 func sessionWorkspaceToken(client *auth.Client, state *authState) string {
-	if state == nil || state.session == nil || state.session.ActiveWorkspaceKey == nil {
+	// No session means no identity to read a balance for. Without this the
+	// refresh below would reach for whatever session happens to be on disk,
+	// which on an --api-key run is a different workspace than the one being
+	// configured — and would quietly make the session-only contract false.
+	if state == nil || state.session == nil {
 		return ""
 	}
-	if tok, ok := state.session.WorkspaceTokens[*state.session.ActiveWorkspaceKey]; ok &&
-		tok.Token != "" && !isTokenExpired(tok.ExpiresAt) {
-		return tok.Token
+	if token := storedWorkspaceToken(state.session); token != "" {
+		return token
 	}
+	// Setup may refresh; doctor may not. That difference is the only thing the
+	// two callers disagree about, so it lives here at the call site rather than
+	// inside the shared reader — a refresh persists a new session, which is
+	// fine mid-setup and wrong from a diagnostic.
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil || active == nil {
 		return ""
 	}
 	return active.AccessToken
+}
+
+// storedWorkspaceToken returns the unexpired workspace token a session already
+// holds, or "" when there is none. No network, no refresh, no writes.
+//
+// Shared by setup and doctor because they were reading the same session the
+// same way twice and had already drifted apart on the refresh question; the
+// handoff notes record two paths to one endpoint diverging four times in a day.
+func storedWorkspaceToken(session *auth.Session) string {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	tok, ok := session.WorkspaceTokens[*session.ActiveWorkspaceKey]
+	if !ok || tok.Token == "" || isTokenExpired(tok.ExpiresAt) {
+		return ""
+	}
+	return tok.Token
 }
 
 // resolveProviders reports how many models the gateway can route to, and walks
@@ -1555,10 +1585,6 @@ var provenTook time.Duration
 var defaultModelResolved bool
 var provenCandidate auth.RouterModel
 
-// signedInAs is the identity resolved in step 1, printed once alongside the
-// workspace rather than on a line of its own — they are one fact to the reader.
-var signedInAs string
-
 // gatewayFunded records step 3's answer: can this workspace pay for a model
 // call at all? Nothing downstream can ask again — resolveProviders' return
 // value is only the model count, and neither instrumentAgents nor verifyGateway
@@ -1566,11 +1592,6 @@ var signedInAs string
 // memos. Default false is deliberately the safe direction: a run that never
 // reached step 3 bills nothing.
 var gatewayFunded bool
-
-// skipVerification is --no-verify: the user declining to spend a completion on
-// proving the config works. Distinct from gatewayFunded, which is the workspace
-// being unable to serve one.
-var skipVerification bool
 
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
@@ -1607,7 +1628,7 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 	// costs a guaranteed failure instead of an answer. Writers handle an empty
 	// default (codex omits the model key, kimi omits default_model), so the
 	// config is still written — it simply claims no proven model.
-	if !gatewayFunded || skipVerification {
+	if !gatewayFunded || state.skipVerify {
 		return auth.RouterModel{}, false
 	}
 	models := codingModels(rep, client, state)
@@ -1727,7 +1748,7 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 		rep.warn("gateway     skipped — no credits or provider key (see above)")
 		return false
 	}
-	if skipVerification {
+	if state.skipVerify {
 		rep.note("gateway     not verified (--no-verify) — config written, not proven")
 		return false
 	}

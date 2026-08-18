@@ -379,11 +379,13 @@ func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult)
 	if inspect.Status != auth.StatusOK || inspect.Session == nil || inspect.Session.ActiveWorkspaceKey == nil {
 		return doctorCheck{}, false
 	}
-	token := inspect.Session.WorkspaceTokens[*inspect.Session.ActiveWorkspaceKey]
-	if token.Token == "" || isTokenExpired(token.ExpiresAt) {
+	// storedWorkspaceToken only, never a refresh: refreshing persists a new
+	// session, and a diagnostic must not write state to answer a question.
+	token := storedWorkspaceToken(inspect.Session)
+	if token == "" {
 		return doctorCheck{}, false
 	}
-	balance, err := client.Credits(token.Token)
+	balance, err := client.Credits(token)
 	if err != nil {
 		return doctorCheck{}, false
 	}
