@@ -789,8 +789,8 @@ func TestSetupBillsOneCompletionTotal(t *testing.T) {
 	defaultModelResolved, provenCandidate = false, auth.RouterModel{}
 	// A funded workspace: the probe is what this test counts, and step 3 is
 	// what would normally set this.
-	gatewayFunded, skipVerification = true, false
-	t.Cleanup(func() { gatewayFunded, skipVerification = false, false })
+	gatewayFunded = true
+	t.Cleanup(func() { gatewayFunded = false })
 	client := auth.NewClient(srv.URL)
 	state := &authState{apiBase: srv.URL, bearer: "t"}
 	rep := newReporter(true)
@@ -1129,6 +1129,16 @@ func TestUnfundedWorkspaceSkipsTheBilledProbe(t *testing.T) {
 	if !strings.Contains(out.String(), "/acme/admin/credits") {
 		t.Errorf("credits link missing or unprefixed:\n%s", out.String())
 	}
+
+	// The point of not failing the run: everything that works without funding
+	// is still written. A skipped probe must not become a skipped setup.
+	instrumentAgents(rep, client, state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
+		t.Errorf("MCP config was not written on an unfunded workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")); err != nil {
+		t.Errorf("provider config was not written on an unfunded workspace: %v", err)
+	}
 }
 
 // The check answers "can this workspace pay", and every way of failing to
@@ -1181,10 +1191,10 @@ func TestNoVerifySkipsTheProbeOnAFundedWorkspace(t *testing.T) {
 	defer srv.Close()
 
 	resetSetupMemos(t)
-	gatewayFunded, skipVerification = true, true
+	gatewayFunded = true
 	rep := newReporter(true)
 	client := auth.NewClient(srv.URL)
-	state := &authState{apiBase: srv.URL, bearer: "t"}
+	state := &authState{apiBase: srv.URL, bearer: "t", skipVerify: true}
 
 	if _, ok := defaultCodingModel(rep, client, state); ok {
 		t.Error("probed despite --no-verify")
@@ -1201,14 +1211,13 @@ func TestNoVerifySkipsTheProbeOnAFundedWorkspace(t *testing.T) {
 // setup's steps, so tests cannot leak funding or probe results into each other.
 func resetSetupMemos(t *testing.T) {
 	t.Helper()
-	codingModelsFetched, cachedCodingModels = false, nil
-	provenModel, provenCandidate, defaultModelResolved = "", auth.RouterModel{}, false
-	gatewayFunded, skipVerification = false, false
-	t.Cleanup(func() {
+	reset := func() {
 		codingModelsFetched, cachedCodingModels = false, nil
-		provenModel, provenCandidate, defaultModelResolved = "", auth.RouterModel{}, false
-		gatewayFunded, skipVerification = false, false
-	})
+		provenModel, provenTook, provenCandidate = "", 0, auth.RouterModel{}
+		defaultModelResolved, gatewayFunded = false, false
+	}
+	reset()
+	t.Cleanup(reset)
 }
 
 // sessionWithToken is an authState carrying a live workspace session token, the
