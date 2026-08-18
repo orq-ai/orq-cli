@@ -462,7 +462,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 			viper.Set("config-directory", dir)
 			t.Cleanup(func() { viper.Set("config-directory", "") })
 
-			if err := writeAPIKeyProfile("default", "a-key"); err != nil {
+			if err := writeAPIKeyProfile("default", "a-key", "test-ws"); err != nil {
 				t.Fatalf("writeAPIKeyProfile: %v", err)
 			}
 			written := bartolocli.Creds.GetString("profiles.default.type")
@@ -470,6 +470,103 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 				t.Errorf("wrote type %q, which resolves to no handler", written)
 			}
 		})
+	}
+}
+
+// credsHarness points bartolo's credential store and the config directory at
+// throwaway state so profile reads and writes never touch the real machine.
+func credsHarness(t *testing.T) {
+	t.Helper()
+	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
+	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() {
+		bartolocli.Creds, bartolocli.AuthHandlers = restoreCreds, restoreHandlers
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+	})
+}
+
+// An API key is minted against whatever workspace is active at mint time and
+// stays scoped to it forever. Reusing it after the session resolved a different
+// workspace wires every agent config — kimi holds the literal key — to the
+// workspace the user just switched away from, and verification passes because
+// the key is valid there. So the profile records the key's workspace, and reuse
+// requires a match: a provable mismatch re-mints, an unrecorded workspace (keys
+// saved before the field existed, or brought via --api-key) is reused as before.
+func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
+	wsA, wsB := "workspace-a", "workspace-b"
+	cases := map[string]struct {
+		storedWS  string
+		wantMints int64
+	}{
+		"same workspace reuses":        {storedWS: wsB, wantMints: 0},
+		"unrecorded workspace reuses":  {storedWS: "", wantMints: 0},
+		"other workspace mints for it": {storedWS: wsA, wantMints: 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			var mints int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/v2/api-keys" {
+					t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+				}
+				atomic.AddInt64(&mints, 1)
+				fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+			}))
+			defer srv.Close()
+
+			if err := saveAPIKeyProfile("sk-orq-old", tc.storedWS); err != nil {
+				t.Fatal(err)
+			}
+			state := &authState{
+				apiBase: srv.URL,
+				bearer:  "session-token",
+				session: &auth.Session{ActiveWorkspaceKey: &wsB, User: &auth.SessionUser{ID: "u1"}},
+			}
+			// global skips the ./.env tail; noInput skips every confirm.
+			opts := &setupOptions{noInput: true, global: true}
+			_, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := atomic.LoadInt64(&mints); got != tc.wantMints {
+				t.Fatalf("minted %d keys, want %d", got, tc.wantMints)
+			}
+
+			wantKey, wantWS := "sk-orq-old", tc.storedWS
+			if tc.wantMints > 0 {
+				// The replacement must record the workspace it was minted for,
+				// or the next run repeats the mismatch against a stale field.
+				wantKey, wantWS = "sk-orq-fresh", wsB
+			}
+			if key, ws := savedAPIKey(); key != wantKey || ws != wantWS {
+				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wantWS)
+			}
+		})
+	}
+}
+
+// The subcommand never mints, so on a mismatch it must refuse — wiring with the
+// saved key would silently point every agent at the key's workspace, not the
+// one the session just resolved.
+func TestKeyWorkspaceMismatch(t *testing.T) {
+	cases := map[string]struct {
+		saved, active string
+		want          bool
+	}{
+		"different workspaces": {"ws-a", "ws-b", true},
+		"same workspace":       {"ws-a", "ws-a", false},
+		"saved unrecorded":     {"", "ws-b", false},
+		"no session workspace": {"ws-a", "", false},
+	}
+	for name, tc := range cases {
+		if got := keyWorkspaceMismatch(tc.saved, tc.active); got != tc.want {
+			t.Errorf("%s: keyWorkspaceMismatch(%q, %q) = %v, want %v", name, tc.saved, tc.active, got, tc.want)
+		}
 	}
 }
 
