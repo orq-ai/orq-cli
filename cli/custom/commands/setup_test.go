@@ -650,6 +650,10 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 // "no models to offer" line — the client is empty, so entering the branch
 // always ends there, and unlike the list-models warning it is not memoized.
 func TestWiringFlagsMapToBranches(t *testing.T) {
+	// Without this the test reads whatever the memos were left holding and
+	// passes only because it happens to run before the tests that set them.
+	resetSetupMemos(t)
+
 	for _, tc := range []struct {
 		name                 string
 		noMCP, noGateway     bool
@@ -1096,6 +1100,11 @@ func TestUnfundedWorkspaceSkipsTheBilledProbe(t *testing.T) {
 	defer srv.Close()
 
 	resetSetupMemos(t)
+	// kimi's MCP path is project-scoped, so instrumentAgents below writes into
+	// the working directory. Without this the file lands in the package source
+	// tree — which is exactly how a test-server URL got committed once.
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
 	// The test server is not the hosted API, so name the dashboard explicitly —
 	// otherwise both links correctly degrade to docs and the prefix assertion
 	// below would be testing the fallback instead of the fix.

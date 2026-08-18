@@ -400,12 +400,10 @@ func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult)
 	// Warn, not fail: a BYOK provider key serves calls with a zero balance, and
 	// this endpoint cannot see BYOK. Reporting a working workspace as broken
 	// would be the worse error.
-	credits := "your workspace settings"
-	if base := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/"); base != "" {
-		credits = base + "/" + *inspect.Session.ActiveWorkspaceKey + "/admin/credits"
-	} else if inspect.Session.APIBaseURL == auth.DefaultAPIBaseURL {
-		credits = defaultWebBaseURL + "/" + *inspect.Session.ActiveWorkspaceKey + "/admin/credits"
-	}
+	// Same builder setup uses, rather than a second spelling of the same URL:
+	// the first attempt at this fell back to prose where setup falls back to
+	// the docs page, which is how one link becomes two different links.
+	credits := dashboardURL(inspect.Session.APIBaseURL, *inspect.Session.ActiveWorkspaceKey, creditsPath)
 	return doctorCheck{
 		ID:     "gateway_funding",
 		Status: "warn",

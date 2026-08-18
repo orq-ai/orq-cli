@@ -12,6 +12,7 @@ import (
 	"orq/cli/custom/launch"
 
 	"github.com/pelletier/go-toml"
+	"github.com/spf13/viper"
 )
 
 // mcpServerName is the key every agent config registers orq under. Aliased to
@@ -783,6 +784,12 @@ bearer_token_env_var = "ORQ_API_KEY"
 // semantics only.
 func codingAgentChecks() []doctorCheck {
 	var checks []doctorCheck
+	// Both are properties of this process, not of any one agent: read once.
+	// sourceLine is what the user's own shell needs — detectShell spells it
+	// for fish and honours a non-default config directory, which a hardcoded
+	// ". ~/.orq/env" does not.
+	keyExported := agentKeyExported()
+	sourceLine := detectShell(viper.GetString("config-directory")).displayLine()
 	for _, spec := range agentRegistry() {
 		if !spec.detect() {
 			continue // nothing to say about an agent that is not installed
@@ -815,7 +822,6 @@ func codingAgentChecks() []doctorCheck {
 		// diagnostic is most obliged to speak up. The profile edit setup offers
 		// only reaches shells started after it, so this state is normal for
 		// anyone who left a terminal open.
-		keyExported := agentKeyExported()
 		details["api_key_in_env"] = keyExported
 
 		switch {
@@ -824,7 +830,8 @@ func codingAgentChecks() []doctorCheck {
 		case wired == offered && !keyExported:
 			check.Status = "warn"
 			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
-				"agents started from here will fail to authenticate. Run '. ~/.orq/env', or start them from a new shell"
+				"agents started from here will fail to authenticate. Run '" + sourceLine +
+				"', or start them from a new shell"
 		case wired == offered:
 			check.Status = "pass"
 			check.Message = spec.Label + " is wired to orq"
