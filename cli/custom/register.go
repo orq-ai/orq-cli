@@ -12,6 +12,7 @@ import (
 	colorable "github.com/mattn/go-colorable"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -72,6 +73,10 @@ func Register(root *cobra.Command) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
+	// Everything below is help presentation, and runs last so it sees the
+	// complete tree: the generated commands, ours, and every global flag.
+	applyCommandGroups(root)
+	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
 }
 
@@ -81,6 +86,20 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+}
+
+// annotateGlobalFlagEnvVars appends the env var each global flag answers to,
+// the way `bt --help` does. Nothing is bound here: bartolo already binds every
+// global through viper with SetEnvPrefix("ORQ"), a `-` → `_` key replacer and
+// AutomaticEnv, so the hint states a fact rather than creating one.
+//
+// The root's PERSISTENT flags are exactly that viper-bound set. `--help` and
+// `--version` are local root flags and correctly get no hint: no env var sets
+// them.
+func annotateGlobalFlagEnvVars(root *cobra.Command) {
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		f.Usage += fmt.Sprintf(" [env: ORQ_%s]", strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_")))
+	})
 }
 
 func appendHelpFooter(root *cobra.Command) {
