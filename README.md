@@ -109,6 +109,7 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 | `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
 | `--no-coding-agents` | Skip coding-agent wiring |
 | `--no-mcp` / `--no-gateway` | Wire only the gateway / only MCP (both = skip, same as `--no-coding-agents`) |
+| `--no-verify` | Skip the single billed completion that proves the gateway answers |
 | `--no-input` | Never prompt; missing values become errors |
 
 Re-running just the wiring — after installing a new agent, say — is `orq setup coding-agents`, which reuses the key an earlier `orq setup` saved rather than creating another. `--gateway` and `--mcp` narrow it to one half. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; these wire the coding-agent CLIs on this machine.

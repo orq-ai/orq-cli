@@ -297,7 +297,12 @@ func SizeVariantRank(modelID string) int {
 // truncated generation with 400 "max_tokens or model output limit was reached",
 // so a smaller budget fails every probe regardless of whether the model works.
 // Reasoning models spend their first tokens on reasoning, hence the headroom.
-const probeMaxTokens = 16
+const probeMaxTokens = ProbeMaxTokens
+
+// ProbeMaxTokens is exported so the CLI can tell the user what a verification
+// call costs them, rather than describing it vaguely or hardcoding a number
+// that drifts from the one actually sent.
+const ProbeMaxTokens = 16
 
 // ProbeModel reports whether the gateway can actually serve this model. The
 // catalogue lists models that return 500 on use, so a config written from the
