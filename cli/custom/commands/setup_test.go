@@ -1181,7 +1181,10 @@ func TestUnfundedGatewayStillWiresAndExplainsItself(t *testing.T) {
 	rep := &reporter{w: &out}
 	state := sessionWithToken(srv.URL)
 	state.bearer = "t"
-	results := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
 
 	if n := atomic.LoadInt64(routerCalls); n != 0 {
 		t.Errorf("made %d router calls on an unfunded workspace, want 0", n)
