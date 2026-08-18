@@ -95,7 +95,7 @@ Setup does not install skills. `orq launch` still loads them session-only for cl
 | `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 
-Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. One model — the default the agent opens with — is probed with a single billed completion; the rest are written unprobed, exactly as `orq launch` does.
+Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test, and `orq doctor` reports gateway funding for free before you get there.
 
 Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
 
@@ -109,7 +109,6 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 | `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
 | `--no-coding-agents` | Skip coding-agent wiring |
 | `--no-mcp` / `--no-gateway` | Wire only the gateway / only MCP (both = skip, same as `--no-coding-agents`) |
-| `--no-verify` | Skip the single billed completion that proves the gateway answers |
 | `--no-input` | Never prompt; missing values become errors |
 
 Re-running just the wiring — after installing a new agent, say — is `orq setup coding-agents`, which reuses the key an earlier `orq setup` saved rather than creating another. `--gateway` and `--mcp` narrow it to one half. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; these wire the coding-agent CLIs on this machine.
