@@ -30,7 +30,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 		return nil
 	}
 	flags := []string{"--model", "--base-url", "--no-fetch-models", "--no-mcp",
-		"--no-skills", "--sandbox", "--mount-cwd", "--rebuild", "--dry-run", "--help"}
+		"--no-skills", "--sandbox", "--local", "--mount-cwd", "--rebuild", "--dry-run", "--help"}
 	if def.AllowModels {
 		flags = append(flags, "--models")
 	}
@@ -142,6 +142,8 @@ scan:
 			flags.NoSkills = true
 		case arg == "--sandbox":
 			flags.Sandbox = true
+		case arg == "--local":
+			flags.Local = true
 		case arg == "--mount-cwd":
 			flags.MountCwd = true
 		case arg == "--rebuild":

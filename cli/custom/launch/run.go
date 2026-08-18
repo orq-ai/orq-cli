@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,7 +32,12 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	if !flags.Sandbox && !flags.DryRun {
+	if flags.Sandbox && flags.Local {
+		return 1, errors.New("--local and --sandbox choose opposite modes; pass one")
+	}
+	// The prompt exists to catch an unstated intent. --local states it, so
+	// asking again is just a keystroke tax on the answer already given.
+	if !flags.Sandbox && !flags.Local && !flags.DryRun {
 		switch promptLocalWarning(os.Getenv) {
 		case localCancel:
 			fmt.Fprintln(os.Stderr, "Cancelled.")
@@ -156,7 +162,8 @@ Flags:
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}
-	fmt.Print(`  --sandbox             Run inside a throwaway Docker container
+	fmt.Print(`  --local               Run directly on this computer
+  --sandbox             Run inside a throwaway Docker container
   --mount-cwd           Sandbox only: mount current directory at /workspace
   --rebuild             Sandbox only: rebuild the Docker image
   --dry-run             Print the resolved command and env (key redacted) without

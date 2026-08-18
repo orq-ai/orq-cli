@@ -33,10 +33,14 @@ type GatewayFlags struct {
 	NoMCP         bool
 	NoSkills      bool
 	Sandbox       bool
-	MountCwd      bool
-	Rebuild       bool
-	DryRun        bool
-	Help          bool
+	// Local is the explicit opposite of Sandbox: it states the intent the
+	// safety prompt would otherwise ask for, so the prompt can be skipped in
+	// both directions rather than only towards the sandbox.
+	Local    bool
+	MountCwd bool
+	Rebuild  bool
+	DryRun   bool
+	Help     bool
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.

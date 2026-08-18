@@ -48,6 +48,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- Added: `orq launch <agent> --local` runs the agent directly on this computer.
+  `--sandbox` could already skip the safety prompt; local mode could not, so
+  the only way past it was towards the sandbox. Passing both is an error.
+
 - Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
   pi preconfigured to route every model call through the orq AI Router, with
   `--sandbox` (throwaway Docker container, nothing mounted unless
