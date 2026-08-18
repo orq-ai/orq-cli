@@ -23,7 +23,7 @@ import (
 const (
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
-	setupSteps        = 4
+	setupSteps        = 3
 )
 
 type setupOptions struct {
@@ -36,7 +36,6 @@ type setupOptions struct {
 	noCodingAgents bool
 	noMCP          bool
 	noGateway      bool
-	noVerify       bool
 	noInput        bool
 	yes            bool
 	// narrowing records that the branch flags came from `setup coding-agents`,
@@ -139,7 +138,6 @@ wins over a key left exported in your shell.`),
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
-	f.BoolVar(&opts.noVerify, "no-verify", false, "Skip the test call that proves the gateway answers (it bills one completion)")
 	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
 	cmd.AddCommand(newSetupCodingAgentsCommand())
 	return cmd
@@ -316,31 +314,34 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		authState.bearer = mintedToken
 	}
 
-	// --- Step 3: providers ---------------------------------------------------
-	// The gateway routes to whatever the workspace has connected (BYOK). With
-	// nothing connected there are no models, and every step after this one
-	// degrades into a confusing "no models" instead of "connect a provider".
-	rep.step(3, setupSteps, "Providers")
-	authState.skipVerify = opts.noVerify
-	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
-	result["gateway_funded"] = gatewayFunded
-
-	// --- Step 4: coding agents ----------------------------------------------
-	rep.step(4, setupSteps, "Coding agent")
+	// --- Step 3: coding agents ----------------------------------------------
+	// There is no separate providers step. Listing models and reading the credit
+	// balance both exist to serve the gateway half of the wiring below, so they
+	// happen inside it, once the user has said whether they want the gateway at
+	// all. Asking first meant warning about credits on runs that never route a
+	// model call.
+	rep.step(3, setupSteps, "Coding agents")
 	agentResults, err := instrumentAgents(rep, client, authState, opts)
 	if err != nil {
 		return err
 	}
 	result["agents"] = agentResults
+	result["gateway_funded"] = authState.gatewayFunding.String()
+	if n, counted := enabledModelCount(); counted {
+		// Omitted rather than zero when nothing counted them: zero is a claim
+		// about the workspace, and a run that never listed models has not
+		// earned it.
+		result["models_enabled"] = n
+	}
 
 	// --- Verify --------------------------------------------------------------
+	// Reachability only, and free. Setup does not send a model call: that spends
+	// the user's credits and writes a trace into their workspace to prove
+	// something they did not ask to have proven.
 	rep.blank()
 
 	verified := verifySetup(rep, client, authState)
 	result["verified"] = verified
-	// A failed gateway call is reported but does not fail setup: everything else
-	// (MCP, API key) still works without a connected provider.
-	result["gateway_verified"] = verifyGateway(rep, client, authState)
 
 	links := buildLinks(authState)
 	if len(links) > 0 {
@@ -398,11 +399,39 @@ type authState struct {
 	// suppliedKey is set when the user brought their own key, in which case we
 	// never mint one.
 	suppliedKey string
-	// skipVerify is --no-verify travelling with the run rather than as a
-	// package global: it is the user declining to spend a completion, not
-	// state that crosses steps. Distinct from gatewayFunded, which is the
-	// workspace being unable to serve one.
-	skipVerify bool
+	// gatewayFunding is what this run learned about the workspace's ability to
+	// serve a model call. It rides on the run rather than in a package global
+	// so the zero value cannot be mistaken for an answer. The previous bool
+	// defaulted to "unfunded", and every path that never asked inherited a
+	// verdict it had not earned.
+	gatewayFunding fundingState
+}
+
+// fundingState is deliberately three-valued. The question is only asked when
+// the gateway is being wired, on a metered workspace, with a session that can
+// read the balance, so "nobody asked" is a real and common answer, and it is
+// not the same as "cannot pay". Collapsing the two is what made an MCP-only run
+// claim the gateway was unfunded.
+type fundingState int
+
+const (
+	fundingUnknown fundingState = iota
+	fundingOK
+	fundingNone
+)
+
+// String is the --json spelling. A bool here would put the same ambiguity we
+// just removed internally back at the machine contract, where a script doing
+// `if .gateway_funded` reads "never checked" as "cannot pay".
+func (f fundingState) String() string {
+	switch f {
+	case fundingOK:
+		return "funded"
+	case fundingNone:
+		return "unfunded"
+	default:
+		return "unknown"
+	}
 }
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
@@ -1035,6 +1064,9 @@ func maskToken(token string) string {
 const (
 	providersPath = "/router/providers"
 	creditsPath   = "/admin/credits"
+	// gatewayIntroPath is the one pointer that works without a workspace key,
+	// so it doubles as the self-hosted and keyless answer.
+	gatewayIntroPath = "/docs/ai-gateway/get-started/introduction"
 )
 
 // workspaceCanSpend reports whether the gateway can serve a model call at all.
@@ -1108,115 +1140,86 @@ func storedWorkspaceToken(session *auth.Session) string {
 	return tok.Token
 }
 
-// resolveProviders reports how many models the gateway can route to, and walks
-// the user through connecting a provider when the answer is none. Connecting is
-// a browser flow (provider secrets never touch the CLI), so all this can do is
-// detect, deep-link, and re-check.
+// canAdviseOnCredits reports whether a credit balance is worth raising here.
 //
-// It also decides whether the gateway can serve anything at all. A brand-new
-// workspace lists models — two, seeded by the example fixture — while having no
-// credits and no provider key, so a count above zero is not evidence that a
-// single call will succeed. Without this check setup went on to bill a probe
-// that could only fail, and reported the failure as a 500 the user could do
-// nothing with.
-func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
-	count, providers, err := listEnabledModels(client, state)
-	if err != nil {
-		// Funding was never established, so it must not read as "unfunded":
-		// leaving the flag false makes the verify step blame missing credits
-		// for what is a failed catalogue fetch, and point at an explanation
-		// that was never printed. Unknown behaves as before this check existed.
-		gatewayFunded = true
-		rep.warn("could not list gateway models: %v", err)
-		return 0
+// The rule is deliberately the same one that decides whether a dashboard link
+// can be built: if this deployment has no known web URL, do not bring credits
+// up at all. Two reasons, and they point the same way.
+//
+// It is usually not metered. `isAllowedToUseSystemDefaultKeys` in the gateway
+// licenses `api_keys_use_allowed` to true for on-premise deployments precisely
+// because they are not metered and authenticate with their own credentials, so
+// it returns before credits are ever consulted. Telling a self-hosted admin to
+// buy credits for a deployment that does not charge is noise.
+//
+// And there is nowhere to send them. Without a dashboard origin every remedy
+// link degrades to the same docs page, so the advice cannot be acted on even if
+// it were right.
+//
+// A deployment that sets ORQ_WEB_BASE_URL has told us where its dashboard is,
+// so the links resolve and the topic is fair game again.
+func canAdviseOnCredits(state *authState) bool {
+	if state == nil {
+		return false
 	}
-
-	// Asked once, before either branch below. A workspace can be short of
-	// models, short of funding, or both — a fresh account is both — and each
-	// branch used to know about only one of them, so it named one remedy and
-	// stayed silent about the other.
-	credits, known := workspaceCanSpend(client, state)
-	unfunded := known && credits == 0
-	// Unknown counts as funded: that is the behaviour every run had before this
-	// check existed, and a permission failure must not disable the probe.
-	gatewayFunded = !unfunded
-
-	if unfunded {
-		reportUnfunded(rep, state, opts)
-		return count
-	}
-	if count > 0 {
-		reportProviders(rep, count, providers)
-		return count
-	}
-
-	// Both remedies, and neither prescribed. The old line named BYOK as the
-	// fix, which is wrong in one real quadrant: `enforce_enabled_models`
-	// defaults to false, and with it off the workspace can call any catalogue
-	// model — so a funded workspace with an empty enabled set needs no provider
-	// key at all, and being told to connect one sends the user to the wrong
-	// page. The flag itself is not readable from this host (the settings
-	// endpoint 404s), so the honest line is the one that is true whichever way
-	// the flag is set.
-	//
-	// Warnings rather than notes for the reason above: notes are suppressed in
-	// quiet mode, and a --no-input user would be left with a problem and no
-	// next step.
-	rep.warn("no models enabled for this workspace")
-	rep.warn("    Enable models  %s", workspaceURL(state, providersPath))
-	rep.warn("    Add credits    %s", workspaceURL(state, creditsPath))
-	if opts.noInput {
-		rep.warn("  then re-run 'orq setup'")
-		return 0
-	}
-
-	var retry bool
-	prompt := &survey.Confirm{Message: "Enabled models or added credits? Check again", Default: true}
-	if err := survey.AskOne(prompt, &retry); err != nil || !retry {
-		return 0
-	}
-	count, providers, err = listEnabledModels(client, state)
-	if err != nil {
-		rep.warn("could not list gateway models: %v", err)
-		return 0
-	}
-	if count == 0 {
-		rep.warn("still no models enabled — continuing, but agents will have none to use")
-		return 0
-	}
-	reportProviders(rep, count, providers)
-	return count
+	return webBaseFor(state.apiBase) != ""
 }
 
-// reportUnfunded states the one fact that explains everything downstream: the
-// workspace lists models but cannot pay for a call, so the gateway refuses all
-// of them. Said here, once, with both remedies — rather than surfacing later as
-// an unexplained 500 from the verification probe.
+// resolveGatewayFunding answers, at most once per run, whether this workspace
+// can pay for a model call, and only when the gateway is actually being wired.
 //
-// Deliberately not a failure. MCP wiring works without funding and is written
-// either way, so the run is a success with one capability switched off.
-func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
-	// The fact and the two ways to fix it. No reassurance that MCP still works:
-	// step 4 prints its own ✓ lines a moment later, which is better evidence
-	// than a promise — and a promise made before the user has been asked what
-	// to wire was wrong for anyone who then chose "Gateway only".
-	//
-	// Both remedies are warnings, not notes, for the reason resolveProviders
-	// gives above: notes are suppressed in quiet mode, so a --no-input run
-	// would otherwise report the problem and withhold every fix for it.
-	credits := workspaceURL(state, creditsPath)
-	rep.warn("no credits and no provider key — orq can't serve model calls yet")
-	rep.warn("    Add credits    %s", credits)
-	rep.warn("    Connect a key  %s", workspaceURL(state, providersPath))
-	// Names the command that confirms the fix landed, so the user does not have
-	// to re-run setup to find out whether their credits took effect.
-	rep.warn("  then: orq doctor")
-
-	if opts.noInput || !opts.confirm("Open the credits page now?", true) {
+// Asked here rather than as a step of its own because the answer only matters
+// to one branch. A user who picks "MCP tools only", or passes
+// --no-coding-agents, is not routing model calls through orq and has no reason
+// to hear about credits; asking earlier meant the CLI warned about a capability
+// before it had asked whether the user wanted it.
+//
+// The balance is a hint, not a verdict. The gateway allows a call at zero
+// credits when the provider has a BYOK integration, when the model is private,
+// when the workspace carries the recently-created flag, or when the
+// subscription has not disabled shared-key use, which is the default. So this
+// states the rule and leaves the user to match it against their own setup,
+// rather than asserting a state it cannot read.
+func resolveGatewayFunding(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) {
+	if state == nil || state.gatewayFunding != fundingUnknown || !canAdviseOnCredits(state) {
 		return
 	}
-	// No emptiness guard: workspaceURL always returns something, falling back
-	// to the docs page when there is no workspace key to build a link with.
+	credits, known := workspaceCanSpend(client, state)
+	if !known {
+		// A 403 on an --api-key run, or no session to read a balance with.
+		// Unknown is the honest answer and it changes nothing downstream.
+		return
+	}
+	if credits > 0 {
+		state.gatewayFunding = fundingOK
+		return
+	}
+	state.gatewayFunding = fundingNone
+	reportUnfunded(rep, state, opts)
+}
+
+// reportUnfunded states the fact once, with the links that fix it.
+//
+// Warnings rather than notes: notes are suppressed in quiet mode, so a
+// --no-input run would otherwise report a problem and withhold every remedy for
+// it. Deliberately not a failure either: MCP wiring works without funding and
+// is written either way, so the run is a success with one capability off.
+func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
+	rep.warn("credit balance is 0: model calls need credits or a connected provider key")
+
+	// workspaceLink, not workspaceURL: an unbuildable link is omitted rather
+	// than substituted with the docs page, which is how a keyless run ended up
+	// printing the same docs URL under two different labels.
+	credits := workspaceLink(state, creditsPath)
+	if credits != "" {
+		rep.warn("    Add credits     %s", credits)
+		rep.warn("    Connect a key   %s", workspaceLink(state, providersPath))
+	}
+	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
+
+	if credits == "" || opts.noInput || !opts.confirm("Open the credits page now?", true) {
+		return
+	}
 	if !auth.OpenBrowser(credits) {
 		rep.note("  could not open a browser — the URL above is the one to visit")
 	}
@@ -1312,9 +1315,32 @@ func workspaceURL(state *authState, path string) string {
 func dashboardURL(apiBase, workspaceKey, path string) string {
 	base := webBaseFor(apiBase)
 	if base == "" || workspaceKey == "" {
-		return docsURL + "/docs/ai-gateway/get-started/introduction"
+		return docsURL + gatewayIntroPath
 	}
 	return base + "/" + workspaceKey + path
+}
+
+// workspaceLink is workspaceURL without the docs fallback: empty when there is
+// no dashboard URL or no workspace key to build a real link from.
+//
+// The fallback is right for a single pointer and wrong for a list. Two remedy
+// lines both degrading to the same docs page reads as two different answers
+// that happen to be identical, which is what a self-hosted run produced. A
+// caller with several links omits the ones it cannot build and prints the docs
+// page once, under its own label.
+func workspaceLink(state *authState, path string) string {
+	key := ""
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+		if state.session != nil && state.session.ActiveWorkspaceKey != nil {
+			key = *state.session.ActiveWorkspaceKey
+		}
+	}
+	if webBaseFor(apiBase) == "" || key == "" {
+		return ""
+	}
+	return dashboardURL(apiBase, key, path)
 }
 
 // ============================================================================
@@ -1407,6 +1433,18 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		return nil, nil
 	}
 
+	// The gateway half is the only thing that needs the catalogue or the credit
+	// balance, so both are resolved here, once, after the wiring answer is in.
+	if !opts.noGateway {
+		if count, _, err := listEnabledModels(client, state); err != nil {
+			rep.warn("could not list gateway models: %v", err)
+		} else {
+			rememberEnabledModelCount(count)
+			reportProviders(rep, count, nil)
+		}
+		resolveGatewayFunding(rep, client, state, opts)
+	}
+
 	results := make([]agentResult, 0, len(selected))
 
 	for _, id := range selected {
@@ -1488,11 +1526,10 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					results = append(results, res)
 					continue
 				}
-				// defaultModel is empty whenever the probe was skipped — an
-				// unfunded workspace or --no-verify. Writers handle that: codex
-				// omits the model key entirely, kimi omits default_model. The
-				// config is still written and starts working the moment the
-				// gateway can serve a call; it simply claims no proven model.
+				// defaultModel is empty only when the catalogue holds no usable
+				// chat model, which the guard above has already reported.
+				// Writers handle it: codex omits the model key, kimi omits
+				// default_model.
 				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 				switch {
 				case werr != nil:
@@ -1585,27 +1622,15 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
-// provenModel is the model that answered the default-model probe, with how long
-// it took. The verify step reports these instead of paying for a second
-// completion to learn the same thing.
-var provenModel string
-var provenTook time.Duration
+// enabledModels is how many chat models the workspace has enabled, and whether
+// anybody counted. Only the gateway branch lists them, so a run that wired MCP
+// only never asks, and the --json payload omits the field rather than claiming
+// zero.
+var enabledModels int
+var enabledModelsCounted bool
 
-// defaultModelResolved memoizes the whole probe outcome, success or failure.
-// Every agent with a provider writer asks for the default model, and each
-// probe is a billed completion — without this, wiring four agents billed four
-// completions for the same answer (and a broken workspace would have billed
-// up to three failures per agent).
-var defaultModelResolved bool
-var provenCandidate auth.RouterModel
-
-// gatewayFunded records step 3's answer: can this workspace pay for a model
-// call at all? Nothing downstream can ask again — resolveProviders' return
-// value is only the model count, and neither instrumentAgents nor verifyGateway
-// receives it — so the answer is kept here beside the other step-crossing
-// memos. Default false is deliberately the safe direction: a run that never
-// reached step 3 bills nothing.
-var gatewayFunded bool
+func rememberEnabledModelCount(n int) { enabledModels, enabledModelsCounted = n, true }
+func enabledModelCount() (int, bool)  { return enabledModels, enabledModelsCounted }
 
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
@@ -1626,63 +1651,32 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.R
 	return cachedCodingModels
 }
 
-// defaultCodingModel picks the model an agent should open with and proves it
-// answers. Preference order first (a coding agent wants a coding model), then
-// anything else the workspace enabled.
+// defaultCodingModel picks the model an agent should open with: preference
+// order first (a coding agent wants a coding model), then anything else the
+// workspace enabled.
 //
-// Exactly one billed completion: this is the only model that MUST work, since
-// it is what the agent uses before the user chooses anything. The rest of the
-// list is the user's to pick from, and a bad entry there costs them a switch
-// rather than a broken first prompt.
+// It does not prove the model answers, because proving it costs a billed
+// completion and writes a trace into the user's workspace. Neither is ours to
+// spend during a command whose job is writing configuration, and the proof was
+// thinner than it looked: the probe sent no tools, so it passed on exactly the
+// models that later failed an agent's real traffic. The user's first agent
+// request is the honest test, and `orq doctor` reports the funding state for
+// free before they get there.
 func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
-	if defaultModelResolved {
-		return provenCandidate, provenModel != ""
-	}
-	// Probing costs a completion, and on a workspace that cannot pay for one it
-	// costs a guaranteed failure instead of an answer. Writers handle an empty
-	// default (codex omits the model key, kimi omits default_model), so the
-	// config is still written — it simply claims no proven model.
-	if !gatewayFunded || state.skipVerify {
-		return auth.RouterModel{}, false
-	}
 	models := codingModels(rep, client, state)
 	if len(models) == 0 {
 		return auth.RouterModel{}, false
 	}
-	defaultModelResolved = true
 
-	ordered := []auth.RouterModel{}
 	for _, group := range auth.CandidateCodingModels(models, preferredCodingModels) {
-		ordered = append(ordered, group...)
-	}
-	seen := map[string]bool{}
-	for _, m := range ordered {
-		seen[m.Ref()] = true
-	}
-	for _, m := range models {
-		if !seen[m.Ref()] {
-			ordered = append(ordered, m)
+		if len(group) > 0 {
+			return group[0], true
 		}
 	}
-
-	stopSpin := rep.busy("checking the default model answers…")
-	defer stopSpin()
-	tried := 0
-	for _, candidate := range ordered {
-		took, err := client.TimeModel(state.bearer, candidate.Ref())
-		if err == nil {
-			provenModel, provenTook, provenCandidate = candidate.Ref(), took, candidate
-			return candidate, true
-		}
-		tried++
-		// Stop walking the whole catalogue on a broken workspace: each attempt
-		// is billed, and after a handful of failures the problem is the gateway
-		// or the credential, not the model.
-		if tried >= 3 {
-			break
-		}
-	}
-	return auth.RouterModel{}, false
+	// No preferred family enabled: anything callable beats writing no default,
+	// since the writers leave the key absent and the agent falls back to its own
+	// bundled id, which is not addressable through the gateway at all.
+	return models[0], true
 }
 
 func promptForAgents(rep *reporter) ([]string, error) {
@@ -1749,47 +1743,6 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 	return false
 }
 
-// verifyGateway sends one real request through the AI Gateway with the
-// credentials setup just configured. Reaching the API only proves the key is
-// valid; this proves the thing the user actually came for — that a model
-// answers through the router.
-func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
-	// Both exits below reach TimeModel, which is a billed completion. Step 3
-	// already established the workspace cannot pay for one; attempting it
-	// anyway is what produced the unexplained 500 at the end of a new user's
-	// first run. Not a failure — nothing is broken, one capability is off.
-	if !gatewayFunded {
-		rep.warn("gateway     skipped — no credits or provider key (see above)")
-		return false
-	}
-	if state.skipVerify {
-		rep.note("gateway     not verified (--no-verify) — config written, not proven")
-		return false
-	}
-	models := codingModels(rep, client, state)
-	if len(models) == 0 {
-		rep.warn("gateway        no model answered — connect a provider, then re-run 'orq setup'")
-		return false
-	}
-	// Reuse the probe from model selection rather than repeating it. It already
-	// proved the exact thing this step reports — a real completion through the
-	// router on this credential — and repeating it billed the user twice.
-	if provenModel != "" {
-		rep.ok("gateway     %s answered in %dms  (one ~%d-token test call, billed to your workspace)",
-			provenModel, provenTook.Milliseconds(), auth.ProbeMaxTokens)
-		return true
-	}
-	ref := models[0].Ref()
-	took, err := client.TimeModel(state.bearer, ref)
-	if err != nil {
-		rep.fail("gateway        %s did not answer: %v", ref, err)
-		return false
-	}
-	rep.ok("gateway     %s answered in %dms  (one ~%d-token test call, billed to your workspace)",
-		ref, took.Milliseconds(), auth.ProbeMaxTokens)
-	return true
-}
-
 // webBaseURL is the dashboard origin for this install, or "" when it cannot be
 // known (self-hosted without ORQ_WEB_BASE_URL).
 func webBaseURL(state *authState) string {
@@ -1854,30 +1807,24 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w, "  Ask one of them:")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, `      "list my orq.ai agents"`)
-		// Wiring succeeding does not mean the gateway works. Step 3 said so
-		// thirty lines ago, and a screen that ends on "can now read and write"
-		// reads as unqualified success to anyone who scrolled past it.
-		if !gatewayFunded {
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "  Model calls still need credits or a provider key:")
-			fmt.Fprintf(w, "      %s\n", links["credits"])
-		}
-	} else if gatewayFunded {
-		// No agent wired — the other way in is the gateway itself: point an
+		// The funding warning is not repeated here. It was printed a few lines
+		// ago, in the step that raised it, and saying it twice on one screen was
+		// the bulk of what made an unfunded run read as a failure.
+	} else {
+		// No agent wired, so the other way in is the gateway itself: point an
 		// existing OpenAI client at the router and change nothing else.
+		//
+		// Printed unconditionally. It used to be gated on the workspace being
+		// funded, which meant that once the credit read moved behind the gateway
+		// wiring question, the branch that fires when nothing was wired could
+		// never have an answer, and the pitch would have silently vanished for
+		// everyone. It is an invitation, not a claim about the balance.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
-	} else {
-		// Nothing wired and nothing to route with. Offering the router snippet
-		// here would advertise the one thing step 3 just said cannot work.
-		fmt.Fprintln(w, "  Your key is saved. Add credits or connect a provider key,")
-		fmt.Fprintln(w, "  then re-run 'orq setup' to wire your agents:")
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "      %s\n", links["credits"])
 	}
 	// Both the provider block and the MCP entry reference ORQ_API_KEY, so an
 	// MCP-only agent needs the export just as much as a provider-wired one.

@@ -722,12 +722,7 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 
 	// codingModels memoizes per process; an earlier test's empty catalogue
 	// would short-circuit this one into "no models to offer".
-	codingModelsFetched, cachedCodingModels = false, nil
-	defaultModelResolved = false
-	t.Cleanup(func() {
-		codingModelsFetched, cachedCodingModels = false, nil
-		defaultModelResolved = false
-	})
+	resetSetupMemos(t)
 
 	var out strings.Builder
 	rep := &reporter{w: &out}
@@ -765,67 +760,6 @@ func TestCodexPathsHonorCodexHome(t *testing.T) {
 		if !strings.HasPrefix(got, os.Getenv("CODEX_HOME")+string(os.PathSeparator)) {
 			t.Errorf("%s path %q ignores CODEX_HOME", kind, got)
 		}
-	}
-}
-
-// Setup makes real, billed completions against the user's own provider keys.
-// This pins how many: exactly one, for the model the agent will open with — the
-// only one that must work before the user picks anything. The rest of the
-// catalogue is written unprobed, as `orq launch` already does, and verification
-// reuses that single probe rather than buying the same answer twice.
-func TestSetupBillsOneCompletionTotal(t *testing.T) {
-	var completions int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			atomic.AddInt64(&completions, 1)
-			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
-			return
-		}
-		fmt.Fprint(w, `[
-		 {"provider":"anthropic","model_id":"claude-sonnet-4-6","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"anthropic","model_id":"claude-opus-4-8","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"moonshotai","model_id":"kimi-k2.6","model_type":"chat","enabled":true,"has_functions":true}]`)
-	}))
-	defer srv.Close()
-
-	codingModelsFetched, cachedCodingModels, provenModel = false, nil, ""
-	defaultModelResolved, provenCandidate = false, auth.RouterModel{}
-	// A funded workspace: the probe is what this test counts, and step 3 is
-	// what would normally set this.
-	gatewayFunded = true
-	t.Cleanup(func() { gatewayFunded = false })
-	client := auth.NewClient(srv.URL)
-	state := &authState{apiBase: srv.URL, bearer: "t"}
-	rep := newReporter(true)
-
-	models := codingModels(rep, client, state)
-	if len(models) != 4 {
-		t.Errorf("wrote %d models, want all 4 enabled ones", len(models))
-	}
-	if n := atomic.LoadInt64(&completions); n != 0 {
-		t.Errorf("listing models billed %d completions, want 0", n)
-	}
-
-	// Once per agent that has a provider writer, as instrumentAgents does.
-	// Four agents used to mean four billed probes for the same answer.
-	first, _ := defaultCodingModel(rep, client, state)
-	for range 3 {
-		again, ok := defaultCodingModel(rep, client, state)
-		if !ok || again.Ref() != first.Ref() {
-			t.Errorf("memoized default = %q, want %q", again.Ref(), first.Ref())
-		}
-	}
-	afterProbe := atomic.LoadInt64(&completions)
-	verifyGateway(rep, client, state)
-	total := atomic.LoadInt64(&completions)
-
-	t.Logf("completions: default-model probes=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
-	if afterProbe != 1 {
-		t.Errorf("choosing the default across four agents billed %d completions, want 1", afterProbe)
-	}
-	if total != afterProbe {
-		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)
 	}
 }
 
@@ -1055,12 +989,7 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 
-	codingModelsFetched, cachedCodingModels = false, nil
-	defaultModelResolved = false
-	t.Cleanup(func() {
-		codingModelsFetched, cachedCodingModels = false, nil
-		defaultModelResolved = false
-	})
+	resetSetupMemos(t)
 
 	sub := newSetupCodingAgentsCommand()
 	sub.SetArgs([]string{"--api-key", "sk-orq-NEW-SUPPLIED", "--coding-agent", "kimi"})
@@ -1076,77 +1005,6 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	got, _ := tree.Get("providers.orq.api_key").(string)
 	if got != "sk-orq-NEW-SUPPLIED" {
 		t.Errorf("agent config carries api_key %q, want the supplied key — the saved key overrode --api-key", got)
-	}
-}
-
-// A brand-new workspace lists models it cannot pay for: the fixture seeds two
-// enabled gemini entries while credits are $0.00 and no provider key exists, so
-// a non-zero model count is not evidence that any call will succeed. Setup used
-// to go on and bill a probe that could only fail, and reported the failure as a
-// bare 500. Nothing here may reach the router.
-func TestUnfundedWorkspaceSkipsTheBilledProbe(t *testing.T) {
-	var completions int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
-			atomic.AddInt64(&completions, 1)
-			http.Error(w, `{"error":{"message":"Internal server error"}}`, http.StatusInternalServerError)
-		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
-			fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
-		default:
-			fmt.Fprint(w, `[{"provider":"google","model_id":"gemini-3.5-flash","model_type":"chat","enabled":true,"has_functions":true}]`)
-		}
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	// kimi's MCP path is project-scoped, so instrumentAgents below writes into
-	// the working directory. Without this the file lands in the package source
-	// tree — which is exactly how a test-server URL got committed once.
-	t.Setenv("HOME", t.TempDir())
-	chdir(t, t.TempDir())
-	// The test server is not the hosted API, so name the dashboard explicitly —
-	// otherwise both links correctly degrade to docs and the prefix assertion
-	// below would be testing the fallback instead of the fix.
-	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	client := auth.NewClient(srv.URL)
-	state := sessionWithToken(srv.URL)
-	state.bearer = "t"
-
-	// The model catalogue is still read — instrumentAgents needs it, and
-	// skipping it would stop provider config being written at all.
-	if got := resolveProviders(rep, client, state, &setupOptions{noInput: true}); got != 1 {
-		t.Errorf("model count = %d, want the catalogue's 1", got)
-	}
-	if gatewayFunded {
-		t.Error("gatewayFunded set on a workspace with no credits")
-	}
-	if _, ok := defaultCodingModel(rep, client, state); ok {
-		t.Error("default-model probe ran on a workspace that cannot pay for it")
-	}
-	if verifyGateway(rep, client, state) {
-		t.Error("verifyGateway reported success without calling the gateway")
-	}
-	if n := atomic.LoadInt64(&completions); n != 0 {
-		t.Fatalf("billed %d completions on an unfunded workspace, want 0", n)
-	}
-	if !strings.Contains(out.String(), "no credits and no provider key") {
-		t.Errorf("user was not told why the gateway is off:\n%s", out.String())
-	}
-	if !strings.Contains(out.String(), "/acme/admin/credits") {
-		t.Errorf("credits link missing or unprefixed:\n%s", out.String())
-	}
-
-	// The point of not failing the run: everything that works without funding
-	// is still written. A skipped probe must not become a skipped setup.
-	instrumentAgents(rep, client, state, &setupOptions{noInput: true, agents: []string{"kimi"}})
-	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
-		t.Errorf("MCP config was not written on an unfunded workspace: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")); err != nil {
-		t.Errorf("provider config was not written on an unfunded workspace: %v", err)
 	}
 }
 
@@ -1185,48 +1043,257 @@ func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
 	}
 }
 
-// --no-verify is the user declining to spend a completion. Distinct from an
-// unfunded workspace: the config is written and simply reported as unproven.
-func TestNoVerifySkipsTheProbeOnAFundedWorkspace(t *testing.T) {
-	var completions int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			atomic.AddInt64(&completions, 1)
-			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
-			return
-		}
-		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`)
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	gatewayFunded = true
-	rep := newReporter(true)
-	client := auth.NewClient(srv.URL)
-	state := &authState{apiBase: srv.URL, bearer: "t", skipVerify: true}
-
-	if _, ok := defaultCodingModel(rep, client, state); ok {
-		t.Error("probed despite --no-verify")
-	}
-	if verifyGateway(rep, client, state) {
-		t.Error("verifyGateway claimed proof it never obtained")
-	}
-	if n := atomic.LoadInt64(&completions); n != 0 {
-		t.Fatalf("--no-verify billed %d completions, want 0", n)
-	}
-}
-
 // resetSetupMemos clears the package-level state that carries decisions across
 // setup's steps, so tests cannot leak funding or probe results into each other.
 func resetSetupMemos(t *testing.T) {
 	t.Helper()
 	reset := func() {
 		codingModelsFetched, cachedCodingModels = false, nil
-		provenModel, provenTook, provenCandidate = "", 0, auth.RouterModel{}
-		defaultModelResolved, gatewayFunded = false, false
+		enabledModels, enabledModelsCounted = 0, false
 	}
 	reset()
 	t.Cleanup(reset)
+}
+
+// gatewayFixture serves a catalogue, a credit balance, and counts every router
+// call. The POST counter is the point: setup must never make one.
+func gatewayFixture(t *testing.T, balance string, catalogue string) (*httptest.Server, *int64) {
+	t.Helper()
+	var routerCalls int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			atomic.AddInt64(&routerCalls, 1)
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
+			if balance == "" {
+				http.Error(w, `{"message":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			fmt.Fprintf(w, `{"balance":%s,"currency":"usd"}`, balance)
+		default:
+			fmt.Fprint(w, catalogue)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &routerCalls
+}
+
+const oneChatModel = `[{"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`
+
+// wiringHarness isolates the filesystem writes instrumentAgents performs. kimi's
+// MCP path is project-scoped, so without this the config lands in the package
+// source tree, which is how a test-server URL got committed once.
+func wiringHarness(t *testing.T) {
+	t.Helper()
+	resetSetupMemos(t)
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
+	// Names a dashboard for the test server, which is also what makes the credit
+	// advice reachable: canAdviseOnCredits stays quiet without one.
+	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
+}
+
+// Setup writes configuration. It does not send a model call to prove that
+// configuration works, because a router request bills the user's credits and
+// opens a span in their workspace, the first trace a brand-new account would
+// ever see, for a request they did not make. The proof was also thinner than it
+// looked: the probe sent no tools, so it passed on exactly the models that then
+// failed an agent's real traffic.
+func TestSetupMakesNoRouterCall(t *testing.T) {
+	srv, routerCalls := gatewayFixture(t, "25", oneChatModel)
+	wiringHarness(t)
+
+	rep := &reporter{w: &strings.Builder{}}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if n := atomic.LoadInt64(routerCalls); n != 0 {
+		t.Fatalf("setup made %d router calls, want 0", n)
+	}
+	// A default is still chosen, from the catalogue ranking rather than a probe.
+	cfg := filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatalf("provider config not written: %v", err)
+	}
+	if !strings.Contains(string(data), "openai/gpt-5.4") {
+		t.Errorf("no default model written without a probe:\n%s", data)
+	}
+}
+
+// The credit balance is only the gateway's business. A user who wires MCP tools
+// and no gateway is not routing model calls through orq, so the CLI has no
+// reason to read their balance or lecture them about it, which is what it did
+// when the check was a step of its own, ahead of the wiring question.
+func TestCreditsAreOnlyReadWhenTheGatewayIsWired(t *testing.T) {
+	cases := map[string]struct {
+		opts       setupOptions
+		wantCredit bool
+	}{
+		"gateway and mcp": {setupOptions{noInput: true, agents: []string{"kimi"}}, true},
+		"gateway only":    {setupOptions{noInput: true, agents: []string{"kimi"}, noMCP: true}, true},
+		"mcp only":        {setupOptions{noInput: true, agents: []string{"kimi"}, noGateway: true}, false},
+		"nothing wired":   {setupOptions{noInput: true, noCodingAgents: true}, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var creditReads int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+					atomic.AddInt64(&creditReads, 1)
+					fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
+					return
+				}
+				fmt.Fprint(w, oneChatModel)
+			}))
+			defer srv.Close()
+			wiringHarness(t)
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			state := sessionWithToken(srv.URL)
+			state.bearer = "t"
+			opts := tc.opts
+			instrumentAgents(rep, auth.NewClient(srv.URL), state, &opts)
+
+			read := atomic.LoadInt64(&creditReads) > 0
+			if read != tc.wantCredit {
+				t.Errorf("credit balance read = %v, want %v", read, tc.wantCredit)
+			}
+			mentioned := strings.Contains(out.String(), "credit")
+			if mentioned != tc.wantCredit {
+				t.Errorf("credits mentioned = %v, want %v:\n%s", mentioned, tc.wantCredit, out.String())
+			}
+		})
+	}
+}
+
+// Not being able to pay is not a failed setup. Everything that works without
+// funding is still written, the run still exits 0, and the reason is stated once
+// with links the user can act on.
+func TestUnfundedGatewayStillWiresAndExplainsItself(t *testing.T) {
+	srv, routerCalls := gatewayFixture(t, "0", oneChatModel)
+	wiringHarness(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	results := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if n := atomic.LoadInt64(routerCalls); n != 0 {
+		t.Errorf("made %d router calls on an unfunded workspace, want 0", n)
+	}
+	if state.gatewayFunding != fundingNone {
+		t.Errorf("funding = %v, want unfunded", state.gatewayFunding)
+	}
+	for _, r := range results {
+		if r.Error != "" {
+			t.Errorf("unfunded workspace failed the run: %+v", r)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
+		t.Errorf("MCP config not written on an unfunded workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")); err != nil {
+		t.Errorf("provider config not written on an unfunded workspace: %v", err)
+	}
+
+	got := out.String()
+	// The rule, not a claim about their workspace: the gateway allows a call at
+	// zero credits via BYOK, a private model, the recently-created flag, or a
+	// subscription that has not disabled shared-key use.
+	if strings.Contains(got, "no credits and no provider key") {
+		t.Errorf("asserted a BYOK state the CLI cannot read:\n%s", got)
+	}
+	for _, want := range []string{"credit balance is 0", "/acme/admin/credits", "/acme/router/providers", "docs.orq.ai"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	// Said once. Three mentions of one fact is what made this read as a failure.
+	if n := strings.Count(got, "credit balance is 0"); n != 1 {
+		t.Errorf("stated the funding problem %d times, want 1:\n%s", n, got)
+	}
+}
+
+// A self-hosted deployment is not metered. The gateway licenses
+// api_keys_use_allowed to true for exactly that reason, and it has no dashboard to
+// link to, so every remedy would degrade to the same docs URL. Raising credits
+// there is advice that is both wrong and unactionable.
+func TestSelfHostedIsNeverToldAboutCredits(t *testing.T) {
+	var creditReads int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+			atomic.AddInt64(&creditReads, 1)
+			fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
+			return
+		}
+		fmt.Fprint(w, oneChatModel)
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
+	t.Setenv("ORQ_WEB_BASE_URL", "") // no known dashboard: the self-hosted case
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if n := atomic.LoadInt64(&creditReads); n != 0 {
+		t.Errorf("read the credit balance %d times on a self-hosted deployment, want 0", n)
+	}
+	if strings.Contains(out.String(), "credit") {
+		t.Errorf("self-hosted run was told about credits:\n%s", out.String())
+	}
+	if state.gatewayFunding != fundingUnknown {
+		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
+	}
+}
+
+// Failing to read the balance is not the same as reading a zero. A 403 from the
+// credits.view permission an API key cannot hold must leave the run exactly as
+// it was before the check existed.
+func TestUnreadableBalanceChangesNothing(t *testing.T) {
+	srv, _ := gatewayFixture(t, "", oneChatModel) // credits endpoint 403s
+	wiringHarness(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if state.gatewayFunding != fundingUnknown {
+		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
+	}
+	if strings.Contains(out.String(), "credit balance") {
+		t.Errorf("a permission failure was rendered as a funding verdict:\n%s", out.String())
+	}
+	if got := state.gatewayFunding.String(); got != "unknown" {
+		t.Errorf("--json spelling = %q, want unknown", got)
+	}
+}
+
+// The three states must survive into the machine contract as themselves. A bool
+// would put back the ambiguity the tri-state exists to remove, at the one place
+// it cannot be fixed later without a breaking change.
+func TestFundingStateJSONSpelling(t *testing.T) {
+	for state, want := range map[fundingState]string{
+		fundingUnknown: "unknown",
+		fundingOK:      "funded",
+		fundingNone:    "unfunded",
+	} {
+		if got := state.String(); got != want {
+			t.Errorf("%d = %q, want %q", state, got, want)
+		}
+	}
 }
 
 // sessionWithToken is an authState carrying a live workspace session token, the
@@ -1297,105 +1364,5 @@ func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
 				t.Error("funding must never fail doctor — an unfunded workspace is not a broken one")
 			}
 		})
-	}
-}
-
-// The funded path is the one every existing user is on, so the unfunded work
-// must not have changed a line of it: the model count, the proven-model line,
-// and no mention of credits.
-func TestFundedPathOutputIsUnchanged(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
-			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
-		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
-			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
-		default:
-			fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5.4","refId":"openai/gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`)
-		}
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	client := auth.NewClient(srv.URL)
-	state := sessionWithToken(srv.URL)
-	state.bearer = "t"
-
-	resolveProviders(rep, client, state, &setupOptions{noInput: true})
-	if !gatewayFunded {
-		t.Fatal("a workspace with credits was not treated as funded")
-	}
-	if !verifyGateway(rep, client, state) {
-		t.Error("funded workspace failed verification")
-	}
-	got := out.String()
-	if !strings.Contains(got, "1 chat models available") {
-		t.Errorf("model count line missing:\n%s", got)
-	}
-	if !strings.Contains(got, "openai/gpt-5.4 answered in") {
-		t.Errorf("gateway proof line missing:\n%s", got)
-	}
-	if strings.Contains(got, "credits") {
-		t.Errorf("funded run mentioned credits:\n%s", got)
-	}
-}
-
-// A catalogue that cannot be read is not a funding answer. Leaving the flag at
-// its false default made the verify step blame missing credits for a failed
-// fetch, and point at an explanation that was never printed.
-func TestCatalogueFailureDoesNotReadAsUnfunded(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"boom"}`, http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	resolveProviders(rep, auth.NewClient(srv.URL), sessionWithToken(srv.URL), &setupOptions{noInput: true})
-
-	if !gatewayFunded {
-		t.Error("a failed catalogue fetch was reported as an unfunded workspace")
-	}
-	if strings.Contains(out.String(), "no credits") {
-		t.Errorf("blamed credits for a fetch failure:\n%s", out.String())
-	}
-}
-
-// An empty enabled set has two possible fixes and the CLI cannot tell which
-// applies: enforce_enabled_models defaults to false, and with it off any
-// catalogue model is callable — so a funded workspace needs no provider key,
-// while an enforcing one does. The flag is not readable from the API host, so
-// the message must name both remedies and prescribe neither.
-func TestNoModelsMessageNamesBothRemedies(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/v2/credits") {
-			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`) // funded, so not the unfunded branch
-			return
-		}
-		fmt.Fprint(w, `[]`)
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	resolveProviders(rep, auth.NewClient(srv.URL), sessionWithToken(srv.URL), &setupOptions{noInput: true})
-
-	got := out.String()
-	if strings.Contains(got, "BYOK") || strings.Contains(got, "connect a provider") {
-		t.Errorf("prescribed BYOK for a state where it may not be the fix:\n%s", got)
-	}
-	for _, want := range []string{"/acme/router/providers", "/acme/admin/credits"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %s:\n%s", want, got)
-		}
-	}
-	// Quiet mode must keep both links: they are the entire actionable content.
-	if strings.Count(got, "https://my.orq.ai") != 2 {
-		t.Errorf("both remedies must survive --no-input:\n%s", got)
 	}
 }
