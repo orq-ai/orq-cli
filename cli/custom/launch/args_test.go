@@ -133,7 +133,7 @@ func TestMergeEnv(t *testing.T) {
 // --sandbox skipped the safety prompt; local mode had no way to say the same
 // thing, so the only escape from the prompt was towards the sandbox or the
 // blunt ORQ_LAUNCH_NON_INTERACTIVE.
-func TestLocalFlagIsParsedAndExclusiveWithSandbox(t *testing.T) {
+func TestLocalFlagIsParsed(t *testing.T) {
 	flags, rest, err := ParseArgv([]string{"--local"}, ParseArgvOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -152,5 +152,19 @@ func TestLocalFlagIsParsedAndExclusiveWithSandbox(t *testing.T) {
 	}
 	if len(rest) != 1 || rest[0] != "--local" {
 		t.Errorf("after --, --local must reach the agent: %v", rest)
+	}
+}
+
+// The two mode flags are opposites, so passing both is a usage error rather
+// than a precedence rule nobody would remember. The check lives outside
+// ParseArgv — Run holds it — so it needs its own test.
+func TestModeFlagsAreMutuallyExclusive(t *testing.T) {
+	if err := validateModeFlags(GatewayFlags{Local: true, Sandbox: true}); err == nil {
+		t.Error("--local with --sandbox was accepted")
+	}
+	for _, ok := range []GatewayFlags{{}, {Local: true}, {Sandbox: true}} {
+		if err := validateModeFlags(ok); err != nil {
+			t.Errorf("%+v rejected: %v", ok, err)
+		}
 	}
 }

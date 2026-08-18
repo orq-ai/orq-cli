@@ -32,8 +32,8 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	if flags.Sandbox && flags.Local {
-		return 1, errors.New("--local and --sandbox choose opposite modes; pass one")
+	if err := validateModeFlags(flags); err != nil {
+		return 1, err
 	}
 	// The prompt exists to catch an unstated intent. --local states it, so
 	// asking again is just a keystroke tax on the answer already given.
@@ -106,6 +106,16 @@ const (
 	localCancel
 )
 
+// validateModeFlags rejects the two mode flags together. Split out of Run so a
+// test can reach it: Run execs an agent, so the guard was previously only
+// exercisable by launching one.
+func validateModeFlags(flags GatewayFlags) error {
+	if flags.Sandbox && flags.Local {
+		return errors.New("--local and --sandbox choose opposite modes; pass one")
+	}
+	return nil
+}
+
 // promptLocalWarning warns that local mode gives the agent full host access
 // and offers sandbox instead. TTY-only; skipped for non-interactive runs.
 func promptLocalWarning(getenv func(string) string) localChoice {
@@ -171,6 +181,7 @@ Flags:
                         model catalogue the agent needs.
   -h, --help            Show this help
 
+--local and --sandbox are opposites; passing both is an error.
 Everything after -- is passed to the agent untouched.
 `)
 }
