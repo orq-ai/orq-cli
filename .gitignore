@@ -16,6 +16,12 @@
 # scratch space for generated docs, demo kits and binary snapshots
 /outputs/
 
+# `make man` and `make completions` generate these for the release job to
+# publish; they are build output, not source, and a `git add -A` after either
+# target sweeps 300+ files into the commit.
+/man/
+/completions/
+
 # release-build.sh drops cross-compiled binaries here; only CI publishes them
 /npm/cli-*/bin/
 /npm/**/node_modules/
