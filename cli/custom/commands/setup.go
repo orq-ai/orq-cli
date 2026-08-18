@@ -203,7 +203,7 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 	// expire within the hour, and this command never creates keys. Running
 	// resolveAuth first meant a machine with neither opened a browser, waited
 	// for device approval, saved a session, and only then refused.
-	saved := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	saved, savedWS := savedAPIKey()
 	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
 		return errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
 	}
@@ -211,6 +211,12 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 	authState, err := resolveAuth(cmd.Context(), rep, opts)
 	if err != nil {
 		return err
+	}
+	// The saved key is workspace-scoped; the session may have just resolved a
+	// different workspace. Wiring would silently point every agent at the
+	// key's workspace, so refuse — this command never mints, setup does.
+	if active := activeWorkspaceKey(authState); saved != "" && keyWorkspaceMismatch(savedWS, active) {
+		return fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
 	client := auth.NewClient(authState.apiBase)
 	if saved != "" {
@@ -375,9 +381,11 @@ type authState struct {
 }
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
-	// An explicit key wins over everything.
+	// An explicit key wins over everything. Its workspace is unknowable — the
+	// key carries no provenance — so it is saved without one and later runs
+	// treat it as unknown rather than mismatched.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if err := saveAPIKeyProfile(key); err != nil {
+		if err := saveAPIKeyProfile(key, ""); err != nil {
 			return nil, err
 		}
 		rep.ok("api key (profile: %s)", auth.ActiveProfile())
@@ -695,8 +703,10 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 
 // saveAPIKeyProfile mirrors bartolo's own saveAuthProfile, then tightens the
 // permissions: viper writes 0644 and this file holds a live credential.
-func saveAPIKeyProfile(key string) error {
-	return writeAPIKeyProfile(auth.ActiveProfile(), key)
+// workspace is the workspace the key was minted for, or "" when that is
+// unknowable (--api-key runs, where the key arrives without provenance).
+func saveAPIKeyProfile(key, workspace string) error {
+	return writeAPIKeyProfile(auth.ActiveProfile(), key, workspace)
 }
 
 // clearAPIKeyProfile removes the stored key so logout actually logs the user
@@ -707,7 +717,32 @@ func clearAPIKeyProfile() (bool, error) {
 	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
 		return false, nil
 	}
-	return true, writeAPIKeyProfile(profile, "")
+	return true, writeAPIKeyProfile(profile, "", "")
+}
+
+// savedAPIKey returns the stored key and the workspace it was minted for.
+// workspace is "" for keys saved before the field existed, or via --api-key —
+// callers treat that as unknown, not as a mismatch.
+func savedAPIKey() (key, workspace string) {
+	profile := bartolocli.GetProfile()
+	return strings.TrimSpace(profile["api_key"]), strings.TrimSpace(profile["workspace"])
+}
+
+// activeWorkspaceKey is the workspace this run resolved, "" on session-less
+// runs (--api-key/env), where no workspace comparison is possible.
+func activeWorkspaceKey(state *authState) string {
+	if state.session != nil && state.session.ActiveWorkspaceKey != nil {
+		return strings.TrimSpace(*state.session.ActiveWorkspaceKey)
+	}
+	return ""
+}
+
+// keyWorkspaceMismatch reports whether a saved key provably belongs to a
+// different workspace than the one this run resolved. Either side unknown
+// means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must
+// not invalidate a working credential under the user.
+func keyWorkspaceMismatch(savedWS, active string) bool {
+	return savedWS != "" && active != "" && savedWS != active
 }
 
 // BartoloAuthType returns the profile "type" that bartolo can resolve back to
@@ -735,9 +770,13 @@ func BartoloAuthType() string {
 	return ""
 }
 
-func writeAPIKeyProfile(profile, key string) error {
+func writeAPIKeyProfile(profile, key, workspace string) error {
 	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
+	// Recorded so reuse can notice the key belongs to a different workspace
+	// than the one this run resolved. Keys are workspace-scoped at mint time;
+	// a key without this field predates the check and reads as unknown.
+	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
 	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
 	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
 		return err
@@ -843,10 +882,28 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	// with the ./.env written by the previous one. The env-file tail below
 	// still runs on reuse: a fresh project directory needs its ./.env even
 	// when the key itself is old.
-	token := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
-	if token != "" {
+	//
+	// Reused only when it belongs to the workspace this run resolved. Keys are
+	// workspace-scoped at mint time and resolveWorkspace has already switched
+	// the session, so reusing across a --workspace change would wire every
+	// agent config to the workspace the user just left — the same failure the
+	// env-key guard in resolveAuth exists to prevent. A key with no recorded
+	// workspace predates this check (or came from --api-key) and is reused
+	// with a note rather than invalidated under the user.
+	token, tokenWS := savedAPIKey()
+	active := activeWorkspaceKey(state)
+	switch {
+	case token == "":
+		// nothing saved — fall through to mint
+	case keyWorkspaceMismatch(tokenWS, active):
+		rep.note("saved key belongs to workspace %s — creating one for %s", tokenWS, active)
+		token = ""
+	case tokenWS == "":
+		rep.ok("key already saved (profile: %s) — reusing it (workspace unrecorded)", auth.ActiveProfile())
+	default:
 		rep.ok("key already saved (profile: %s) — reusing it", auth.ActiveProfile())
-	} else {
+	}
+	if token == "" {
 		if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
 			rep.ok("skipped creating an API key")
 			return info, "", nil
@@ -877,7 +934,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		token = minted
 		// The raw token is returned once. Persist before doing anything else so
 		// a later failure cannot leave a live key with no local record of it.
-		if err := saveAPIKeyProfile(token); err != nil {
+		if err := saveAPIKeyProfile(token, active); err != nil {
 			return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
 		}
 		info["created"] = true
