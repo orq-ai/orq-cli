@@ -1371,6 +1371,102 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 // The three states must survive into the machine contract as themselves. A bool
 // would put back the ambiguity the tri-state exists to remove, at the one place
 // it cannot be fixed later without a breaking change.
+// The final screen makes capability claims, so it needs three states, not two.
+// "Can read and write your workspace" is an MCP claim; a gateway-only agent
+// cannot, and the old MCP-only wired check made a successful gateway-only run
+// report that nothing was configured. The suggested next step is the bare
+// agent command, never `orq launch`, which builds a throwaway config home and
+// ignores what setup just wrote.
+func TestFinalScreenHasThreeStates(t *testing.T) {
+	cases := map[string]struct {
+		agents     []agentResult
+		want       []string
+		wantAbsent []string
+	}{
+		"mcp and gateway": {
+			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Provider: "~/.kimi-code/config.toml"}},
+			want:       []string{"read and write your orq.ai workspace", "list my orq.ai agents", "Start it:", "\n      kimi\n"},
+			wantAbsent: []string{"orq launch"},
+		},
+		"gateway only": {
+			agents: []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
+			want:   []string{"Kimi Code routes its model calls through orq", "Start it:", "\n      kimi\n"},
+			// The two claims a gateway-only agent cannot honour, and the
+			// ephemeral path that would shadow the config just written.
+			wantAbsent: []string{"read and write", "list my orq.ai agents", "orq launch"},
+		},
+		"mcp only": {
+			agents:     []agentResult{{Agent: "claude", MCP: ".mcp.json"}},
+			want:       []string{"Claude Code can now read and write", "Start it:", "\n      claude\n"},
+			wantAbsent: []string{"orq launch"},
+		},
+		"nothing wired": {
+			agents: nil,
+			// Ephemeral launch is legitimately the answer here, for a detected
+			// agent (the harness installs kimi), never a hardcoded claude.
+			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq setup coding-agents"},
+			wantAbsent: []string{"orq launch claude", "Start it:"},
+		},
+		"errored agent does not count as wired": {
+			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Error: "boom"}},
+			want:       []string{"Route an existing OpenAI client"},
+			wantAbsent: []string{"read and write", "Start it:"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex"))
+			// Deterministic detection: kimi is the installed agent.
+			if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// Silence the env-hint block so these cases assert only the branch
+			// text; the ordering of hint vs suggestion has its own case below.
+			t.Setenv("ORQ_API_KEY", "sk-orq-set")
+
+			var out strings.Builder
+			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+			got := out.String()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q:\n%s", want, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("unexpected %q:\n%s", absent, got)
+				}
+			}
+		})
+	}
+}
+
+// The bare command only authenticates once ORQ_API_KEY is exported, so the
+// suggestion must sit below the warning that says the shell lacks it — or the
+// screen walks the user into the exact failure it just predicted.
+func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out},
+		[]agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
+		map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+	got := out.String()
+
+	warn := strings.Index(got, "Agents inherit ORQ_API_KEY")
+	start := strings.Index(got, "Start it:")
+	if warn == -1 || start == -1 {
+		t.Fatalf("expected both the env warning and the suggestion:\n%s", got)
+	}
+	if start < warn {
+		t.Errorf("suggestion printed above the env warning:\n%s", got)
+	}
+}
+
 func TestFundingStateJSONSpelling(t *testing.T) {
 	for state, want := range map[fundingState]string{
 		fundingUnknown: "unknown",
