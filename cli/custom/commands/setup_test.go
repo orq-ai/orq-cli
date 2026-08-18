@@ -1400,6 +1400,13 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 			want:       []string{"Claude Code can now read and write", "Start it:", "\n      claude\n"},
 			wantAbsent: []string{"orq launch"},
 		},
+		// Both headings follow the count, so a single-agent run stops reading
+		// as a group and a two-agent run stops naming one of them "it".
+		"two agents": {
+			agents:     []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
+			want:       []string{"Claude Code and Kimi Code", "Ask one of them:", "Start one:"},
+			wantAbsent: []string{"Ask it:", "Start it:"},
+		},
 		"nothing wired": {
 			agents: nil,
 			// Ephemeral launch is legitimately the answer here, for a detected
