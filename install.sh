@@ -3,8 +3,8 @@
 # install.sh - curl | sh installer for the orq.ai CLI.
 #
 # Usage:
-#   curl -fsSL https://orq.ai/cli/install.sh | sh
-#   curl -fsSL https://orq.ai/cli/install.sh | sh -s -- --no-modify-path
+#   curl -fsSL https://cli.orq.ai/install.sh | sh
+#   curl -fsSL https://cli.orq.ai/install.sh | sh -s -- --no-modify-path
 #
 # Options:
 #   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
@@ -52,8 +52,8 @@ usage() {
 install.sh - curl | sh installer for the orq.ai CLI.
 
 Usage:
-  curl -fsSL https://orq.ai/cli/install.sh | sh
-  curl -fsSL https://orq.ai/cli/install.sh | sh -s -- --no-modify-path
+  curl -fsSL https://cli.orq.ai/install.sh | sh
+  curl -fsSL https://cli.orq.ai/install.sh | sh -s -- --no-modify-path
 
 Options:
   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
