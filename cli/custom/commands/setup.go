@@ -1295,12 +1295,26 @@ func listEnabledModels(client *auth.Client, state *authState) (int, []string, er
 // Without a key (an --api-key run has no session to name a workspace) the docs
 // page is the only honest destination.
 func workspaceURL(state *authState, path string) string {
-	base := webBaseURL(state)
-	if base == "" || state == nil || state.session == nil ||
-		state.session.ActiveWorkspaceKey == nil || *state.session.ActiveWorkspaceKey == "" {
+	key := ""
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+		if state.session != nil && state.session.ActiveWorkspaceKey != nil {
+			key = *state.session.ActiveWorkspaceKey
+		}
+	}
+	return dashboardURL(apiBase, key, path)
+}
+
+// dashboardURL is the one place a settings link is built. Doctor needs the same
+// links from a session it inspected, and building them a second time there had
+// already produced a different fallback for the keyless case.
+func dashboardURL(apiBase, workspaceKey, path string) string {
+	base := webBaseFor(apiBase)
+	if base == "" || workspaceKey == "" {
 		return docsURL + "/docs/ai-gateway/get-started/introduction"
 	}
-	return base + "/" + *state.session.ActiveWorkspaceKey + path
+	return base + "/" + workspaceKey + path
 }
 
 // ============================================================================
@@ -1761,8 +1775,8 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 	// proved the exact thing this step reports — a real completion through the
 	// router on this credential — and repeating it billed the user twice.
 	if provenModel != "" {
-		rep.ok("gateway     %s answered in %dms  (one test call, billed to your workspace)",
-			provenModel, provenTook.Milliseconds())
+		rep.ok("gateway     %s answered in %dms  (one ~%d-token test call, billed to your workspace)",
+			provenModel, provenTook.Milliseconds(), auth.ProbeMaxTokens)
 		return true
 	}
 	ref := models[0].Ref()
@@ -1771,17 +1785,26 @@ func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
 		rep.fail("gateway        %s did not answer: %v", ref, err)
 		return false
 	}
-	rep.ok("gateway     %s answered in %dms  (one test call, billed to your workspace)",
-		ref, took.Milliseconds())
+	rep.ok("gateway     %s answered in %dms  (one ~%d-token test call, billed to your workspace)",
+		ref, took.Milliseconds(), auth.ProbeMaxTokens)
 	return true
 }
 
 // webBaseURL is the dashboard origin for this install, or "" when it cannot be
 // known (self-hosted without ORQ_WEB_BASE_URL).
 func webBaseURL(state *authState) string {
+	if state == nil {
+		return webBaseFor("")
+	}
+	return webBaseFor(state.apiBase)
+}
+
+// webBaseFor is webBaseURL without an authState, so doctor can build the same
+// links from a session it inspected rather than re-deriving them.
+func webBaseFor(apiBase string) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
 	// Without an explicit override, only the hosted product has a known web URL.
-	if webBase == "" && state.apiBase == auth.DefaultAPIBaseURL {
+	if webBase == "" && apiBase == auth.DefaultAPIBaseURL {
 		webBase = defaultWebBaseURL
 	}
 	return webBase
@@ -1831,6 +1854,14 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintln(w, "  Ask one of them:")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, `      "list my orq.ai agents"`)
+		// Wiring succeeding does not mean the gateway works. Step 3 said so
+		// thirty lines ago, and a screen that ends on "can now read and write"
+		// reads as unqualified success to anyone who scrolled past it.
+		if !gatewayFunded {
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "  Model calls still need credits or a provider key:")
+			fmt.Fprintf(w, "      %s\n", links["credits"])
+		}
 	} else if gatewayFunded {
 		// No agent wired — the other way in is the gateway itself: point an
 		// existing OpenAI client at the router and change nothing else.
