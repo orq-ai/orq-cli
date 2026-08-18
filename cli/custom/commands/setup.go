@@ -224,7 +224,10 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 	}
 
 	result := map[string]any{}
-	agentResults := instrumentAgents(rep, client, authState, opts)
+	agentResults, err := instrumentAgents(rep, client, authState, opts)
+	if err != nil {
+		return err
+	}
 	result["agents"] = agentResults
 
 	if !wantsHumanView(cmd) {
@@ -313,7 +316,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	// --- Step 4: coding agents ----------------------------------------------
 	rep.step(4, setupSteps, "Coding agent")
-	agentResults := instrumentAgents(rep, client, authState, opts)
+	agentResults, err := instrumentAgents(rep, client, authState, opts)
+	if err != nil {
+		return err
+	}
 	result["agents"] = agentResults
 
 	// --- Verify --------------------------------------------------------------
@@ -1203,10 +1209,10 @@ func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
 	return "  (this agent reads it only from your home directory)"
 }
 
-func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) []agentResult {
+func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
 	if opts.noCodingAgents {
 		rep.ok("skipped coding-agent wiring (--no-coding-agents)")
-		return nil
+		return nil, nil
 	}
 	mcpURL := client.MCPServerURL()
 
@@ -1214,12 +1220,12 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	if len(selected) == 0 {
 		if opts.noInput {
 			rep.ok("no agent selected — pass --coding-agent to wire one")
-			return nil
+			return nil, nil
 		}
 		var err error
 		selected, err = promptForAgents(rep)
 		if err != nil || len(selected) == 0 {
-			return nil
+			return nil, nil
 		}
 	}
 
@@ -1246,20 +1252,27 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			Message: "Wire your coding agents to orq?",
 			Options: []string{wireBoth, wireGateway, wireMCP, wireNothing},
 			Default: wireBoth,
-		}, &choice, promptStdio()); err == nil {
-			switch choice {
-			case wireGateway:
-				opts.noMCP = true
-			case wireMCP:
-				opts.noGateway = true
-			case wireNothing:
-				opts.noMCP, opts.noGateway = true, true
-			}
+		}, &choice, promptStdio()); err != nil {
+			// This question is the consent for editing files the user owns and
+			// granting agents workspace read/write. Ctrl-C here used to leave
+			// the default selected and wire everything — the one prompt in
+			// setup where failing open authorizes exactly what the user backed
+			// out of. An abort is "no", and promptForAgents above already
+			// fails closed on the same error.
+			return nil, fmt.Errorf("setup cancelled at the wiring question: %w", err)
+		}
+		switch choice {
+		case wireGateway:
+			opts.noMCP = true
+		case wireMCP:
+			opts.noGateway = true
+		case wireNothing:
+			opts.noMCP, opts.noGateway = true, true
 		}
 	}
 	if opts.noMCP && opts.noGateway {
 		rep.ok("skipped coding-agent wiring (nothing selected)")
-		return nil
+		return nil, nil
 	}
 
 	results := make([]agentResult, 0, len(selected))
@@ -1338,7 +1351,12 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
 				switch {
 				case werr != nil:
-					rep.warn("%-8s provider  %v", id, werr)
+					// An agent error, exactly like a failed MCP write: the user
+					// consented to this wire and did not get it, so it must
+					// reach the exit code and the JSON, not evaporate as a
+					// warning under a run that then reports success.
+					rep.fail("%-8s provider  %v", id, werr)
+					res.Error = werr.Error()
 				default:
 					// Only claim a model count when the format actually carries
 					// one: codex's profile names a single default and takes its
@@ -1364,12 +1382,18 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					res.Provider = path
 					res.ModelCount = written
 				}
+			} else if perr != nil {
+				// Same contract as the MCP half's path error above: a wire the
+				// user asked for that cannot even resolve its file is a failure,
+				// not silence.
+				rep.fail("%-8s provider  %v", id, perr)
+				res.Error = perr.Error()
 			}
 		}
 
 		results = append(results, res)
 	}
-	return results
+	return results, nil
 }
 
 // codingModels fetches the gateway catalogue once per run and returns every

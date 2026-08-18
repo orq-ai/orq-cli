@@ -754,7 +754,10 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 			var out strings.Builder
 			rep := &reporter{w: &out}
 			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
-			results := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts)
+			results, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts)
+			if err != nil {
+				t.Fatalf("instrumentAgents: %v", err)
+			}
 			if tc.wantNothing {
 				// Both flags set must short-circuit before any per-agent work
 				// — no prompt (noInput), no network, no writes.
@@ -763,7 +766,7 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 				}
 				return
 			}
-			_, err := os.Stat(filepath.Join(".kimi-code", "mcp.json"))
+			_, err = os.Stat(filepath.Join(".kimi-code", "mcp.json"))
 			if gotMCP := err == nil; gotMCP != tc.wantMCP {
 				t.Errorf("MCP file written = %v, want %v\noutput:\n%s", gotMCP, tc.wantMCP, out.String())
 			}
@@ -771,6 +774,56 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 				t.Errorf("gateway branch entered = %v, want %v\noutput:\n%s", gotGateway, tc.wantGateway, out.String())
 			}
 		})
+	}
+}
+
+// A provider write the user consented to and did not get is an agent failure,
+// not a warning: it must reach the exit code (via errAgentFailed on the agent's
+// Error) and the JSON. It used to evaporate — rep.warn, exit 0, success in
+// --json — while the identical failure on the MCP half was already an error.
+func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// ~/.kimi-code as a file: the provider write cannot create config.toml
+	// under it, while kimi's project-scoped MCP write in CWD still succeeds —
+	// pinning that a half-delivered wire is recorded, not just a fully failed one.
+	if err := os.WriteFile(filepath.Join(home, ".kimi-code"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, t.TempDir())
+
+	// codingModels memoizes per process; an earlier test's empty catalogue
+	// would short-circuit this one into "no models to offer".
+	codingModelsFetched, cachedCodingModels = false, nil
+	defaultModelResolved = false
+	t.Cleanup(func() {
+		codingModelsFetched, cachedCodingModels = false, nil
+		defaultModelResolved = false
+	})
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	opts := &setupOptions{noInput: true, agents: []string{"kimi"}}
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"}, opts)
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].MCP == "" {
+		t.Errorf("MCP half should have wired; output:\n%s", out.String())
+	}
+	if results[0].Error == "" {
+		t.Errorf("provider write failed but agent Error is empty — the failure would exit 0; output:\n%s", out.String())
 	}
 }
 
