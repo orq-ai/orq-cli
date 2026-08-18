@@ -807,9 +807,24 @@ func codingAgentChecks() []doctorCheck {
 		}
 
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
+		// Every config written above reaches the credential through
+		// ORQ_API_KEY, so a wired agent started from a shell that does not
+		// export it authenticates with an empty bearer and gets 401 on every
+		// call. That looks identical to a broken install from inside the agent
+		// — and the file checks above all pass, which is exactly when a
+		// diagnostic is most obliged to speak up. The profile edit setup offers
+		// only reaches shells started after it, so this state is normal for
+		// anyone who left a terminal open.
+		keyExported := agentKeyExported()
+		details["api_key_in_env"] = keyExported
+
 		switch {
 		case offered == 0:
 			continue
+		case wired == offered && !keyExported:
+			check.Status = "warn"
+			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
+				"agents started from here will fail to authenticate. Run '. ~/.orq/env', or start them from a new shell"
 		case wired == offered:
 			check.Status = "pass"
 			check.Message = spec.Label + " is wired to orq"
@@ -902,4 +917,15 @@ func tomlTablePresent(table string) func(path string) bool {
 		}
 		return tree.HasPath(strings.Split(table, "."))
 	}
+}
+
+// agentKeyExported reports whether the variable every agent config names is
+// present in this process's environment.
+//
+// Deliberately narrower than envAPIKeySet, which also accepts ORQ_TOKEN and
+// ORQ_AUTHORIZATION: those authenticate the CLI, but an agent config
+// interpolates ORQ_API_KEY by name, so a user with only ORQ_TOKEN set would
+// pass a check that their agents then fail.
+func agentKeyExported() bool {
+	return strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != ""
 }
