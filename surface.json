@@ -7173,10 +7173,6 @@
           "type": "bool"
         },
         {
-          "name": "no-verify",
-          "type": "bool"
-        },
-        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"

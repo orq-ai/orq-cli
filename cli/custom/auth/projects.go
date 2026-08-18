@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Project mirrors the fields of the v2 Project schema that the CLI needs.
@@ -293,49 +292,13 @@ func SizeVariantRank(modelID string) int {
 	return 0
 }
 
-// probeMaxTokens must leave room for a complete reply. The gateway rejects a
-// truncated generation with 400 "max_tokens or model output limit was reached",
-// so a smaller budget fails every probe regardless of whether the model works.
-// Reasoning models spend their first tokens on reasoning, hence the headroom.
-const probeMaxTokens = ProbeMaxTokens
-
-// ProbeMaxTokens is exported so the CLI can tell the user what a verification
-// call costs them, rather than describing it vaguely or hardcoding a number
-// that drifts from the one actually sent.
-const ProbeMaxTokens = 16
-
-// ProbeModel reports whether the gateway can actually serve this model. The
-// catalogue lists models that return 500 on use, so a config written from the
-// catalogue alone would advertise models that do not work.
-func (c *Client) ProbeModel(bearer, ref string) bool {
-	_, err := c.TimeModel(bearer, ref)
-	return err == nil
-}
-
-// TimeModel is ProbeModel with the round-trip time, for reporting a first
-// successful gateway request back to the user.
-func (c *Client) TimeModel(bearer, ref string) (time.Duration, error) {
-	body := map[string]any{
-		"model":      ref,
-		"messages":   []map[string]string{{"role": "user", "content": "hi"}},
-		"max_tokens": probeMaxTokens,
-	}
-	client := &Client{URLs: c.URLs, HTTPClient: &http.Client{Timeout: 20 * time.Second}}
-	started := time.Now()
-	err := client.jsonRequest(
-		http.MethodPost,
-		c.RouterBaseURL()+"/chat/completions",
-		bearer,
-		body,
-		nil,
-	)
-	return time.Since(started), err
-}
-
-// CreditBalance is the workspace's AI Gateway credit balance. Zero balance
-// means the gateway refuses every model call — the docs are explicit that
-// requests are blocked until credits are added — unless a BYOK provider key
-// covers the model's provider.
+// CreditBalance is the workspace's AI Gateway credit balance.
+//
+// A zero balance is a hint, not a verdict. isAllowedToUseSystemDefaultKeys in
+// the gateway allows a call at zero credits when the provider has a BYOK
+// integration, when the model is private, when the workspace carries the
+// recently-created flag, or when the subscription has not disabled shared-key
+// use, which is the default. Callers must phrase what they print accordingly.
 type CreditBalance struct {
 	Balance  float64 `json:"balance"`
 	Currency string  `json:"currency"`
