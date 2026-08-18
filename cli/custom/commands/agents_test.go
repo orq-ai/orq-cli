@@ -1151,6 +1151,11 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex")) // keep codex undetected
 	t.Chdir(t.TempDir())                                    // no project-relative configs
+	// Pinned, not inherited: a wired agent also warns when the shell exports no
+	// ORQ_API_KEY, so leaving this to the environment made the test pass on a
+	// developer's machine and fail on a clean one. The warning itself is
+	// TestCodingAgentChecksWarnWhenTheShellHasNoKey's subject.
+	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
 
 	// Nothing installed: no checks at all.
 	if got := codingAgentChecks(); len(got) != 0 {
@@ -1213,6 +1218,9 @@ func TestCodingAgentChecksFindProjectScopedWiring(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex"))
+	// Pinned for the same reason as in TestCodingAgentChecksReadWiring: the
+	// scope question this test asks must not be answered by the runner's shell.
+	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
