@@ -26,10 +26,7 @@
 
 set -eu
 
-# Stamped by the release workflow when this script is published as a release
-# asset; stays "dev" when run from a checkout. Printed in the run header so it
-# appears in any output pasted into a bug report. Not a `--version` flag —
-# that one already pins the CLI release to install.
+# Stamped by the release workflow; stays "dev" when run from a checkout.
 INSTALLER_VERSION="dev"
 
 REPO="orq-ai/orq-cli"
@@ -41,18 +38,14 @@ RUN_SETUP=1
 PATH_MARKER_START="# >>> orq cli >>>"
 PATH_MARKER_END="# <<< orq cli <<<"
 
-# Errors go to stderr; progress and results stay on stdout. clig.dev prefers
-# messaging on stderr so stdout stays pipeable, but an installer emits no data
-# for a pipe to consume — the progress *is* the output. Deliberate, not an
-# oversight. (Practice differs across installers: some route everything to
-# stderr instead. Either is defensible; what matters is that ours is chosen.)
+# Errors to stderr, progress to stdout: an installer produces no piped data, so
+# the progress is the output.
 err() {
   echo "orq-cli installer: $*" >&2
 }
 
-# Printed inline rather than sed'd out of this file's header: the documented
-# way to run this is `curl -fsSL ... | sh -s -- --help`, where the script
-# arrives on stdin and "$0" is the shell, so reading "$0" printed nothing.
+# Inline rather than extracted from the header above: under `curl … | sh` the
+# script arrives on stdin and "$0" is the shell, so there is no file to read.
 usage() {
   printf 'install.sh %s\n\n' "$INSTALLER_VERSION"
   cat <<'USAGE'
@@ -78,50 +71,27 @@ For Windows, install via npm instead:
 USAGE
 }
 
-# Every network call goes through here.
-#
-#   --proto '=https'    refuse to be redirected onto plain http. The documented
-#                       entry point is a vanity URL that redirects, so the
-#                       redirect chain is part of our attack surface.
-#   --retry             ride out a 5xx or a DNS blip.
-#   --retry-all-errors  without it, curl only retries a specific list: an empty
-#                       reply (52) and a transfer cut mid-stream (18) get zero
-#                       retries, and those are the likeliest way a multi-MB
-#                       binary download dies. Safe here — every caller is an
-#                       idempotent GET and -o truncates before each attempt.
-#
-# -f is deliberately not set here: the checksum call needs to read the status
-# code out of a 404 rather than have curl turn it into a generic failure.
-# Callers that want "any non-2xx is fatal" pass -f themselves.
-#
-# --retry-all-errors arrived in curl 7.71. Requiring it outright would fail
-# before the first request on RHEL 8 (7.61, supported into 2029) and Ubuntu
-# 20.04 (7.68), so it is probed rather than assumed: those platforms keep the
-# retry behaviour curl 7.52 gives, everyone else gets the wider net. Asking
-# curl what it supports beats parsing its version string.
+# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) are
+# still supported, so probe for it rather than requiring it.
 if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
   CURL_RETRY_ALL='--retry-all-errors'
 else
   CURL_RETRY_ALL=''
 fi
 
+# No -f: the checksum call reads the status code out of a 404. Callers wanting
+# "any non-2xx is fatal" pass -f themselves.
 fetch() {
-  # Unquoted on purpose: empty must expand to no argument at all.
+  # Unquoted: empty must expand to no argument at all.
   # shellcheck disable=SC2086
   curl -L --proto '=https' --retry 3 --retry-delay 1 $CURL_RETRY_ALL "$@"
 }
 
-# Whether there is a human to prompt. stdin is the script itself under
-# `curl | sh`, so the terminal has to be reached through /dev/tty. Testing
-# `[ -r /dev/tty ]` is not enough: the device node is world-readable, so it
-# passes even in CI where the process has no controlling terminal and opening
-# it fails with ENXIO. Actually opening it is the only honest check.
-#
-# `true`, not `:` — `:` is a POSIX *special* built-in, and a redirection error
-# on one of those makes a non-interactive shell exit immediately. dash (Debian
-# and Ubuntu's /bin/sh) and busybox ash implement that literally, so `:` here
-# killed the installer with a silent exit 2 on every Linux box without a
-# controlling terminal. `true` is a regular built-in and merely returns false.
+# stdin is the script itself under `curl | sh`, so the terminal is /dev/tty.
+# `[ -r /dev/tty ]` is not enough: the node is world-readable and passes even
+# with no controlling terminal, where opening it fails with ENXIO.
+# `true`, not `:` — a redirection error on a POSIX special built-in exits a
+# non-interactive shell outright (dash, busybox ash).
 have_tty() {
   { true < /dev/tty; } 2>/dev/null
 }
@@ -178,10 +148,7 @@ supports_art() {
   esac
 }
 
-# Status glyphs, resolved once against the same capability check as the banner.
-# Gating only the art and then printing UTF-8 status markers regardless is worse
-# than not gating at all: the header degrades cleanly and every line after it
-# turns to mojibake, which reads as deliberate.
+# Same capability check as the banner, so output is all-ASCII or none of it.
 if supports_art; then
   G_BULLET='•'
   G_OK='✓'
@@ -310,12 +277,10 @@ if [ "${already_current:-0}" != "1" ]; then
 
   # --- Verify checksum -----------------------------------------------------
 
-  # The checksum comes from the same host as the binary, so this guards against
-  # corruption and truncated downloads, not a compromised release host. Only a
-  # genuine 404 (releases predating the checksum assets) downgrades to a
-  # warning; any other failure — timeout, proxy, 5xx, DNS — is fatal, because
-  # failing open would skip verification exactly when the network is least
-  # trustworthy.
+  # Same host as the binary, so this catches corruption and truncation, not a
+  # compromised release host. Only a genuine 404 downgrades to a warning; any
+  # other failure is fatal, since failing open would skip verification exactly
+  # when the network is least trustworthy.
   sha_cmd=""
   if command -v sha256sum >/dev/null 2>&1; then
     sha_cmd="sha256sum"
@@ -328,32 +293,25 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # curl's -w writes the status (000 on a connection failure) even when it exits
-  # non-zero, so `|| true` only stops that non-zero from aborting the script.
-  # No -f: a 404 here is a real case (releases predating the checksum
-  # assets) and has to be told apart from a transport failure, which -f
-  # would flatten into the same generic error.
+  # -w writes the status (000 on a connection failure) even when curl exits
+  # non-zero, so `|| true` only keeps that from aborting the script. A 404 is a
+  # real case — releases predating the checksum assets — and has to be told
+  # apart from a transport failure.
   checksum_status="$(fetch -sS -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
   expected=""
   case "${checksum_status:-000}" in
     200)
       expected="$(awk '{print $1}' <"$tmp_sum")"
-      # A 200 with an empty body is not "no checksum published": the asset
-      # exists and we failed to read it, so skipping would drop verification
-      # exactly when the download is suspect.
+      # A 200 with an empty body means the asset exists and could not be read,
+      # which is not the same as no checksum being published.
       if [ -z "$expected" ]; then
         err "checksum fetch returned HTTP 200 but an empty body ($checksum_url)"
         err "Refusing to install unverified."
         exit 1
       fi
-      # Shape check before comparing. A captive portal or proxy interstitial
-      # answers 200 with HTML, which is non-empty and would otherwise be
-      # compared as a hash — reporting a checksum mismatch and pointing the
-      # user at our issue tracker for what is a network problem.
-      #
-      # 64 hex characters, expressed as one pattern: the ? repetition is the
-      # only way POSIX case gives a length check, and it keeps this to a single
-      # place to change if the digest ever does.
+      # A captive portal answers 200 with HTML, which would otherwise be
+      # compared as a hash and reported as a checksum mismatch. The ?
+      # repetition is how POSIX case expresses "exactly 64 hex characters".
       hex16='[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'
       case "$expected" in
         $hex16$hex16$hex16$hex16) ;;
@@ -398,14 +356,9 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # Reported by running the binary we just wrote rather than echoing the tag we
-  # asked for. Integrity is already covered by the checksum above; what this
-  # adds is that the binary actually executes here — the failure it catches is
-  # a platform mismatch, or an exec policy that blocks it.
-  #
-  # Failing is fatal, where this used to print a success line regardless. An
-  # unrunnable binary left on PATH is worse than no install, so remove it: the
-  # EXIT trap only covers $tmp_file, which has already been moved away.
+  # Runs the binary rather than echoing the tag: the checksum proves integrity,
+  # this proves it runs on this machine. Removed on failure — the EXIT trap
+  # only covers the temp file, which has already been moved.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
@@ -459,24 +412,18 @@ else
       *)            path_line="export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
     esac
 
-    # clig.dev: don't modify things outside the project without asking. The
-    # shell profile is the user's, not ours, so ask for it when there is
-    # someone to ask. stdin is the script itself under `curl | sh`, hence
-    # /dev/tty — the same reason the setup handoff below reads from it.
-    # Without a terminal (CI, piped scripts) we keep the historical behaviour
-    # rather than silently leaving an installed binary off PATH.
+    # The shell profile is the user's, so ask before editing it. With no
+    # terminal to ask at, write it anyway rather than leave the binary off PATH.
     if have_tty; then
-      # The question goes to /dev/tty, not stdout: under `curl … | sh | tee`
-      # stdout is the log file, and asking there would block on a read with
-      # nothing on screen to explain why.
+      # To /dev/tty, not stdout: under `curl … | sh | tee` stdout is the log
+      # file, and the read would block with nothing on screen to explain why.
       {
         printf '\n  Add %s to PATH in %s?\n' "$INSTALL_DIR" "$profile"
         printf '      %s\n' "$path_line"
         printf '  [Y/n] '
       } > /dev/tty
-      # `read` returns non-zero at EOF — Ctrl-D. That is someone backing out of
-      # the question, so it has to fail closed; treating it as consent would
-      # edit the rcfile this prompt exists to protect.
+      # `read` returns non-zero at EOF (Ctrl-D) — that is backing out, so it
+      # must fail closed rather than edit the rcfile this prompt protects.
       if ! read -r reply < /dev/tty; then
         reply="n"
         printf '\n'
@@ -491,8 +438,6 @@ else
     case "$reply" in
       [nN]*)
         printf '! PATH not updated (declined)\n'
-        # The tail block prints the manual export line when no profile was
-        # written; clearing it is what selects that branch.
         profile=""
         ;;
       *)
@@ -528,15 +473,9 @@ if [ "$RUN_SETUP" = "1" ] && have_tty; then
   # The chained run inherits the cwd of the curl invocation, which is rarely a
   # project; setup detects that and defaults to a global install.
   #
-  # A non-zero exit is reported, not swallowed: setup failing on auth, or the
-  # user pressing Ctrl-C as invited above, must not read as a clean install to
-  # whoever is watching. Execution continues either way so the PATH guidance
-  # below still prints — setup just ran in a shell where the new entry is not
-  # live yet, which is exactly when that advice matters most.
   setup_ran=1
-  # Captured with `|| setup_status=$?`, not inside `if ! …; then`: there $? is
-  # the status of the negated compound, which is 0 whenever the negation
-  # succeeded — so every failure reported itself as "exited 0".
+  # `|| setup_status=$?`, not `if ! …; then`: there $? is the negated
+  # compound's status, so every failure reported itself as "exited 0".
   setup_status=0
   ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty || setup_status=$?
   if [ "$setup_status" != "0" ]; then
@@ -551,30 +490,24 @@ fi
 
 printf '\n'
 
-# What the user has to do next depends only on whether `orq` resolves in the
-# shell they are sitting in. Telling someone to restart a shell that already
-# works is noise they have to think about before ignoring.
+# Only tell people to restart a shell when `orq` does not already resolve here.
 if [ "$path_already_set" != "1" ]; then
   if [ -n "$profile" ]; then
-    # The profile carries the PATH line — either we just appended it, or it was
-    # already there from an earlier run. Future shells are fine; this one isn't.
+    # Future shells are fine; this one is not.
     printf '  To use orq in this shell, run:\n'
     printf '      exec %s -l\n\n' "${SHELL:-sh}"
   else
-    # Nothing written: unrecognised shell, --no-modify-path, or declined.
     printf '  Add to your shell profile:\n'
     printf '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
   fi
 fi
 
-# Setup already ran above; pointing at it again would be telling the user to
-# redo what they just did.
 if [ "${setup_missing:-0}" != "1" ] && [ "$setup_ran" = "0" ]; then
   printf '  Next:\n'
   if [ "$path_already_set" = "1" ]; then
     printf '      orq setup\n\n'
   else
-    # `orq` will not resolve yet, so give the command they can actually paste.
+    # Not on PATH yet, so give the command they can paste.
     printf '      %s setup\n\n' "$target"
   fi
 fi
