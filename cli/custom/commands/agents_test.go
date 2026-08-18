@@ -1249,3 +1249,63 @@ func TestCodingAgentChecksFindProjectScopedWiring(t *testing.T) {
 		t.Errorf("check names %v, want the project path %q", got, projectPath)
 	}
 }
+
+// A wired agent whose shell has no ORQ_API_KEY authenticates with an empty
+// bearer and 401s on every call — indistinguishable from a broken install from
+// inside the agent, while every file check passes. This is the state a user is
+// in whenever they left a terminal open across setup, and it is the one thing
+// doctor exists to name.
+func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex")) // keep codex undetected
+	chdir(t, t.TempDir())
+
+	// kimi, installed and fully wired.
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMCPKimiJSON(filepath.Join(home, ".kimi-code", "mcp.json"), "https://api.orq.ai/v2/mcp"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+		"https://api.orq.ai/v3/router", "sk-key", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	find := func() doctorCheck {
+		t.Helper()
+		for _, c := range codingAgentChecks() {
+			if c.ID == "coding_agent_kimi" {
+				return c
+			}
+		}
+		t.Fatal("no kimi check")
+		return doctorCheck{}
+	}
+
+	t.Setenv("ORQ_API_KEY", "")
+	stale := find()
+	if stale.Status != "warn" {
+		t.Errorf("wired agent with no key in the environment: status = %q, want warn", stale.Status)
+	}
+	if !strings.Contains(stale.Message, "ORQ_API_KEY") {
+		t.Errorf("warning does not name the variable: %q", stale.Message)
+	}
+	if stale.Details["api_key_in_env"] != false {
+		t.Errorf("details should record the missing key: %+v", stale.Details)
+	}
+
+	// The same machine, from a shell that has it.
+	t.Setenv("ORQ_API_KEY", "sk-orq-live")
+	if ok := find(); ok.Status != "pass" {
+		t.Errorf("wired agent with the key exported: status = %q, want pass (%s)", ok.Status, ok.Message)
+	}
+
+	// A CLI-only credential is not what an agent config interpolates.
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_TOKEN", "sk-orq-cli-only")
+	if got := find(); got.Status != "warn" {
+		t.Errorf("ORQ_TOKEN is not the variable agents read: status = %q, want warn", got.Status)
+	}
+}
