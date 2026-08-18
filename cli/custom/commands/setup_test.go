@@ -1281,6 +1281,93 @@ func TestUnreadableBalanceChangesNothing(t *testing.T) {
 	}
 }
 
+// A workspace can be short of models, short of funding, or both, and a fresh
+// account is usually both. Each fact gets its own line; the remedy links are
+// printed once, not once per fact. Zero models never reports as a success.
+func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
+	cases := map[string]struct {
+		balance, catalogue string
+		selfHosted         bool
+		wantFacts          []string
+		wantAbsent         []string
+		wantLinkBlocks     int
+	}{
+		"models and money": {
+			balance: "25", catalogue: oneChatModel,
+			wantFacts:  []string{"1 chat models available"},
+			wantAbsent: []string{"Enable models", "credit balance"},
+		},
+		"funded, no models": {
+			balance: "25", catalogue: `[]`,
+			wantFacts:      []string{"no models enabled for this workspace", "/acme/router/models"},
+			wantAbsent:     []string{"credit balance", "0 chat models available"},
+			wantLinkBlocks: 1,
+		},
+		"models, no money": {
+			balance: "0", catalogue: oneChatModel,
+			wantFacts:      []string{"1 chat models available", "credit balance is 0", "/acme/admin/credits", "/acme/router/providers"},
+			wantAbsent:     []string{"no models enabled", "Enable models"},
+			wantLinkBlocks: 0,
+		},
+		"neither": {
+			balance: "0", catalogue: `[]`,
+			wantFacts: []string{
+				"no models enabled for this workspace", "credit balance is 0",
+				"/acme/router/models", "/acme/admin/credits", "/acme/router/providers",
+			},
+			wantAbsent:     []string{"0 chat models available"},
+			wantLinkBlocks: 1,
+		},
+		"self-hosted, no models": {
+			balance: "25", catalogue: `[]`, selfHosted: true,
+			wantFacts:  []string{"no models enabled for this workspace", "How it works"},
+			wantAbsent: []string{"my.orq.ai", "credit balance"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+					fmt.Fprintf(w, `{"balance":%s,"currency":"usd"}`, tc.balance)
+					return
+				}
+				fmt.Fprint(w, tc.catalogue)
+			}))
+			defer srv.Close()
+			wiringHarness(t)
+			if tc.selfHosted {
+				t.Setenv("ORQ_WEB_BASE_URL", "")
+			}
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			state := sessionWithToken(srv.URL)
+			state.bearer = "t"
+			instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+			got := out.String()
+			for _, want := range tc.wantFacts {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q:\n%s", want, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("unexpected %q:\n%s", absent, got)
+				}
+			}
+			// Each fact carries its own remedy, but the docs pointer is the line
+			// that used to repeat once per fact.
+			if n := strings.Count(got, "Enable models"); n != tc.wantLinkBlocks {
+				t.Errorf("the models remedy appeared %d times, want %d:\n%s", n, tc.wantLinkBlocks, got)
+			}
+			if n := strings.Count(got, "How it works"); n > 1 {
+				t.Errorf("docs pointer repeated %d times, want at most 1:\n%s", n, got)
+			}
+		})
+	}
+}
+
 // The three states must survive into the machine contract as themselves. A bool
 // would put back the ambiguity the tri-state exists to remove, at the one place
 // it cannot be fixed later without a breaking change.
