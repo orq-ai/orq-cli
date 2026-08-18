@@ -1844,13 +1844,18 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// MCP-only check would have printed it anyway — trading the visible
 	// contradiction (a ✓ gateway line followed by "nothing was wired") for an
 	// invisible overclaim.
+	// Classified per agent, not per run. A single run can wire one agent for
+	// MCP and another for the gateway alone, and each claim then holds only for
+	// its own group: rolling them together put a gateway-only agent inside "can
+	// read and write your orq.ai workspace", which is the overclaim this split
+	// exists to prevent.
 	mcpWired := []string{}
 	gatewayOnly := []string{}
-	// runnable is the agent whose bare command the screen suggests. Bare, not
-	// `orq launch`: setup just wrote durable config, and launch would ignore it
-	// — it builds a throwaway home per run — so suggesting it right after a
+	// starts are the commands that run what setup wrote, one per wired agent.
+	// Bare where the agent's own config is what we edited, never `orq launch`:
+	// launch builds a throwaway home per run, so suggesting it right after a
 	// durable wire teaches the ephemeral path and cannot reveal a broken setup.
-	runnable := ""
+	starts := []string{}
 	for _, a := range agents {
 		if a.Error != "" {
 			continue
@@ -1867,32 +1872,30 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		default:
 			continue
 		}
-		if runnable == "" {
-			runnable = a.Agent
-		}
+		starts = append(starts, spec.startCommand())
 	}
 	switch {
-	case len(mcpWired) > 0:
-		all := append(mcpWired, gatewayOnly...)
-		fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(all, " and "))
-		if len(all) == 1 {
-			fmt.Fprintln(w, "  Ask it:")
-		} else {
-			fmt.Fprintln(w, "  Ask one of them:")
+	case len(mcpWired)+len(gatewayOnly) > 0:
+		// Two independent statements. Either can stand alone, and on a mixed
+		// run both print, each naming only the agents it is true of.
+		if len(mcpWired) > 0 {
+			fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(mcpWired, " and "))
 		}
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, `      "list my orq.ai agents"`)
+		if len(gatewayOnly) > 0 {
+			fmt.Fprintf(w, "  %s %s model calls through orq.\n",
+				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
+		}
+		// Only the MCP group can answer this, so it names that group rather
+		// than "it": on a mixed run the pronoun would point at whichever agent
+		// the reader had in mind, including one that cannot.
+		if len(mcpWired) > 0 {
+			fmt.Fprintf(w, "  Ask %s:\n", pluralize(len(mcpWired), "it", "one of them"))
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, `      "list my orq.ai agents"`)
+		}
 		// The funding warning is not repeated here. It was printed a few lines
 		// ago, in the step that raised it, and saying it twice on one screen was
 		// the bulk of what made an unfunded run read as a failure.
-	case len(gatewayOnly) > 0:
-		// True and narrower: model calls route through orq, and nothing else is
-		// claimed. No "ask it" line — without MCP the agent cannot answer it.
-		verb := "route their"
-		if len(gatewayOnly) == 1 {
-			verb = "routes its"
-		}
-		fmt.Fprintf(w, "  %s %s model calls through orq.\n", strings.Join(gatewayOnly, " and "), verb)
 	default:
 		// No agent wired, so the other way in is the gateway itself: point an
 		// existing OpenAI client at the router and change nothing else.
@@ -1963,15 +1966,16 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// command only authenticates once ORQ_API_KEY is exported, and printing it
 	// above a warning that says the shell lacks the key would walk the user
 	// straight into the failure the warning predicts.
-	if runnable != "" {
+	if len(starts) > 0 {
 		fmt.Fprintln(w)
-		if len(mcpWired)+len(gatewayOnly) > 1 {
-			fmt.Fprintln(w, "  Start one:")
-		} else {
-			fmt.Fprintln(w, "  Start it:")
+		fmt.Fprintf(w, "  %s:\n", pluralize(len(starts), "Start it", "Start them"))
+		fmt.Fprintln(w)
+		// Every wired agent gets its line. Naming one of several left the user
+		// told to pick and shown a single option, and on a mixed run the one
+		// named could be the agent the line above did not describe.
+		for _, cmd := range starts {
+			fmt.Fprintf(w, "      %s\n", cmd)
 		}
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "      %s\n", runnable)
 	}
 	fmt.Fprintln(w)
 	// Only the line that differs per install, plus the one command that leads
@@ -1984,6 +1988,16 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w, "  Stuck?      orq doctor")
 	fmt.Fprintln(w)
+}
+
+// pluralize picks a wording by count. Three sites on the final screen were
+// spelling the same choice three different ways, two testing == 1 and one
+// testing > 1, which is how "Start it" survived next to a two-agent run.
+func pluralize(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // detectedAgentID names an installed agent for the ephemeral-launch
