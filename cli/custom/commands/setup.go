@@ -1058,10 +1058,18 @@ func maskToken(token string) string {
 // Step 4 — providers
 // ============================================================================
 
-// providersPath is where a workspace connects its own provider keys (BYOK), and
-// creditsPath is where it buys orq-managed capacity. Either one makes the
-// gateway able to serve a model call; neither is needed for MCP.
+// Three different dashboard destinations, and they fix three different things.
+// They were briefly two, with the models page pointed at BYOK, which sent
+// anyone told to "enable models" to the page for connecting provider keys.
+//
+//	modelsPath    enable and curate models for this workspace
+//	providersPath connect your own provider keys (BYOK)
+//	creditsPath   buy orq-managed capacity
+//
+// BYOK or credits either one makes the gateway able to serve a call; neither is
+// needed for MCP.
 const (
+	modelsPath    = "/router/models"
 	providersPath = "/router/providers"
 	creditsPath   = "/admin/credits"
 	// gatewayIntroPath is the one pointer that works without a workspace key,
@@ -1180,7 +1188,7 @@ func canAdviseOnCredits(state *authState) bool {
 // subscription has not disabled shared-key use, which is the default. So this
 // states the rule and leaves the user to match it against their own setup,
 // rather than asserting a state it cannot read.
-func resolveGatewayFunding(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) {
+func resolveGatewayFunding(client *auth.Client, state *authState) {
 	if state == nil || state.gatewayFunding != fundingUnknown || !canAdviseOnCredits(state) {
 		return
 	}
@@ -1195,46 +1203,78 @@ func resolveGatewayFunding(rep *reporter, client *auth.Client, state *authState,
 		return
 	}
 	state.gatewayFunding = fundingNone
-	reportUnfunded(rep, state, opts)
 }
 
-// reportUnfunded states the fact once, with the links that fix it.
+// reportGatewayReadiness says, once, everything standing between this workspace
+// and a working model call.
 //
-// Warnings rather than notes: notes are suppressed in quiet mode, so a
-// --no-input run would otherwise report a problem and withhold every remedy for
-// it. Deliberately not a failure either: MCP wiring works without funding and
-// is written either way, so the run is a success with one capability off.
-func reportUnfunded(rep *reporter, state *authState, opts *setupOptions) {
-	rep.warn("credit balance is 0: model calls need credits or a connected provider key")
+// A fresh account is usually short of both models and funding, and reporting
+// them separately printed the same three remedy links twice under two different
+// headings. The facts stack; the remedies are stated once.
+//
+// Zero models never gets a check mark. It is the state where the agent would be
+// wired to a provider with nothing behind it, so it reports as a problem with
+// somewhere to go, not as a count that happens to be zero.
+//
+// Both remedies, neither prescribed. enforce_enabled_models defaults to false,
+// and with it off the workspace can call any catalogue model, so a funded
+// workspace with an empty enabled set may need no provider key at all and
+// prescribing one sends the user to the wrong page. The flag is not readable
+// from this host (the settings endpoint 404s), so the honest line is the one
+// that is true whichever way it is set.
+//
+// Warnings rather than notes: notes are suppressed in quiet mode, and a
+// --no-input run would otherwise report a problem and withhold every fix for it.
+// Deliberately not a failure either, since MCP wiring works without any of this
+// and is written either way.
+func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
+	noModels := count == 0
+	unfunded := state != nil && state.gatewayFunding == fundingNone
 
 	// workspaceLink, not workspaceURL: an unbuildable link is omitted rather
 	// than substituted with the docs page, which is how a keyless run ended up
 	// printing the same docs URL under two different labels.
+	models := workspaceLink(state, modelsPath)
 	credits := workspaceLink(state, creditsPath)
-	if credits != "" {
-		rep.warn("    Add credits     %s", credits)
-		rep.warn("    Connect a key   %s", workspaceLink(state, providersPath))
+	providers := workspaceLink(state, providersPath)
+
+	// Each fact carries its own remedy, because they are genuinely different
+	// pages: an empty model list is fixed on the models page, an empty balance
+	// by credits or by connecting a provider key. What is printed once is the
+	// docs pointer, which was the line that used to repeat per fact.
+	if !noModels {
+		rep.ok("%d chat models available", count)
+	} else {
+		rep.warn("no models enabled for this workspace")
+		if models != "" {
+			rep.warn("    Enable models   %s", models)
+		}
+	}
+	if unfunded {
+		rep.warn("credit balance is 0: model calls need credits or a connected provider key")
+		if credits != "" {
+			rep.warn("    Add credits     %s", credits)
+			rep.warn("    Connect a key   %s", providers)
+		}
+	}
+	if !noModels && !unfunded {
+		return
 	}
 	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
 
-	if credits == "" || opts.noInput || !opts.confirm("Open the credits page now?", true) {
+	// One offer, for the page that unblocks the more fundamental half. A
+	// workspace with no models cannot use credits it has; one with models but
+	// no funding needs the money first.
+	target, prompt := credits, "Open the credits page now?"
+	if noModels {
+		target, prompt = models, "Open the models page now?"
+	}
+	if target == "" || opts.noInput || !opts.confirm(prompt, true) {
 		return
 	}
-	if !auth.OpenBrowser(credits) {
-		rep.note("  could not open a browser — the URL above is the one to visit")
+	if !auth.OpenBrowser(target) {
+		rep.note("  could not open a browser, the URL above is the one to visit")
 	}
-}
-
-// reportProviders says what the step actually verified — that BYOK providers
-// are connected and reachable. The bare catalogue count was a number nobody
-// could act on: it is the whole workspace, while setup goes on to write a
-// handful of models into one agent's config.
-func reportProviders(rep *reporter, count int, providers []string) {
-	// Only the model count. The provider count was derived from the catalogue,
-	// not from credentials — it printed "google, google-ai connected" on a
-	// workspace with no provider key and no credits, which is the opposite of
-	// what a reader takes from the word "connected".
-	rep.ok("%d chat models available", count)
 }
 
 // connectedProviders summarises which BYOK providers actually have usable
@@ -1436,13 +1476,16 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	// The gateway half is the only thing that needs the catalogue or the credit
 	// balance, so both are resolved here, once, after the wiring answer is in.
 	if !opts.noGateway {
+		// Funding is resolved before anything is printed, so the two facts a
+		// workspace can be short of (models, money) are reported together
+		// rather than as two blocks carrying the same remedy links.
 		if count, _, err := listEnabledModels(client, state); err != nil {
 			rep.warn("could not list gateway models: %v", err)
 		} else {
 			rememberEnabledModelCount(count)
-			reportProviders(rep, count, nil)
+			resolveGatewayFunding(client, state)
+			reportGatewayReadiness(rep, state, opts, count)
 		}
-		resolveGatewayFunding(rep, client, state, opts)
 	}
 
 	results := make([]agentResult, 0, len(selected))
@@ -1773,7 +1816,8 @@ func buildLinks(state *authState) map[string]string {
 	// there is no workspace key to prefix with, and a keyless run still needs
 	// somewhere to send a user who has no models or no credits. Inside it, a
 	// keyless run got an empty string here and printed a blank URL.
-	links["models"] = workspaceURL(state, providersPath)
+	links["models"] = workspaceURL(state, modelsPath)
+	links["providers"] = workspaceURL(state, providersPath)
 	links["credits"] = workspaceURL(state, creditsPath)
 	return links
 }
