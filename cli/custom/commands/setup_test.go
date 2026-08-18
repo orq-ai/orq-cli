@@ -1368,9 +1368,6 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	}
 }
 
-// The three states must survive into the machine contract as themselves. A bool
-// would put back the ambiguity the tri-state exists to remove, at the one place
-// it cannot be fixed later without a breaking change.
 // The final screen makes capability claims, so it needs three states, not two.
 // "Can read and write your workspace" is an MCP claim; a gateway-only agent
 // cannot, and the old MCP-only wired check made a successful gateway-only run
@@ -1400,11 +1397,45 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 			want:       []string{"Claude Code can now read and write", "Start it:", "\n      claude\n"},
 			wantAbsent: []string{"orq launch"},
 		},
+		// A run can wire one agent for MCP and another for the gateway alone.
+		// Rolling the two groups together put the gateway-only agent inside the
+		// workspace claim it cannot honour, which is the overclaim the split
+		// exists to prevent, reintroduced for exactly this shape.
+		"mixed: one mcp, one gateway only": {
+			agents: []agentResult{
+				{Agent: "claude", MCP: ".mcp.json"},
+				{Agent: "kimi", Provider: "~/.kimi-code/config.toml"},
+			},
+			want: []string{
+				"Claude Code can now read and write your orq.ai workspace",
+				"Kimi Code routes its model calls through orq",
+				"Ask it:",
+				"Start them:",
+				"\n      claude\n",
+				"\n      kimi\n",
+			},
+			// The claim must name Claude Code alone, and the pronoun must not
+			// invite asking the agent that has no MCP server.
+			wantAbsent: []string{
+				"Kimi Code can now read and write",
+				"Claude Code and Kimi Code can now read and write",
+				"Ask one of them:",
+			},
+		},
+		// Codex's gateway lives in a named profile, so plain `codex` routes
+		// nowhere near orq. Suggesting it contradicted the providerUsage note
+		// printed one screen earlier.
+		"codex gateway only names its profile": {
+			agents:     []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}},
+			want:       []string{"Codex routes its model calls through orq", "\n      codex --profile orq\n"},
+			wantAbsent: []string{"\n      codex\n"},
+		},
 		// Both headings follow the count, so a single-agent run stops reading
 		// as a group and a two-agent run stops naming one of them "it".
 		"two agents": {
-			agents:     []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
-			want:       []string{"Claude Code and Kimi Code", "Ask one of them:", "Start one:"},
+			agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
+			want: []string{"Claude Code and Kimi Code", "Ask one of them:", "Start them:",
+				"\n      claude\n", "\n      kimi\n"},
 			wantAbsent: []string{"Ask it:", "Start it:"},
 		},
 		"nothing wired": {
@@ -1474,6 +1505,9 @@ func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
 	}
 }
 
+// The three states must survive into the machine contract as themselves. A bool
+// would put back the ambiguity the tri-state exists to remove, at the one place
+// it cannot be fixed later without a breaking change.
 func TestFundingStateJSONSpelling(t *testing.T) {
 	for state, want := range map[fundingState]string{
 		fundingUnknown: "unknown",

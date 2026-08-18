@@ -92,6 +92,22 @@ type agentSpec struct {
 	// agents that takes a flag the user would otherwise never discover. Empty
 	// when the agent picks it up with no action.
 	providerUsage string
+	// runCommand starts the agent so that it uses what setup wrote. Empty means
+	// the bare ID does, which is true for every agent whose config we own
+	// outright. Codex is the exception: its gateway lives in a named profile,
+	// so plain `codex` deliberately still routes nowhere near orq, and telling
+	// someone to run it contradicts the providerUsage note printed one screen
+	// earlier.
+	runCommand string
+}
+
+// startCommand is what to type to run this agent against the config setup
+// wrote.
+func (s agentSpec) startCommand() string {
+	if s.runCommand != "" {
+		return s.runCommand
+	}
+	return s.ID
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in
@@ -137,6 +153,7 @@ func agentRegistry() []agentSpec {
 			// wired one, and the file names the provider table it registers.
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
 			providerUsage:   "run 'codex --profile " + codexProfileName + "' to route through the gateway",
+			runCommand:      "codex --profile " + codexProfileName,
 		},
 		{
 			ID:    "opencode",
