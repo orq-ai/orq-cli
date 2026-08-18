@@ -1309,3 +1309,31 @@ func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
 		t.Errorf("ORQ_TOKEN is not the variable agents read: status = %q, want warn", got.Status)
 	}
 }
+
+// The unfunded and --no-verify paths both reach the writers with no proven
+// model. Codex omits its model key in that case (TestCodexProfileOmitsBlankModel);
+// kimi must likewise leave default_model out rather than write an empty one,
+// which kimi would read as a model named "".
+func TestKimiProfileOmitsBlankDefaultModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-key", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "default_model") {
+		t.Errorf("wrote a default_model with nothing to put in it:\n%s", data)
+	}
+
+	// With a proven model it must appear, or the omission above proves nothing.
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-key",
+		openCodeModels(), "openai/gpt-5.4"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(path)
+	if !strings.Contains(string(data), `default_model = "openai/gpt-5.4"`) {
+		t.Errorf("proven default model missing:\n%s", data)
+	}
+}

@@ -72,6 +72,23 @@ the version and this changelog as the source of truth for breaking changes.
   precedence over your login, including after `orq auth logout`, which is the
   behaviour that made writing one a poor default.
   **--json field change:** `orq setup` no longer emits `api_key.env_file`.
+- Added: `orq setup --no-verify` skips the single billed completion that proves
+  the gateway answers. The verification line now names that cost.
+- Added: `orq doctor` reports coding-agent wiring per detected agent, and warns
+  when an agent is wired but `ORQ_API_KEY` is absent from the current shell —
+  the state every agent launched from a terminal older than your last `orq
+  setup` is in, and one that looks like a broken install from inside the agent.
+  It also reports gateway funding when a login session is present. Detected but
+  unwired is a warning, never a failure, so the exit code stays 0.
+  **--json field change:** `checks[]` gains `coding_agent_<id>` entries and,
+  with a session, `gateway_funding`.
+- **--json field change:** `orq setup` gains `gateway_funded`.
+- Fixed: `orq setup` no longer ends in an unexplained gateway error on a
+  workspace with no credits and no provider key. It detects that state, says
+  so with the two links that fix it, skips the calls that could only fail, and
+  still wires MCP — exiting 0, because nothing is broken.
+- Fixed: the "connect a provider" link pointed at a page that does not exist.
+  Dashboard links are now workspace-scoped.
 - Fixed: `orq launch` sends model calls to the gateway the session authenticated
   against, deriving it from the API base. On an on-prem deployment every agent
   except claude wired its MCP server to the customer's host while sending
