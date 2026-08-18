@@ -1838,23 +1838,62 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 
-	wired := []string{}
+	// Three states, not two, because the two capabilities are independent and
+	// the messages make capability claims. "Can read and write your workspace"
+	// is an MCP claim; a gateway-only agent cannot, and widening the old
+	// MCP-only check would have printed it anyway — trading the visible
+	// contradiction (a ✓ gateway line followed by "nothing was wired") for an
+	// invisible overclaim.
+	mcpWired := []string{}
+	gatewayOnly := []string{}
+	// runnable is the agent whose bare command the screen suggests. Bare, not
+	// `orq launch`: setup just wrote durable config, and launch would ignore it
+	// — it builds a throwaway home per run — so suggesting it right after a
+	// durable wire teaches the ephemeral path and cannot reveal a broken setup.
+	runnable := ""
 	for _, a := range agents {
-		if a.Error == "" && a.MCP != "" {
-			if spec, ok := lookupAgent(a.Agent); ok {
-				wired = append(wired, spec.Label)
-			}
+		if a.Error != "" {
+			continue
+		}
+		spec, ok := lookupAgent(a.Agent)
+		if !ok {
+			continue
+		}
+		switch {
+		case a.MCP != "":
+			mcpWired = append(mcpWired, spec.Label)
+		case a.Provider != "":
+			gatewayOnly = append(gatewayOnly, spec.Label)
+		default:
+			continue
+		}
+		if runnable == "" {
+			runnable = a.Agent
 		}
 	}
-	if len(wired) > 0 {
-		fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(wired, " and "))
-		fmt.Fprintln(w, "  Ask one of them:")
+	switch {
+	case len(mcpWired) > 0:
+		all := append(mcpWired, gatewayOnly...)
+		fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(all, " and "))
+		if len(all) == 1 {
+			fmt.Fprintln(w, "  Ask it:")
+		} else {
+			fmt.Fprintln(w, "  Ask one of them:")
+		}
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, `      "list my orq.ai agents"`)
 		// The funding warning is not repeated here. It was printed a few lines
 		// ago, in the step that raised it, and saying it twice on one screen was
 		// the bulk of what made an unfunded run read as a failure.
-	} else {
+	case len(gatewayOnly) > 0:
+		// True and narrower: model calls route through orq, and nothing else is
+		// claimed. No "ask it" line — without MCP the agent cannot answer it.
+		verb := "route their"
+		if len(gatewayOnly) == 1 {
+			verb = "routes its"
+		}
+		fmt.Fprintf(w, "  %s %s model calls through orq.\n", strings.Join(gatewayOnly, " and "), verb)
+	default:
 		// No agent wired, so the other way in is the gateway itself: point an
 		// existing OpenAI client at the router and change nothing else.
 		//
@@ -1868,7 +1907,12 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
+		// Ephemeral routing is legitimately the answer here — nothing durable
+		// was written for launch to shadow. Name an agent that is actually
+		// installed; `claude` was a literal printed to people who had just
+		// installed something else.
+		fmt.Fprintf(w, "  Or start a coding agent:      orq launch %s\n", detectedAgentID())
+		fmt.Fprintln(w, "  Or wire one durably:          orq setup coding-agents")
 	}
 	// Both the provider block and the MCP entry reference ORQ_API_KEY, so an
 	// MCP-only agent needs the export just as much as a provider-wired one.
@@ -1915,6 +1959,16 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		fmt.Fprintln(w)
 	}
+	// The run suggestion comes after the env warning, deliberately: the bare
+	// command only authenticates once ORQ_API_KEY is exported, and printing it
+	// above a warning that says the shell lacks the key would walk the user
+	// straight into the failure the warning predicts.
+	if runnable != "" {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "  Start it:")
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "      %s\n", runnable)
+	}
 	fmt.Fprintln(w)
 	// Only the line that differs per install, plus the one command that leads
 	// everywhere else. The docs and models URLs are static, and both survive
@@ -1926,4 +1980,16 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w, "  Stuck?      orq doctor")
 	fmt.Fprintln(w)
+}
+
+// detectedAgentID names an installed agent for the ephemeral-launch
+// suggestion, so the screen never recommends starting a binary the user does
+// not have. Falls back to claude only when detection finds nothing at all.
+func detectedAgentID() string {
+	for _, spec := range agentRegistry() {
+		if spec.detect != nil && spec.detect() {
+			return spec.ID
+		}
+	}
+	return "claude"
 }
