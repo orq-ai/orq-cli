@@ -1965,7 +1965,11 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// straight into the failure the warning predicts.
 	if runnable != "" {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  Start it:")
+		if len(mcpWired)+len(gatewayOnly) > 1 {
+			fmt.Fprintln(w, "  Start one:")
+		} else {
+			fmt.Fprintln(w, "  Start it:")
+		}
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "      %s\n", runnable)
 	}
