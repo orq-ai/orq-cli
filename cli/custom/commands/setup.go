@@ -1211,25 +1211,21 @@ func resolveGatewayFunding(client *auth.Client, state *authState) {
 // reportGatewayReadiness says, once, everything standing between this workspace
 // and a working model call.
 //
-// A fresh account is usually short of both models and funding, and reporting
-// them separately printed the same three remedy links twice under two different
-// headings. The facts stack; the remedies are stated once.
+// The two facts it can report are not equal, and are reported differently.
 //
-// Zero models never gets a check mark. It is the state where the agent would be
-// wired to a provider with nothing behind it, so it reports as a problem with
-// somewhere to go, not as a count that happens to be zero.
+// Zero enabled models is a blocker: the agent would be wired to a provider with
+// nothing behind it. It warns, never gets a check mark, and is the only state
+// that offers to open a browser.
 //
-// Both remedies, neither prescribed. enforce_enabled_models defaults to false,
-// and with it off the workspace can call any catalogue model, so a funded
-// workspace with an empty enabled set may need no provider key at all and
-// prescribing one sends the user to the wrong page. The flag is not readable
-// from this host (the settings endpoint 404s), so the honest line is the one
-// that is true whichever way it is set.
+// A zero balance may block nothing at all, so it states a remedy rather than a
+// problem, and asks nothing. Both remedies ride one line, neither prescribed:
+// enforce_enabled_models defaults to false, so a workspace with an empty
+// enabled set may need no provider key at all, and the flag is not readable
+// from this host (the settings endpoint 404s).
 //
-// Warnings rather than notes: notes are suppressed in quiet mode, and a
-// --no-input run would otherwise report a problem and withhold every fix for it.
-// Deliberately not a failure either, since MCP wiring works without any of this
-// and is written either way.
+// Neither is a failure, since MCP wiring works without any of this and is
+// written either way. Both survive quiet mode, where they are the only pointer
+// a scripted run gets.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	noModels := count == 0
 	unfunded := state != nil && state.gatewayFunding == fundingNone
@@ -1239,7 +1235,6 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 	// printing the same docs URL under two different labels.
 	models := workspaceLink(state, modelsPath)
 	credits := workspaceLink(state, creditsPath)
-	providers := workspaceLink(state, providersPath)
 
 	// Each fact carries its own remedy, because they are genuinely different
 	// pages: an empty model list is fixed on the models page, an empty balance
@@ -1254,30 +1249,29 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 		}
 	}
 	if unfunded {
-		// Not a warning: BYOK, private models and the recently-created flag all
-		// serve calls at zero, and no API tells the CLI which apply (RES-1391).
-		rep.info("credit balance is 0 (fine if a provider key is connected)")
+		// Conditional, not a warning. A zero balance only blocks a call when the
+		// subscription meters orq's managed keys, and then only for a public model
+		// with no provider key connected. A workspace that never bought credits is
+		// unmetered and unaffected. None of that is readable from here, and the
+		// balance itself is doctor's to report.
+		line := "if model calls get refused, add credits or connect a provider key"
 		if credits != "" {
-			rep.info("    Add credits     %s", credits)
-			rep.info("    Connect a key   %s", providers)
+			line += " (" + credits + ")"
 		}
+		rep.info("%s", line)
 	}
-	if !noModels && !unfunded {
+	if !noModels {
 		return
 	}
 	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
 
-	// One offer, for the page that unblocks the more fundamental half. A
-	// workspace with no models cannot use credits it has; one with models but
-	// no funding needs the money first.
-	target, prompt := credits, "Open the credits page now?"
-	if noModels {
-		target, prompt = models, "Open the models page now?"
-	}
-	if target == "" || opts.noInput || !opts.confirm(prompt, true) {
+	// Offered for zero models only. That state leaves nothing callable, so the
+	// page is worth the interruption; a zero balance may block nothing at all,
+	// and stopping every run to ask about it was the cost of not knowing.
+	if models == "" || opts.noInput || !opts.confirm("Open the models page now?", true) {
 		return
 	}
-	if !auth.OpenBrowser(target) {
+	if !auth.OpenBrowser(models) {
 		rep.note("  could not open a browser, the URL above is the one to visit")
 	}
 }
