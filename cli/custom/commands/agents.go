@@ -74,8 +74,9 @@ type agentSpec struct {
 	// we wrote would overstate what the user got.
 	// apiKey is written literally when the agent cannot read it from env
 	// (kimi); the file must be 0600.
-	// defaultModel is the model the agent should open with, already proven to
-	// answer. Writers fill it only when the config has none: the agent persists
+	// defaultModel is the model the agent should open with — the catalogue's
+	// ranked pick, not verified to answer. Writers fill it only when the
+	// config has none: the agent persists
 	// the user's own pick there, and overwriting it would silently undo a
 	// choice they made in the agent's UI.
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
@@ -519,10 +520,9 @@ const codexProfileName = "orq"
 // "ERROR: Reconnecting... 1/5". So the model must be one the gateway serves
 // natively over Responses.
 //
-// The proven default is reused when it qualifies, and otherwise the best
-// Responses-capable model is taken from the same preference order — never a
-// second probe, since that would bill the user again.
-func codexDefaultModel(models []auth.RouterModel, proven string) string {
+// The chosen default is reused when it qualifies, and otherwise the best
+// Responses-capable model is taken from the same preference order.
+func codexDefaultModel(models []auth.RouterModel, chosen string) string {
 	responses := make([]auth.RouterModel, 0, len(models))
 	for _, m := range models {
 		if m.Metadata.SupportsResponses {
@@ -530,8 +530,8 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 		}
 	}
 	for _, m := range responses {
-		if m.Ref() == proven {
-			return proven
+		if m.Ref() == chosen {
+			return chosen
 		}
 	}
 	for _, group := range auth.CandidateCodingModels(responses, preferredCodingModels) {
@@ -831,7 +831,8 @@ func codingAgentChecks() []doctorCheck {
 		}
 
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
-		// Every config written above reaches the credential through
+		// Every config written above except kimi's provider TOML (which
+		// embeds the key literally) reaches the credential through
 		// ORQ_API_KEY, so a wired agent started from a shell that does not
 		// export it authenticates with an empty bearer and gets 401 on every
 		// call. That looks identical to a broken install from inside the agent
