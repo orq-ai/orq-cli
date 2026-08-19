@@ -29,8 +29,9 @@ func buildRoot(t *testing.T) *cobra.Command {
 }
 
 // Cobra PANICS on a GroupID it has no group for, and that check runs at
-// Execute time — i.e. in the user's terminal, not in CI. A tag added to
-// openapi.yaml is enough to trip it, so this walks the real tree instead of
+// Execute time — i.e. in the user's terminal, not in CI. New tags fall back
+// to Utilities and cannot trip it; the panic needs an unregistered ID in the
+// tables (or a fallback regression), so this walks the real tree instead of
 // trusting the map.
 func TestEveryRootCommandResolvesToARegisteredGroup(t *testing.T) {
 	root := buildRoot(t)

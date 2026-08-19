@@ -3,8 +3,8 @@ package custom
 import "github.com/spf13/cobra"
 
 // Topic groups for the root help screen. `orq --help` is first contact with
-// the CLI, and a flat alphabetical list of ~58 commands hides `setup` between
-// `server` and `skills`. Cobra renders a grouped list as soon as the root has
+// the CLI, and a flat alphabetical list of dozens of commands hides `setup`
+// between `server` and `skills`. Cobra renders a grouped list as soon as the root has
 // groups, so this is display-only: no command is renamed, moved, or hidden,
 // and nothing here reaches surface.json.
 //
@@ -42,9 +42,8 @@ var helpGroups = []*cobra.Group{
 // A few entries name commands that are currently invisible because every one
 // of their subcommands is generated Hidden (guardrail-rules, routing-rules,
 // policies, model-sharing, feature-previews, human-review-sets) or that only
-// exist in one of the two generated trees (workspace-settings in stable,
-// workspace-security in rc). They are listed anyway so the command lands in
-// the right section the day it becomes visible.
+// exist in the rc tree (workspace-security). They are listed anyway so the
+// command lands in the right section the day it becomes visible.
 var commandGroup = map[string]string{
 	// Get started
 	"setup":  groupGetStarted,
@@ -130,7 +129,8 @@ var commandGroup = map[string]string{
 // Short/Long text that echoes the OpenAPI tag name.
 func applyCommandGroups(root *cobra.Command) {
 	for _, g := range helpGroups {
-		// Register() runs once per process, but tests build several roots.
+		// Pure defense against a double Register on one root; every fresh
+		// root (bartolo recreates Root per Init) starts with zero groups.
 		if !root.ContainsGroup(g.ID) {
 			root.AddGroup(g)
 		}
