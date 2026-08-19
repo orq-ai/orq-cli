@@ -374,8 +374,8 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 var errAgentFailed = errors.New("one or more coding agents could not be configured")
 
 // looksLikeProject reports whether the working directory is somewhere it makes
-// sense to write agent config rather than $HOME — today that means .mcp.json,
-// the only file setup still writes into a project. It also decided where to put
+// sense to write agent config rather than $HOME — today that means the
+// project-scoped MCP configs (.mcp.json, .kimi-code/mcp.json). It also decided where to put
 // .env and .agents/, and both are gone: skills left in 03baa27, and setup no
 // longer writes ./.env at all.
 func looksLikeProject() bool {
@@ -1055,7 +1055,7 @@ func maskToken(token string) string {
 }
 
 // ============================================================================
-// Step 4 — providers
+// Gateway readiness helpers (no separate step since setup went to 3 steps)
 // ============================================================================
 
 // Three different dashboard destinations, and they fix three different things.
@@ -1077,7 +1077,9 @@ const (
 	gatewayIntroPath = "/docs/ai-gateway/get-started/introduction"
 )
 
-// workspaceCanSpend reports whether the gateway can serve a model call at all.
+// workspaceCanSpend reports the workspace's credit balance — a hint about
+// whether the gateway will serve a model call, not a verdict (BYOK, private
+// models, the recently-created flag and shared keys all serve at zero).
 // known is false when the question could not be answered, and callers must then
 // behave exactly as before — a failed permission check must never be reported
 // to the user as "no credits".
@@ -1088,10 +1090,10 @@ const (
 // the time this runs, so the session's own workspace token is fetched instead.
 //
 // BYOK state has no endpoint reachable from the API host at all — the only
-// source is a session-scoped dashboard route. It is therefore left false, and
-// the warning it feeds is gated on credits == 0 anyway: a workspace with a
-// provider key but no credits still gets told the truth, that the gateway is
-// refusing calls, with both remedies printed.
+// source is a session-scoped dashboard route. BYOK is therefore assumed
+// absent, and the warning this feeds is gated on credits == 0 anyway: a
+// workspace with a provider key but no credits gets conditional phrasing —
+// the gateway may well be serving its calls — with both remedies printed.
 func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, known bool) {
 	token := sessionWorkspaceToken(client, state)
 	if token == "" {
@@ -1185,9 +1187,10 @@ func canAdviseOnCredits(state *authState) bool {
 // The balance is a hint, not a verdict. The gateway allows a call at zero
 // credits when the provider has a BYOK integration, when the model is private,
 // when the workspace carries the recently-created flag, or when the
-// subscription has not disabled shared-key use, which is the default. So this
-// states the rule and leaves the user to match it against their own setup,
-// rather than asserting a state it cannot read.
+// subscription has not disabled shared-key use, which is the default. The
+// printed warning names only the two common allowances (credits, provider
+// key) — a simplification of the four — and leaves the user to match it
+// against their own setup rather than asserting a state it cannot read.
 func resolveGatewayFunding(client *auth.Client, state *authState) {
 	if state == nil || state.gatewayFunding != fundingUnknown || !canAdviseOnCredits(state) {
 		return
@@ -1384,7 +1387,7 @@ func workspaceLink(state *authState, path string) string {
 }
 
 // ============================================================================
-// Step 5 — coding agents
+// Step 3 — coding agents
 // ============================================================================
 
 // scopeNote marks a path the agent will only ever read from the home directory,
