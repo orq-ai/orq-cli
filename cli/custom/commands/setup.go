@@ -267,6 +267,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// Verify with the credential the agents will use, not this run's session token.
 	if mintedToken != "" {
 		authState.bearer = mintedToken
+		authState.minted = true
 	}
 
 	rep.step(3, setupSteps, "Coding agents")
@@ -333,8 +334,17 @@ type authState struct {
 	bearer string
 	// suppliedKey is set when the user brought their own key; we never mint then.
 	suppliedKey string
+	// minted is set when this run created or reused a saved API key as the bearer.
+	minted bool
 	// gatewayFunding is what this run learned about the workspace's ability to pay for a model call.
 	gatewayFunding fundingState
+}
+
+// durableBearer reports whether bearer is an API key rather than the session's
+// expiring access token. Only a key may be wired into agent configs: kimi
+// embeds the literal value, and a session token 401s within the hour.
+func (s *authState) durableBearer() bool {
+	return s.suppliedKey != "" || s.minted || s.session == nil
 }
 
 // Three-valued on purpose: the question is often never asked, and that is not "cannot pay".
@@ -1178,6 +1188,10 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
 				rep.fail("%-8s provider  no config path for this scope", id)
 				res.Error = "provider config path resolved empty"
+			} else if !state.durableBearer() {
+				// Same invariant 'setup coding-agents' enforces up front; here the
+				// user declined the mint, so skipping is the consequence, not an error.
+				rep.warn("%-8s provider  skipped: no durable API key to wire (you declined creating one) — re-run 'orq setup' to mint it", id)
 			} else if perr == nil && path != "" {
 				models := codingModels(rep, client, state)
 				// Must match the [models."<key>"] form the writer emits: the full provider/model ref.
