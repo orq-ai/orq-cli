@@ -95,17 +95,11 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 	}
 }
 
-// Our hand-written commands and the generated ones share one namespace, and
-// generated.Register runs first. A tag added to openapi.yaml named `setup`,
-// `launch` or `doctor` would land a second command under a name we own, and
-// cobra resolves such a pair by first match rather than reporting it: one of
-// ours quietly becomes unreachable, with no build failure and nothing the
-// grouping tests above would notice.
-//
-// Asserted on the assembled tree, not by comparing the two halves in
-// isolation: custom code deliberately adapts to what generated already put
-// there (attachAuthSubcommands reuses bartolo's `auth` parent instead of
-// adding a second one), so isolated halves report clashes that do not exist.
+// generated.Register runs first, so an openapi.yaml tag named `setup`,
+// `launch` or `doctor` would shadow a command we own: cobra resolves the pair
+// by first match rather than reporting it, and no file of ours is overwritten.
+// Counted on the assembled tree — attachAuthSubcommands reuses bartolo's `auth`
+// parent, so registering the halves separately invents a clash that is not real.
 func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {
 	root := buildRoot(t)
 
