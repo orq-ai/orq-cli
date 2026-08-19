@@ -1086,3 +1086,71 @@ func TestTildeShortensHomePaths(t *testing.T) {
 		}
 	}
 }
+
+// The flag help promises "use this API key instead of the one a previous
+// setup saved" — so the key that lands in the agent configs must be the
+// supplied one. It used to be split-brain: resolveAuth persisted the new key
+// to credentials.json, then runCodingAgents put the stale saved key back into
+// the bearer, and every agent was wired to the old credential.
+func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir()) // no project markers: scope inference picks $HOME
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() {
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+	})
+	if bartolocli.Creds == nil {
+		// initAuth, which normally creates this, runs from the generated
+		// runtime that unit tests do not start.
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-OLD-STALE", ""); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+
+	codingModelsFetched, cachedCodingModels = false, nil
+	defaultModelResolved = false
+	t.Cleanup(func() {
+		codingModelsFetched, cachedCodingModels = false, nil
+		defaultModelResolved = false
+	})
+
+	sub := newSetupCodingAgentsCommand()
+	sub.SetArgs([]string{"--api-key", "sk-orq-NEW-SUPPLIED", "--coding-agent", "kimi"})
+	if err := sub.Execute(); err != nil {
+		t.Fatalf("coding-agents: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if err != nil {
+		t.Fatalf("kimi config not written: %v", err)
+	}
+	tree := mustParseKimiTOML(t, string(data))
+	got, _ := tree.Get("providers.orq.api_key").(string)
+	if got != "sk-orq-NEW-SUPPLIED" {
+		t.Errorf("agent config carries api_key %q, want the supplied key — the saved key overrode --api-key", got)
+	}
+}

@@ -219,7 +219,13 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 		return fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
 	client := auth.NewClient(authState.apiBase)
-	if saved != "" {
+	// The saved key backs session-authenticated runs, where the bearer is a
+	// short-lived workspace token unfit for agent configs. When the user
+	// supplied a credential this run (--api-key or ORQ_API_KEY), that key IS
+	// the bearer — putting the saved one back would wire every agent to the
+	// stale credential while resolveAuth has already persisted the new one:
+	// split-brain between credentials.json and the configs just written.
+	if saved != "" && authState.suppliedKey == "" {
 		authState.bearer = saved
 	}
 
@@ -1323,7 +1329,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		case opts.noGateway && spec.writeProvider != nil:
 			rep.note("%-8s provider  skipped (%s)", id, opts.skipFlag("gateway"))
 		case spec.writeProvider != nil:
-			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
+			if path, perr := spec.providerConfig(opts.global); perr == nil && path == "" {
+				// No resolver returns ("", nil) today, but the MCP half guards
+				// the same impossible shape explicitly — silence here would
+				// read as success for a wire that never happened.
+				rep.fail("%-8s provider  no config path for this scope", id)
+				res.Error = "provider config path resolved empty"
+			} else if perr == nil && path != "" {
 				models := codingModels(rep, client, state)
 				// Must match the [models."<key>"] form the writer emits, which is
 				// the full provider/model ref.
