@@ -1830,9 +1830,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// Do not claim success the verification step just disproved: the checks
 	// above already printed what failed, so this line is the only thing left
 	// telling the user whether to trust the result.
-	// Colored and bold, unlike the per-step ✓ marks above it. Those report
-	// individual writes; this is the verdict on the run, and on a screen that
-	// is otherwise uniform grey it was indistinguishable from them.
+	// Bold, unlike the per-step ✓ marks above it (the ✓ color matches
+	// theirs). Those report individual writes; this is the verdict on the
+	// run, and without the weight it was indistinguishable from them.
 	if verified {
 		fmt.Fprintf(w, "  %s %s\n", paint(ansiOK, "✓"), bold("Setup complete"))
 	} else {
@@ -1887,8 +1887,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			fmt.Fprintf(w, "  %s %s model calls through orq.\n",
 				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
 		}
-		// The sample prompt moved into the aligned action block below, beside
-		// the command that starts the agent. It used to sit here as a heading
+		// The sample prompt moved into the aligned action block below, under
+		// the start commands. It used to sit here as a heading
 		// plus a blank line plus a third indent level, which is the shape the
 		// screen was criticised for: one idea spread over three lines and two
 		// depths, repeated for the start commands a few lines later.
@@ -1970,10 +1970,10 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// command only authenticates once ORQ_API_KEY is exported, and printing it
 	// above a warning that says the shell lacks the key would walk the user
 	// straight into the failure the warning predicts.
-	// One aligned block for everything the user can act on: the commands that
-	// start each wired agent, the prompt that proves MCP works, and the links.
-	// Previously these were three separate label-colon-blank-indent groups, so
-	// four actions cost twelve lines across three indent depths.
+	// One shared label column for everything the user can act on: the
+	// commands that start each wired agent, the prompt that proves MCP works,
+	// and the links. The Ask and Start groups were label-colon-blank-indent
+	// shapes before — one idea over three lines and two depths each.
 	if len(starts) > 0 {
 		fmt.Fprintln(w)
 		// Every wired agent gets its line. Naming one of several left the user
