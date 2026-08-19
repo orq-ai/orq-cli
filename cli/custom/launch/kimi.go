@@ -9,7 +9,10 @@ import (
 )
 
 const (
-	DefaultKimiModel = "anthropic/claude-sonnet-4-6"
+	// Moonshot's own CLI opens on a Moonshot model. Only reached when the
+	// workspace catalogue is empty or lacks this ref; otherwise the first
+	// enabled model wins.
+	DefaultKimiModel = "moonshotai/kimi-k2.7-code"
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
 	// fork). Provider type "openai" = /chat/completions, "openai_responses" =
