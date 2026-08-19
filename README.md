@@ -83,7 +83,7 @@ orq setup --no-input \
 
 Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi` (repeat `--coding-agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format, except `pi`: it has no native MCP (extensions only), so setup wires its gateway provider alone.
 
-Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
+Setup does not install skills, it suggests them: a run that wired MCP prints `npx skills add orq-ai/assistant-plugins`, which detects your agent and writes into its own config. `orq launch` separately loads them session-only for claude via `--plugin-url`. The plugin is an [Agent Plugins 1.0.0](https://agent-plugins.org) package; shipping the MCP server inside it is deferred, since the spec forbids credentials in headers.
 
 **Setup also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
