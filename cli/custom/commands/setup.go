@@ -369,7 +369,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 var errAgentFailed = errors.New("one or more coding agents could not be configured")
 
 // looksLikeProject reports whether the working directory is somewhere it makes
-// sense to drop .mcp.json, .env and .agents/.
+// sense to drop .mcp.json and .agents/.
 func looksLikeProject() bool {
 	for _, marker := range []string{".git", "package.json", "pyproject.toml", "go.mod", "Cargo.toml"} {
 		if _, err := os.Stat(marker); err == nil {
@@ -891,8 +891,9 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	}
 
 	// A key from an earlier run is reused, not replaced. Minting per run left
-	// a trail of live keys in the dashboard, and every re-run then disagreed
-	// with whatever the previous one had already written into agent configs.
+	// a trail of live keys in the dashboard, and orphaned every copy of the
+	// old key outside our reach — shells that already sourced ~/.orq/env, and
+	// anything the user pasted from it.
 	//
 	// Reused only when it belongs to the workspace this run resolved. Keys are
 	// workspace-scoped at mint time and resolveWorkspace has already switched

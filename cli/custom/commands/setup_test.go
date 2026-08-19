@@ -33,8 +33,8 @@ func chdir(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 }
 
-// The scope default decides whether setup writes .env and .mcp.json into the
-// working directory. Getting it wrong drops a live key into $HOME.
+// The scope default decides whether setup writes agent configs like
+// .mcp.json into the working directory or into $HOME.
 func TestLooksLikeProject(t *testing.T) {
 	cases := []struct {
 		marker string
@@ -425,7 +425,7 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 				bearer:  "session-token",
 				session: &auth.Session{ActiveWorkspaceKey: &wsB, User: &auth.SessionUser{ID: "u1"}},
 			}
-			// global skips the ./.env tail; noInput skips every confirm.
+			// noInput skips every confirm.
 			opts := &setupOptions{noInput: true, global: true}
 			_, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
 			if err != nil {

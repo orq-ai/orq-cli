@@ -66,8 +66,9 @@ the version and this changelog as the source of truth for breaking changes.
   workspace record and are reused as before.
 - Removed: `orq setup` no longer writes `ORQ_API_KEY` into `./.env`, and the
   `--no-env` flag is gone with it. The key lives in `~/.orq/credentials.json`
-  for the CLI and `~/.orq/env` for your agents, which is what every agent
-  config actually reads. An existing `./.env` keeps working — and keeps taking
+  for the CLI and `~/.orq/env` for your agents: configs reference the
+  `ORQ_API_KEY` environment variable, which that file exports (kimi is the
+  exception — its config carries the key literally). An existing `./.env` keeps working — and keeps taking
   precedence over your login, including after `orq auth logout`, which is the
   behaviour that made writing one a poor default.
   **--json field change:** `orq setup` no longer emits `api_key.env_file`.
