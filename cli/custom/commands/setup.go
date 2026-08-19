@@ -47,7 +47,10 @@ type setupOptions struct {
 
 // skipFlag names the flag that turned a branch off, in the spelling of the
 // command the user actually ran. Naming the parent's flag from the subcommand
-// sent people looking for a --no-gateway that does not exist there.
+// sent people looking for a --no-gateway that does not exist there. The
+// guarantee covers flag-driven skips only: a prompt-driven skip on the
+// subcommand still names the parent's --no-* spelling, because narrowing is
+// set from the --gateway/--mcp flags alone.
 func (o *setupOptions) skipFlag(branch string) string {
 	if o.narrowing {
 		// On the subcommand, a branch is off because the *other* one was named.
@@ -1351,8 +1354,10 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				// Leaving the file untouched is the only outcome that cannot make
 				// the agent worse off than it already was.
 				//
-				// Not recorded as an agent error: step 4 already reported the
-				// cause with a link and a retry, and MCP wiring above succeeded.
+				// Not recorded as an agent error: the providers step (step 3
+				// of orq setup) already reported the cause with a link and a
+				// retry — though not under 'setup coding-agents', which skips
+				// that step — and MCP wiring above succeeded.
 				// Failing the run here would report a workspace state twice and
 				// call a configured agent broken.
 				if len(models) == 0 {
@@ -1377,9 +1382,12 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					if written > 0 {
 						listed = fmt.Sprintf(" (%d models)", written)
 					}
-					// No scope note here: when MCP was also written it named the
-					// same file and already carried one, and repeating it per
-					// line would say the same thing twice for one agent.
+					// Scope note only when the MCP line carried none. For
+					// opencode/kilo both halves share one file, so a second
+					// note would repeat the first. Kimi's provider config is
+					// always ~/.kimi-code/config.toml while its MCP path is
+					// scope-aware — different files, but the provider path
+					// never varies by scope, so a note would say nothing.
 					scope := ""
 					if res.MCP == "" {
 						scope = scopeNote(spec.providerConfig, opts.global)
@@ -1551,9 +1559,10 @@ func promptForAgents(rep *reporter) ([]string, error) {
 func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 	// Silent when it passes. Step 1 already printed the identity this would
 	// repeat, the project count means nothing now that setup never asks about
-	// projects, and the gateway line below cannot succeed against an
-	// unreachable API — so a passing check here tells the user nothing they
-	// were not just told. A failing one is the whole point, and still prints.
+	// projects, and the gateway line below usually implies reachability —
+	// though it may reuse the step-3 probe and print success without a live
+	// call — so a passing check here tells the user nothing they were not
+	// just told. A failing one is the whole point, and still prints.
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
 		// A freshly minted key is not accepted for a second or two, so a single

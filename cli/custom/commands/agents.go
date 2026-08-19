@@ -778,8 +778,9 @@ bearer_token_env_var = "ORQ_API_KEY"
 // One doctor, not two: a user with a broken setup should not have to know
 // which doctor to run, so these ride inside `orq doctor` as one more check
 // group. Detected-but-unwired is a warn, not a fail — an agent nobody wired is
-// not broken, it is an offer — so the exit code stays healthy and the message
-// names the command that wires it.
+// not broken, it is an offer — and the message names the command that wires
+// it. Check statuses never drive doctor's exit code; warn-vs-fail is message
+// semantics only.
 func codingAgentChecks() []doctorCheck {
 	var checks []doctorCheck
 	for _, spec := range agentRegistry() {
@@ -833,7 +834,7 @@ func codingAgentChecks() []doctorCheck {
 // correctly wired project-scoped agent as "detected but not wired" — the
 // report was wrong about the thing it exists to report. Agents whose resolver
 // ignores the scope argument return the same path twice, which costs one
-// redundant stat.
+// redundant read-and-parse of that config.
 func wiredPath(resolve func(bool) (string, error), present func(string) bool) (string, bool) {
 	if resolve == nil || present == nil {
 		return "", false
