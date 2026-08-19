@@ -80,3 +80,35 @@ func TestNoGroupRendersEmpty(t *testing.T) {
 		}
 	}
 }
+
+// The runtime fallback is deliberately forgiving — an unmapped command lands
+// in Utilities rather than crashing or vanishing — which means nothing above
+// can fail when a new OpenAPI tag generates a new top-level command: it gets
+// a registered group, the map-only test never sees it, and Utilities already
+// has members. This test is the missing CI signal: every visible top-level
+// command must either be mapped in commandGroup or named here as belonging
+// in Utilities on purpose. A new tag trips it the moment it lands, and the
+// fix is one line in whichever list fits.
+func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
+	// In Utilities because that is where they belong, not by accident.
+	deliberate := map[string]bool{
+		"help":        true, // cobra's own, grouped via SetHelpCommandGroupID
+		"completion":  true, // cobra's own, grouped via SetCompletionCommandGroupID
+		"help-config": true, // bartolo's config help page
+		"help-input":  true, // bartolo's input help page
+		"request":     true, // raw-HTTP escape hatch — a utility by definition
+		"server":      true, // inspects/persists server-URL defaults
+	}
+
+	root := buildRoot(t)
+	for _, cmd := range root.Commands() {
+		if cmd.Hidden {
+			continue // invisible commands cannot sit in a wrong section
+		}
+		name := cmd.Name()
+		if _, mapped := commandGroup[name]; mapped || deliberate[name] {
+			continue
+		}
+		t.Errorf("visible command %q is not in commandGroup and not deliberately Utilities — it renders in Utilities by fallback, which is a wrong section until someone chooses one", name)
+	}
+}
