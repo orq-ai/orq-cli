@@ -1184,7 +1184,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				}
 				// Every writer clears its own keys before emitting, so writing an empty catalogue would delete a working provider block from an earlier run.
 				if len(models) == 0 {
-					rep.warn("%-8s provider  skipped: no models to offer, %s left unchanged", id, tilde(path))
+					// Say which of the two states this is: an earlier run's block
+					// still wires the agent, an absent one leaves it unwired.
+					if spec.providerPresent != nil && spec.providerPresent(path) {
+						rep.warn("%-8s provider  no models to offer; kept the orq provider already in %s", id, tilde(path))
+					} else {
+						rep.warn("%-8s provider  no models to offer; nothing written to %s", id, tilde(path))
+					}
 					results = append(results, res)
 					continue
 				}
