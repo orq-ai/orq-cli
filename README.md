@@ -57,10 +57,10 @@ make build
 ## Quick start
 
 ```sh
-orq setup                # sign in, pick a project, wire up your coding agent
+orq setup                # sign in, wire up your coding agents
 ```
 
-That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server with your coding agent. After that:
+That is the whole first run. It signs you in, creates a workspace API key (reused on later runs), and wires your coding agents to orq. Projects are never asked about: keys are workspace-scoped, and project scope belongs where resources are created (agents, deployments). After that:
 
 ```sh
 orq whoami               # verify identity
@@ -77,30 +77,42 @@ Three modes, same command:
 orq setup                # short path — asks only what it cannot infer
 orq setup -i             # asks about every choice
 orq setup --no-input \
-  --project support-bot \
   --api-key "$ORQ_API_KEY" \
-  --agent codex          # fully parameterized, for CI
+  --coding-agent codex   # fully parameterized, for CI
 ```
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
+Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi` (repeat `--coding-agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format, except `pi`: it has no native MCP (extensions only), so setup wires its gateway provider alone.
 
-Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
+Setup does not install skills, it suggests them: a run that wired MCP prints `npx skills add orq-ai/assistant-plugins`, which detects your agent and writes into its own config. `orq launch` separately loads them session-only for claude via `--plugin-url`. The plugin is an [Agent Plugins 1.0.0](https://agent-plugins.org) package; shipping the MCP server inside it is deferred, since the spec forbids credentials in headers.
 
-**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v3/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
+**Setup also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+| Agent | Setup writes | Route through orq by |
+|---|---|---|
+| `kimi` | `[providers.orq]` + the model list into `~/.kimi-code/config.toml` | just running `kimi` (default filled when absent) |
+| `codex` | a self-contained profile at `$CODEX_HOME/orq.config.toml` (default `~/.codex/`) | `codex --profile orq` |
+| `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
+| `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
+| `pi` | an `orq` provider merged into `~/.pi/agent/models.json` | `pi --model orq/<model>`, or the `/model` picker |
+| `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
+
+Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test, and `orq doctor` reports gateway funding for free before you get there.
+
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
 | Flag | Effect |
 |---|---|
-| `--project <name>` | Select the project, creating it when it does not exist |
 | `--workspace <key>` | Activate a workspace |
-| `--api-key <key>` | Use this key instead of logging in and minting one |
-| `--agent <name>` | Instrument a coding agent (repeatable) |
-| `--global` | Write agent config under `$HOME` instead of the current project |
-| `--no-agent` / `--no-env` | Skip agent instrumentation / skip writing `.env` |
+| `--api-key <key>` | Use this key instead of logging in and creating one |
+| `--coding-agent <name>` | Wire a coding agent (repeatable) |
+| `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
+| `--no-coding-agents` | Skip coding-agent wiring |
+| `--no-mcp` / `--no-gateway` | Wire only the gateway / only MCP (both = skip, same as `--no-coding-agents`) |
 | `--no-input` | Never prompt; missing values become errors |
+
+Re-running just the wiring — after installing a new agent, say — is `orq setup coding-agents`, which reuses the key an earlier `orq setup` saved rather than creating another. `--gateway` and `--mcp` narrow it to one half. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; these wire the coding-agent CLIs on this machine.
 
 Scope is chosen automatically: setup writes into the current directory when it looks like a project (`.git`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and falls back to `$HOME` otherwise, so installing from your home directory does not scatter config files there.
 
@@ -220,7 +232,7 @@ surface changes are always a reviewed diff.
 
 | Command | Purpose |
 |---|---|
-| `orq setup` | First-run onboarding: auth, project, API key, coding agent |
+| `orq setup` | First-run onboarding: auth, API key, coding agents |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"orq/cli/custom/auth"
@@ -80,6 +81,13 @@ func NewDoctorCommand() *cobra.Command {
 			}
 
 			checks := buildSessionChecks(inspect)
+			// Coding-agent wiring rides in the same doctor rather than its own
+			// subcommand: a user with a broken setup should not need to know
+			// which doctor to run. All local stat + parse, so unconditional.
+			checks = append(checks, codingAgentChecks()...)
+			if funding, ok := gatewayFundingCheck(client, inspect); ok {
+				checks = append(checks, funding)
+			}
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
@@ -353,4 +361,54 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 		Message: message,
 		Details: map[string]any{"url": url, "http_status": res.StatusCode},
 	}
+}
+
+// gatewayFundingCheck reports whether the workspace can pay for a model call.
+// A wired agent that 401s or 500s on every request looks identical to a broken
+// install from the terminal, and this is the one check that tells them apart.
+//
+// Present only for a login session, and deliberately so: reading the balance
+// needs credits.view, which the API-key capability catalogue cannot express, so
+// an API-key run would get a 403 that means nothing about the workspace. Rather
+// than render a row that says "unknown" on every non-session run, the row is
+// absent. Any error is treated the same way — no row, never a false alarm.
+//
+// Reuses the token already on disk instead of refreshing one: doctor is a
+// diagnostic and must not write state, and a refresh persists new tokens.
+func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult) (doctorCheck, bool) {
+	if inspect.Status != auth.StatusOK || inspect.Session == nil || inspect.Session.ActiveWorkspaceKey == nil {
+		return doctorCheck{}, false
+	}
+	// storedWorkspaceToken only, never a refresh: refreshing persists a new
+	// session, and a diagnostic must not write state to answer a question.
+	token := storedWorkspaceToken(inspect.Session)
+	if token == "" {
+		return doctorCheck{}, false
+	}
+	balance, err := client.Credits(token)
+	if err != nil {
+		return doctorCheck{}, false
+	}
+	if balance.Balance > 0 {
+		return doctorCheck{
+			ID:      "gateway_funding",
+			Status:  "pass",
+			Message: fmt.Sprintf("Gateway funded (%.2f %s in credits)", balance.Balance, strings.ToUpper(balance.Currency)),
+			Details: map[string]any{"credits": balance.Balance},
+		}, true
+	}
+	// Warn, not fail: a BYOK provider key serves calls with a zero balance, and
+	// this endpoint cannot see BYOK. Reporting a working workspace as broken
+	// would be the worse error.
+	// Same builder setup uses, rather than a second spelling of the same URL:
+	// the first attempt at this fell back to prose where setup falls back to
+	// the docs page, which is how one link becomes two different links.
+	credits := dashboardURL(inspect.Session.APIBaseURL, *inspect.Session.ActiveWorkspaceKey, creditsPath)
+	return doctorCheck{
+		ID:     "gateway_funding",
+		Status: "warn",
+		Message: "No credits — the gateway may refuse model calls unless a provider key (BYOK) is connected. " +
+			"Add credits at " + credits,
+		Details: map[string]any{"credits": balance.Balance, "credits_url": credits},
+	}, true
 }

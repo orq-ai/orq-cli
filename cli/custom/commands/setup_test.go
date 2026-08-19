@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,9 +11,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"orq/cli/custom/auth"
@@ -31,8 +34,10 @@ func chdir(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 }
 
-// The scope default decides whether setup writes .env and .mcp.json into the
-// working directory. Getting it wrong drops a live key into $HOME.
+// The scope default decides whether setup writes .mcp.json into the working
+// directory or into $HOME. Getting it wrong is silent in both directions: a
+// project file the agent never reads, or config scattered through a home
+// directory the user did not mean to configure.
 func TestLooksLikeProject(t *testing.T) {
 	cases := []struct {
 		marker string
@@ -58,108 +63,6 @@ func TestLooksLikeProject(t *testing.T) {
 	}
 }
 
-func TestAppendEnvKeyWritesOnce(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
-	rep := newReporter(true)
-
-	const token = "sk-orq-abc123-secret"
-	for i := 0; i < 3; i++ {
-		if err := appendEnvKey(rep, token); err != nil {
-			t.Fatalf("run %d: %v", i, err)
-		}
-	}
-
-	data, err := os.ReadFile(".env")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(string(data), "ORQ_API_KEY="); n != 1 {
-		t.Errorf("ORQ_API_KEY written %d times, want 1", n)
-	}
-}
-
-// An existing .env belongs to the user; setup must not rewrite or reorder it.
-func TestAppendEnvKeyPreservesExistingContent(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
-	if err := os.WriteFile(".env", []byte("DATABASE_URL=postgres://localhost\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := appendEnvKey(newReporter(true), "sk-orq-token"); err != nil {
-		t.Fatal(err)
-	}
-
-	data, _ := os.ReadFile(".env")
-	if !strings.Contains(string(data), "DATABASE_URL=postgres://localhost") {
-		t.Error("pre-existing .env content was lost")
-	}
-	if !strings.Contains(string(data), "ORQ_API_KEY=sk-orq-token") {
-		t.Error("key was not appended")
-	}
-}
-
-// A user-supplied key must never be replaced by ours.
-func TestAppendEnvKeyLeavesExistingKeyAlone(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
-	if err := os.WriteFile(".env", []byte("ORQ_API_KEY=sk-orq-users-own-key\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := appendEnvKey(newReporter(true), "sk-orq-newly-minted"); err != nil {
-		t.Fatal(err)
-	}
-
-	data, _ := os.ReadFile(".env")
-	if strings.Contains(string(data), "sk-orq-newly-minted") {
-		t.Error("overwrote a key the user already had")
-	}
-}
-
-func TestAppendEnvKeyFilePermissions(t *testing.T) {
-	dir := t.TempDir()
-	chdir(t, dir)
-	if err := appendEnvKey(newReporter(true), "sk-orq-token"); err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(".env")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The file holds a live credential; group/other must not be able to read it.
-	if perm := info.Mode().Perm(); perm&0o077 != 0 {
-		t.Errorf(".env mode = %o, want no group/other access", perm)
-	}
-}
-
-func TestEnvIsGitIgnored(t *testing.T) {
-	cases := []struct {
-		gitignore string
-		want      bool
-	}{
-		{".env\n", true},
-		{"/.env\n", true},
-		{".env*\n", true},
-		{"node_modules\n.env\n", true},
-		{"node_modules\n", false},
-		{"", false},
-	}
-	for _, tc := range cases {
-		dir := t.TempDir()
-		chdir(t, dir)
-		if tc.gitignore != "" {
-			if err := os.WriteFile(".gitignore", []byte(tc.gitignore), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if got := envIsGitIgnored(); got != tc.want {
-			t.Errorf("gitignore %q: got %v, want %v", tc.gitignore, got, tc.want)
-		}
-	}
-}
-
 // Tokens are echoed to the terminal and into scrollback; only a prefix should
 // ever appear.
 func TestMaskToken(t *testing.T) {
@@ -176,30 +79,49 @@ func TestMaskToken(t *testing.T) {
 	}
 }
 
-// Codex reads only the global TOML, so both scopes must resolve to the same
-// absolute path rather than a project-relative one.
-func TestCodexMCPConfigIsAlwaysGlobal(t *testing.T) {
-	codex, _ := lookupAgent("codex")
-	project, err := codex.mcpConfig(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	global, err := codex.mcpConfig(true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if project != global {
-		t.Errorf("codex project path %q != global path %q", project, global)
-	}
-	if !filepath.IsAbs(global) {
-		t.Errorf("codex config path %q is not absolute", global)
+// Everything setup writes for these agents reaches the credential indirectly —
+// codex through env_key, opencode and kilo through {env:ORQ_API_KEY} — and none
+// of them resolve that from a project-scoped config. Codex reads MCP only from
+// the home TOML; opencode discards a project config containing env references
+// entirely and then silently answers "orq/anthropic/…" from whatever other
+// provider it can find, while kilo reports the file as invalid. A project copy
+// is written and never used, so both scopes resolve to the same absolute path.
+func TestEnvReferencingConfigsAreAlwaysGlobal(t *testing.T) {
+	for _, id := range []string{"codex", "opencode", "kilo", "pi"} {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			t.Fatalf("%s is not registered", id)
+		}
+		paths := map[string]func(bool) (string, error){
+			"mcp":      spec.mcpConfig,
+			"provider": spec.providerConfig,
+		}
+		for kind, resolve := range paths {
+			if resolve == nil {
+				continue
+			}
+			project, err := resolve(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			global, err := resolve(true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if project != global {
+				t.Errorf("%s %s: project path %q != global path %q", id, kind, project, global)
+			}
+			if !filepath.IsAbs(global) {
+				t.Errorf("%s %s: path %q is not absolute", id, kind, global)
+			}
+		}
 	}
 }
 
-// pi is deliberately absent: it supports neither MCP nor a provider config, so
-// with skills gone setup has nothing to write for it.
+// pi is gateway only: it has no native MCP (extensions only), but models.json is
+// a provider config setup can write, so it belongs here with writeMCP unset.
 func TestAgentRegistryIsComplete(t *testing.T) {
-	want := []string{"claude", "codex", "opencode", "kimi", "kilo"}
+	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi"}
 	got := agentIDs()
 	if len(got) != len(want) {
 		t.Fatalf("registry has %d agents, want %d", len(got), len(want))
@@ -327,23 +249,38 @@ func TestListProjectsFollowsPages(t *testing.T) {
 	}
 }
 
-// A self-hosted install has no known dashboard URL, so the BYOK pointer has to
-// degrade to something that still helps rather than to a broken link.
-func TestModelsSettingsURLFallsBackToDocs(t *testing.T) {
+// Every dashboard settings page lives under the workspace key. An unprefixed
+// link — which is what setup printed on every run — lands on a route that does
+// not exist, and a self-hosted install has no dashboard URL at all, so both
+// cases have to degrade to something that still helps.
+func TestWorkspaceURLPrefixesTheWorkspaceOrFallsBackToDocs(t *testing.T) {
 	t.Setenv("ORQ_WEB_BASE_URL", "")
-
-	hosted := modelsSettingsURL(&authState{apiBase: auth.DefaultAPIBaseURL})
-	if hosted != defaultWebBaseURL+modelsSettingsPath {
-		t.Errorf("hosted: got %s", hosted)
+	key := "acme"
+	signedIn := &authState{
+		apiBase: auth.DefaultAPIBaseURL,
+		session: &auth.Session{ActiveWorkspaceKey: &key},
 	}
-	selfHosted := modelsSettingsURL(&authState{apiBase: "https://orq.internal"})
-	if !strings.HasPrefix(selfHosted, docsURL) {
-		t.Errorf("self-hosted: got %s, want a docs link", selfHosted)
+
+	if got, want := workspaceURL(signedIn, providersPath), defaultWebBaseURL+"/acme/router/providers"; got != want {
+		t.Errorf("BYOK link: got %s, want %s", got, want)
+	}
+	if got, want := workspaceURL(signedIn, creditsPath), defaultWebBaseURL+"/acme/admin/credits"; got != want {
+		t.Errorf("credits link: got %s, want %s", got, want)
+	}
+
+	// No session means no workspace to name — an --api-key run. Emitting the
+	// unprefixed page would be worse than sending them to the docs.
+	if got := workspaceURL(&authState{apiBase: auth.DefaultAPIBaseURL}, providersPath); !strings.HasPrefix(got, docsURL) {
+		t.Errorf("keyless: got %s, want a docs link", got)
+	}
+	if got := workspaceURL(&authState{apiBase: "https://orq.internal"}, providersPath); !strings.HasPrefix(got, docsURL) {
+		t.Errorf("self-hosted: got %s, want a docs link", got)
 	}
 
 	t.Setenv("ORQ_WEB_BASE_URL", "https://orq.internal/app/")
-	if got := modelsSettingsURL(&authState{apiBase: "https://orq.internal"}); got != "https://orq.internal/app"+modelsSettingsPath {
-		t.Errorf("override: got %s", got)
+	selfHosted := &authState{apiBase: "https://orq.internal", session: &auth.Session{ActiveWorkspaceKey: &key}}
+	if got, want := workspaceURL(selfHosted, providersPath), "https://orq.internal/app/acme/router/providers"; got != want {
+		t.Errorf("override: got %s, want %s", got, want)
 	}
 }
 
@@ -441,7 +378,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 			viper.Set("config-directory", dir)
 			t.Cleanup(func() { viper.Set("config-directory", "") })
 
-			if err := writeAPIKeyProfile("default", "a-key"); err != nil {
+			if err := writeAPIKeyProfile("default", "a-key", "test-ws"); err != nil {
 				t.Fatalf("writeAPIKeyProfile: %v", err)
 			}
 			written := bartolocli.Creds.GetString("profiles.default.type")
@@ -449,6 +386,103 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 				t.Errorf("wrote type %q, which resolves to no handler", written)
 			}
 		})
+	}
+}
+
+// credsHarness points bartolo's credential store and the config directory at
+// throwaway state so profile reads and writes never touch the real machine.
+func credsHarness(t *testing.T) {
+	t.Helper()
+	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
+	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() {
+		bartolocli.Creds, bartolocli.AuthHandlers = restoreCreds, restoreHandlers
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+	})
+}
+
+// An API key is minted against whatever workspace is active at mint time and
+// stays scoped to it forever. Reusing it after the session resolved a different
+// workspace wires every agent config — kimi holds the literal key — to the
+// workspace the user just switched away from, and verification passes because
+// the key is valid there. So the profile records the key's workspace, and reuse
+// requires a match: a provable mismatch re-mints, an unrecorded workspace (keys
+// saved before the field existed, or brought via --api-key) is reused as before.
+func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
+	wsA, wsB := "workspace-a", "workspace-b"
+	cases := map[string]struct {
+		storedWS  string
+		wantMints int64
+	}{
+		"same workspace reuses":        {storedWS: wsB, wantMints: 0},
+		"unrecorded workspace reuses":  {storedWS: "", wantMints: 0},
+		"other workspace mints for it": {storedWS: wsA, wantMints: 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			var mints int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/v2/api-keys" {
+					t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+				}
+				atomic.AddInt64(&mints, 1)
+				fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+			}))
+			defer srv.Close()
+
+			if err := saveAPIKeyProfile("sk-orq-old", tc.storedWS); err != nil {
+				t.Fatal(err)
+			}
+			state := &authState{
+				apiBase: srv.URL,
+				bearer:  "session-token",
+				session: &auth.Session{ActiveWorkspaceKey: &wsB, User: &auth.SessionUser{ID: "u1"}},
+			}
+			// noInput skips every confirm.
+			opts := &setupOptions{noInput: true, global: true}
+			_, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := atomic.LoadInt64(&mints); got != tc.wantMints {
+				t.Fatalf("minted %d keys, want %d", got, tc.wantMints)
+			}
+
+			wantKey, wantWS := "sk-orq-old", tc.storedWS
+			if tc.wantMints > 0 {
+				// The replacement must record the workspace it was minted for,
+				// or the next run repeats the mismatch against a stale field.
+				wantKey, wantWS = "sk-orq-fresh", wsB
+			}
+			if key, ws := savedAPIKey(); key != wantKey || ws != wantWS {
+				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wantWS)
+			}
+		})
+	}
+}
+
+// The subcommand never mints, so on a mismatch it must refuse — wiring with the
+// saved key would silently point every agent at the key's workspace, not the
+// one the session just resolved.
+func TestKeyWorkspaceMismatch(t *testing.T) {
+	cases := map[string]struct {
+		saved, active string
+		want          bool
+	}{
+		"different workspaces": {"ws-a", "ws-b", true},
+		"same workspace":       {"ws-a", "ws-a", false},
+		"saved unrecorded":     {"", "ws-b", false},
+		"no session workspace": {"ws-a", "", false},
+	}
+	for name, tc := range cases {
+		if got := keyWorkspaceMismatch(tc.saved, tc.active); got != tc.want {
+			t.Errorf("%s: keyWorkspaceMismatch(%q, %q) = %v, want %v", name, tc.saved, tc.active, got, tc.want)
+		}
 	}
 }
 
@@ -605,50 +639,1032 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 }
 
-// Setup makes real, billed completions against the user's own provider keys.
-// This pins how many: exactly one, for the model the agent will open with — the
-// only one that must work before the user picks anything. The rest of the
-// catalogue is written unprobed, as `orq launch` already does, and verification
-// reuses that single probe rather than buying the same answer twice.
-func TestSetupBillsOneCompletionTotal(t *testing.T) {
-	var completions int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			atomic.AddInt64(&completions, 1)
-			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
-			return
-		}
-		fmt.Fprint(w, `[
-		 {"provider":"anthropic","model_id":"claude-sonnet-4-6","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"anthropic","model_id":"claude-opus-4-8","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true},
-		 {"provider":"moonshotai","model_id":"kimi-k2.6","model_type":"chat","enabled":true,"has_functions":true}]`)
+// The single wiring question maps onto the two branch flags, and the flags
+// pre-answer it so scripts never see a prompt. This pins the mapping: which
+// flag combinations wire which branch, and that nothing-to-wire short-circuits
+// before any agent work.
+// Every case runs instrumentAgents for real and asserts on what it did —
+// the MCP file it wrote (or didn't) and the provider branch it entered (or
+// skipped). Kimi is the probe agent, run from a throwaway HOME and CWD so
+// every write lands there. The gateway branch's marker is its own per-agent
+// "no models to offer" line — the client is empty, so entering the branch
+// always ends there, and unlike the list-models warning it is not memoized.
+func TestWiringFlagsMapToBranches(t *testing.T) {
+	// Without this the test reads whatever the memos were left holding and
+	// passes only because it happens to run before the tests that set them.
+	resetSetupMemos(t)
+
+	for _, tc := range []struct {
+		name                 string
+		noMCP, noGateway     bool
+		yes, noInput         bool
+		wantMCP, wantGateway bool
+		wantNothing          bool
+	}{
+		{name: "no flags, no-input → both (unchanged default)", noInput: true, wantMCP: true, wantGateway: true},
+		{name: "--yes → both", yes: true, wantMCP: true, wantGateway: true},
+		{name: "--no-mcp → gateway only", noMCP: true, noInput: true, wantGateway: true},
+		{name: "--no-gateway → MCP only", noGateway: true, noInput: true, wantMCP: true},
+		{name: "both flags → nothing", noMCP: true, noGateway: true, noInput: true, wantNothing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			// Kimi's MCP path is project-scoped, so the write lands in CWD.
+			chdir(t, t.TempDir())
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
+			results, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts)
+			if err != nil {
+				t.Fatalf("instrumentAgents: %v", err)
+			}
+			if tc.wantNothing {
+				// Both flags set must short-circuit before any per-agent work
+				// — no prompt (noInput), no network, no writes.
+				if results != nil {
+					t.Fatalf("nothing-to-wire returned %d results, want none", len(results))
+				}
+				return
+			}
+			_, err = os.Stat(filepath.Join(".kimi-code", "mcp.json"))
+			if gotMCP := err == nil; gotMCP != tc.wantMCP {
+				t.Errorf("MCP file written = %v, want %v\noutput:\n%s", gotMCP, tc.wantMCP, out.String())
+			}
+			if gotGateway := strings.Contains(out.String(), "no models to offer"); gotGateway != tc.wantGateway {
+				t.Errorf("gateway branch entered = %v, want %v\noutput:\n%s", gotGateway, tc.wantGateway, out.String())
+			}
+		})
+	}
+}
+
+// A provider write the user consented to and did not get is an agent failure,
+// not a warning: it must reach the exit code (via errAgentFailed on the agent's
+// Error) and the JSON. It used to evaporate — rep.warn, exit 0, success in
+// --json — while the identical failure on the MCP half was already an error.
+func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
 	}))
 	defer srv.Close()
 
-	codingModelsFetched, cachedCodingModels, provenModel = false, nil, ""
-	client := auth.NewClient(srv.URL)
-	state := &authState{apiBase: srv.URL, bearer: "t"}
-	rep := newReporter(true)
-
-	models := codingModels(rep, client, state)
-	if len(models) != 4 {
-		t.Errorf("wrote %d models, want all 4 enabled ones", len(models))
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// ~/.kimi-code as a file: the provider write cannot create config.toml
+	// under it, while kimi's project-scoped MCP write in CWD still succeeds —
+	// pinning that a half-delivered wire is recorded, not just a fully failed one.
+	if err := os.WriteFile(filepath.Join(home, ".kimi-code"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if n := atomic.LoadInt64(&completions); n != 0 {
-		t.Errorf("listing models billed %d completions, want 0", n)
+	chdir(t, t.TempDir())
+
+	// codingModels memoizes per process; an earlier test's empty catalogue
+	// would short-circuit this one into "no models to offer".
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	opts := &setupOptions{noInput: true, agents: []string{"kimi"}}
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"}, opts)
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].MCP == "" {
+		t.Errorf("MCP half should have wired; output:\n%s", out.String())
+	}
+	if results[0].Error == "" {
+		t.Errorf("provider write failed but agent Error is empty — the failure would exit 0; output:\n%s", out.String())
+	}
+}
+
+// Codex resolves its config directory from $CODEX_HOME, falling back to
+// ~/.codex. Setup must write where codex will read: a profile under a
+// hardcoded ~/.codex on a machine that sets CODEX_HOME is never loaded, and
+// the printed `codex --profile orq` hint sends the user to a profile codex
+// cannot find.
+func TestCodexPathsHonorCodexHome(t *testing.T) {
+	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	codex, _ := lookupAgent("codex")
+	for kind, resolve := range map[string]func(bool) (string, error){
+		"mcp": codex.mcpConfig, "provider": codex.providerConfig,
+	} {
+		got, err := resolve(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(got, os.Getenv("CODEX_HOME")+string(os.PathSeparator)) {
+			t.Errorf("%s path %q ignores CODEX_HOME", kind, got)
+		}
+	}
+}
+
+// The subcommand exists to re-run wiring, so its contract is: reuse the saved
+// credential, never create one, and refuse clearly when none exists. Scope
+// flags conflict loudly rather than one silently winning.
+func TestCodingAgentsSubcommand(t *testing.T) {
+	sub := newSetupCodingAgentsCommand()
+	if sub.Name() != "coding-agents" {
+		t.Fatalf("subcommand is %q — the name is load-bearing, 'agents' collides with the platform product", sub.Name())
+	}
+	for _, flag := range []string{"agent", "gateway", "mcp", "global", "local"} {
+		if sub.Flags().Lookup(flag) == nil {
+			t.Errorf("missing flag --%s", flag)
+		}
 	}
 
-	defaultCodingModel(rep, client, state)
-	afterProbe := atomic.LoadInt64(&completions)
-	verifyGateway(rep, client, state)
-	total := atomic.LoadInt64(&completions)
-
-	t.Logf("completions: default-model probe=%d  verify=+%d  total=%d", afterProbe, total-afterProbe, total)
-	if afterProbe != 1 {
-		t.Errorf("choosing the default billed %d completions, want 1", afterProbe)
+	if err := resolveScope(&setupOptions{global: true, local: true}); err == nil {
+		t.Error("--global with --local did not conflict")
 	}
-	if total != afterProbe {
-		t.Errorf("verification billed %d extra completions, want 0", total-afterProbe)
+
+	// --local forces project scope even where inference would pick $HOME.
+	t.Chdir(t.TempDir()) // no project markers here
+	forced := &setupOptions{local: true}
+	if err := resolveScope(forced); err != nil {
+		t.Fatal(err)
+	}
+	if forced.global {
+		t.Error("--local was overridden by home-directory inference")
+	}
+	inferred := &setupOptions{}
+	if err := resolveScope(inferred); err != nil {
+		t.Fatal(err)
+	}
+	if !inferred.global {
+		t.Error("inference in a non-project directory should pick $HOME")
+	}
+}
+
+// The noun is "coding agents" everywhere the surface names it, so the flags
+// spell it the same way — `--agent` next to `--no-coding-agents` was the same
+// word twice in two spellings on one command. The old names shipped in a
+// release, so they keep working as hidden aliases rather than breaking a
+// script written against them.
+func TestCodingAgentFlagsAndTheirLegacyAliases(t *testing.T) {
+	for _, cmd := range []*cobra.Command{NewSetupCommand(), newSetupCodingAgentsCommand()} {
+		f := cmd.Flags()
+		if f.Lookup("coding-agent") == nil {
+			t.Errorf("%s: missing --coding-agent", cmd.Name())
+		}
+		legacy := f.Lookup("agent")
+		if legacy == nil {
+			t.Fatalf("%s: --agent must keep working for scripts written against it", cmd.Name())
+		}
+		if !legacy.Hidden {
+			t.Errorf("%s: deprecated --agent should not appear in help", cmd.Name())
+		}
+	}
+
+	setup := NewSetupCommand().Flags()
+	if setup.Lookup("no-coding-agents") == nil {
+		t.Error("missing --no-coding-agents")
+	}
+	old := setup.Lookup("no-agent")
+	if old == nil || !old.Hidden {
+		t.Error("--no-agent should survive as a hidden alias")
+	}
+
+	// Both spellings must land on the same field, or one of them silently
+	// does nothing.
+	for _, name := range []string{"coding-agent", "agent"} {
+		opts := setupOptions{}
+		c := &cobra.Command{}
+		c.Flags().StringSliceVar(&opts.agents, "coding-agent", nil, "")
+		c.Flags().StringSliceVar(&opts.agents, "agent", nil, "")
+		if err := c.Flags().Parse([]string{"--" + name, "codex"}); err != nil {
+			t.Fatal(err)
+		}
+		if len(opts.agents) != 1 || opts.agents[0] != "codex" {
+			t.Errorf("--%s did not populate the agent list: %v", name, opts.agents)
+		}
+	}
+}
+
+// --gateway and --mcp each narrow to one half. Both together narrow to
+// nothing, which used to exit 0 having silently done no work while
+// --global with --local refused loudly for the same class of mistake.
+func TestCodingAgentsRefusesContradictoryNarrowing(t *testing.T) {
+	cmd := newSetupCodingAgentsCommand()
+	cmd.SetArgs([]string{"--gateway", "--mcp"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("--gateway with --mcp should refuse, not silently wire nothing")
+	}
+	if !strings.Contains(err.Error(), "nothing to wire") {
+		t.Errorf("error should explain the contradiction, got: %v", err)
+	}
+}
+
+// The skip line names the flag of the command the user ran. Naming the
+// parent's --no-gateway from a subcommand that has no such flag sent people
+// looking for something that does not exist.
+func TestSkipFlagNamesTheCommandsOwnSpelling(t *testing.T) {
+	parent := &setupOptions{}
+	if got := parent.skipFlag("mcp"); got != "--no-mcp" {
+		t.Errorf("parent mcp skip names %q", got)
+	}
+	if got := parent.skipFlag("gateway"); got != "--no-gateway" {
+		t.Errorf("parent gateway skip names %q", got)
+	}
+	sub := &setupOptions{narrowing: true}
+	if got := sub.skipFlag("gateway"); got != "--mcp" {
+		t.Errorf("subcommand gateway skip names %q, want the flag that caused it", got)
+	}
+	if got := sub.skipFlag("mcp"); got != "--gateway" {
+		t.Errorf("subcommand mcp skip names %q, want the flag that caused it", got)
+	}
+}
+
+// The final screen must not tell the user to append a source line to a profile
+// that already has one. The "is it exported here" check is always false on the
+// run that just wrote the profile — the edit lands in new shells, not this one
+// — so gating the append instruction on the environment alone printed
+// `echo … >> ~/.zshenv` right under `✓ updated ~/.zshenv`. A user who followed
+// both stacked a duplicate line per setup run.
+func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("ORQ_API_KEY", "")
+	dir := filepath.Join(home, ".orq")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+
+	agents := []agentResult{{Agent: "kimi", MCP: filepath.Join(home, ".kimi-code", "mcp.json")}}
+	render := func() string {
+		var out strings.Builder
+		printFinalScreen(&reporter{w: &out}, agents, map[string]string{"docs": "https://docs.orq.ai"}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+		return out.String()
+	}
+
+	// Profile not wired: the append command is the right advice, and it names
+	// the ~ form, which every shell expands in a source argument.
+	if got := render(); !strings.Contains(got, "echo '. ~/.orq/env'") {
+		t.Fatalf("unwired profile should offer the append command, got:\n%s", got)
+	}
+
+	// Profile already sources the env file — as it does on every run where the
+	// user accepted the step-2 offer.
+	profile := filepath.Join(home, ".zshenv")
+	if err := os.WriteFile(profile, []byte(". "+filepath.Join(dir, "env")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := render()
+	if strings.Contains(got, "echo '") {
+		t.Errorf("wired profile still told to append:\n%s", got)
+	}
+	if !strings.Contains(got, ". ~/.orq/env") {
+		t.Errorf("wired profile should still name the line to run in this shell:\n%s", got)
+	}
+}
+
+// Setup prints the same few paths a dozen times; under a throwaway HOME the
+// absolute form wraps the terminal, which is exactly the case every test run
+// and every trial install hits.
+func TestTildeShortensHomePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got, want := tilde(filepath.Join(home, ".orq", "env")), filepath.Join("~", ".orq", "env"); got != want {
+		t.Errorf("tilde() = %q, want %q", got, want)
+	}
+	// Outside $HOME, and $HOME itself, are left exactly as they are: a prefix
+	// match on the bare home string would turn /tmp/homework into ~work.
+	for _, p := range []string{"/etc/orq/env", home, home + "work/.orq/env"} {
+		if got := tilde(p); got != p {
+			t.Errorf("tilde(%q) = %q, want it unchanged", p, got)
+		}
+	}
+}
+
+// The flag help promises "use this API key instead of the one a previous
+// setup saved" — so the key that lands in the agent configs must be the
+// supplied one. It used to be split-brain: resolveAuth persisted the new key
+// to credentials.json, then runCodingAgents put the stale saved key back into
+// the bearer, and every agent was wired to the old credential.
+func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir()) // no project markers: scope inference picks $HOME
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() {
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+	})
+	if bartolocli.Creds == nil {
+		// initAuth, which normally creates this, runs from the generated
+		// runtime that unit tests do not start.
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-OLD-STALE", ""); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+
+	resetSetupMemos(t)
+
+	sub := newSetupCodingAgentsCommand()
+	sub.SetArgs([]string{"--api-key", "sk-orq-NEW-SUPPLIED", "--coding-agent", "kimi"})
+	if err := sub.Execute(); err != nil {
+		t.Fatalf("coding-agents: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if err != nil {
+		t.Fatalf("kimi config not written: %v", err)
+	}
+	tree := mustParseKimiTOML(t, string(data))
+	got, _ := tree.Get("providers.orq.api_key").(string)
+	if got != "sk-orq-NEW-SUPPLIED" {
+		t.Errorf("agent config carries api_key %q, want the supplied key — the saved key overrode --api-key", got)
+	}
+}
+
+// The check answers "can this workspace pay", and every way of failing to
+// answer has to be reported as "do not know" — a 403 from the permission the
+// API key cannot hold must never be rendered to the user as "no credits".
+func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		status      int
+		body        string
+		wantKnown   bool
+		wantCredits float64
+	}{
+		{name: "funded", status: 200, body: `{"balance":12.5,"currency":"usd"}`, wantKnown: true, wantCredits: 12.5},
+		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`, wantKnown: true},
+		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`},
+		{name: "server error", status: 500, body: `{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			credits, known := workspaceCanSpend(auth.NewClient(srv.URL), sessionWithToken(srv.URL))
+			if known != tc.wantKnown || credits != tc.wantCredits {
+				t.Errorf("got (%v, known=%v), want (%v, known=%v)", credits, known, tc.wantCredits, tc.wantKnown)
+			}
+		})
+	}
+
+	// No session means no token that can read the balance at all.
+	if _, known := workspaceCanSpend(auth.NewClient("https://api.orq.ai"), &authState{}); known {
+		t.Error("claimed to know the balance without a session")
+	}
+}
+
+// resetSetupMemos clears the package-level state that carries decisions across
+// setup's steps, so tests cannot leak funding or probe results into each other.
+func resetSetupMemos(t *testing.T) {
+	t.Helper()
+	reset := func() {
+		codingModelsFetched, cachedCodingModels = false, nil
+		enabledModels, enabledModelsCounted = 0, false
+	}
+	reset()
+	t.Cleanup(reset)
+}
+
+// gatewayFixture serves a catalogue, a credit balance, and counts every router
+// call. The POST counter is the point: setup must never make one.
+func gatewayFixture(t *testing.T, balance string, catalogue string) (*httptest.Server, *int64) {
+	t.Helper()
+	var routerCalls int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			atomic.AddInt64(&routerCalls, 1)
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
+			if balance == "" {
+				http.Error(w, `{"message":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			fmt.Fprintf(w, `{"balance":%s,"currency":"usd"}`, balance)
+		default:
+			fmt.Fprint(w, catalogue)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &routerCalls
+}
+
+const oneChatModel = `[{"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`
+
+// wiringHarness isolates the filesystem writes instrumentAgents performs. kimi's
+// MCP path is project-scoped, so without this the config lands in the package
+// source tree, which is how a test-server URL got committed once.
+func wiringHarness(t *testing.T) {
+	t.Helper()
+	resetSetupMemos(t)
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
+	// Names a dashboard for the test server, which is also what makes the credit
+	// advice reachable: canAdviseOnCredits stays quiet without one.
+	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
+}
+
+// Setup writes configuration. It does not send a model call to prove that
+// configuration works, because a router request bills the user's credits and
+// opens a span in their workspace, the first trace a brand-new account would
+// ever see, for a request they did not make. The proof was also thinner than it
+// looked: the probe sent no tools, so it passed on exactly the models that then
+// failed an agent's real traffic.
+func TestSetupMakesNoRouterCall(t *testing.T) {
+	srv, routerCalls := gatewayFixture(t, "25", oneChatModel)
+	wiringHarness(t)
+
+	rep := &reporter{w: &strings.Builder{}}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if n := atomic.LoadInt64(routerCalls); n != 0 {
+		t.Fatalf("setup made %d router calls, want 0", n)
+	}
+	// A default is still chosen, from the catalogue ranking rather than a probe.
+	cfg := filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatalf("provider config not written: %v", err)
+	}
+	if !strings.Contains(string(data), "openai/gpt-5.4") {
+		t.Errorf("no default model written without a probe:\n%s", data)
+	}
+}
+
+// The credit balance is only the gateway's business. A user who wires MCP tools
+// and no gateway is not routing model calls through orq, so the CLI has no
+// reason to read their balance or lecture them about it, which is what it did
+// when the check was a step of its own, ahead of the wiring question.
+func TestCreditsAreOnlyReadWhenTheGatewayIsWired(t *testing.T) {
+	cases := map[string]struct {
+		opts       setupOptions
+		wantCredit bool
+	}{
+		"gateway and mcp": {setupOptions{noInput: true, agents: []string{"kimi"}}, true},
+		"gateway only":    {setupOptions{noInput: true, agents: []string{"kimi"}, noMCP: true}, true},
+		"mcp only":        {setupOptions{noInput: true, agents: []string{"kimi"}, noGateway: true}, false},
+		"nothing wired":   {setupOptions{noInput: true, noCodingAgents: true}, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var creditReads int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+					atomic.AddInt64(&creditReads, 1)
+					fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
+					return
+				}
+				fmt.Fprint(w, oneChatModel)
+			}))
+			defer srv.Close()
+			wiringHarness(t)
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			state := sessionWithToken(srv.URL)
+			state.bearer = "t"
+			opts := tc.opts
+			instrumentAgents(rep, auth.NewClient(srv.URL), state, &opts)
+
+			read := atomic.LoadInt64(&creditReads) > 0
+			if read != tc.wantCredit {
+				t.Errorf("credit balance read = %v, want %v", read, tc.wantCredit)
+			}
+			mentioned := strings.Contains(out.String(), "credit")
+			if mentioned != tc.wantCredit {
+				t.Errorf("credits mentioned = %v, want %v:\n%s", mentioned, tc.wantCredit, out.String())
+			}
+		})
+	}
+}
+
+// Not being able to pay is not a failed setup. Everything that works without
+// funding is still written, the run still exits 0, and the reason is stated once
+// with links the user can act on.
+func TestUnfundedGatewayStillWiresAndExplainsItself(t *testing.T) {
+	srv, routerCalls := gatewayFixture(t, "0", oneChatModel)
+	wiringHarness(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+
+	if n := atomic.LoadInt64(routerCalls); n != 0 {
+		t.Errorf("made %d router calls on an unfunded workspace, want 0", n)
+	}
+	if state.gatewayFunding != fundingNone {
+		t.Errorf("funding = %v, want unfunded", state.gatewayFunding)
+	}
+	for _, r := range results {
+		if r.Error != "" {
+			t.Errorf("unfunded workspace failed the run: %+v", r)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
+		t.Errorf("MCP config not written on an unfunded workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")); err != nil {
+		t.Errorf("provider config not written on an unfunded workspace: %v", err)
+	}
+
+	got := out.String()
+	// The rule, not a claim about their workspace: the gateway allows a call at
+	// zero credits via BYOK, a private model, the recently-created flag, or a
+	// subscription that has not disabled shared-key use.
+	if strings.Contains(got, "no credits and no provider key") {
+		t.Errorf("asserted a BYOK state the CLI cannot read:\n%s", got)
+	}
+	for _, want := range []string{"credit balance is 0", "/acme/admin/credits", "/acme/router/providers", "docs.orq.ai"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	// Said once. Three mentions of one fact is what made this read as a failure.
+	if n := strings.Count(got, "credit balance is 0"); n != 1 {
+		t.Errorf("stated the funding problem %d times, want 1:\n%s", n, got)
+	}
+}
+
+// A self-hosted deployment is not metered. The gateway licenses
+// api_keys_use_allowed to true for exactly that reason, and it has no dashboard to
+// link to, so every remedy would degrade to the same docs URL. Raising credits
+// there is advice that is both wrong and unactionable.
+func TestSelfHostedIsNeverToldAboutCredits(t *testing.T) {
+	var creditReads int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+			atomic.AddInt64(&creditReads, 1)
+			fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
+			return
+		}
+		fmt.Fprint(w, oneChatModel)
+	}))
+	defer srv.Close()
+
+	resetSetupMemos(t)
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
+	t.Setenv("ORQ_WEB_BASE_URL", "") // no known dashboard: the self-hosted case
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if n := atomic.LoadInt64(&creditReads); n != 0 {
+		t.Errorf("read the credit balance %d times on a self-hosted deployment, want 0", n)
+	}
+	if strings.Contains(out.String(), "credit") {
+		t.Errorf("self-hosted run was told about credits:\n%s", out.String())
+	}
+	if state.gatewayFunding != fundingUnknown {
+		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
+	}
+}
+
+// Failing to read the balance is not the same as reading a zero. A 403 from the
+// credits.view permission an API key cannot hold must leave the run exactly as
+// it was before the check existed.
+func TestUnreadableBalanceChangesNothing(t *testing.T) {
+	srv, _ := gatewayFixture(t, "", oneChatModel) // credits endpoint 403s
+	wiringHarness(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+	if state.gatewayFunding != fundingUnknown {
+		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
+	}
+	if strings.Contains(out.String(), "credit balance") {
+		t.Errorf("a permission failure was rendered as a funding verdict:\n%s", out.String())
+	}
+	if got := state.gatewayFunding.String(); got != "unknown" {
+		t.Errorf("--json spelling = %q, want unknown", got)
+	}
+}
+
+// A workspace can be short of models, short of funding, or both, and a fresh
+// account is usually both. Each fact gets its own line; the remedy links are
+// printed once, not once per fact. Zero models never reports as a success.
+func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
+	cases := map[string]struct {
+		balance, catalogue string
+		selfHosted         bool
+		wantFacts          []string
+		wantAbsent         []string
+		wantLinkBlocks     int
+	}{
+		"models and money": {
+			balance: "25", catalogue: oneChatModel,
+			wantFacts:  []string{"1 chat models available"},
+			wantAbsent: []string{"Enable models", "credit balance"},
+		},
+		"funded, no models": {
+			balance: "25", catalogue: `[]`,
+			wantFacts:      []string{"no models enabled for this workspace", "/acme/router/models"},
+			wantAbsent:     []string{"credit balance", "0 chat models available"},
+			wantLinkBlocks: 1,
+		},
+		"models, no money": {
+			balance: "0", catalogue: oneChatModel,
+			wantFacts:      []string{"1 chat models available", "credit balance is 0", "/acme/admin/credits", "/acme/router/providers"},
+			wantAbsent:     []string{"no models enabled", "Enable models"},
+			wantLinkBlocks: 0,
+		},
+		"neither": {
+			balance: "0", catalogue: `[]`,
+			wantFacts: []string{
+				"no models enabled for this workspace", "credit balance is 0",
+				"/acme/router/models", "/acme/admin/credits", "/acme/router/providers",
+			},
+			wantAbsent:     []string{"0 chat models available"},
+			wantLinkBlocks: 1,
+		},
+		"self-hosted, no models": {
+			balance: "25", catalogue: `[]`, selfHosted: true,
+			wantFacts:  []string{"no models enabled for this workspace", "How it works"},
+			wantAbsent: []string{"my.orq.ai", "credit balance"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasSuffix(r.URL.Path, "/v2/credits") {
+					fmt.Fprintf(w, `{"balance":%s,"currency":"usd"}`, tc.balance)
+					return
+				}
+				fmt.Fprint(w, tc.catalogue)
+			}))
+			defer srv.Close()
+			wiringHarness(t)
+			if tc.selfHosted {
+				t.Setenv("ORQ_WEB_BASE_URL", "")
+			}
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			state := sessionWithToken(srv.URL)
+			state.bearer = "t"
+			instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+
+			got := out.String()
+			for _, want := range tc.wantFacts {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q:\n%s", want, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("unexpected %q:\n%s", absent, got)
+				}
+			}
+			// Each fact carries its own remedy, but the docs pointer is the line
+			// that used to repeat once per fact.
+			if n := strings.Count(got, "Enable models"); n != tc.wantLinkBlocks {
+				t.Errorf("the models remedy appeared %d times, want %d:\n%s", n, tc.wantLinkBlocks, got)
+			}
+			if n := strings.Count(got, "How it works"); n > 1 {
+				t.Errorf("docs pointer repeated %d times, want at most 1:\n%s", n, got)
+			}
+		})
+	}
+}
+
+// The final screen makes capability claims, so it needs three states, not two.
+// "Can read and write your workspace" is an MCP claim; a gateway-only agent
+// cannot, and the old MCP-only wired check made a successful gateway-only run
+// report that nothing was configured. The suggested next step is the bare
+// agent command, never `orq launch`, which builds a throwaway config home and
+// ignores what setup just wrote.
+func TestFinalScreenHasThreeStates(t *testing.T) {
+	cases := map[string]struct {
+		agents     []agentResult
+		want       []string
+		wantAbsent []string
+	}{
+		"mcp and gateway": {
+			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Provider: "~/.kimi-code/config.toml"}},
+			want:       []string{"read and write your orq.ai workspace", "list my orq.ai agents", "kimi"},
+			wantAbsent: []string{"orq launch"},
+		},
+		"gateway only": {
+			agents: []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
+			want:   []string{"Kimi Code routes its model calls through orq", "kimi"},
+			// The two claims a gateway-only agent cannot honour, and the
+			// ephemeral path that would shadow the config just written.
+			wantAbsent: []string{"read and write", "list my orq.ai agents", "orq launch"},
+		},
+		"mcp only": {
+			agents:     []agentResult{{Agent: "claude", MCP: ".mcp.json"}},
+			want:       []string{"Claude Code can now read and write", "claude"},
+			wantAbsent: []string{"orq launch"},
+		},
+		// A run can wire one agent for MCP and another for the gateway alone.
+		// Rolling the two groups together put the gateway-only agent inside the
+		// workspace claim it cannot honour, which is the overclaim the split
+		// exists to prevent, reintroduced for exactly this shape.
+		"mixed: one mcp, one gateway only": {
+			agents: []agentResult{
+				{Agent: "claude", MCP: ".mcp.json"},
+				{Agent: "kimi", Provider: "~/.kimi-code/config.toml"},
+			},
+			want: []string{
+				"Claude Code can now read and write your orq.ai workspace",
+				"Kimi Code routes its model calls through orq",
+				"list my orq.ai agents",
+				// Anchored rows, not bare names: a regression that drops the
+				// start block still prints both agents in the claim above it.
+				"\n  Start       claude\n",
+				"\n              kimi\n",
+			},
+			// The claim must name Claude Code alone: kimi is gateway-only
+			// here and has no MCP workspace access to claim.
+			wantAbsent: []string{
+				"Kimi Code can now read and write",
+				"Claude Code and Kimi Code can now read and write",
+			},
+		},
+		// Codex's gateway lives in a named profile, so plain `codex` routes
+		// nowhere near orq. Suggesting it contradicted the providerUsage note
+		// printed one screen earlier.
+		"codex gateway only names its profile": {
+			agents:     []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}},
+			want:       []string{"Codex routes its model calls through orq", "codex --profile orq"},
+			wantAbsent: []string{"\n  Start       codex\n"},
+		},
+		// The Start label stays constant while the agent lines scale with
+		// the count — two agents means two start rows under one label.
+		"two agents": {
+			agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
+			want: []string{"Claude Code and Kimi Code", "list my orq.ai agents",
+				"\n  Start       claude\n", "kimi"},
+		},
+		"nothing wired": {
+			agents: nil,
+			// Ephemeral launch is legitimately the answer here, for a detected
+			// agent (the harness installs kimi), never a hardcoded claude.
+			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq setup coding-agents"},
+			wantAbsent: []string{"orq launch claude", "Start "},
+		},
+		"errored agent does not count as wired": {
+			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Error: "boom"}},
+			want:       []string{"Route an existing OpenAI client"},
+			wantAbsent: []string{"read and write", "Start "},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex"))
+			// Deterministic detection: kimi is the installed agent.
+			if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// Silence the env-hint block so these cases assert only the branch
+			// text; the ordering of hint vs suggestion has its own case below.
+			t.Setenv("ORQ_API_KEY", "sk-orq-set")
+
+			var out strings.Builder
+			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+			got := out.String()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q:\n%s", want, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("unexpected %q:\n%s", absent, got)
+				}
+			}
+		})
+	}
+}
+
+// The bare command only authenticates once ORQ_API_KEY is exported, so the
+// suggestion must sit below the warning that says the shell lacks it — or the
+// screen walks the user into the exact failure it just predicted.
+func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out},
+		[]agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
+		map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+	got := out.String()
+
+	warn := strings.Index(got, "agents inherit it from this shell")
+	start := strings.Index(got, "Start")
+	if warn == -1 || start == -1 {
+		t.Fatalf("expected both the env warning and the suggestion:\n%s", got)
+	}
+	if start < warn {
+		t.Errorf("suggestion printed above the env warning:\n%s", got)
+	}
+}
+
+// The three states must survive into the machine contract as themselves. A bool
+// would put back the ambiguity the tri-state exists to remove, at the one place
+// it cannot be fixed later without a breaking change.
+func TestFundingStateJSONSpelling(t *testing.T) {
+	for state, want := range map[fundingState]string{
+		fundingUnknown: "unknown",
+		fundingOK:      "funded",
+		fundingNone:    "unfunded",
+	} {
+		if got := state.String(); got != want {
+			t.Errorf("%d = %q, want %q", state, got, want)
+		}
+	}
+}
+
+// sessionWithToken is an authState carrying a live workspace session token, the
+// shape setup has by the time step 3 runs.
+func sessionWithToken(apiBase string) *authState {
+	key := "acme"
+	return &authState{
+		apiBase: apiBase,
+		session: &auth.Session{
+			ActiveWorkspaceKey: &key,
+			WorkspaceTokens: map[string]auth.StoredAccessToken{
+				key: {Token: "session-token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+			},
+		},
+	}
+}
+
+// The funding row is a diagnostic, so every way of failing to read the balance
+// must leave doctor unharmed: no row rather than a scary one, and never a
+// failure. A 403 is the expected answer for an API key, not a problem.
+func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
+	key := "acme"
+	session := func() *auth.Session {
+		return &auth.Session{
+			ActiveWorkspaceKey: &key,
+			WorkspaceTokens: map[string]auth.StoredAccessToken{
+				key: {Token: "ws", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+			},
+		}
+	}
+	for _, tc := range []struct {
+		name       string
+		status     int
+		body       string
+		inspect    auth.SessionInspectResult
+		wantRow    bool
+		wantStatus string
+	}{
+		{name: "funded", status: 200, body: `{"balance":12,"currency":"usd"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "pass"},
+		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
+		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}},
+		{name: "no session", status: 200, body: `{"balance":12}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusMissing}},
+		{name: "expired token", status: 200, body: `{"balance":12}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{
+				ActiveWorkspaceKey: &key,
+				WorkspaceTokens: map[string]auth.StoredAccessToken{
+					key: {Token: "ws", ExpiresAt: time.Now().Add(-time.Hour).Format(time.RFC3339)},
+				}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			check, ok := gatewayFundingCheck(auth.NewClient(srv.URL), tc.inspect)
+			if ok != tc.wantRow {
+				t.Fatalf("row present = %v, want %v", ok, tc.wantRow)
+			}
+			if ok && check.Status != tc.wantStatus {
+				t.Errorf("status = %q, want %q", check.Status, tc.wantStatus)
+			}
+			if ok && check.Status == "fail" {
+				t.Error("funding must never fail doctor — an unfunded workspace is not a broken one")
+			}
+		})
+	}
+}
+
+// Skipping an empty catalogue protects a provider block an earlier run wrote,
+// but "left unchanged" reads as "nothing is configured" — the state a user
+// cannot tell apart by reading the file they were just told was untouched.
+func TestEmptyCatalogueSaysWhetherAnEarlierWireSurvives(t *testing.T) {
+	resetSetupMemos(t)
+	kimi, _ := lookupAgent("kimi")
+
+	for _, tc := range []struct {
+		name   string
+		wire   bool
+		want   string
+		unwant string
+	}{
+		{name: "nothing there", wire: false, want: "nothing written", unwant: "kept the"},
+		{name: "earlier wire survives", wire: true, want: "kept the", unwant: "nothing written"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			chdir(t, t.TempDir())
+
+			if tc.wire {
+				path, err := kimi.providerConfig(true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k",
+					[]auth.RouterModel{model("openai", "gpt-4o", 128000, true, true, "chat")}, ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			opts := &setupOptions{noInput: true, noMCP: true, global: true, agents: []string{"kimi"}}
+			if _, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts); err != nil {
+				t.Fatalf("instrumentAgents: %v", err)
+			}
+			got := out.String()
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("missing %q:\n%s", tc.want, got)
+			}
+			if strings.Contains(got, tc.unwant) {
+				t.Errorf("unexpected %q:\n%s", tc.unwant, got)
+			}
+		})
+	}
+}
+
+// Skills are suggested, never installed, and only where MCP was wired: that is
+// the pairing a user is set up for, and the command is one per project rather
+// than one per agent.
+func TestSkillsSuggestedOnlyWithMCP(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		agents []agentResult
+		want   bool
+	}{
+		{name: "mcp wired", agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}}, want: true},
+		{name: "gateway only", agents: []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}}, want: false},
+		{name: "nothing wired", agents: nil, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ORQ_API_KEY", "sk-orq-set")
+			var out strings.Builder
+			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+			if got := strings.Contains(out.String(), "npx skills add"); got != tc.want {
+				t.Errorf("skills suggested = %v, want %v\n%s", got, tc.want, out.String())
+			}
+		})
 	}
 }

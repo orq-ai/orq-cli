@@ -24,6 +24,34 @@ const (
 	DefaultGatewayAPIBaseURL = "https://api.orq.ai"
 )
 
+// The label agents show for the orq provider in their own model pickers. It was
+// spelled three different ways across the agent builders; a user who wires two
+// agents sees this string in both, so it lives in one place.
+const (
+	ProviderDisplayName          = "Orq AI Gateway"
+	ProviderResponsesDisplayName = "Orq AI Gateway (Responses)"
+)
+
+// Caps written for models the catalogue has no metadata for — the ones the
+// endpoint sends null context_window / max_output_tokens for (ENG-2743). Used
+// by every writer that emits per-model limits: kimi and pi today, and the
+// warning appendCapWarning shows for both.
+//
+// Both err low, and deliberately. Over-claiming makes the upstream reject a
+// request outright; under-claiming only leaves capacity unused. Kimi sends
+// max_tokens = max_output_size on the chat path, so the output cap in
+// particular must sit at or below the model's real limit — 8192 is safe for
+// all but a handful of legacy models, which do carry metadata.
+//
+// The context fallback was 262144 when only kimi had one, and 128000 in
+// setup's separate copy of the same writer. Unifying the two settled on the
+// lower value for every consumer, pi included: 262144 is kimi-k2's window
+// rather than a floor, so it was never a safe guess for an unknown model.
+const (
+	fallbackContextSize = 128000
+	fallbackOutputSize  = 8192
+)
+
 // GatewayFlags are the shared flags every agent subcommand understands.
 type GatewayFlags struct {
 	Model         string

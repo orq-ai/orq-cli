@@ -87,7 +87,9 @@ func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
 	if err != nil {
 		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
 	}
-	if err := saveAPIKeyProfile(key); err != nil {
+	// A user-supplied key carries no workspace provenance — saved as unknown,
+	// so setup's reuse check treats it as such rather than as a mismatch.
+	if err := saveAPIKeyProfile(key, ""); err != nil {
 		return err
 	}
 

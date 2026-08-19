@@ -26,3 +26,7 @@
 # it is generated, not source.
 /.agents/
 /.kimi-code/
+
+# Agent config a local `orq setup` writes into whatever directory it runs in.
+.mcp.json
+.mcp.json.orq-bak

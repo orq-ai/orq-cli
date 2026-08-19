@@ -7140,6 +7140,10 @@
           "type": "string"
         },
         {
+          "name": "coding-agent",
+          "type": "stringSlice"
+        },
+        {
           "name": "global",
           "type": "bool"
         },
@@ -7149,11 +7153,19 @@
           "type": "bool"
         },
         {
+          "name": "local",
+          "type": "bool"
+        },
+        {
           "name": "no-agent",
           "type": "bool"
         },
         {
-          "name": "no-env",
+          "name": "no-coding-agents",
+          "type": "bool"
+        },
+        {
+          "name": "no-gateway",
           "type": "bool"
         },
         {
@@ -7161,12 +7173,42 @@
           "type": "bool"
         },
         {
-          "name": "project",
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq setup coding-agents",
+      "use": "coding-agents",
+      "flags": [
+        {
+          "name": "agent",
+          "type": "stringSlice"
+        },
+        {
+          "name": "api-key",
           "type": "string"
         },
         {
-          "name": "yes",
-          "shorthand": "y",
+          "name": "coding-agent",
+          "type": "stringSlice"
+        },
+        {
+          "name": "gateway",
+          "type": "bool"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "mcp",
           "type": "bool"
         }
       ]

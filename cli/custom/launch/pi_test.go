@@ -26,7 +26,7 @@ func TestPiModelsJSON(t *testing.T) {
 		}
 	}
 	// gpt-5-mini has no metadata: fallback caps apply.
-	if !strings.Contains(config, `"contextWindow": 262144`) {
+	if !strings.Contains(config, `"contextWindow": 128000`) {
 		t.Fatalf("fallback context window missing:\n%s", config)
 	}
 }

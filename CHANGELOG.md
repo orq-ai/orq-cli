@@ -54,10 +54,63 @@ the version and this changelog as the source of truth for breaking changes.
   `--mount-cwd`), `--dry-run`, `--model`, and the orq MCP server wired in
   automatically (`--no-mcp` to opt out). Per-invocation only: nothing is
   written to your agent's own configuration.
-- Added: `orq setup` — signs you in, selects or creates a project, mints an API
-  key, and registers the orq MCP server and gateway provider in the config
-  files of the coding agents it detects. Unlike `orq launch`, these writes are
-  persistent.
+- Added: `orq setup` — signs you in, creates (or reuses) a workspace API key,
+  and registers the orq MCP server and gateway provider in the config files of
+  the coding agents it detects. Unlike `orq launch`, these writes are
+  persistent. It does not ask about projects: API keys are workspace-scoped.
+  `pi` is wired gateway only — an `orq` provider merged into
+  `~/.pi/agent/models.json`, reached with `pi --model orq/<model>` — because pi
+  has no native MCP.
+- Changed: the API key `orq setup` saves is reused only for the workspace it
+  was minted in. Running setup against a different workspace (`--workspace`, or
+  the interactive picker) mints a fresh key for it instead of silently wiring
+  every agent config to the old one; `orq setup coding-agents` refuses in that
+  situation, since it never creates keys. Keys saved by earlier builds carry no
+  workspace record and are reused as before.
+- Removed: `orq setup` no longer writes `ORQ_API_KEY` into `./.env`, and the
+  `--no-env` flag is gone with it. The key lives in `~/.orq/credentials.json`
+  for the CLI and `~/.orq/env` for your agents: configs reference the
+  `ORQ_API_KEY` environment variable, which that file exports (kimi is the
+  exception — its config carries the key literally). An existing `./.env` keeps working — and keeps taking
+  precedence over your login, including after `orq auth logout`, which is the
+  behaviour that made writing one a poor default.
+  **--json field change:** `orq setup` no longer emits `api_key.env_file`.
+- Changed: `orq setup` no longer sends a model call. It used to spend one billed
+  completion to prove the gateway answers, which also opened a trace in your
+  workspace, for a request you did not make, often as the first thing a new
+  account ever saw in Traces. The default model is chosen from the catalogue
+  ranking instead, and the first real agent request is the test. `orq doctor`
+  reports gateway funding for free.
+  **Removed with it:** the `--no-verify` flag, which existed only to decline
+  that call.
+- Changed: `orq setup` asks about credits only when it is wiring the gateway,
+  and only on a deployment with a known dashboard. Choosing "MCP tools only",
+  passing `--no-coding-agents`, or running against a self-hosted install now
+  says nothing about credits. The balance is irrelevant to all three, and the
+  gateway does not meter on-premise deployments at all. The wording states the
+  rule rather than asserting a state the CLI cannot read: a zero balance still
+  serves calls through a BYOK provider key, a private model, or a subscription
+  that has not disabled shared-key use.
+- Added: `orq doctor` reports coding-agent wiring per detected agent, and warns
+  when an agent is wired but `ORQ_API_KEY` is absent from the current shell —
+  the state every agent launched from a terminal older than your last `orq
+  setup` is in, and one that looks like a broken install from inside the agent.
+  It also reports gateway funding when a login session is present. Detected but
+  unwired is a warning, never a failure, so the exit code stays 0.
+  **--json field change:** `checks[]` gains `coding_agent_<id>` entries and,
+  with a session, `gateway_funding`.
+- **--json field change:** `orq setup` gains `gateway_funded`, a string of
+  `funded`, `unfunded` or `unknown`. Not a boolean: "nobody asked" is a normal
+  outcome now that the balance is only read when the gateway is wired, and a
+  script testing truthiness would read it as "cannot pay". `models_enabled` is
+  omitted entirely on runs that never listed the catalogue, rather than
+  reported as zero.
+- Fixed: `orq setup` no longer ends in an unexplained gateway error on a
+  workspace that cannot serve model calls. It says so once, with the links that
+  fix it, and still wires everything that works without funding, exiting 0
+  because nothing is broken. The "check again" retry prompt is gone with it.
+- Fixed: the "connect a provider" link pointed at a page that does not exist.
+  Dashboard links are now workspace-scoped.
 - Fixed: `orq launch` sends model calls to the gateway the session authenticated
   against, deriving it from the API base. On an on-prem deployment every agent
   except claude wired its MCP server to the customer's host while sending
@@ -68,10 +121,11 @@ the version and this changelog as the source of truth for breaking changes.
   agent's provider config, instead of four hand-picked families, matching what
   `orq launch` already does. It also fills `default_model` when the config has
   none — never replacing one, since agents persist the user's own pick there.
-- Changed: `orq setup` now makes **one** billed completion (proving the default
-  model answers) instead of five. Model selection and gateway verification used
-  to probe separately, and probing existed to compensate for selecting from the
-  whole catalogue rather than the workspace's enabled set.
+- Changed: `orq setup` makes **no** billed completions. It briefly made five,
+  then one; it now makes none at all, for the reasons in the entry above. Model
+  selection and gateway verification used to probe separately, and probing
+  existed to compensate for selecting from the whole catalogue rather than the
+  workspace's enabled set, which is no longer how the default is chosen.
 - Added: `orq setup -y/--yes` — answer yes to every confirmation instead of
   being asked. `orq setup` now asks before registering the orq MCP server in an
   agent's config, since that writes into files you own and grants the agent
