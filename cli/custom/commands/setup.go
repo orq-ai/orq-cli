@@ -1071,19 +1071,6 @@ func workspaceLink(state *authState, path string) string {
 // Step 3 — coding agents
 // ============================================================================
 
-// scopeNote tells a user who asked for project scope why this agent still reads only from $HOME.
-func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
-	if askedGlobal || resolve == nil {
-		return ""
-	}
-	project, perr := resolve(false)
-	global, gerr := resolve(true)
-	if perr != nil || gerr != nil || project != global {
-		return ""
-	}
-	return "  (this agent reads it only from your home directory)"
-}
-
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
 	if opts.noCodingAgents {
 		rep.ok("skipped coding-agent wiring (--no-coding-agents)")
@@ -1260,13 +1247,7 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 		where = tilde(res.MCP) + " · " + tilde(res.Provider)
 	}
 
-	scope := ""
-	if res.MCP != "" {
-		scope = scopeNote(spec.mcpConfig, opts.global)
-	} else if res.Provider != "" {
-		scope = scopeNote(spec.providerConfig, opts.global)
-	}
-	rep.ok("%-8s %-24s %s%s", spec.ID, strings.Join(wired, " + "), where, scope)
+	rep.ok("%-8s %-24s %s", spec.ID, strings.Join(wired, " + "), where)
 
 	// orq is registered as an option, not the default, so some agents need a step the user would never find.
 	if res.Provider != "" && spec.providerUsage != "" {

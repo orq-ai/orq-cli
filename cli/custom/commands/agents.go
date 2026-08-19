@@ -90,7 +90,7 @@ func agentRegistry() []agentSpec {
 			providerConfig:  codexPath(codexProfileName + ".config.toml"),
 			writeProvider:   writeCodexProviderTOML,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
-			providerUsage:   "run 'codex --profile " + codexProfileName + "' to route through the gateway",
+			providerUsage:   "run 'codex --profile " + codexProfileName + "'",
 			runCommand:      "codex --profile " + codexProfileName,
 		},
 		{
@@ -104,7 +104,7 @@ func agentRegistry() []agentSpec {
 			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
+			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
 			ID:            "kimi",
@@ -129,7 +129,7 @@ func agentRegistry() []agentSpec {
 			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
+			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
 			ID:    "pi",
@@ -144,7 +144,7 @@ func agentRegistry() []agentSpec {
 			// `pi --provider orq` answers from whatever model pi already had
 			// selected, so a hint stopping at the provider teaches a command that
 			// silently routes nowhere near orq.
-			providerUsage: "run 'pi --model " + launch.PiProvider + "/<model>', or pick one in pi's /model picker",
+			providerUsage: "run 'pi --model " + launch.PiProvider + "/<model>', or pick one in /model",
 		},
 	}
 }
