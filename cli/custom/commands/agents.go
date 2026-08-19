@@ -103,7 +103,7 @@ func agentRegistry() []agentSpec {
 			detect:          detectAny(".config/opencode"),
 			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
-			providerPresent: jsonProviderPresent,
+			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in opencode's model list",
 		},
 		{
@@ -128,8 +128,23 @@ func agentRegistry() []agentSpec {
 			detect:          detectAny(".config/kilo"),
 			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
-			providerPresent: jsonProviderPresent,
+			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model in kilo's model list",
+		},
+		{
+			ID:    "pi",
+			Label: "Pi Coding Agent",
+			// Gateway only: pi has no native MCP, extensions only.
+			detect: detectAny(".pi/agent", ".pi"),
+			// pi reads models.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.pi/agent) only.
+			providerConfig:  alwaysGlobalPath(".pi/agent/models.json"),
+			writeProvider:   writePiProviderJSON,
+			providerPresent: jsonProviderPresentAt("providers", launch.PiProvider),
+			// The model has to be named. Verified against pi 0.83.0: a bare
+			// `pi --provider orq` answers from whatever model pi already had
+			// selected, so a hint stopping at the provider teaches a command that
+			// silently routes nowhere near orq.
+			providerUsage: "run 'pi --model " + launch.PiProvider + "/<model>', or pick one in pi's /model picker",
 		},
 	}
 }
@@ -390,6 +405,45 @@ func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterMo
 		delete(providers, name)
 	}
 	for name, block := range generated.Provider {
+		providers[name] = block
+	}
+	return len(refs), writeJSONConfig(path, cfg)
+}
+
+// writePiProviderJSON registers the gateway in pi's models.json, the durable
+// twin of the throwaway one `orq launch pi` writes. Merged, not overwritten: the
+// same file is where users declare their own local providers (ollama, vLLM).
+//
+// apiKey is unused — the block carries "$ORQ_API_KEY", which pi resolves at
+// request time, so no credential lands on disk. defaultModel is unused too: pi
+// keeps the model it opens with in settings.json, which is the user's own pick
+// made in pi's UI, and the same reason the opencode writer never touches
+// "model".
+func writePiProviderJSON(path, routerURL, _ string, models []auth.RouterModel, _ string) (int, error) {
+	if len(models) == 0 {
+		return 0, errNoModelsToOffer
+	}
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return 0, err
+	}
+	refs, infos := launchCatalog(models)
+	built, err := launch.BuildPiModelsJSON(routerURL, refs, infos)
+	if err != nil {
+		return 0, err
+	}
+	var generated struct {
+		Providers map[string]any `json:"providers"`
+	}
+	if err := json.Unmarshal([]byte(built), &generated); err != nil {
+		return 0, err
+	}
+
+	providers := nestedMap(cfg, "providers")
+	// Drop ours first so a rerun replaces the block rather than merging into a
+	// stale model list.
+	delete(providers, launch.PiProvider)
+	for name, block := range generated.Providers {
 		providers[name] = block
 	}
 	return len(refs), writeJSONConfig(path, cfg)
@@ -687,17 +741,22 @@ func mcpEntryPresent(path string) bool {
 	return false
 }
 
-func jsonProviderPresent(path string) bool {
-	cfg, err := readJSONConfig(path)
-	if err != nil {
-		return false
+// jsonProviderPresentAt reads a JSON provider map: opencode and kilo keep theirs
+// under "provider", pi under "providers". Parametrised rather than one detector
+// per format, so a new JSON agent cannot land in someone else's key by accident.
+func jsonProviderPresentAt(key, provider string) func(path string) bool {
+	return func(path string) bool {
+		cfg, err := readJSONConfig(path)
+		if err != nil {
+			return false
+		}
+		providers, ok := cfg[key].(map[string]any)
+		if !ok {
+			return false
+		}
+		_, present := providers[provider]
+		return present
 	}
-	providers, ok := cfg["provider"].(map[string]any)
-	if !ok {
-		return false
-	}
-	_, present := providers[launch.OpenCodeChatProvider]
-	return present
 }
 
 // tomlTablePresent parses rather than substring-matches: a commented-out block would otherwise read as wired.

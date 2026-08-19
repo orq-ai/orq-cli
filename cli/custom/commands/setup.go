@@ -1144,7 +1144,13 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 		res := agentResult{Agent: id}
 
-		configPath, err := spec.mcpConfig(opts.global)
+		// A gateway-only agent leaves mcpConfig nil (pi has no native MCP) and
+		// falls through to the "nothing to configure" branch below.
+		var configPath string
+		var err error
+		if spec.mcpConfig != nil {
+			configPath, err = spec.mcpConfig(opts.global)
+		}
 		switch {
 		case opts.noMCP:
 		case err != nil:

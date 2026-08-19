@@ -404,6 +404,106 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 	}
 }
 
+// pi's models.json is where users declare their own local providers (ollama,
+// vLLM, LM Studio), so setup adds one key to it and leaves the rest alone.
+func TestPiProviderMergePreservesUserProviders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "models.json")
+	original := `{
+  "providers": {
+    "ollama": {"baseUrl": "http://127.0.0.1:11434/v1", "apiKey": "ollama",
+      "api": "openai-completions", "models": [{"id": "gemma4:e2b"}]}
+  }
+}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	written, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		openCodeModels(), "anthropic/claude-sonnet-4-6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written != 2 {
+		t.Errorf("reported %d models, want 2", written)
+	}
+
+	providers, ok := readBack(t, path)["providers"].(map[string]any)
+	if !ok {
+		t.Fatal("providers block missing")
+	}
+	if _, ok := providers["ollama"]; !ok {
+		t.Error("the user's own provider was dropped")
+	}
+	orq, ok := providers[launch.PiProvider].(map[string]any)
+	if !ok {
+		t.Fatal("the orq provider was not registered")
+	}
+	if n := len(orq["models"].([]any)); n != 2 {
+		t.Errorf("orq provider lists %d models, want 2", n)
+	}
+}
+
+// pi resolves $ORQ_API_KEY at request time, so the durable config holds the
+// reference and never the credential.
+func TestPiProviderNeverEmbedsTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "models.json")
+	if _, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	got := string(mustRead(t, path))
+	if strings.Contains(got, "sk-canary-do-not-write") {
+		t.Error("the api key was written into pi's models.json")
+	}
+	if !strings.Contains(got, "$ORQ_API_KEY") {
+		t.Errorf("the config does not reference ORQ_API_KEY:\n%s", got)
+	}
+}
+
+// A rerun must replace our block rather than merge into it, or a model the
+// workspace has since disabled lingers as an entry that 403s.
+func TestPiProviderRefreshesOnRerun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "models.json")
+	if _, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	shrunk := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		shrunk, "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+
+	providers := readBack(t, path)["providers"].(map[string]any)
+	orq, ok := providers[launch.PiProvider].(map[string]any)
+	if !ok {
+		t.Fatal("orq provider missing after rerun")
+	}
+	if n := len(orq["models"].([]any)); n != 1 {
+		t.Errorf("orq provider lists %d models after rerun, want 1", n)
+	}
+}
+
+// Doctor reads pi's wiring out of "providers"; opencode and kilo keep theirs
+// under "provider". A detector reading the wrong key reports a wired agent as
+// unwired forever.
+func TestPiProviderDetectorPairsWithTheWriter(t *testing.T) {
+	pi, ok := lookupAgent("pi")
+	if !ok {
+		t.Fatal("pi is not registered")
+	}
+	path := filepath.Join(t.TempDir(), "models.json")
+	if pi.providerPresent(path) {
+		t.Fatal("a missing file read as wired")
+	}
+	if _, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+	if !pi.providerPresent(path) {
+		t.Fatal("the config the writer just produced read as unwired")
+	}
+}
+
 // The profile is only useful if codex can load it standalone, so it must parse
 // and carry model / model_provider at the root. Dotted keys emitted in place,
 // or root keys written after the [model_providers.orq] header, would both read
@@ -1023,6 +1123,9 @@ func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
 		{"codex", "", func(p string) (int, error) {
 			return writeCodexProviderTOML(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
 		}},
+		{"pi", `{"providers":{"orq":{"models":[{"id":"openai/gpt-5"}]},"ollama":{"models":[]}}}`, func(p string) (int, error) {
+			return writePiProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", nil, "")
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config")
@@ -1080,35 +1183,46 @@ func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 	}
 }
 
-// Three of the five agents read their config only from the home directory, so
-// --global=false does not get the user what they asked for. That used to be
-// announced for codex alone, by id, while opencode and kilo silently ignored
-// project scope after they became home-only too.
+// Most agents read their config only from the home directory, so --global=false
+// does not get the user what they asked for. That used to be announced for codex
+// alone, by id, while opencode and kilo silently ignored project scope after
+// they became home-only too.
 //
 // Derived from the resolver rather than a list, so an agent added later is
-// covered without anyone remembering to update a string.
+// covered without anyone remembering to update a string. Both resolvers are
+// checked because reportAgent falls back to providerConfig for a gateway-only
+// agent, which is the only path pi takes.
 func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
 	for _, spec := range agentRegistry() {
-		t.Run(spec.ID, func(t *testing.T) {
-			project, err := spec.mcpConfig(false)
-			if err != nil {
-				t.Skipf("no MCP config: %v", err)
+		resolvers := map[string]func(bool) (string, error){
+			"mcp":      spec.mcpConfig,
+			"provider": spec.providerConfig,
+		}
+		for kind, resolve := range resolvers {
+			if resolve == nil {
+				continue // capability this agent does not have
 			}
-			global, err := spec.mcpConfig(true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			homeOnly := project == global
+			t.Run(spec.ID+"/"+kind, func(t *testing.T) {
+				project, err := resolve(false)
+				if err != nil {
+					t.Skipf("no %s config: %v", kind, err)
+				}
+				global, err := resolve(true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				homeOnly := project == global
 
-			// Asking for project scope on a home-only agent must say so.
-			if note := scopeNote(spec.mcpConfig, false); homeOnly == (note == "") {
-				t.Errorf("home-only=%v but note=%q", homeOnly, note)
-			}
-			// Asking for global has no discrepancy to explain.
-			if note := scopeNote(spec.mcpConfig, true); note != "" {
-				t.Errorf("note shown for an explicit --global run: %q", note)
-			}
-		})
+				// Asking for project scope on a home-only agent must say so.
+				if note := scopeNote(resolve, false); homeOnly == (note == "") {
+					t.Errorf("home-only=%v but note=%q", homeOnly, note)
+				}
+				// Asking for global has no discrepancy to explain.
+				if note := scopeNote(resolve, true); note != "" {
+					t.Errorf("note shown for an explicit --global run: %q", note)
+				}
+			})
+		}
 	}
 }
 
