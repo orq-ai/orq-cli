@@ -1392,19 +1392,19 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 	}{
 		"mcp and gateway": {
 			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Provider: "~/.kimi-code/config.toml"}},
-			want:       []string{"read and write your orq.ai workspace", "list my orq.ai agents", "Start it:", "\n      kimi\n"},
+			want:       []string{"read and write your orq.ai workspace", "list my orq.ai agents", "kimi"},
 			wantAbsent: []string{"orq launch"},
 		},
 		"gateway only": {
 			agents: []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
-			want:   []string{"Kimi Code routes its model calls through orq", "Start it:", "\n      kimi\n"},
+			want:   []string{"Kimi Code routes its model calls through orq", "kimi"},
 			// The two claims a gateway-only agent cannot honour, and the
 			// ephemeral path that would shadow the config just written.
 			wantAbsent: []string{"read and write", "list my orq.ai agents", "orq launch"},
 		},
 		"mcp only": {
 			agents:     []agentResult{{Agent: "claude", MCP: ".mcp.json"}},
-			want:       []string{"Claude Code can now read and write", "Start it:", "\n      claude\n"},
+			want:       []string{"Claude Code can now read and write", "claude"},
 			wantAbsent: []string{"orq launch"},
 		},
 		// A run can wire one agent for MCP and another for the gateway alone.
@@ -1419,17 +1419,15 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 			want: []string{
 				"Claude Code can now read and write your orq.ai workspace",
 				"Kimi Code routes its model calls through orq",
-				"Ask it:",
-				"Start them:",
-				"\n      claude\n",
-				"\n      kimi\n",
+				"list my orq.ai agents",
+				"claude",
+				"kimi",
 			},
 			// The claim must name Claude Code alone, and the pronoun must not
 			// invite asking the agent that has no MCP server.
 			wantAbsent: []string{
 				"Kimi Code can now read and write",
 				"Claude Code and Kimi Code can now read and write",
-				"Ask one of them:",
 			},
 		},
 		// Codex's gateway lives in a named profile, so plain `codex` routes
@@ -1437,28 +1435,27 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 		// printed one screen earlier.
 		"codex gateway only names its profile": {
 			agents:     []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}},
-			want:       []string{"Codex routes its model calls through orq", "\n      codex --profile orq\n"},
+			want:       []string{"Codex routes its model calls through orq", "codex --profile orq"},
 			wantAbsent: []string{"\n      codex\n"},
 		},
 		// Both headings follow the count, so a single-agent run stops reading
 		// as a group and a two-agent run stops naming one of them "it".
 		"two agents": {
 			agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
-			want: []string{"Claude Code and Kimi Code", "Ask one of them:", "Start them:",
-				"\n      claude\n", "\n      kimi\n"},
-			wantAbsent: []string{"Ask it:", "Start it:"},
+			want: []string{"Claude Code and Kimi Code", "list my orq.ai agents",
+				"\n  Start       claude\n", "kimi"},
 		},
 		"nothing wired": {
 			agents: nil,
 			// Ephemeral launch is legitimately the answer here, for a detected
 			// agent (the harness installs kimi), never a hardcoded claude.
 			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq setup coding-agents"},
-			wantAbsent: []string{"orq launch claude", "Start it:"},
+			wantAbsent: []string{"orq launch claude", "Start "},
 		},
 		"errored agent does not count as wired": {
 			agents:     []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Error: "boom"}},
 			want:       []string{"Route an existing OpenAI client"},
-			wantAbsent: []string{"read and write", "Start it:"},
+			wantAbsent: []string{"read and write", "Start "},
 		},
 	}
 	for name, tc := range cases {
@@ -1505,8 +1502,8 @@ func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
 		map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
 	got := out.String()
 
-	warn := strings.Index(got, "Agents inherit ORQ_API_KEY")
-	start := strings.Index(got, "Start it:")
+	warn := strings.Index(got, "agents inherit it from this shell")
+	start := strings.Index(got, "Start")
 	if warn == -1 || start == -1 {
 		t.Fatalf("expected both the env warning and the suggestion:\n%s", got)
 	}
