@@ -44,9 +44,10 @@ jobs:
 
   installer:
     name: install.sh runs under dash
-    # ubuntu-latest, because /bin/sh here is dash. The release job runs on
-    # macOS, where /bin/sh is bash in posix mode and accepts constructs dash
-    # rejects — a parse check there passes on scripts that die on Debian.
+    # ubuntu-latest, because dash is preinstalled there (every step invokes
+    # dash explicitly). The release job runs on macOS, which has no dash: a
+    # parse check there would use bash in posix mode, which accepts
+    # constructs that die on Debian.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,8 +72,10 @@ jobs:
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
       - name: reject non-ASCII in output
-        # The UTF-8 fallback only holds if every glyph is gated; a stray one
-        # renders as mojibake on a non-UTF-8 terminal.
+        # Covers only the static --help text: the gated glyphs never appear
+        # there, so an ungated glyph in the install flow itself would pass
+        # this check. A stray one renders as mojibake on a non-UTF-8
+        # terminal.
         run: |
           set -eu
           out=$(LC_ALL=C LANG=C dash install.sh --help)

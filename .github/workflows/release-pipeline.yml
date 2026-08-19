@@ -242,8 +242,8 @@ jobs:
           # --clobber to overwrite asset already exist
           gh release upload "$TAG" dist/orq-* --clobber
 
-      # Publishing the installer as a release asset gives it an immutable,
-      # per-tag URL. Serving it from a branch head instead would mean a bad
+      # Publishing the installer as a release asset gives it a stable,
+      # per-tag URL (re-runs can still --clobber it). Serving it from a branch head instead would mean a bad
       # commit breaks every install with no version to roll back to.
       - name: Publish install.sh to GitHub Release
         env:

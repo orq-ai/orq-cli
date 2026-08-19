@@ -26,7 +26,8 @@
 
 set -eu
 
-# Stamped by the release workflow; stays "dev" when run from a checkout.
+# Stamped by the release workflow; stays "dev" in any unstamped copy — a
+# checkout, or a fetch from a raw branch URL.
 INSTALLER_VERSION="dev"
 
 REPO="orq-ai/orq-cli"
@@ -310,8 +311,9 @@ if [ "${already_current:-0}" != "1" ]; then
         exit 1
       fi
       # A captive portal answers 200 with HTML, which would otherwise be
-      # compared as a hash and reported as a checksum mismatch. The ?
-      # repetition is how POSIX case expresses "exactly 64 hex characters".
+      # compared as a hash and reported as a checksum mismatch. The bracket
+      # expression is written out 64 times (16 per hex16, four hex16) because
+      # POSIX case patterns have no repetition operator.
       hex16='[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'
       case "$expected" in
         $hex16$hex16$hex16$hex16) ;;
