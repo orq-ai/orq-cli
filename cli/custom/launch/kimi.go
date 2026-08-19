@@ -92,11 +92,9 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	return plan, nil
 }
 
-// TOMLString encodes a TOML basic string. JSON string encoding is a valid
-// TOML basic string (quotes, backslashes, and control chars all escaped) —
-// raw control characters from a hostile model id would otherwise make an
-// agent reject the whole config file. Every TOML writer in both commands
-// must use it; hand-rolled quoting is how a hostile id breaks a config open.
+// TOMLString encodes a TOML basic string. JSON string encoding is a valid TOML
+// basic string (quotes, backslashes, control chars all escaped): raw control
+// characters from a hostile model id would otherwise break an agent's config.
 func TOMLString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
@@ -107,10 +105,8 @@ func TOMLString(value string) string {
 // fallback or interpolation), so callers must keep the file private and
 // short-lived.
 //
-// An empty gatewayModel omits default_model. Launch always names one — it owns
-// a throwaway config dir — but setup merges into the user's real file, where
-// kimi stores the model they picked in the UI, and that choice is not ours to
-// replace.
+// An empty gatewayModel omits default_model: setup merges into the user's real
+// file, where kimi stores the model they picked.
 func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []string, infos []ModelInfo) string {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {

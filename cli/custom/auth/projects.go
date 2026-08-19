@@ -143,10 +143,8 @@ func (c *Client) RouterBaseURL() string {
 // models by their refId, which is "<provider>/<model_id>" for system models.
 type RouterModel struct {
 	ModelID string `json:"model_id"`
-	// RefID is the canonical invoke id the endpoint publishes. It is
-	// "provider/model_id" for system models but "workspace@orq/model_id" for
-	// custom ones (autorouters), so it cannot be reconstructed from the two
-	// fields below — see Ref.
+	// RefID is the canonical invoke id: "provider/model_id" for system models but
+	// "workspace@orq/model_id" for custom ones, so it cannot be reconstructed.
 	RefID     string `json:"refId"`
 	Provider  string `json:"provider"`
 	Developer string `json:"model_developer"`
@@ -172,11 +170,9 @@ type RouterModel struct {
 
 // Ref is the identifier the router expects in a request's `model` field.
 //
-// refId wins when the endpoint sends one. Composing provider/model_id instead
-// yields "orq/<name>" for a workspace's custom models and autorouters, which
-// the agents' model normalizers strip back to a bare, un-invokable name — so
-// setup wrote config naming models that cannot be called, while `orq launch`
-// (which reads refId, see launch.FetchEnabledModels) got them right.
+// refId wins when the endpoint sends one: composing provider/model_id yields
+// "orq/<name>" for custom models, which the agents' normalizers strip back to a
+// bare, un-invokable name.
 func (m RouterModel) Ref() string {
 	if m.RefID != "" {
 		return m.RefID
@@ -232,36 +228,20 @@ func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterM
 	return groups
 }
 
-// sizeVariantSuffixes name the cut-down editions vendors ship alongside a full
-// model, ordered strongest to weakest. Order matters twice: -flash before
-// -lite makes gemini-2.5-flash beat gemini-2.5-flash-lite, and -mini before
-// -nano makes gpt-5.4-mini beat gpt-5.4-nano when a workspace enables only
-// variants.
+// sizeVariantSuffixes are the cut-down editions vendors ship alongside a full
+// model, ordered strongest to weakest. They must be ranked explicitly because a
+// size suffix sorts lexically above the model it comes from ("gpt-5.4-nano" >
+// "gpt-5.4"), so picking the greatest id hands a coding agent the weakest
+// option: gpt-5.4-nano rejects tools codex sends on its first request.
 //
-// They have to be ranked explicitly because size suffixes sort lexically
-// *above* the model they are derived from — "gpt-5.4-nano" > "gpt-5.4-mini" >
-// "gpt-5.4" — so picking the lexically greatest id hands a coding agent the
-// weakest option in the family. That is not just a quality question:
-// gpt-5.4-nano rejects tools the full model accepts, and codex, which sends
-// its whole tool set on the first request, fails outright with "[openai] Tool
-// 'tool_search' is not supported with gpt-5.4-nano".
-//
-// A name heuristic is unsatisfying, and it is here only because the catalogue
-// cannot answer the question. /v2/models does publish
-// metadata.supports_web_search, but for this family it is inverted:
-// gpt-5.4-nano, the model that fails, advertises true, while gpt-5.4 and
-// gpt-5.6-terra, which both work, leave it unset. Filtering on that field would
-// select exactly the broken model. Replace this with a capability filter once
-// the catalogue can be trusted for one.
+// A name heuristic only because the catalogue cannot answer the question:
+// metadata.supports_web_search is inverted for this family.
 var sizeVariantSuffixes = []string{"-flash", "-small", "-mini", "-lite", "-micro", "-tiny", "-nano"}
 
 // SizeVariantRank orders a family's editions strongest-first: 0 for a full
-// model, 1+ for cut-down ones, weaker editions ranking higher. Callers sort
-// ascending by rank before any lexical comparison.
+// model, 1+ for cut-down ones. Callers sort ascending before any lexical compare.
 func SizeVariantRank(modelID string) int {
 	for i, suffix := range sizeVariantSuffixes {
-		// Suffix rather than Contains: the segment has to end the id, so a model
-		// merely containing a size word mid-name is not demoted.
 		if strings.HasSuffix(modelID, suffix) {
 			return i + 1
 		}

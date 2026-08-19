@@ -176,13 +176,8 @@ func TestMaskToken(t *testing.T) {
 	}
 }
 
-// Everything setup writes for these agents reaches the credential indirectly —
-// codex through env_key, opencode and kilo through {env:ORQ_API_KEY} — and none
-// of them resolve that from a project-scoped config. Codex reads MCP only from
-// the home TOML; opencode discards a project config containing env references
-// entirely and then silently answers "orq/anthropic/…" from whatever other
-// provider it can find, while kilo reports the file as invalid. A project copy
-// is written and never used, so both scopes resolve to the same absolute path.
+// None of these agents resolve an env reference from a project-scoped config, so
+// a project copy would be written and never used.
 func TestEnvReferencingConfigsAreAlwaysGlobal(t *testing.T) {
 	for _, id := range []string{"codex", "opencode", "kilo"} {
 		spec, ok := lookupAgent(id)
@@ -624,11 +619,6 @@ func TestNoMCPStillWritesProviderConfig(t *testing.T) {
 	}
 }
 
-// Codex resolves its config directory from $CODEX_HOME, falling back to
-// ~/.codex. Setup must write where codex will read: a profile under a
-// hardcoded ~/.codex on a machine that sets CODEX_HOME is never loaded, and
-// the printed `codex --profile orq` hint sends the user to a profile codex
-// cannot find.
 func TestCodexPathsHonorCodexHome(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
 	codex, _ := lookupAgent("codex")

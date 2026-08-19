@@ -12,28 +12,14 @@ import (
 	"orq/cli/custom/launch"
 )
 
-// mcpServerName is the key every agent config registers orq under. Aliased to
-// launch's constant rather than spelled again: launch injects a session-scoped
-// entry under the same key, and if the two ever differed an agent would load
-// BOTH servers — every orq tool twice, double the context. An alias cannot
-// drift, which is what let the test guarding this be deleted.
+// mcpServerName must equal launch's key: launch injects a session-scoped entry
+// under the same name, and two different keys make an agent load both servers.
 const mcpServerName = launch.MCPServerName
 
-// errNoModelsToOffer is returned rather than writing a provider block with no
-// models in it: the writers clear their own keys first, so "write nothing"
-// would mean "delete whatever an earlier run left".
+// errNoModelsToOffer guards a shipped bug: the writers clear their own keys
+// before emitting, so writing an empty catalogue deletes a working config.
 var errNoModelsToOffer = errors.New("no models to offer")
 
-// launchCatalog expresses setup's catalogue in the shape every launch builder
-// takes: the model refs to offer, and the metadata to write caps and pick an
-// API shape from.
-//
-// Both commands configure the same agents against the same gateway, so they
-// must describe them identically. Setup used to reimplement each format; the
-// two copies diverged four times in a single day (MCP server name,
-// enabled-vs-is_active, the tool-calling filter, the Responses split) and every
-// divergence was found by running the CLI, never by a test. One builder per
-// format and this adapter removes the class.
 func launchCatalog(models []auth.RouterModel) ([]string, []launch.ModelInfo) {
 	refs := make([]string, 0, len(models))
 	infos := make([]launch.ModelInfo, 0, len(models))
@@ -76,11 +62,8 @@ type agentSpec struct {
 	// the user's own pick there, and overwriting it would silently undo a
 	// choice they made in the agent's UI.
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
-	// providerUsage says how to actually reach the gateway once it is
-	// registered. Setup makes orq available rather than default, so for some
-	// agents that takes a flag or a picker step the user would otherwise
-	// never discover. Empty
-	// when the agent picks it up with no action.
+	// providerUsage is the step the user must take to reach the gateway, empty when
+	// the agent needs none.
 	providerUsage string
 }
 
@@ -107,20 +90,12 @@ func agentRegistry() []agentSpec {
 		{
 			ID:    "codex",
 			Label: "Codex",
-			// Codex reads MCP servers only from its config directory. A
-			// project-relative copy would be written and never loaded, so both
-			// scopes resolve to the same absolute path.
-			mcpConfig:     codexPath("config.toml"),
-			writeMCP:      writeMCPCodexTOML,
-			manualSnippet: snippetMCPCodexTOML,
-			// Detected through the same resolution the writers use, or a machine
-			// that sets CODEX_HOME elsewhere is never offered the agent whose
-			// config we would then write correctly.
-			detect: detectPath(codexPath("")),
-			// A named profile rather than the base config: `codex --profile orq`
-			// layers $CODEX_HOME/orq.config.toml over config.toml, so this is a
-			// file we own outright and plain `codex` is untouched. The MCP block
-			// in the base config still applies under the profile.
+			// Codex reads MCP servers only from its config directory, so both scopes
+			// resolve to the same absolute path.
+			mcpConfig:      codexPath("config.toml"),
+			writeMCP:       writeMCPCodexTOML,
+			manualSnippet:  snippetMCPCodexTOML,
+			detect:         detectPath(codexPath("")),
 			providerConfig: codexPath(codexProfileName + ".config.toml"),
 			writeProvider:  writeCodexProviderTOML,
 			providerUsage:  "run 'codex --profile " + codexProfileName + "' to route through the gateway",
@@ -128,12 +103,8 @@ func agentRegistry() []agentSpec {
 		{
 			ID:    "opencode",
 			Label: "opencode",
-			// Global only, with the same outcome as codex: everything we write
-			// into these files reaches the credential through {env:ORQ_API_KEY},
-			// and opencode and kilo reject env references in a *project* config —
-			// opencode discards the whole file and silently resolves
-			// "orq/anthropic/…" against some other provider, kilo reports it as
-			// invalid. A project-scoped copy is worse than none.
+			// Global only: opencode and kilo reject {env:ORQ_API_KEY} references in a
+			// project config.
 			mcpConfig:      alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeMCP:       writeMCPRemoteJSON,
 			manualSnippet:  snippetMCPRemoteJSON,
@@ -212,11 +183,8 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 	}
 }
 
-// codexPath resolves inside codex's config directory: $CODEX_HOME when set,
-// ~/.codex otherwise. Codex resolves everything — config.toml, profiles —
-// against CODEX_HOME, so writing to a hardcoded ~/.codex on a machine that
-// sets it would produce files codex never reads, along with a hint telling
-// the user to load a profile codex cannot find.
+// codexPath resolves against $CODEX_HOME when set, ~/.codex otherwise: codex
+// resolves config.toml and profiles the same way.
 func codexPath(rel string) func(bool) (string, error) {
 	return func(bool) (string, error) {
 		if dir := strings.TrimSpace(os.Getenv("CODEX_HOME")); dir != "" {
@@ -230,9 +198,7 @@ func codexPath(rel string) func(bool) (string, error) {
 	}
 }
 
-// codexBaseConfigPath is the config.toml codex actually loads, named in the
-// header we write. A hardcoded ~/.codex there would point a CODEX_HOME user at
-// a file that does not exist, in the one file telling them where to edit.
+// codexBaseConfigPath is the config.toml codex loads, named in the header we write.
 func codexBaseConfigPath() string {
 	path, err := codexPath("config.toml")(true)
 	if err != nil {
@@ -241,8 +207,6 @@ func codexBaseConfigPath() string {
 	return path
 }
 
-// detectPath reports whether a resolver's directory exists, for agents whose
-// location is not a fixed name under $HOME.
 func detectPath(resolve func(bool) (string, error)) func() bool {
 	return func() bool {
 		path, err := resolve(true)
@@ -424,17 +388,9 @@ func writeMCPCodexTOML(path, url string) error {
 	return err
 }
 
-// writeOpenCodeProviderJSON registers the orq gateway in the config format
-// opencode and kilo share (each in its own file), so its models appear in
-// their pickers. The api key stays out
-// of the file via {env:ORQ_API_KEY}.
-//
-// The top-level "model" key is deliberately never written. That is the user's
-// default, and neither agent has codex's profile mechanism to scope a change
-// to — setting it would repoint every session at orq, including on machines
-// where ORQ_API_KEY is not exported and the provider therefore cannot answer.
-// Offering the models and letting the user pick one is the version of this that
-// cannot leave an agent worse off than it found it.
+// writeOpenCodeProviderJSON never writes the top-level "model": orq is offered as
+// an option, never made the user's default, since setup cannot guarantee
+// ORQ_API_KEY is exported.
 func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
 	// Every writer below clears the keys it owns before emitting new ones, so
 	// an empty catalogue would delete a working block and report success. The
@@ -459,9 +415,8 @@ func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterMo
 	}
 
 	providers := nestedMap(cfg, "provider")
-	// Drop ours first so a provider that no longer has models (every openai
-	// model disabled, say) does not survive as a stale entry pointing at an
-	// empty catalogue.
+	// Drop ours first so a provider left with no models does not survive as a
+	// stale entry.
 	for _, name := range []string{launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider} {
 		delete(providers, name)
 	}
@@ -475,21 +430,8 @@ func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterMo
 // $CODEX_HOME/<name>.config.toml is loaded by `codex --profile <name>`.
 const codexProfileName = "orq"
 
-// codexDefaultModel picks the model codex should open with, which is not the
-// same choice as for every other agent.
-//
-// Codex dropped chat/completions support, so wire_api can only be "responses"
-// and every request carries OpenAI-shaped tool definitions — including the
-// built-in web_search type. A model the gateway serves by translating to
-// another vendor's API rejects those outright: anthropic answers
-// "tools.5: Input tag 'namespace' ... does not match any of the expected tags"
-// and the stream ends in response.failed, which codex surfaces only as
-// "ERROR: Reconnecting... 1/5". So the model must be one the gateway serves
-// natively over Responses.
-//
-// The proven default is reused when it qualifies, and otherwise the best
-// Responses-capable model is taken from the same preference order — never a
-// second probe, since that would bill the user again.
+// codexDefaultModel: codex speaks only the Responses API, so its default must be
+// a model the gateway serves natively over Responses, not one it translates.
 func codexDefaultModel(models []auth.RouterModel, proven string) string {
 	responses := make([]auth.RouterModel, 0, len(models))
 	for _, m := range models {
@@ -505,10 +447,8 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 	for _, group := range auth.CandidateCodingModels(responses, preferredCodingModels) {
 		return group[0].Ref()
 	}
-	// No preferred family available: any Responses-capable model beats naming
-	// one that cannot answer. Same rank-then-lexical rule as
-	// CandidateCodingModels, though this fallback tiebreaks on the full ref
-	// where that compares bare model ids. Re-runs are stable.
+	// Fallback: same rank-then-lexical rule as CandidateCodingModels, tiebroken on
+	// the full ref so re-runs are stable.
 	best, bestRank := "", 0
 	for _, m := range responses {
 		ref, rank := m.Ref(), auth.SizeVariantRank(m.ModelID)
@@ -519,28 +459,12 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 	return best
 }
 
-// writeCodexProviderTOML writes the codex profile that routes through the orq
-// gateway. Unlike every other writer here it does not merge: the profile file
-// is ours alone, `codex` without --profile never reads it, and rewriting it
-// wholesale is what keeps the settings current when setup mints a new key or
-// the workspace's default model changes.
+// writeCodexProviderTOML writes the codex profile. The file is ours alone, plain
+// `codex` never reads it, so it is rewritten wholesale rather than merged.
 //
-// The credential is not written. Codex resolves it from ORQ_API_KEY at run
-// time via env_key, which is also why this profile is opt-in rather than the
-// base config's default: setup cannot guarantee that variable is exported, and
-// a base config pointing at a provider with no key would break plain `codex`
-// for everything, not just orq work.
-//
-// apiKey is unused, deliberately, because of the indirection above. The model
-// list is used only to choose the default.
-//
-// Deliberately no model catalog (the JSON codex builds its picker from, via
-// `codex debug models --bundled`): setup cannot assume codex is installed to
-// run it. The cost is
-// cosmetic — the picker lists codex's bundled models rather than the
-// workspace's, and codex prints a "model metadata not found" warning for the
-// model named here — while the request still routes. Generate the catalog too
-// if either turns out to matter.
+// No model catalog: generating one needs codex installed (`codex debug models
+// --bundled`). The cost is cosmetic, its picker lists codex's bundled models and
+// it warns "model metadata not found", while requests still route.
 func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel, defaultModel string) (int, error) {
 	// Every writer below clears the keys it owns before emitting new ones, so
 	// an empty catalogue would delete a working block and report success. The
@@ -558,11 +482,8 @@ func writeCodexProviderTOML(path, routerURL, _ string, models []auth.RouterModel
 	return 0, os.WriteFile(path, []byte(header+body), 0o600)
 }
 
-// renderTOMLSettings formats dotted key/value pairs as TOML, hoisting the
-// undotted ones above the tables. Emitting them in place as dotted keys would
-// read fine to a modern parser but leaves the file's meaning dependent on
-// nothing preceding them, and root keys after a table header belong to that
-// table — an easy thing to break later by appending one line.
+// renderTOMLSettings hoists undotted keys above the tables: a root key written
+// after a table header is silently swallowed into that table.
 func renderTOMLSettings(settings [][2]string) string {
 	var root strings.Builder
 	tables := map[string]*strings.Builder{}
@@ -630,10 +551,8 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 		kept += "\n\n"
 	}
 	kept = prefix + kept
-	// The builder is told no default model: it would emit default_model as its
-	// first line, which lands after the user's tables here and TOML would read
-	// it as a member of the last one. Setup hoists it above them instead, in
-	// `prefix` above.
+	// No default model: emitted here it would land after the user's tables, where
+	// TOML reads a root key as a member of the last one. `prefix` hoists it instead.
 	refs, infos := launchCatalog(models)
 	block := launch.BuildKimiConfigTOML(routerURL, apiKey, "", refs, infos)
 	// The file carries a literal credential; a pre-existing copy may have been

@@ -1069,14 +1069,8 @@ func modelsSettingsURL(state *authState) string {
 // Step 5 — coding agents
 // ============================================================================
 
-// scopeNote marks a path the agent will only ever read from the home directory,
-// so a user who asked for project scope is told why they did not get it.
-//
-// Derived by asking the resolver both ways rather than listing agent ids: the
-// resolver is what decides, several agents are home-only, and a hardcoded
-// list is exactly the kind of thing that goes stale the next time one is
-// added. Silent when the user asked for global anyway — then there is no
-// discrepancy to explain, only noise.
+// scopeNote explains why a run that asked for project scope still wrote to the
+// home directory. Silent when the user asked for global anyway.
 func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
 	if askedGlobal || resolve == nil {
 		return ""
@@ -1176,18 +1170,9 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				if best, ok := defaultCodingModel(rep, client, state); ok {
 					defaultModel = best.Ref()
 				}
-				// An empty catalogue is not a config to write, it is nothing to
-				// offer — ListModels failed, or the workspace has no chat model
-				// with function calling. Every writer clears its own keys before
-				// emitting new ones, so calling through with no models deletes a
-				// working provider block from an earlier run and reports success.
-				// Leaving the file untouched is the only outcome that cannot make
-				// the agent worse off than it already was.
-				//
-				// Not recorded as an agent error: step 4 already reported the
-				// cause with a link and a retry, and MCP wiring above succeeded.
-				// Failing the run here would report a workspace state twice and
-				// call a configured agent broken.
+				// Skipped, not written through: every writer clears its own keys first,
+				// so an empty catalogue would delete an earlier run's provider block.
+				// Not an agent error, step 4 already reported the cause.
 				if len(models) == 0 {
 					rep.warn("%-8s provider  skipped: no models to offer, %s left unchanged", id, path)
 					results = append(results, res)
@@ -1198,24 +1183,18 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				case werr != nil:
 					rep.warn("%-8s provider  %v", id, werr)
 				default:
-					// Only claim a model count when the format actually carries
-					// one: codex's profile names a single default and takes its
-					// list from elsewhere.
+					// Codex's profile carries no model list, so claim a count
+					// only when there is one.
 					listed := ""
 					if written > 0 {
 						listed = fmt.Sprintf(" (%d models)", written)
 					}
-					// No scope note here: when MCP was also written, that
-					// agent's MCP line already carried one, and repeating it
-					// per line would say the same thing twice for one agent.
+					// The agent's MCP line above already carried the note.
 					scope := ""
 					if res.MCP == "" {
 						scope = scopeNote(spec.providerConfig, opts.global)
 					}
 					rep.ok("%-8s provider  %s → orq gateway%s%s", id, path, listed, scope)
-					// Setup registers orq as an option rather than making it the
-					// default, so for some agents there is a step the user would
-					// otherwise never find.
 					if spec.providerUsage != "" {
 						rep.note("           %s", spec.providerUsage)
 					}
@@ -1249,11 +1228,8 @@ var codingModelsFetched bool
 var provenModel string
 var provenTook time.Duration
 
-// defaultModelResolved memoizes the whole probe outcome, success or failure.
-// Every agent with a provider writer asks for the default model, and each
-// probe is a billed completion — without this, wiring four agents billed four
-// completions for the same answer (and a broken workspace would have billed
-// up to three failures per agent).
+// defaultModelResolved memoizes the probe outcome, success or failure: each probe
+// is a billed completion and every agent asks for the same answer.
 var defaultModelResolved bool
 var provenCandidate auth.RouterModel
 

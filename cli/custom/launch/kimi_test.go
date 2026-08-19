@@ -41,10 +41,6 @@ func TestKimiTOMLProvidersAndCaps(t *testing.T) {
 	}
 }
 
-// Setup merges this block into the user's own config.toml, where kimi records
-// the model they picked in its UI. It passes no default model so that choice
-// survives — and because a default_model emitted here would sit after the
-// user's tables, where TOML reads a root key as a member of the last one.
 func TestKimiTOMLOmitsDefaultModelWhenUnset(t *testing.T) {
 	toml := BuildKimiConfigTOML("https://api.orq.ai/v3/router", "sk-test-key", "",
 		[]string{"anthropic/claude-sonnet-4-6"}, nil)

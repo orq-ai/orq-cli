@@ -82,13 +82,8 @@ func tomlOverride(key, value string) string {
 // CodexProvider is the key codex registers the orq gateway under.
 const CodexProvider = "orq"
 
-// CodexProviderSettings is the codex configuration that points it at the orq
-// gateway, as ordered dotted-key/value pairs.
-//
-// Two commands deliver these differently — launch as `-c key=value` overrides
-// on the argv, setup as TOML in a profile file — so the settings themselves
-// live in one place and each command only formats them. An empty model or
-// modelCatalogPath omits that key rather than writing a blank one.
+// CodexProviderSettings is the codex config that points it at the orq gateway,
+// as ordered dotted-key/value pairs.
 func CodexProviderSettings(model, baseURL, modelCatalogPath string) [][2]string {
 	settings := [][2]string{}
 	if model != "" {

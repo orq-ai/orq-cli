@@ -168,14 +168,9 @@ func model(provider, id string, ctx int, enabled, fns bool, kind string) auth.Ro
 	return m
 }
 
-// Both commands read the same endpoint and must address a model the same way.
-// They did not: launch uses the published refId, setup composed
-// provider + "/" + model_id. For a workspace's custom models and autorouters
-// the endpoint sends refId "workspace@orq/<name>" while provider is "orq", so
-// setup wrote "orq/<name>" — which the agents' model normalizers strip back to
-// a bare name the gateway cannot resolve. Config that names uncallable models
-// is worse than config that omits them: the model shows up in the picker and
-// fails at the first prompt.
+// Setup composed provider + "/" + model_id, which for custom models and
+// autorouters is not the published refId, so it named models the gateway cannot
+// resolve: they show up in the picker and fail at the first prompt.
 func TestSetupAndLaunchAddressModelsIdentically(t *testing.T) {
 	const payload = `[
 	  {"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
@@ -215,8 +210,6 @@ func TestSetupAndLaunchAddressModelsIdentically(t *testing.T) {
 		t.Errorf("the two commands address the catalogue differently:\n  setup:  %v\n  launch: %v",
 			setupRefs, launchRefs)
 	}
-	// Named explicitly so a regression reads as the bug it is, rather than as
-	// two lists that merely stopped matching.
 	if got := setupRefs[0]; got != "acme@orq/router-fast" {
 		t.Errorf("custom model addressed as %q, want the published refId", got)
 	}
@@ -286,9 +279,6 @@ func openCodeModels() []auth.RouterModel {
 	return models
 }
 
-// The config belongs to the user; setup adds one provider to it. Anything else
-// in the document — their own providers, their settings, their keybinds — has
-// to come back out unchanged.
 func TestOpenCodeProviderMergePreservesUserKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
 	original := `{
@@ -326,10 +316,8 @@ func TestOpenCodeProviderMergePreservesUserKeys(t *testing.T) {
 	}
 }
 
-// The decision this whole change rests on: setup makes orq available, never the
-// default. "model" is the user's own default, and neither agent has a profile
-// mechanism to scope a change to — writing it would repoint every session at a
-// provider whose credential setup cannot guarantee is exported.
+// "model" is the user's own default and there is no profile to scope a change to,
+// so setup offers orq rather than making it the default.
 func TestOpenCodeProviderNeverSetsTopLevelModel(t *testing.T) {
 	t.Run("absent: stays absent", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "opencode.json")
@@ -357,8 +345,6 @@ func TestOpenCodeProviderNeverSetsTopLevelModel(t *testing.T) {
 	})
 }
 
-// opencode and kilo interpolate {env:ORQ_API_KEY} at load time, so the key has
-// no business being in a file that often lives in a repo.
 func TestOpenCodeProviderNeverEmbedsTheKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
 	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write",
@@ -374,17 +360,14 @@ func TestOpenCodeProviderNeverEmbedsTheKey(t *testing.T) {
 	}
 }
 
-// Setup re-reads the catalogue on every run, so a model the workspace has since
-// disabled must disappear rather than linger as an entry that 403s. Re-running
-// must also not stack duplicate providers.
+// A model the workspace has since disabled must disappear rather than linger as
+// an entry that 403s, and a rerun must not stack duplicate providers.
 func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "opencode.json")
 	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
 		openCodeModels(), "anthropic/claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
-	// Second run: the openai model is gone from the workspace, so the Responses
-	// provider has nothing left to serve.
 	shrunk := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
 	if _, err := writeOpenCodeProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
 		shrunk, "anthropic/claude-sonnet-4-6"); err != nil {
@@ -404,10 +387,8 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 	}
 }
 
-// The profile is only useful if codex can load it standalone, so it must parse
-// and carry model / model_provider at the root. Root keys written after the
-// [model_providers.orq] header would read as members of that table and leave
-// codex on its own default provider.
+// Must parse standalone with model and model_provider at the root: a root key
+// after a table header is swallowed into that table.
 func TestCodexProfileIsSelfContained(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", openCodeModels(),
@@ -432,8 +413,6 @@ func TestCodexProfileIsSelfContained(t *testing.T) {
 	}
 }
 
-// Codex takes the key from the environment, so nothing here should ever hold
-// it. This is the whole reason the profile can be written to disk at all.
 func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-canary-do-not-write",
@@ -446,9 +425,6 @@ func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
 	}
 }
 
-// The profile exists so that plain `codex` keeps working exactly as it did.
-// Writing into the base config instead would repoint codex globally at a
-// provider whose credential setup cannot guarantee is exported.
 func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "config.toml")
@@ -468,10 +444,8 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	}
 }
 
-// Setup mints a fresh key and re-reads the catalogue on every run. The profile
-// is ours, so it is replaced rather than appended to — appending would give the
-// file duplicate keys, which is a hard TOML error and would take codex's whole
-// profile down, not just the stale half.
+// The profile is ours, so it is replaced rather than appended to: duplicate keys
+// are a hard TOML error and would take the whole profile down.
 func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	catalogue := openCodeModels()
@@ -491,13 +465,6 @@ func TestCodexProfileRewrittenOnRerun(t *testing.T) {
 	}
 }
 
-// Codex can only speak the Responses API, and every request it sends carries
-// OpenAI-shaped tool definitions including the built-in web_search type. Naming
-// a model the gateway serves by translating to another vendor makes the
-// upstream reject the tools outright — anthropic answers "tools.5: Input tag
-// 'namespace' ... does not match any of the expected tags", the stream ends in
-// response.failed, and codex reports only "ERROR: Reconnecting... 1/5". So the
-// model this writer names is not the one every other agent gets.
 func TestCodexDefaultModelMustSupportResponses(t *testing.T) {
 	catalogue := []auth.RouterModel{
 		model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat"), // chat only
@@ -505,28 +472,17 @@ func TestCodexDefaultModelMustSupportResponses(t *testing.T) {
 	}
 	catalogue[1].Metadata.SupportsResponses = true
 
-	// The globally proven default is anthropic, which codex cannot use.
 	if got := codexDefaultModel(catalogue, "anthropic/claude-sonnet-4-6"); got != "openai/gpt-5.4" {
 		t.Errorf("codex default = %q, want the Responses-capable openai/gpt-5.4", got)
 	}
-	// When the proven model does qualify, reuse it rather than second-guessing:
-	// it is the one already shown to answer.
 	if got := codexDefaultModel(catalogue, "openai/gpt-5.4"); got != "openai/gpt-5.4" {
 		t.Errorf("codex default = %q, want the proven openai/gpt-5.4", got)
 	}
-	// Nothing Responses-capable enabled: name nothing rather than something
-	// guaranteed to fail on the first prompt.
 	if got := codexDefaultModel(catalogue[:1], "anthropic/claude-sonnet-4-6"); got != "" {
 		t.Errorf("codex default = %q, want none when no model can serve Responses", got)
 	}
 }
 
-// Size variants sort lexically *above* the model they are cut down from —
-// gpt-5.4-nano > gpt-5.4-mini > gpt-5.4 — so ranking by id alone handed a
-// coding agent the weakest member of the family. It is not only a quality
-// question: nano rejects tools the full model accepts, and codex sends its
-// whole tool set on the first request, so the session died with
-// "[openai] Tool 'tool_search' is not supported with gpt-5.4-nano".
 func TestCodexDefaultModelPrefersFullModelsOverSizeVariants(t *testing.T) {
 	responses := func(refs ...string) []auth.RouterModel {
 		out := make([]auth.RouterModel, 0, len(refs))
@@ -539,43 +495,36 @@ func TestCodexDefaultModelPrefersFullModelsOverSizeVariants(t *testing.T) {
 		return out
 	}
 
-	// The workspace that broke: no gpt-5.6, so the gpt-5.4 family is all there
-	// is, and -nano used to win it.
 	got := codexDefaultModel(responses(
 		"openai/gpt-5.4", "openai/gpt-5.4-mini", "openai/gpt-5.4-nano"), "")
 	if got != "openai/gpt-5.4" {
 		t.Errorf("codex default = %q, want the full openai/gpt-5.4", got)
 	}
 
-	// Version suffixes must still win, which is what the lexical rule was for.
 	got = codexDefaultModel(responses("openai/gpt-5.4", "openai/gpt-5.6"), "")
 	if got != "openai/gpt-5.6" {
 		t.Errorf("codex default = %q, want the newer openai/gpt-5.6", got)
 	}
 
-	// Outside the preferred families the same rule applies.
 	got = codexDefaultModel(responses("acme/model-1-mini", "acme/model-1"), "")
 	if got != "acme/model-1" {
 		t.Errorf("codex default = %q, want the full acme/model-1", got)
 	}
 
-	// Only variants available: the stronger edition, not the lexically
-	// greatest. Plain full-vs-variant ranking still handed nano the win here —
-	// the exact model whose tool rejection started all this.
+	// Only variants available: the stronger edition, not the lexically greatest.
 	got = codexDefaultModel(responses("openai/gpt-5.4-mini", "openai/gpt-5.4-nano"), "")
 	if got != "openai/gpt-5.4-mini" {
 		t.Errorf("codex default = %q, want mini over nano", got)
 	}
 
-	// -flash is itself in the suffix list, so gemini's mainline flash must
-	// still beat its own -lite edition rather than being demoted to a tie.
+	// -flash is itself in the suffix list, so flash must still beat flash-lite.
 	got = codexDefaultModel(responses("google/gemini-2.5-flash-lite", "google/gemini-2.5-flash"), "")
 	if got != "google/gemini-2.5-flash" {
 		t.Errorf("codex default = %q, want flash over flash-lite", got)
 	}
 }
 
-// The writer must apply that rule, not just the helper.
+// The writer must apply the Responses-only rule, not just the helper.
 func TestCodexProfileNeverNamesAChatOnlyModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	catalogue := []auth.RouterModel{
@@ -597,14 +546,8 @@ func TestCodexProfileNeverNamesAChatOnlyModel(t *testing.T) {
 	}
 }
 
-// Codex can only talk Responses, so a catalogue of chat-only models leaves
-// nothing for it to open with. Writing model = "" would have codex fail to
-// resolve a blank slug; omitting the key lets it fall back to its own default
-// while still offering the provider.
-//
-// Reached with models present but none Responses-capable, not with an empty
-// catalogue: that is refused outright now, because every writer clears its own
-// keys first and would otherwise delete a working block.
+// Codex cannot open on a chat-only catalogue: model = "" would fail to resolve a
+// blank slug, so the key is omitted and codex falls back to its own default.
 func TestCodexProfileOmitsBlankModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	chatOnly := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
@@ -859,9 +802,7 @@ func providerOfModel(t *testing.T, toml, ref string) string {
 	return strings.Trim(line[:strings.Index(line, "\n")], `"`)
 }
 
-// kimiBlock is the provider block exactly as writeKimiProviderTOML composes it,
-// so these tests exercise the shared builder through setup's own call rather
-// than through a second implementation of it.
+// kimiBlock is the provider block exactly as writeKimiProviderTOML composes it.
 func kimiBlock(routerURL, apiKey string, models []auth.RouterModel) string {
 	refs, infos := launchCatalog(models)
 	return launch.BuildKimiConfigTOML(routerURL, apiKey, "", refs, infos)
@@ -999,13 +940,9 @@ func TestKimiConfigIsAlwaysValidTOML(t *testing.T) {
 	})
 }
 
-// An empty catalogue reaches the writers in two ordinary situations: ListModels
-// failed, or the workspace enables no chat model with function calling. Every
-// writer clears the keys it owns before emitting new ones, so passing that
-// through deleted a provider block an earlier run had written — and returned
-// (0, nil), which the caller reported as "provider → orq gateway" followed by
-// instructions to pick a model that no longer existed. Refusing is the only
-// answer that cannot leave the agent worse off than it was found.
+// Every writer clears the keys it owns before emitting, so passing an empty
+// catalogue through deleted a provider block an earlier run had written and
+// reported success.
 func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
 	seeded := `{"provider":{"orq":{"name":"Orq AI Gateway","models":{"openai/gpt-5":{}}},"vendor":{"keep":true}},"model":"vendor/mine"}`
 
@@ -1044,10 +981,6 @@ func TestEmptyCatalogueIsRefusedNotWrittenThrough(t *testing.T) {
 	}
 }
 
-// Codex resolves config.toml, profiles and everything else against CODEX_HOME.
-// Detection looked only at ~/.codex, so a machine that moves it was never
-// offered the agent whose profile the writers would then place correctly — and
-// the header pointed at a ~/.codex/config.toml that does not exist there.
 func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "codex-home")
 	t.Setenv("CODEX_HOME", dir)
@@ -1080,13 +1013,6 @@ func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 	}
 }
 
-// Three of the five agents read their config only from the home directory, so
-// --global=false does not get the user what they asked for. That used to be
-// announced for codex alone, by id, while opencode and kilo silently ignored
-// project scope after they became home-only too.
-//
-// Derived from the resolver rather than a list, so an agent added later is
-// covered without anyone remembering to update a string.
 func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
 	for _, spec := range agentRegistry() {
 		t.Run(spec.ID, func(t *testing.T) {
@@ -1104,7 +1030,6 @@ func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
 			if note := scopeNote(spec.mcpConfig, false); homeOnly == (note == "") {
 				t.Errorf("home-only=%v but note=%q", homeOnly, note)
 			}
-			// Asking for global has no discrepancy to explain.
 			if note := scopeNote(spec.mcpConfig, true); note != "" {
 				t.Errorf("note shown for an explicit --global run: %q", note)
 			}
