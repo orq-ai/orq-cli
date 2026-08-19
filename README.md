@@ -81,11 +81,11 @@ orq setup --no-input \
   --coding-agent codex   # fully parameterized, for CI
 ```
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--coding-agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
+Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi` (repeat `--coding-agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format, except `pi`: it has no native MCP (extensions only), so setup wires its gateway provider alone.
 
 Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
 
-**Setup also registers orq as a model provider** for kimi, codex, opencode and kilo, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
+**Setup also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
 | Agent | Setup writes | Route through orq by |
 |---|---|---|
@@ -93,6 +93,7 @@ Setup does not install skills. `orq launch` still loads them session-only for cl
 | `codex` | a self-contained profile at `$CODEX_HOME/orq.config.toml` (default `~/.codex/`) | `codex --profile orq` |
 | `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
 | `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
+| `pi` | an `orq` provider merged into `~/.pi/agent/models.json` | `pi --model orq/<model>`, or the `/model` picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test, and `orq doctor` reports gateway funding for free before you get there.

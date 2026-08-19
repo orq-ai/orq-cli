@@ -87,7 +87,7 @@ func TestMaskToken(t *testing.T) {
 // provider it can find, while kilo reports the file as invalid. A project copy
 // is written and never used, so both scopes resolve to the same absolute path.
 func TestEnvReferencingConfigsAreAlwaysGlobal(t *testing.T) {
-	for _, id := range []string{"codex", "opencode", "kilo"} {
+	for _, id := range []string{"codex", "opencode", "kilo", "pi"} {
 		spec, ok := lookupAgent(id)
 		if !ok {
 			t.Fatalf("%s is not registered", id)
@@ -118,10 +118,10 @@ func TestEnvReferencingConfigsAreAlwaysGlobal(t *testing.T) {
 	}
 }
 
-// pi is deliberately absent: it supports neither MCP nor a provider config, so
-// with skills gone setup has nothing to write for it.
+// pi is gateway only: it has no native MCP (extensions only), but models.json is
+// a provider config setup can write, so it belongs here with writeMCP unset.
 func TestAgentRegistryIsComplete(t *testing.T) {
-	want := []string{"claude", "codex", "opencode", "kimi", "kilo"}
+	want := []string{"claude", "codex", "opencode", "kimi", "kilo", "pi"}
 	got := agentIDs()
 	if len(got) != len(want) {
 		t.Fatalf("registry has %d agents, want %d", len(got), len(want))
