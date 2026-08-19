@@ -22,3 +22,19 @@ func TestVendorAgentsDefaultToTheirOwnVendor(t *testing.T) {
 		}
 	}
 }
+
+// A cut-down edition is the wrong end of the range for a coding agent: they
+// reject tools the agents send. opencode and pi both shipped defaulting to
+// openai/gpt-5-mini.
+func TestNoDefaultIsASizeVariant(t *testing.T) {
+	for agent, model := range map[string]string{
+		"claude": DefaultClaudeModel, "codex": DefaultCodexModel, "kimi": DefaultKimiModel,
+		"opencode": DefaultOpenCodeModel, "pi": DefaultPiModel,
+	} {
+		for _, suffix := range []string{"-mini", "-nano", "-small", "-lite", "-micro", "-tiny", "-flash"} {
+			if strings.HasSuffix(model, suffix) {
+				t.Errorf("%s defaults to %q, a %s variant", agent, model, suffix)
+			}
+		}
+	}
+}

@@ -3,7 +3,7 @@ package launch
 import "encoding/json"
 
 const (
-	DefaultOpenCodeModel = "openai/gpt-5-mini"
+	DefaultOpenCodeModel = "openai/gpt-5.6-terra"
 
 	// OpenCode loads one AI SDK package per provider (no per-model override),
 	// so we expose two: openai models go through the Responses API (function

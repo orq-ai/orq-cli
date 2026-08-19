@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const DefaultCodexModel = "openai/gpt-5.4"
+const DefaultCodexModel = "openai/gpt-5.6-terra"
 
 var codexNormalize = MakeNormalizeModel([]string{"orq"})
 

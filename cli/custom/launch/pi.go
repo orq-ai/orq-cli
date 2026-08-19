@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DefaultPiModel = "openai/gpt-5-mini"
+	DefaultPiModel = "openai/gpt-5.6-terra"
 
 	// Pi (github.com/badlogic/pi-mono) takes custom providers via a
 	// models.json in its agent dir; "openai-completions" = /chat/completions.
