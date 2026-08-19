@@ -1073,9 +1073,9 @@ func modelsSettingsURL(state *authState) string {
 // so a user who asked for project scope is told why they did not get it.
 //
 // Derived by asking the resolver both ways rather than listing agent ids: the
-// resolver is what decides, three of the five agents are now home-only, and a
-// hardcoded list is exactly the kind of thing that goes stale the next time one
-// is added. Silent when the user asked for global anyway — then there is no
+// resolver is what decides, several agents are home-only, and a hardcoded
+// list is exactly the kind of thing that goes stale the next time one is
+// added. Silent when the user asked for global anyway — then there is no
 // discrepancy to explain, only noise.
 func scopeNote(resolve func(bool) (string, error), askedGlobal bool) string {
 	if askedGlobal || resolve == nil {
@@ -1205,9 +1205,9 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 					if written > 0 {
 						listed = fmt.Sprintf(" (%d models)", written)
 					}
-					// No scope note here: when MCP was also written it named the
-					// same file and already carried one, and repeating it per
-					// line would say the same thing twice for one agent.
+					// No scope note here: when MCP was also written, that
+					// agent's MCP line already carried one, and repeating it
+					// per line would say the same thing twice for one agent.
 					scope := ""
 					if res.MCP == "" {
 						scope = scopeNote(spec.providerConfig, opts.global)

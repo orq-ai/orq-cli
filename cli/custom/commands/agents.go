@@ -78,7 +78,8 @@ type agentSpec struct {
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
 	// providerUsage says how to actually reach the gateway once it is
 	// registered. Setup makes orq available rather than default, so for some
-	// agents that takes a flag the user would otherwise never discover. Empty
+	// agents that takes a flag or a picker step the user would otherwise
+	// never discover. Empty
 	// when the agent picks it up with no action.
 	providerUsage string
 }
@@ -127,9 +128,9 @@ func agentRegistry() []agentSpec {
 		{
 			ID:    "opencode",
 			Label: "opencode",
-			// Global only, for the same reason as codex: everything we write
+			// Global only, with the same outcome as codex: everything we write
 			// into these files reaches the credential through {env:ORQ_API_KEY},
-			// and both agents reject env references in a *project* config —
+			// and opencode and kilo reject env references in a *project* config —
 			// opencode discards the whole file and silently resolves
 			// "orq/anthropic/…" against some other provider, kilo reports it as
 			// invalid. A project-scoped copy is worse than none.
@@ -423,8 +424,9 @@ func writeMCPCodexTOML(path, url string) error {
 	return err
 }
 
-// writeOpenCodeProviderJSON registers the orq gateway in the config opencode
-// and kilo share, so its models appear in their pickers. The api key stays out
+// writeOpenCodeProviderJSON registers the orq gateway in the config format
+// opencode and kilo share (each in its own file), so its models appear in
+// their pickers. The api key stays out
 // of the file via {env:ORQ_API_KEY}.
 //
 // The top-level "model" key is deliberately never written. That is the user's
@@ -504,9 +506,9 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 		return group[0].Ref()
 	}
 	// No preferred family available: any Responses-capable model beats naming
-	// one that cannot answer. Same order as CandidateCodingModels — strongest
-	// edition, then lexically greatest to track version suffixes — so the two
-	// paths cannot disagree about what "best" means, and re-runs are stable.
+	// one that cannot answer. Same rank-then-lexical rule as
+	// CandidateCodingModels, though this fallback tiebreaks on the full ref
+	// where that compares bare model ids. Re-runs are stable.
 	best, bestRank := "", 0
 	for _, m := range responses {
 		ref, rank := m.Ref(), auth.SizeVariantRank(m.ModelID)
@@ -530,12 +532,11 @@ func codexDefaultModel(models []auth.RouterModel, proven string) string {
 // for everything, not just orq work.
 //
 // apiKey is unused, deliberately, because of the indirection above. The model
-// list is used only to choose the default — codex takes the list it shows in
-// its picker from a catalog JSON that launch builds by running
-// `codex debug models --bundled`.
+// list is used only to choose the default.
 //
-// Deliberately no model catalog: building one means running `codex debug
-// models --bundled`, and setup cannot assume codex is installed. The cost is
+// Deliberately no model catalog (the JSON codex builds its picker from, via
+// `codex debug models --bundled`): setup cannot assume codex is installed to
+// run it. The cost is
 // cosmetic — the picker lists codex's bundled models rather than the
 // workspace's, and codex prints a "model metadata not found" warning for the
 // model named here — while the request still routes. Generate the catalog too

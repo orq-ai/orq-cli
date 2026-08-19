@@ -405,9 +405,9 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 }
 
 // The profile is only useful if codex can load it standalone, so it must parse
-// and carry model / model_provider at the root. Dotted keys emitted in place,
-// or root keys written after the [model_providers.orq] header, would both read
-// as members of that table and leave codex on its own default provider.
+// and carry model / model_provider at the root. Root keys written after the
+// [model_providers.orq] header would read as members of that table and leave
+// codex on its own default provider.
 func TestCodexProfileIsSelfContained(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orq.config.toml")
 	if _, err := writeCodexProviderTOML(path, "https://api.orq.ai/v3/router", "sk-secret", openCodeModels(),
