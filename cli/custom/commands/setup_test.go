@@ -1593,3 +1593,39 @@ func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
 		})
 	}
 }
+
+// A zero balance is not a broken workspace: BYOK, private models and the
+// recently-created flag all serve calls at zero, and the CLI cannot see any of
+// them (RES-1391). The line must read as information, not as a failure, while
+// staying visible in quiet mode the way the remedies below it do.
+func TestZeroBalanceReadsAsInformationNotFailure(t *testing.T) {
+	for _, quiet := range []bool{false, true} {
+		var out strings.Builder
+		rep := &reporter{w: &out, quiet: quiet}
+		key := "acme"
+		state := &authState{
+			apiBase:        "https://api.orq.ai",
+			session:        &auth.Session{ActiveWorkspaceKey: &key},
+			gatewayFunding: fundingNone,
+		}
+		// noInput: the browser-open offer below is not what this test is about.
+		reportGatewayReadiness(rep, state, &setupOptions{noInput: true}, 12)
+		got := out.String()
+
+		if !strings.Contains(got, "credit balance is 0") {
+			t.Fatalf("quiet=%v: balance line missing:\n%s", quiet, got)
+		}
+		if !strings.Contains(got, "provider key") {
+			t.Errorf("quiet=%v: line does not say a provider key covers it:\n%s", quiet, got)
+		}
+		// The remedies stay reachable; only the framing changes.
+		if !strings.Contains(got, "Add credits") || !strings.Contains(got, "Connect a key") {
+			t.Errorf("quiet=%v: remedies missing:\n%s", quiet, got)
+		}
+		for _, line := range strings.Split(got, "\n") {
+			if strings.Contains(line, "credit balance is 0") && strings.Contains(line, "!") {
+				t.Errorf("quiet=%v: balance line still marked as a warning:\n%s", quiet, line)
+			}
+		}
+	}
+}

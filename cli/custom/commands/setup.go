@@ -1254,10 +1254,12 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 		}
 	}
 	if unfunded {
-		rep.warn("credit balance is 0: model calls need credits or a connected provider key")
+		// Not a warning: BYOK, private models and the recently-created flag all
+		// serve calls at zero, and no API tells the CLI which apply (RES-1391).
+		rep.info("credit balance is 0 (fine if a provider key is connected)")
 		if credits != "" {
-			rep.warn("    Add credits     %s", credits)
-			rep.warn("    Connect a key   %s", providers)
+			rep.info("    Add credits     %s", credits)
+			rep.info("    Connect a key   %s", providers)
 		}
 	}
 	if !noModels && !unfunded {
