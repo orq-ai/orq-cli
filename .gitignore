@@ -16,9 +16,10 @@
 # scratch space for generated docs, demo kits and binary snapshots
 /outputs/
 
-# `make man` and `make completions` generate these for the release job to
-# publish; they are build output, not source, and a `git add -A` after either
-# target sweeps 300+ files into the commit.
+# `make man` and `make completions` generate these locally; the release
+# pipeline regenerates its own copies and reads neither directory. They are
+# build output, not source, and a `git add -A` after either target sweeps
+# 300+ files into the commit.
 /man/
 /completions/
 

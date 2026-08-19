@@ -107,8 +107,7 @@ const (
 )
 
 // validateModeFlags rejects the two mode flags together. Split out of Run so a
-// test can reach it: Run execs an agent, so the guard was previously only
-// exercisable by launching one.
+// test can reach it without Run's valid-combo paths, which exec an agent.
 func validateModeFlags(flags GatewayFlags) error {
 	if flags.Sandbox && flags.Local {
 		return errors.New("--local and --sandbox choose opposite modes; pass one")
