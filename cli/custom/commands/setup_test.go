@@ -1728,3 +1728,27 @@ func TestEmptyCatalogueSaysWhetherAnEarlierWireSurvives(t *testing.T) {
 		})
 	}
 }
+
+// Skills are suggested, never installed, and only where MCP was wired: that is
+// the pairing a user is set up for, and the command is one per project rather
+// than one per agent.
+func TestSkillsSuggestedOnlyWithMCP(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		agents []agentResult
+		want   bool
+	}{
+		{name: "mcp wired", agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}}, want: true},
+		{name: "gateway only", agents: []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}}, want: false},
+		{name: "nothing wired", agents: nil, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("ORQ_API_KEY", "sk-orq-set")
+			var out strings.Builder
+			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+			if got := strings.Contains(out.String(), "npx skills add"); got != tc.want {
+				t.Errorf("skills suggested = %v, want %v\n%s", got, tc.want, out.String())
+			}
+		})
+	}
+}
