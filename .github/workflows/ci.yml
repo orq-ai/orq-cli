@@ -42,6 +42,35 @@ jobs:
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
 
+  installer:
+    name: install.sh runs under dash
+    # ubuntu-latest: dash is preinstalled there; the macOS release runner has none.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: parse under dash
+        run: dash -n install.sh
+      - name: install with no controlling terminal
+        # setsid = no controlling terminal (the CI/Docker/ssh case), which fails only at runtime.
+        # A full install, not --help: --help returns before the first have_tty call.
+        # SHELL makes the PATH branch resolve a profile; HOME keeps the runner's own dotfiles out of it.
+        run: |
+          export HOME="$RUNNER_TEMP/installer-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh \
+            --no-setup --install-dir "$HOME/orq" < /dev/null
+          test -x "$HOME/orq/orq"
+      - name: reject non-ASCII in output
+        # Covers only the static --help text; an ungated glyph in the install flow itself would still pass.
+        run: |
+          set -eu
+          out=$(LC_ALL=C LANG=C dash install.sh --help)
+          if printf '%s' "$out" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
+            echo "--help emits non-ASCII under a C locale:" >&2
+            printf '%s' "$out" | LC_ALL=C grep -nP '[^\x00-\x7F]' >&2
+            exit 1
+          fi
+
   rc:
     name: build, vet (orq-rc module)
     runs-on: ubuntu-latest
