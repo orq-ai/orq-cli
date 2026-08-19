@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	DefaultKimiModel = "anthropic/claude-sonnet-4-6"
+	// Last resort: used only when the catalogue lacks this ref.
+	DefaultKimiModel = "moonshotai/kimi-k2.7-code"
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
 	// fork). Provider type "openai" = /chat/completions, "openai_responses" =
