@@ -184,7 +184,7 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 		return err
 	}
 	// The saved key is workspace-scoped: refuse rather than wire every agent to the key's workspace. This command never mints.
-	if active := activeWorkspaceKey(authState); saved != "" && keyWorkspaceMismatch(savedWS, active) {
+	if active := activeWorkspaceKey(authState.session); saved != "" && keyWorkspaceMismatch(savedWS, active) {
 		return fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
 	client := auth.NewClient(authState.apiBase)
@@ -385,9 +385,11 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
 
-	if session != nil && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != "" {
-		// Opposite of 'orq launch' on purpose: setup persists what it resolves, so the workspace picked at login beats a stale exported key.
-		rep.note("ignoring the exported ORQ_API_KEY — your login session wins here")
+	if session != nil {
+		savedKey, savedWS := savedAPIKey()
+		if envKeyShadowsLogin(strings.TrimSpace(os.Getenv("ORQ_API_KEY")), savedKey, savedWS, activeWorkspaceKey(session)) {
+			rep.note("the exported ORQ_API_KEY is for another workspace; this run follows your login instead")
+		}
 	}
 
 	if session == nil {
@@ -653,11 +655,22 @@ func savedAPIKey() (key, workspace string) {
 	return strings.TrimSpace(profile["api_key"]), strings.TrimSpace(profile["workspace"])
 }
 
-func activeWorkspaceKey(state *authState) string {
-	if state.session != nil && state.session.ActiveWorkspaceKey != nil {
-		return strings.TrimSpace(*state.session.ActiveWorkspaceKey)
+func activeWorkspaceKey(session *auth.Session) string {
+	if session != nil && session.ActiveWorkspaceKey != nil {
+		return strings.TrimSpace(*session.ActiveWorkspaceKey)
 	}
 	return ""
+}
+
+// Setup writes ~/.orq/env exporting the key it mints, so an exported key alongside a session is the ordinary state, not a conflict. Only a key that points elsewhere is worth a note.
+func envKeyShadowsLogin(envKey, savedKey, savedWS, active string) bool {
+	if envKey == "" || active == "" {
+		return false
+	}
+	if envKey != savedKey {
+		return true // not the key we minted; its workspace is unknowable
+	}
+	return keyWorkspaceMismatch(savedWS, active)
 }
 
 // Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
@@ -762,7 +775,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 
 	// Reuse the saved key, but only for the workspace this run resolved: keys are workspace-scoped at mint time, and minting per run orphaned every copy of the old one.
 	token, tokenWS := savedAPIKey()
-	active := activeWorkspaceKey(state)
+	active := activeWorkspaceKey(state.session)
 	switch {
 	case token == "":
 		// nothing saved — fall through to mint

@@ -1752,3 +1752,22 @@ func TestSkillsSuggestedOnlyWithMCP(t *testing.T) {
 		})
 	}
 }
+
+func TestEnvKeyShadowsLogin(t *testing.T) {
+	cases := map[string]struct {
+		envKey, savedKey, savedWS, active string
+		want                              bool
+	}{
+		"our key, same workspace":  {"k1", "k1", "wsA", "wsA", false},
+		"our key, other workspace": {"k1", "k1", "wsA", "wsB", true},
+		"our key, unrecorded":      {"k1", "k1", "", "wsA", false},
+		"a key we did not mint":    {"k2", "k1", "wsA", "wsA", true},
+		"nothing exported":         {"", "k1", "wsA", "wsB", false},
+		"session has no workspace": {"k2", "k1", "wsA", "", false},
+	}
+	for name, tc := range cases {
+		if got := envKeyShadowsLogin(tc.envKey, tc.savedKey, tc.savedWS, tc.active); got != tc.want {
+			t.Errorf("%s: got %v, want %v", name, got, tc.want)
+		}
+	}
+}
