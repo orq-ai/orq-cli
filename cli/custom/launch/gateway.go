@@ -30,13 +30,15 @@ type GatewayFlags struct {
 	Models        string
 	BaseURL       string
 	NoFetchModels bool
-	NoMCP         bool
-	NoSkills      bool
-	Sandbox       bool
-	MountCwd      bool
-	Rebuild       bool
-	DryRun        bool
-	Help          bool
+	// MCP is opt-in: launch is the throwaway path, and MCP tool calls share
+	// the free plan's daily request quota with model calls.
+	MCP      bool
+	NoSkills bool
+	Sandbox  bool
+	MountCwd bool
+	Rebuild  bool
+	DryRun   bool
+	Help     bool
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.

@@ -27,21 +27,21 @@ const DefaultMCPURL = "https://api.orq.ai/v2/mcp"
 // (override ad hoc with ORQ_SKILLS_URL).
 const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/415edd51ddba3b10d4e3091c6d91b0cbca57566b.zip"
 
-// skillsPluginURL returns the plugin zip URL, or "" when disabled via
-// --no-skills.
+// skillsPluginURL returns the plugin zip URL, or "" when skills are off.
+// Skills follow MCP: the plugins assume the orq MCP tools exist.
 func skillsPluginURL(ctx *AgentContext) string {
-	if ctx.Flags.NoSkills {
+	if !ctx.Flags.MCP || ctx.Flags.NoSkills {
 		return ""
 	}
 	return firstNonEmpty(ctx.Getenv("ORQ_SKILLS_URL"), DefaultSkillsPluginURL)
 }
 
-// mcpURL returns the orq MCP endpoint for this launch, or "" when disabled
-// via --no-mcp. A non-default ORQ_API_BASE_URL (self-hosted / regional)
+// mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.
+// A non-default ORQ_API_BASE_URL (self-hosted / regional)
 // carries the MCP endpoint with it. The API key is never embedded — each
 // harness references the ORQ_API_KEY env var through its own mechanism.
 func mcpURL(ctx *AgentContext) string {
-	if ctx.Flags.NoMCP {
+	if !ctx.Flags.MCP {
 		return ""
 	}
 	// A credential that cannot pass MCP auth (session token from a login
