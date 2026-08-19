@@ -94,3 +94,33 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 		t.Errorf("visible command %q is not in commandGroup and not deliberately Utilities — it renders in Utilities by fallback, which is a wrong section until someone chooses one", name)
 	}
 }
+
+// Our hand-written commands and the generated ones share one namespace, and
+// generated.Register runs first. A tag added to openapi.yaml named `setup`,
+// `launch` or `doctor` would land a second command under a name we own, and
+// cobra resolves such a pair by first match rather than reporting it: one of
+// ours quietly becomes unreachable, with no build failure and nothing the
+// grouping tests above would notice.
+//
+// Asserted on the assembled tree, not by comparing the two halves in
+// isolation: custom code deliberately adapts to what generated already put
+// there (attachAuthSubcommands reuses bartolo's `auth` parent instead of
+// adding a second one), so isolated halves report clashes that do not exist.
+func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {
+	root := buildRoot(t)
+
+	count := map[string]int{}
+	for _, cmd := range root.Commands() {
+		count[cmd.Name()]++
+	}
+	if len(count) == 0 {
+		t.Fatal("no commands on the assembled root")
+	}
+	for name, n := range count {
+		if n > 1 {
+			t.Errorf("%d commands are registered as %q: cobra resolves the name to "+
+				"whichever registered first, so the other is unreachable. A new "+
+				"openapi.yaml tag has most likely taken a name cli/custom owns.", n, name)
+		}
+	}
+}
