@@ -1420,8 +1420,10 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 				"Claude Code can now read and write your orq.ai workspace",
 				"Kimi Code routes its model calls through orq",
 				"list my orq.ai agents",
-				"claude",
-				"kimi",
+				// Anchored rows, not bare names: a regression that drops the
+				// start block still prints both agents in the claim above it.
+				"\n  Start       claude\n",
+				"\n              kimi\n",
 			},
 			// The claim must name Claude Code alone: kimi is gateway-only
 			// here and has no MCP workspace access to claim.
@@ -1436,7 +1438,7 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 		"codex gateway only names its profile": {
 			agents:     []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}},
 			want:       []string{"Codex routes its model calls through orq", "codex --profile orq"},
-			wantAbsent: []string{"\n      codex\n"},
+			wantAbsent: []string{"\n  Start       codex\n"},
 		},
 		// The Start label stays constant while the agent lines scale with
 		// the count — two agents means two start rows under one label.

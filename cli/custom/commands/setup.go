@@ -1934,11 +1934,12 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
 		sh := detectShell(viper.GetString("config-directory"))
 		fmt.Fprintln(w)
-		// Lead with the consequence, not the mechanism. "not set in this shell"
-		// stated a fact about the terminal and left the user to work out that an
+		// State the fact and its consequence in one line. "not set in this
+		// shell" stopped at the terminal and left the user to work out that an
 		// agent started from it inherits the same empty variable — which is
 		// exactly how a wired machine still produces "bearer token env var
-		// ORQ_API_KEY is not set" inside the agent.
+		// ORQ_API_KEY is not set" inside the agent. The inherits clause is the
+		// half that earns the warning; do not trim it back to the fact.
 		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),
 			"ORQ_API_KEY is not exported here, and agents inherit it from this shell.")
 		// One indented command per branch, never a heading plus a blank line
@@ -1986,10 +1987,11 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			}
 			fmt.Fprintf(w, "  %s %s\n", padLabel(label), cmd)
 		}
-		// Only the MCP group can answer this, so it is printed only when that
-		// group is non-empty: on a mixed run a gateway-only agent cannot read
-		// the workspace, and offering the prompt beside its start command
-		// would be the overclaim the split above exists to prevent.
+		// Only the MCP group can answer this, so the prompt is suppressed
+		// when no agent has MCP at all. It is one row under the whole start
+		// block, not per agent: on a mixed run it still sits below a
+		// gateway-only agent's line, and the claim above it — which names the
+		// MCP agents — is what keeps that from reading as an offer.
 		if len(mcpWired) > 0 {
 			fmt.Fprintf(w, "  %s %s\n", padLabel("Try"), `"list my orq.ai agents"`)
 		}
@@ -1998,8 +2000,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// Doctor before docs: it inspects this machine and names what is broken.
 	// Docs share its line — a static link does not earn its own row, which is
 	// what the old Docs row was cut for. The models URL lives on in
-	// result["links"] and in the providers-step warning, printed only when
-	// there is no model to route to.
+	// result["links"] and in reportGatewayReadiness, printed only when there
+	// is no model to route to.
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
 	}
@@ -2027,9 +2029,11 @@ func padLabel(s string) string {
 	return paint(ansiDim, s) + strings.Repeat(" ", pad)
 }
 
-// pluralize picks a wording by count. Three sites on the final screen were
-// spelling the same choice three different ways, two testing == 1 and one
-// testing > 1, which is how "Start it" survived next to a two-agent run.
+// pluralize picks a wording by count. The final screen used to spell that
+// choice three different ways, two testing == 1 and one testing > 1, which is
+// how "Start it" survived next to a two-agent run. Only the gateway-only
+// sentence still varies by count; the start block now carries one fixed label
+// over every row.
 func pluralize(n int, one, many string) string {
 	if n == 1 {
 		return one
