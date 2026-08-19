@@ -822,7 +822,8 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		// Not fatal: the key is saved, and the final screen still shows how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {
-		rep.ok("            %s  → exports ORQ_API_KEY", tilde(path))
+		// Labelled, not indented under "key saved": that line is skipped when an earlier setup's key is reused.
+		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
 		offerProfileSourceLine(rep, opts)
 	}
 
