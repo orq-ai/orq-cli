@@ -1416,8 +1416,8 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 				"claude",
 				"kimi",
 			},
-			// The claim must name Claude Code alone, and the pronoun must not
-			// invite asking the agent that has no MCP server.
+			// The claim must name Claude Code alone: kimi is gateway-only
+			// here and has no MCP workspace access to claim.
 			wantAbsent: []string{
 				"Kimi Code can now read and write",
 				"Claude Code and Kimi Code can now read and write",
@@ -1431,8 +1431,8 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 			want:       []string{"Codex routes its model calls through orq", "codex --profile orq"},
 			wantAbsent: []string{"\n      codex\n"},
 		},
-		// Both headings follow the count, so a single-agent run stops reading
-		// as a group and a two-agent run stops naming one of them "it".
+		// The Start label stays constant while the agent lines scale with
+		// the count — two agents means two start rows under one label.
 		"two agents": {
 			agents: []agentResult{{Agent: "claude", MCP: ".mcp.json"}, {Agent: "kimi", MCP: ".kimi-code/mcp.json"}},
 			want: []string{"Claude Code and Kimi Code", "list my orq.ai agents",
