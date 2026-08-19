@@ -58,6 +58,9 @@ the version and this changelog as the source of truth for breaking changes.
   and registers the orq MCP server and gateway provider in the config files of
   the coding agents it detects. Unlike `orq launch`, these writes are
   persistent. It does not ask about projects: API keys are workspace-scoped.
+  `pi` is wired gateway only — an `orq` provider merged into
+  `~/.pi/agent/models.json`, reached with `pi --model orq/<model>` — because pi
+  has no native MCP.
 - Changed: the API key `orq setup` saves is reused only for the workspace it
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring
