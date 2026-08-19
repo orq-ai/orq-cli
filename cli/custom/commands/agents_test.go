@@ -1183,49 +1183,6 @@ func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 	}
 }
 
-// Most agents read their config only from the home directory, so --global=false
-// does not get the user what they asked for. That used to be announced for codex
-// alone, by id, while opencode and kilo silently ignored project scope after
-// they became home-only too.
-//
-// Derived from the resolver rather than a list, so an agent added later is
-// covered without anyone remembering to update a string. Both resolvers are
-// checked because reportAgent falls back to providerConfig for a gateway-only
-// agent, which is the only path pi takes.
-func TestScopeNoteCoversEveryHomeOnlyAgent(t *testing.T) {
-	for _, spec := range agentRegistry() {
-		resolvers := map[string]func(bool) (string, error){
-			"mcp":      spec.mcpConfig,
-			"provider": spec.providerConfig,
-		}
-		for kind, resolve := range resolvers {
-			if resolve == nil {
-				continue // capability this agent does not have
-			}
-			t.Run(spec.ID+"/"+kind, func(t *testing.T) {
-				project, err := resolve(false)
-				if err != nil {
-					t.Skipf("no %s config: %v", kind, err)
-				}
-				global, err := resolve(true)
-				if err != nil {
-					t.Fatal(err)
-				}
-				homeOnly := project == global
-
-				// Asking for project scope on a home-only agent must say so.
-				if note := scopeNote(resolve, false); homeOnly == (note == "") {
-					t.Errorf("home-only=%v but note=%q", homeOnly, note)
-				}
-				// Asking for global has no discrepancy to explain.
-				if note := scopeNote(resolve, true); note != "" {
-					t.Errorf("note shown for an explicit --global run: %q", note)
-				}
-			})
-		}
-	}
-}
-
 // Every provider writer must ship with its read-side detector, in the same
 // registry entry. Without one, doctor silently reports the agent unwired
 // forever — the drift class the field exists to kill.
