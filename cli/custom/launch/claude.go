@@ -13,6 +13,14 @@ const (
 	DefaultClaudeGatewayURL     = "https://api.orq.ai/v3/anthropic"
 	DefaultClaudeModel          = "anthropic/claude-sonnet-5"
 	DefaultClaudeSmallFastModel = "anthropic/claude-haiku-4-5"
+
+	// Claude Code resolves /model opus|sonnet|haiku through these three. Left
+	// unset it sends the bare alias, which the gateway rejects for having no
+	// provider/ prefix, so a session could not switch tiers at all. No
+	// claude-haiku-5 exists yet; 4-5 is the current haiku.
+	DefaultClaudeOpusModel   = "anthropic/claude-opus-5"
+	DefaultClaudeSonnetModel = "anthropic/claude-sonnet-5"
+	DefaultClaudeHaikuModel  = "anthropic/claude-haiku-4-5"
 )
 
 func claudeAgent() AgentDef {
@@ -45,6 +53,9 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	)
 	model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), DefaultClaudeModel)
 	smallFast := firstNonEmpty(getenv("ANTHROPIC_SMALL_FAST_MODEL"), DefaultClaudeSmallFastModel)
+	opus := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
+	sonnet := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
+	haiku := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
 
 	var warnings []string
 	if ShouldWarnMissingProviderPrefix(model, noopNormalize) {
@@ -59,6 +70,10 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 			"ANTHROPIC_API_KEY":          "", // explicitly empty so claude uses the auth token
 			"ANTHROPIC_MODEL":            model,
 			"ANTHROPIC_SMALL_FAST_MODEL": smallFast,
+			// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
+			"ANTHROPIC_DEFAULT_OPUS_MODEL":   opus,
+			"ANTHROPIC_DEFAULT_SONNET_MODEL": sonnet,
+			"ANTHROPIC_DEFAULT_HAIKU_MODEL":  haiku,
 		},
 		Warnings: warnings,
 	}

@@ -79,3 +79,45 @@ func TestClaudeWarnsBareModel(t *testing.T) {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 }
+
+// Claude Code resolves /model opus|sonnet|haiku through three tier variables.
+// Unset, it sends the bare alias, which the gateway rejects for having no
+// provider/ prefix, so a launched session cannot switch tiers at all.
+func TestClaudeWiresEveryModelTier(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	for _, tc := range []struct{ env, want string }{
+		{"ANTHROPIC_DEFAULT_OPUS_MODEL", DefaultClaudeOpusModel},
+		{"ANTHROPIC_DEFAULT_SONNET_MODEL", DefaultClaudeSonnetModel},
+		{"ANTHROPIC_DEFAULT_HAIKU_MODEL", DefaultClaudeHaikuModel},
+	} {
+		got := plan.Env[tc.env]
+		if got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.env, got, tc.want)
+		}
+		if !strings.Contains(got, "/") {
+			t.Errorf("%s = %q has no provider/ prefix; the gateway rejects bare ids", tc.env, got)
+		}
+	}
+}
+
+// The tiers are overridable, like ANTHROPIC_MODEL already is: a user who has
+// pinned one in their shell keeps it.
+func TestClaudeTiersHonourTheEnvironment(t *testing.T) {
+	ctx := claudeCtx(map[string]string{"ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4-8"}, GatewayFlags{})
+	plan, err := resolveClaude(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if got := plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "anthropic/claude-opus-4-8" {
+		t.Errorf("env override ignored: got %q", got)
+	}
+}
