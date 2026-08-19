@@ -1211,14 +1211,21 @@ func TestUnfundedGatewayStillWiresAndExplainsItself(t *testing.T) {
 	if strings.Contains(got, "no credits and no provider key") {
 		t.Errorf("asserted a BYOK state the CLI cannot read:\n%s", got)
 	}
-	for _, want := range []string{"credit balance is 0", "/acme/admin/credits", "/acme/router/providers", "docs.orq.ai"} {
+	for _, want := range []string{"if model calls get refused", "/acme/admin/credits"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q:\n%s", want, got)
 		}
 	}
+	// The balance itself is doctor's job; setup carries only the remedy, and
+	// the second page and the docs link are a click from the first.
+	for _, absent := range []string{"credit balance", "/acme/router/providers", "docs.orq.ai"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("unexpected %q on a funded-models run:\n%s", absent, got)
+		}
+	}
 	// Said once. Three mentions of one fact is what made this read as a failure.
-	if n := strings.Count(got, "credit balance is 0"); n != 1 {
-		t.Errorf("stated the funding problem %d times, want 1:\n%s", n, got)
+	if n := strings.Count(got, "if model calls get refused"); n != 1 {
+		t.Errorf("stated the funding remedy %d times, want 1:\n%s", n, got)
 	}
 }
 
@@ -1308,17 +1315,17 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 		},
 		"models, no money": {
 			balance: "0", catalogue: oneChatModel,
-			wantFacts:      []string{"1 chat models available", "credit balance is 0", "/acme/admin/credits", "/acme/router/providers"},
-			wantAbsent:     []string{"no models enabled", "Enable models"},
+			wantFacts:      []string{"1 chat models available", "if model calls get refused", "/acme/admin/credits"},
+			wantAbsent:     []string{"no models enabled", "Enable models", "/acme/router/providers", "How it works"},
 			wantLinkBlocks: 0,
 		},
 		"neither": {
 			balance: "0", catalogue: `[]`,
 			wantFacts: []string{
-				"no models enabled for this workspace", "credit balance is 0",
-				"/acme/router/models", "/acme/admin/credits", "/acme/router/providers",
+				"no models enabled for this workspace", "if model calls get refused",
+				"/acme/router/models", "/acme/admin/credits", "How it works",
 			},
-			wantAbsent:     []string{"0 chat models available"},
+			wantAbsent:     []string{"0 chat models available", "/acme/router/providers"},
 			wantLinkBlocks: 1,
 		},
 		"self-hosted, no models": {
@@ -1729,5 +1736,47 @@ func TestSessionTokenIsNeverWiredIntoAgents(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "no durable API key") {
 		t.Errorf("skip reason missing from output:\n%s", out.String())
+	}
+}
+
+// A zero balance is not a broken workspace: a subscription that never bought
+// credits is unmetered, and BYOK, private models and the recently-created flag
+// each serve calls at zero too. The CLI can read none of that, so the line
+// states only the remedy, carries no balance, and must not read as a failure.
+// It stays visible in quiet mode, where it is the only pointer a scripted run
+// gets.
+func TestZeroBalanceIsActionableNotAlarming(t *testing.T) {
+	for _, quiet := range []bool{false, true} {
+		var out strings.Builder
+		rep := &reporter{w: &out, quiet: quiet}
+		key := "acme"
+		state := &authState{
+			apiBase:        "https://api.orq.ai",
+			session:        &auth.Session{ActiveWorkspaceKey: &key},
+			gatewayFunding: fundingNone,
+		}
+		// noInput: the browser-open offer below is not what this test is about.
+		reportGatewayReadiness(rep, state, &setupOptions{noInput: true}, 12)
+		got := out.String()
+
+		if !strings.Contains(got, "if model calls get refused") {
+			t.Fatalf("quiet=%v: funding line missing:\n%s", quiet, got)
+		}
+		if !strings.Contains(got, "provider key") {
+			t.Errorf("quiet=%v: line does not offer the provider-key remedy:\n%s", quiet, got)
+		}
+		if !strings.Contains(got, creditsPath) {
+			t.Errorf("quiet=%v: line carries no credits URL:\n%s", quiet, got)
+		}
+		// The balance is doctor's to report; naming it here is what made a
+		// working setup read as broken.
+		if strings.Contains(got, "credit balance") {
+			t.Errorf("quiet=%v: line states a balance it cannot interpret:\n%s", quiet, got)
+		}
+		for _, line := range strings.Split(got, "\n") {
+			if strings.Contains(line, "if model calls get refused") && strings.Contains(line, "!") {
+				t.Errorf("quiet=%v: funding line still marked as a warning:\n%s", quiet, line)
+			}
+		}
 	}
 }

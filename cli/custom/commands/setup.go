@@ -951,6 +951,7 @@ func resolveGatewayFunding(client *auth.Client, state *authState) {
 	state.gatewayFunding = fundingNone
 }
 
+// Zero enabled models is a blocker and warns; a zero balance may block nothing at all, so it states a remedy and asks nothing.
 // Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. Warn rather than note, since notes are suppressed under --no-input.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	noModels := count == 0
@@ -958,7 +959,6 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 
 	models := workspaceLink(state, modelsPath)
 	credits := workspaceLink(state, creditsPath)
-	providers := workspaceLink(state, providersPath)
 
 	if !noModels {
 		rep.ok("%d chat models available", count)
@@ -969,25 +969,29 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 		}
 	}
 	if unfunded {
-		rep.warn("credit balance is 0: model calls need credits or a connected provider key")
+		// Conditional, not a warning. A zero balance only blocks a call when the
+		// subscription meters orq's managed keys, and then only for a public model
+		// with no provider key connected. A workspace that never bought credits is
+		// unmetered and unaffected. None of that is readable from here, and the
+		// balance itself is doctor's to report.
+		line := "if model calls get refused, add credits or connect a provider key"
 		if credits != "" {
-			rep.warn("    Add credits     %s", credits)
-			rep.warn("    Connect a key   %s", providers)
+			line += " (" + credits + ")"
 		}
+		rep.info("%s", line)
 	}
-	if !noModels && !unfunded {
+	if !noModels {
 		return
 	}
 	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
 
-	target, prompt := credits, "Open the credits page now?"
-	if noModels {
-		target, prompt = models, "Open the models page now?"
-	}
-	if target == "" || opts.noInput || !opts.confirm(prompt, true) {
+	// Offered for zero models only. That state leaves nothing callable, so the
+	// page is worth the interruption; a zero balance may block nothing at all,
+	// and stopping every run to ask about it was the cost of not knowing.
+	if models == "" || opts.noInput || !opts.confirm("Open the models page now?", true) {
 		return
 	}
-	if !auth.OpenBrowser(target) {
+	if !auth.OpenBrowser(models) {
 		rep.note("  could not open a browser, the URL above is the one to visit")
 	}
 }
