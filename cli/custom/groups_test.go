@@ -96,14 +96,18 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 		"completion":  true, // cobra's own, grouped via SetCompletionCommandGroupID
 		"help-config": true, // bartolo's config help page
 		"help-input":  true, // bartolo's input help page
-		"request":     true, // raw-HTTP escape hatch — a utility by definition
-		"server":      true, // inspects/persists server-URL defaults
+		"request":        true, // raw-HTTP escape hatch — a utility by definition
+		"server":         true, // inspects/persists server-URL defaults
+		"default-format": true, // persists the default output format
 	}
 
 	root := buildRoot(t)
 	for _, cmd := range root.Commands() {
-		if cmd.Hidden {
-			continue // invisible commands cannot sit in a wrong section
+		// Cobra's own availability rule, not just Hidden: a parent whose
+		// subcommands are all hidden never renders, so it cannot sit in a
+		// wrong section.
+		if cmd.Hidden || !cmd.IsAvailableCommand() {
+			continue
 		}
 		name := cmd.Name()
 		if _, mapped := commandGroup[name]; mapped || deliberate[name] {

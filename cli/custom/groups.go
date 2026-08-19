@@ -90,6 +90,7 @@ var commandGroup = map[string]string{
 	"tools":            groupAgents,
 	"memory-stores":    groupAgents,
 	"knowledge-bases":  groupAgents,
+	"chunking":         groupAgents,
 	"schedules":        groupAgents,
 	"prompts":          groupAgents,
 
