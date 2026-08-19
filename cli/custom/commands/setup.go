@@ -1995,15 +1995,18 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 	}
 	fmt.Fprintln(w)
-	// Only the line that differs per install, plus the one command that leads
-	// everywhere else. The docs and models URLs are static, and both survive
-	// where they earn their place: in result["links"] for machine consumers,
-	// and — for the models settings page — in the providers step's warning,
-	// printed exactly when there is no model to route to.
+	// Only the line that differs per install, plus one answer to "I'm stuck":
+	// doctor first, because it inspects this machine and names what is broken,
+	// then the docs for whatever doctor cannot see. The docs URL rides on that
+	// line rather than owning a row — a static link printed identically on
+	// every run is the shape the old Docs row was cut for. The models URL
+	// survives where it earns its place: in result["links"] for machine
+	// consumers, and in the providers step's warning, printed exactly when
+	// there is no model to route to.
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
 	}
-	fmt.Fprintf(w, "  %s %s\n", padLabel("Stuck?"), "orq doctor")
+	fmt.Fprintf(w, "  %s orq doctor  %s  %s\n", padLabel("Stuck?"), paint(ansiDim, "·"), docsURL)
 	fmt.Fprintln(w)
 }
 
