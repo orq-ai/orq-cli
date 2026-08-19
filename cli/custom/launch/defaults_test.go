@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// A vendor's own CLI must open on that vendor's model when the workspace
-// catalogue cannot answer. kimi shipped defaulting to anthropic/claude-sonnet-4-6,
-// so `orq launch kimi` against an empty catalogue started Kimi Code on Claude.
-// opencode and pi are vendor-neutral and are deliberately absent.
 func TestVendorAgentsDefaultToTheirOwnVendor(t *testing.T) {
 	for agent, want := range map[string]string{
 		"claude": "anthropic/",

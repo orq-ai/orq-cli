@@ -9,9 +9,7 @@ import (
 )
 
 const (
-	// Moonshot's own CLI opens on a Moonshot model. Only reached when the
-	// workspace catalogue is empty or lacks this ref; otherwise the first
-	// enabled model wins.
+	// Last resort: used only when the catalogue lacks this ref.
 	DefaultKimiModel = "moonshotai/kimi-k2.7-code"
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
