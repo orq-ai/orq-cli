@@ -298,6 +298,7 @@ For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins)
 | `--no-mcp` | Do not wire the orq MCP server into the agent |
 | `--no-skills` | Do not load the orq skills plugin (claude only) |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
+| `--local` | Run directly on this computer |
 | `--sandbox` | Run inside a throwaway Docker container |
 | `--mount-cwd` | Sandbox only: mount the current directory read-write at `/workspace` |
 | `--rebuild` | Sandbox only: rebuild the Docker image (`--no-cache --pull`) |
@@ -312,7 +313,7 @@ orq launch codex -- exec --full-auto "fix the build"
 
 ### Local vs sandbox
 
-Local mode runs the agent directly on your machine — it has full access to your filesystem, shell, and network, so an interactive warning is shown on TTYs (skip it with `ORQ_LAUNCH_NON_INTERACTIVE=1`).
+Local mode runs the agent directly on your machine — it has full access to your filesystem, shell, and network, so an interactive warning is shown on TTYs. `--local` states that intent up front and skips the warning; `ORQ_LAUNCH_NON_INTERACTIVE=1` suppresses every prompt. Passing `--local` with `--sandbox` is an error.
 
 `--sandbox` runs the agent inside a throwaway Docker container instead: the image is built locally on first use, **nothing is mounted by default** (opt in with `--mount-cwd`), and the container is removed when the session ends. Works with Docker Desktop (the `docker` CLI is the only requirement). The routing env (including the API key) is passed at `docker exec` time via name-only `-e` flags, so it never appears in the container's `docker inspect` config or in host `ps`. Leftover containers can be removed manually with:
 

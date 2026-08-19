@@ -2,6 +2,7 @@ package launch
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,7 +32,12 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	if !flags.Sandbox && !flags.DryRun {
+	if err := validateModeFlags(flags); err != nil {
+		return 1, err
+	}
+	// The prompt exists to catch an unstated intent. --local states it, so
+	// asking again is just a keystroke tax on the answer already given.
+	if !flags.Sandbox && !flags.Local && !flags.DryRun {
 		switch promptLocalWarning(os.Getenv) {
 		case localCancel:
 			fmt.Fprintln(os.Stderr, "Cancelled.")
@@ -100,6 +106,15 @@ const (
 	localCancel
 )
 
+// validateModeFlags rejects the two mode flags together. Split out of Run so a
+// test can reach it without Run's valid-combo paths, which exec an agent.
+func validateModeFlags(flags GatewayFlags) error {
+	if flags.Sandbox && flags.Local {
+		return errors.New("--local and --sandbox choose opposite modes; pass one")
+	}
+	return nil
+}
+
 // promptLocalWarning warns that local mode gives the agent full host access
 // and offers sandbox instead. TTY-only; skipped for non-interactive runs.
 func promptLocalWarning(getenv func(string) string) localChoice {
@@ -156,7 +171,8 @@ Flags:
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}
-	fmt.Print(`  --sandbox             Run inside a throwaway Docker container
+	fmt.Print(`  --local               Run directly on this computer
+  --sandbox             Run inside a throwaway Docker container
   --mount-cwd           Sandbox only: mount current directory at /workspace
   --rebuild             Sandbox only: rebuild the Docker image
   --dry-run             Print the resolved command and env (key redacted) without
@@ -164,6 +180,7 @@ Flags:
                         model catalogue the agent needs.
   -h, --help            Show this help
 
+--local and --sandbox are opposites; passing both is an error.
 Everything after -- is passed to the agent untouched.
 `)
 }
