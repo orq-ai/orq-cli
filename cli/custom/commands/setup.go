@@ -1995,13 +1995,10 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 	}
 	fmt.Fprintln(w)
-	// Only the line that differs per install, plus one answer to "I'm stuck":
-	// doctor first, because it inspects this machine and names what is broken,
-	// then the docs for whatever doctor cannot see. The docs URL rides on that
-	// line rather than owning a row — a static link printed identically on
-	// every run is the shape the old Docs row was cut for. The models URL
-	// survives where it earns its place: in result["links"] for machine
-	// consumers, and in the providers step's warning, printed exactly when
+	// Doctor before docs: it inspects this machine and names what is broken.
+	// Docs share its line — a static link does not earn its own row, which is
+	// what the old Docs row was cut for. The models URL lives on in
+	// result["links"] and in the providers-step warning, printed only when
 	// there is no model to route to.
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
