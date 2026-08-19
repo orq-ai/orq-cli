@@ -11,6 +11,8 @@ import (
 
 	"golang.org/x/term"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+
 	"orq/cli/custom/auth"
 )
 
@@ -63,6 +65,29 @@ func tokenHasMCPScope(token string) bool {
 	return false
 }
 
+// shadowsSession reports whether the env key provably belongs to a different
+// workspace than the session. Coexistence alone is not a conflict: setup writes
+// ~/.orq/env exporting the key it minted for the workspace resolved at login,
+// so the ordinary machine has both, pointing at the same place.
+func shadowsSession(key string, session *auth.Session) bool {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return false
+	}
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return false
+	}
+	if bartolocli.Creds == nil {
+		return false // no credential store to compare against
+	}
+	profile := bartolocli.GetProfile()
+	if strings.TrimSpace(profile["api_key"]) != key {
+		return true // not the key we minted; its workspace is unknowable
+	}
+	saved := strings.TrimSpace(profile["workspace"])
+	return saved != "" && saved != active
+}
+
 // ResolveCredentials resolves the orq API key and API base URL explicitly
 // (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
 // (the session is not read at all), else the active workspace token from the
@@ -72,10 +97,8 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	apiBase := firstNonEmpty(getenv("ORQ_API_BASE_URL"), DefaultGatewayAPIBaseURL)
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
-		// The session is not used, but knowing one exists lets the caller warn
-		// that the env key silently outranks the workspace picked at login.
 		session, _ := auth.ReadSession()
-		return &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: session != nil}, nil
+		return &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: shadowsSession(key, session)}, nil
 	}
 
 	session, err := auth.ReadSession()

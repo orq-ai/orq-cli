@@ -195,7 +195,7 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 // believed their `orq auth login` choice applied.
 func reportCredentialNotices(creds *Credentials, flags GatewayFlags) {
 	if creds.ShadowsSession {
-		fmt.Fprintln(os.Stderr, "Note: authenticating with ORQ_API_KEY from the environment; the workspace picked by 'orq auth login' is ignored. Unset it to use the session.")
+		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY belongs to a different workspace than the one 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
 	}
 	if !creds.SupportsMCP() && !flags.NoMCP {
 		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
