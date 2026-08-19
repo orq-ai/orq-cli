@@ -1535,6 +1535,8 @@ func sessionWithToken(apiBase string) *authState {
 	key := "acme"
 	return &authState{
 		apiBase: apiBase,
+		// By step 3 a real run has minted an API key as the bearer.
+		minted: true,
 		session: &auth.Session{
 			ActiveWorkspaceKey: &key,
 			WorkspaceTokens: map[string]auth.StoredAccessToken{
@@ -1734,5 +1736,47 @@ func TestEnvKeyShadowsLogin(t *testing.T) {
 		if got := envKeyShadowsLogin(tc.envKey, tc.savedKey, tc.savedWS, tc.active); got != tc.want {
 			t.Errorf("%s: got %v, want %v", name, got, tc.want)
 		}
+	}
+}
+
+// Declining "Create a workspace API key now?" leaves authState.bearer as the
+// session's expiring access token. That token must never be wired into agent
+// configs: kimi embeds the literal value, and it 401s within the hour.
+func TestSessionTokenIsNeverWiredIntoAgents(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	chdir(t, t.TempDir())
+
+	codingModelsFetched, cachedCodingModels = false, nil
+	t.Cleanup(func() { codingModelsFetched, cachedCodingModels = false, nil })
+
+	const sessionJWT = "eyJhbGciOiJIUzI1NiJ9.SESSION-ACCESS-TOKEN.sig"
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	opts := &setupOptions{noInput: true, agents: []string{"kimi"}}
+	// The post-decline state: bearer is the session token, nothing durable.
+	state := &authState{apiBase: srv.URL, bearer: sessionJWT, session: &auth.Session{}}
+
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, opts)
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if body, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml")); err == nil &&
+		strings.Contains(string(body), sessionJWT) {
+		t.Fatalf("session token written literally into kimi's config:\n%s", body)
+	}
+	if len(results) != 1 || results[0].Provider != "" {
+		t.Errorf("provider should be skipped without a durable key: %+v", results)
+	}
+	if !strings.Contains(out.String(), "no durable API key") {
+		t.Errorf("skip reason missing from output:\n%s", out.String())
 	}
 }
