@@ -1957,12 +1957,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			fmt.Fprintf(w, "    %s\n", sh.displayLine())
 			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "add that line to your shell profile so new shells get it too"))
 		default:
+			// detectShell picks .zshenv over the .zshrc a zsh user would expect,
+			// because .zshrc is skipped for non-interactive shells and an agent
+			// launched from an IDE or a script would inherit nothing. That
+			// reasoning used to print here as a line of its own; it explains our
+			// choice at the moment the user only needs to paste the command,
+			// which already names the right file.
 			fmt.Fprintf(w, "    echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
-			// The zsh trap is worth its line: .zshrc is the file people reach
-			// for, and it is the wrong one for a variable agents must inherit.
-			if strings.HasSuffix(sh.Profile, ".zshenv") {
-				fmt.Fprintf(w, "    %s\n", paint(ansiDim, "~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells"))
-			}
 		}
 	}
 	// The run suggestion comes after the env warning, deliberately: the bare
