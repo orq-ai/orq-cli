@@ -1834,10 +1834,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// Do not claim success the verification step just disproved: the checks
 	// above already printed what failed, so this line is the only thing left
 	// telling the user whether to trust the result.
+	// Colored and bold, unlike the per-step ✓ marks above it. Those report
+	// individual writes; this is the verdict on the run, and on a screen that
+	// is otherwise uniform grey it was indistinguishable from them.
 	if verified {
-		fmt.Fprintln(w, "  ✓ Setup complete")
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiOK, "✓"), bold("Setup complete"))
 	} else {
-		fmt.Fprintln(w, "  ! Setup finished with failed checks — see above")
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"), bold("Setup finished with failed checks — see above"))
 	}
 	fmt.Fprintln(w)
 
@@ -1888,14 +1891,11 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			fmt.Fprintf(w, "  %s %s model calls through orq.\n",
 				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
 		}
-		// Only the MCP group can answer this, so it names that group rather
-		// than "it": on a mixed run the pronoun would point at whichever agent
-		// the reader had in mind, including one that cannot.
-		if len(mcpWired) > 0 {
-			fmt.Fprintf(w, "  Ask %s:\n", pluralize(len(mcpWired), "it", "one of them"))
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, `      "list my orq.ai agents"`)
-		}
+		// The sample prompt moved into the aligned action block below, beside
+		// the command that starts the agent. It used to sit here as a heading
+		// plus a blank line plus a third indent level, which is the shape the
+		// screen was criticised for: one idea spread over three lines and two
+		// depths, repeated for the start commands a few lines later.
 		// The funding warning is not repeated here. It was printed a few lines
 		// ago, in the step that raised it, and saying it twice on one screen was
 		// the bulk of what made an unfunded run read as a failure.
@@ -1943,41 +1943,58 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		// agent started from it inherits the same empty variable — which is
 		// exactly how a wired machine still produces "bearer token env var
 		// ORQ_API_KEY is not set" inside the agent.
-		fmt.Fprintln(w, "  ! Agents inherit ORQ_API_KEY from the shell that starts them.")
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),
+			"ORQ_API_KEY is not exported here, and agents inherit it from this shell.")
+		// One indented command per branch, never a heading plus a blank line
+		// plus a deeper indent. The fix is always a line to run, so the line is
+		// the thing to show.
 		switch {
 		case sh.Profile != "" && profileSourcesEnvFile(sh):
-			// Durably wired already — only this shell is stale, so both ways out
-			// are cheap and the user should see both.
-			fmt.Fprintf(w, "    New shells get it from %s. For this one:  %s\n", tilde(sh.Profile), sh.displayLine())
+			// Durably wired already — only this shell is stale, so the one-off
+			// is the whole fix, and the profile is named so the user knows new
+			// shells are already covered.
+			fmt.Fprintf(w, "    %s\n", sh.displayLine())
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, fmt.Sprintf("new shells already get it from %s", tilde(sh.Profile))))
 		case sh.Profile == "":
 			// Unrecognised shell: naming a profile file would be a guess, so
 			// give the command that works right now and let the user place it.
-			fmt.Fprintf(w, "    It is not set here. For this shell:  %s\n", sh.displayLine())
-			fmt.Fprintln(w, "    Add that line to your shell profile so new shells get it too.")
+			fmt.Fprintf(w, "    %s\n", sh.displayLine())
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "add that line to your shell profile so new shells get it too"))
 		default:
-			fmt.Fprintln(w, "    It is not set here. For this shell and every new one:")
-			fmt.Fprintln(w)
-			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
+			fmt.Fprintf(w, "    echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
+			// The zsh trap is worth its line: .zshrc is the file people reach
+			// for, and it is the wrong one for a variable agents must inherit.
 			if strings.HasSuffix(sh.Profile, ".zshenv") {
-				fmt.Fprintln(w)
-				fmt.Fprintln(w, "    (~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells.)")
+				fmt.Fprintf(w, "    %s\n", paint(ansiDim, "~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells"))
 			}
 		}
-		fmt.Fprintln(w)
 	}
 	// The run suggestion comes after the env warning, deliberately: the bare
 	// command only authenticates once ORQ_API_KEY is exported, and printing it
 	// above a warning that says the shell lacks the key would walk the user
 	// straight into the failure the warning predicts.
+	// One aligned block for everything the user can act on: the commands that
+	// start each wired agent, the prompt that proves MCP works, and the links.
+	// Previously these were three separate label-colon-blank-indent groups, so
+	// four actions cost twelve lines across three indent depths.
 	if len(starts) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  %s:\n", pluralize(len(starts), "Start it", "Start them"))
 		fmt.Fprintln(w)
 		// Every wired agent gets its line. Naming one of several left the user
 		// told to pick and shown a single option, and on a mixed run the one
 		// named could be the agent the line above did not describe.
-		for _, cmd := range starts {
-			fmt.Fprintf(w, "      %s\n", cmd)
+		label := pluralize(len(starts), "Start", "Start")
+		for i, cmd := range starts {
+			if i > 0 {
+				label = ""
+			}
+			fmt.Fprintf(w, "  %s %s\n", padLabel(label), cmd)
+		}
+		// Only the MCP group can answer this, so it is printed only when that
+		// group is non-empty: on a mixed run a gateway-only agent cannot read
+		// the workspace, and offering the prompt beside its start command
+		// would be the overclaim the split above exists to prevent.
+		if len(mcpWired) > 0 {
+			fmt.Fprintf(w, "  %s %s\n", padLabel("Try"), `"list my orq.ai agents"`)
 		}
 	}
 	fmt.Fprintln(w)
@@ -1987,10 +2004,30 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// and — for the models settings page — in the providers step's warning,
 	// printed exactly when there is no model to route to.
 	if ws := links["workspace"]; ws != "" {
-		fmt.Fprintf(w, "  Workspace   %s\n", ws)
+		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
 	}
-	fmt.Fprintln(w, "  Stuck?      orq doctor")
+	fmt.Fprintf(w, "  %s %s\n", padLabel("Stuck?"), "orq doctor")
 	fmt.Fprintln(w)
+}
+
+// labelWidth is the column every action and link label is padded to, so the
+// values line up as one block instead of each group choosing its own indent.
+// Wide enough for "Workspace", the longest label printed.
+const labelWidth = 11
+
+// padLabel dims a label and pads it to labelWidth. The label is scaffolding —
+// what the user copies is the value beside it — so it recedes while the
+// commands and URLs stay at full contrast. An empty label still pads, which is
+// how the second and later start commands align under the first.
+func padLabel(s string) string {
+	pad := labelWidth - len([]rune(s))
+	if pad < 0 {
+		pad = 0
+	}
+	if s == "" {
+		return strings.Repeat(" ", labelWidth)
+	}
+	return paint(ansiDim, s) + strings.Repeat(" ", pad)
 }
 
 // pluralize picks a wording by count. Three sites on the final screen were
