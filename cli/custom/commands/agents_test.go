@@ -468,7 +468,7 @@ func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	}
 }
 
-// Setup mints a fresh key and re-reads the catalogue on every run. The profile
+// Setup re-reads the catalogue on every run (a saved key is reused). The profile
 // is ours, so it is replaced rather than appended to — appending would give the
 // file duplicate keys, which is a hard TOML error and would take codex's whole
 // profile down, not just the stale half.
