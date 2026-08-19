@@ -29,7 +29,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if !strings.HasPrefix(toComplete, "-") {
 		return nil
 	}
-	flags := []string{"--model", "--base-url", "--no-fetch-models", "--no-mcp",
+	flags := []string{"--model", "--base-url", "--no-fetch-models", "--mcp",
 		"--no-skills", "--sandbox", "--local", "--mount-cwd", "--rebuild", "--dry-run", "--help"}
 	if def.AllowModels {
 		flags = append(flags, "--models")
@@ -136,8 +136,10 @@ scan:
 			flags.BaseURL = v
 		case arg == "--no-fetch-models":
 			flags.NoFetchModels = true
+		case arg == "--mcp":
+			flags.MCP = true
 		case arg == "--no-mcp":
-			flags.NoMCP = true
+			// Accepted no-op: was the opt-out when MCP wired by default.
 		case arg == "--no-skills":
 			flags.NoSkills = true
 		case arg == "--sandbox":

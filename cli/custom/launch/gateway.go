@@ -58,9 +58,11 @@ type GatewayFlags struct {
 	Models        string
 	BaseURL       string
 	NoFetchModels bool
-	NoMCP         bool
-	NoSkills      bool
-	Sandbox       bool
+	// MCP is opt-in: launch is the throwaway path, and MCP tool calls share
+	// the free plan's daily request quota with model calls.
+	MCP      bool
+	NoSkills bool
+	Sandbox  bool
 	// Local is the explicit opposite of Sandbox: it states the intent the
 	// safety prompt would otherwise ask for, so the prompt can be skipped in
 	// both directions rather than only towards the sandbox.

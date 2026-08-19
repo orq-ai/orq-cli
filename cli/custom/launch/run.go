@@ -165,8 +165,8 @@ Flags:
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
-	fmt.Print(`  --no-mcp              Do not wire the orq MCP server into the agent
-  --no-skills           Do not load the orq skills plugin (claude only)
+	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent
+  --no-skills           With --mcp, skip the orq skills plugin (claude only)
 `)
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
@@ -214,7 +214,7 @@ func reportCredentialNotices(creds *Credentials, flags GatewayFlags) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY belongs to a different workspace than the one 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
 	}
-	if !creds.SupportsMCP() && !flags.NoMCP {
+	if flags.MCP && !creds.SupportsMCP() {
 		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
 	}
 }
