@@ -44,27 +44,16 @@ jobs:
 
   installer:
     name: install.sh runs under dash
-    # ubuntu-latest, because dash is preinstalled there (every step invokes
-    # dash explicitly). The release job runs on macOS, which has no dash: a
-    # parse check there would use bash in posix mode, which accepts
-    # constructs that die on Debian.
+    # ubuntu-latest: dash is preinstalled there; the macOS release runner has none.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: parse under dash
         run: dash -n install.sh
       - name: install with no controlling terminal
-        # setsid detaches the controlling terminal, which is the CI/Docker/ssh
-        # case: a POSIX special built-in failing a redirection exits the shell
-        # outright there, and only at runtime — parsing cannot see it.
-        #
-        # A full install, not --help: --help returns before the first have_tty
-        # call, so it exits 0 on a script carrying exactly the bug this job
-        # exists to catch. Verified by reverting the fix — --help passes,
-        # this fails with the silent exit 2.
-        #
-        # SHELL is set so the PATH branch resolves a profile and runs; HOME is
-        # redirected so the runner's own dotfiles are left alone.
+        # setsid = no controlling terminal (the CI/Docker/ssh case), which fails only at runtime.
+        # A full install, not --help: --help returns before the first have_tty call.
+        # SHELL makes the PATH branch resolve a profile; HOME keeps the runner's own dotfiles out of it.
         run: |
           export HOME="$RUNNER_TEMP/installer-home"
           mkdir -p "$HOME"
@@ -72,10 +61,7 @@ jobs:
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
       - name: reject non-ASCII in output
-        # Covers only the static --help text: the gated glyphs never appear
-        # there, so an ungated glyph in the install flow itself would pass
-        # this check. A stray one renders as mojibake on a non-UTF-8
-        # terminal.
+        # Covers only the static --help text; an ungated glyph in the install flow itself would still pass.
         run: |
           set -eu
           out=$(LC_ALL=C LANG=C dash install.sh --help)

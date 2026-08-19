@@ -26,8 +26,7 @@
 
 set -eu
 
-# Stamped by the release workflow; stays "dev" in any unstamped copy — a
-# checkout, or a fetch from a raw branch URL.
+# Stamped by the release workflow; stays "dev" in any unstamped copy.
 INSTALLER_VERSION="dev"
 
 REPO="orq-ai/orq-cli"
@@ -39,14 +38,11 @@ RUN_SETUP=1
 PATH_MARKER_START="# >>> orq cli >>>"
 PATH_MARKER_END="# <<< orq cli <<<"
 
-# Errors to stderr, progress to stdout: an installer produces no piped data, so
-# the progress is the output.
 err() {
   echo "orq-cli installer: $*" >&2
 }
 
-# Inline rather than extracted from the header above: under `curl … | sh` the
-# script arrives on stdin and "$0" is the shell, so there is no file to read.
+# Inline, not read from the file: under `curl | sh` the script is on stdin and "$0" is the shell.
 usage() {
   printf 'install.sh %s\n\n' "$INSTALLER_VERSION"
   cat <<'USAGE'
@@ -72,27 +68,23 @@ For Windows, install via npm instead:
 USAGE
 }
 
-# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) are
-# still supported, so probe for it rather than requiring it.
+# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) ship older, so probe.
 if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
   CURL_RETRY_ALL='--retry-all-errors'
 else
   CURL_RETRY_ALL=''
 fi
 
-# No -f: the checksum call reads the status code out of a 404. Callers wanting
-# "any non-2xx is fatal" pass -f themselves.
+# No -f: the checksum call reads the status code out of a 404; callers needing it pass -f.
 fetch() {
   # Unquoted: empty must expand to no argument at all.
   # shellcheck disable=SC2086
   curl -L --proto '=https' --retry 3 --retry-delay 1 $CURL_RETRY_ALL "$@"
 }
 
-# stdin is the script itself under `curl | sh`, so the terminal is /dev/tty.
-# `[ -r /dev/tty ]` is not enough: the node is world-readable and passes even
-# with no controlling terminal, where opening it fails with ENXIO.
-# `true`, not `:` — a redirection error on a POSIX special built-in exits a
-# non-interactive shell outright (dash, busybox ash).
+# Not `[ -r /dev/tty ]`: the node is world-readable and passes with no
+# controlling terminal, where opening it fails ENXIO. `true`, not `:` — a
+# redirection error on a POSIX special built-in exits a non-interactive dash.
 have_tty() {
   { true < /dev/tty; } 2>/dev/null
 }
@@ -149,7 +141,6 @@ supports_art() {
   esac
 }
 
-# Same capability check as the banner, so output is all-ASCII or none of it.
 if supports_art; then
   G_BULLET='•'
   G_OK='✓'
@@ -278,10 +269,8 @@ if [ "${already_current:-0}" != "1" ]; then
 
   # --- Verify checksum -----------------------------------------------------
 
-  # Same host as the binary, so this catches corruption and truncation, not a
-  # compromised release host. Only a genuine 404 downgrades to a warning; any
-  # other failure is fatal, since failing open would skip verification exactly
-  # when the network is least trustworthy.
+  # Same host as the binary: catches corruption and truncation, not a compromised release host.
+  # Anything but a genuine 404 is fatal; failing open would skip verification exactly when the network is least trustworthy.
   sha_cmd=""
   if command -v sha256sum >/dev/null 2>&1; then
     sha_cmd="sha256sum"
@@ -294,26 +283,21 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # -w writes the status (000 on a connection failure) even when curl exits
-  # non-zero, so `|| true` only keeps that from aborting the script. A 404 is a
-  # real case — releases predating the checksum assets — and has to be told
-  # apart from a transport failure.
+  # -w writes the status (000 on a connection failure) even when curl exits non-zero, so `|| true` only stops that aborting the script.
+  # 404 is real - releases predating the .sha256 assets have none - and has to be told apart from a transport failure.
   checksum_status="$(fetch -sS -o "$tmp_sum" -w '%{http_code}' "$checksum_url" || true)"
   expected=""
   case "${checksum_status:-000}" in
     200)
       expected="$(awk '{print $1}' <"$tmp_sum")"
-      # A 200 with an empty body means the asset exists and could not be read,
-      # which is not the same as no checksum being published.
+      # A 200 with an empty body means the asset exists and was unreadable, not that no checksum is published.
       if [ -z "$expected" ]; then
         err "checksum fetch returned HTTP 200 but an empty body ($checksum_url)"
         err "Refusing to install unverified."
         exit 1
       fi
-      # A captive portal answers 200 with HTML, which would otherwise be
-      # compared as a hash and reported as a checksum mismatch. The bracket
-      # expression is written out 64 times (16 per hex16, four hex16) because
-      # POSIX case patterns have no repetition operator.
+      # A captive portal answers 200 with HTML, which would otherwise be compared as a hash and reported as a mismatch.
+      # Written out 64 brackets because POSIX case patterns have no repetition operator.
       hex16='[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'
       case "$expected" in
         $hex16$hex16$hex16$hex16) ;;
@@ -358,9 +342,7 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # Runs the binary rather than echoing the tag: the checksum proves integrity,
-  # this proves it runs on this machine. Removed on failure — the EXIT trap
-  # only covers the temp file, which has already been moved.
+  # rm on failure: the EXIT trap covers only the temp file, which has already been moved.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
@@ -414,18 +396,15 @@ else
       *)            path_line="export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
     esac
 
-    # The shell profile is the user's, so ask before editing it. With no
-    # terminal to ask at, write it anyway rather than leave the binary off PATH.
+    # With no terminal to ask at, write it anyway rather than leave the binary off PATH.
     if have_tty; then
-      # To /dev/tty, not stdout: under `curl … | sh | tee` stdout is the log
-      # file, and the read would block with nothing on screen to explain why.
+      # To /dev/tty, not stdout: under `curl | sh | tee` stdout is the log file and the prompt would never be seen.
       {
         printf '\n  Add %s to PATH in %s?\n' "$INSTALL_DIR" "$profile"
         printf '      %s\n' "$path_line"
         printf '  [Y/n] '
       } > /dev/tty
-      # `read` returns non-zero at EOF (Ctrl-D) — that is backing out, so it
-      # must fail closed rather than edit the rcfile this prompt protects.
+      # `read` returns non-zero at EOF (Ctrl-D): fail closed rather than edit the rcfile this prompt protects.
       if ! read -r reply < /dev/tty; then
         reply="n"
         printf '\n'
@@ -472,12 +451,9 @@ setup_ran=0
 if [ "$RUN_SETUP" = "1" ] && have_tty; then
   printf '\n  Starting setup - press Ctrl-C to skip and run '\''orq setup'\'' later.\n'
   printf '\n%s\n' "$G_RULE"
-  # The chained run inherits the cwd of the curl invocation, which is rarely a
-  # project; setup detects that and defaults to a global install.
-  #
+  # The chained run inherits curl's cwd, rarely a project; setup then defaults to a global install.
   setup_ran=1
-  # `|| setup_status=$?`, not `if ! …; then`: there $? is the negated
-  # compound's status, so every failure reported itself as "exited 0".
+  # `|| setup_status=$?`, not `if ! ...; then`: there $? is the negated compound's status, so every failure read as 0.
   setup_status=0
   ORQ_SETUP_FROM_INSTALLER=1 "$target" setup < /dev/tty || setup_status=$?
   if [ "$setup_status" != "0" ]; then
@@ -492,10 +468,8 @@ fi
 
 printf '\n'
 
-# Only tell people to restart a shell when `orq` does not already resolve here.
 if [ "$path_already_set" != "1" ]; then
   if [ -n "$profile" ]; then
-    # Future shells are fine; this one is not.
     printf '  To use orq in this shell, run:\n'
     printf '      exec %s -l\n\n' "${SHELL:-sh}"
   else
@@ -509,7 +483,6 @@ if [ "${setup_missing:-0}" != "1" ] && [ "$setup_ran" = "0" ]; then
   if [ "$path_already_set" = "1" ]; then
     printf '      orq setup\n\n'
   else
-    # Not on PATH yet, so give the command they can paste.
     printf '      %s setup\n\n' "$target"
   fi
 fi
