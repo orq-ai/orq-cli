@@ -9,10 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// buildRoot assembles the real command tree the same way cmd/orq and
-// cmd/surface-dump do. Grouping is a property of the ASSEMBLED tree — most of
-// it arrives from openapi.yaml — so testing a hand-built root would test
-// nothing that can actually break.
+// buildRoot assembles the real tree because most grouping arrives from openapi.yaml; a hand-built root would test nothing that can break.
 func buildRoot(t *testing.T) *cobra.Command {
 	t.Helper()
 	bartolocli.Init(&bartolocli.Config{
@@ -28,11 +25,6 @@ func buildRoot(t *testing.T) *cobra.Command {
 	return root
 }
 
-// Cobra PANICS on a GroupID it has no group for, and that check runs at
-// Execute time — i.e. in the user's terminal, not in CI. New tags fall back
-// to Utilities and cannot trip it; the panic needs an unregistered ID in the
-// tables (or a fallback regression), so this walks the real tree instead of
-// trusting the map.
 func TestEveryRootCommandResolvesToARegisteredGroup(t *testing.T) {
 	root := buildRoot(t)
 
@@ -47,10 +39,7 @@ func TestEveryRootCommandResolvesToARegisteredGroup(t *testing.T) {
 	}
 }
 
-// A typo'd constant in commandGroup would silently send a command to a group
-// that does not exist. applyCommandGroups would then assign it verbatim and
-// cobra would panic — for a command that IS in the map, the test above only
-// catches it if that command exists in this tree.
+// Catches a bad group ID for a mapped command this tree does not contain, which the walk above cannot see.
 func TestCommandGroupMapUsesRegisteredGroups(t *testing.T) {
 	registered := map[string]bool{}
 	for _, g := range helpGroups {
@@ -63,8 +52,7 @@ func TestCommandGroupMapUsesRegisteredGroups(t *testing.T) {
 	}
 }
 
-// Cobra prints a group's title even when every command in it is hidden, which
-// would leave a bare header over nothing on the first screen a user ever sees.
+// Cobra prints a group's title even when every command in it is hidden.
 func TestNoGroupRendersEmpty(t *testing.T) {
 	root := buildRoot(t)
 
@@ -81,16 +69,8 @@ func TestNoGroupRendersEmpty(t *testing.T) {
 	}
 }
 
-// The runtime fallback is deliberately forgiving — an unmapped command lands
-// in Utilities rather than crashing or vanishing — which means nothing above
-// can fail when a new OpenAPI tag generates a new top-level command: it gets
-// a registered group, the map-only test never sees it, and Utilities already
-// has members. This test is the missing CI signal: every visible top-level
-// command must either be mapped in commandGroup or named here as belonging
-// in Utilities on purpose. A new tag trips it the moment it lands, and the
-// fix is one line in whichever list fits.
+// The runtime fallback launders an unmapped command into a registered group, so no other test here fails when a new OpenAPI tag adds a top-level command.
 func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
-	// In Utilities because that is where they belong, not by accident.
 	deliberate := map[string]bool{
 		"help":           true, // cobra's own, grouped via SetHelpCommandGroupID
 		"completion":     true, // cobra's own, grouped via SetCompletionCommandGroupID
@@ -103,9 +83,7 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 
 	root := buildRoot(t)
 	for _, cmd := range root.Commands() {
-		// Cobra's own availability rule, not just Hidden: a parent whose
-		// subcommands are all hidden never renders, so it cannot sit in a
-		// wrong section.
+		// IsAvailableCommand, not just Hidden: a parent whose subcommands are all hidden never renders.
 		if cmd.Hidden || !cmd.IsAvailableCommand() {
 			continue
 		}
