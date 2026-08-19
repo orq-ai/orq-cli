@@ -1592,3 +1592,55 @@ func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
 		})
 	}
 }
+
+// Skipping an empty catalogue protects a provider block an earlier run wrote,
+// but "left unchanged" reads as "nothing is configured" — the state a user
+// cannot tell apart by reading the file they were just told was untouched.
+func TestEmptyCatalogueSaysWhetherAnEarlierWireSurvives(t *testing.T) {
+	resetSetupMemos(t)
+	kimi, _ := lookupAgent("kimi")
+
+	for _, tc := range []struct {
+		name   string
+		wire   bool
+		want   string
+		unwant string
+	}{
+		{name: "nothing there", wire: false, want: "nothing written", unwant: "kept the"},
+		{name: "earlier wire survives", wire: true, want: "kept the", unwant: "nothing written"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			chdir(t, t.TempDir())
+
+			if tc.wire {
+				path, err := kimi.providerConfig(true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k",
+					[]auth.RouterModel{model("openai", "gpt-4o", 128000, true, true, "chat")}, ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var out strings.Builder
+			rep := &reporter{w: &out}
+			opts := &setupOptions{noInput: true, noMCP: true, global: true, agents: []string{"kimi"}}
+			if _, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts); err != nil {
+				t.Fatalf("instrumentAgents: %v", err)
+			}
+			got := out.String()
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("missing %q:\n%s", tc.want, got)
+			}
+			if strings.Contains(got, tc.unwant) {
+				t.Errorf("unexpected %q:\n%s", tc.unwant, got)
+			}
+		})
+	}
+}
