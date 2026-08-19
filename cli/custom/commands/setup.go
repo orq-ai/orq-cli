@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	// Redirects from orq-ai/orq-skills; this is the name the plugin repo documents.
+	skillsRepo        = "orq-ai/assistant-plugins"
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
 	setupSteps        = 3
@@ -1483,6 +1485,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		if len(mcpWired) > 0 {
 			fmt.Fprintf(w, "  %s %s\n", padLabel("Try"), `"list my orq.ai agents"`)
+			// Suggested, not run: the installer detects the agent and writes
+			// into the user's own config, which is their call to make.
+			fmt.Fprintf(w, "  %s %s\n", padLabel("Skills"), "npx skills add "+skillsRepo)
 		}
 	}
 	fmt.Fprintln(w)
