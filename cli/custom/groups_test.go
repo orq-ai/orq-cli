@@ -92,10 +92,10 @@ func TestNoGroupRendersEmpty(t *testing.T) {
 func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 	// In Utilities because that is where they belong, not by accident.
 	deliberate := map[string]bool{
-		"help":        true, // cobra's own, grouped via SetHelpCommandGroupID
-		"completion":  true, // cobra's own, grouped via SetCompletionCommandGroupID
-		"help-config": true, // bartolo's config help page
-		"help-input":  true, // bartolo's input help page
+		"help":           true, // cobra's own, grouped via SetHelpCommandGroupID
+		"completion":     true, // cobra's own, grouped via SetCompletionCommandGroupID
+		"help-config":    true, // bartolo's config help page
+		"help-input":     true, // bartolo's input help page
 		"request":        true, // raw-HTTP escape hatch — a utility by definition
 		"server":         true, // inspects/persists server-URL defaults
 		"default-format": true, // persists the default output format
