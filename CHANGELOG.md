@@ -48,6 +48,20 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- Changed: `orq launch` wires the orq MCP server (and, for claude, the skills
+  plugin) only when `--mcp` is passed; until now both were wired into every
+  launch by default. Launch is the throwaway path, and MCP tool calls share
+  the free plan's daily request quota with model calls; persistent MCP wiring
+  belongs to `orq setup`, where it stays the default. `--no-mcp` is still
+  accepted as a no-op, and `--no-skills` still opts the plugin out of an
+  `--mcp` run.
+- Changed: every `orq launch` default model is refreshed against the live
+  catalogue, and each vendor's agent now defaults to that vendor's flagship.
+  claude: `anthropic/claude-sonnet-5` (was `claude-sonnet-4-6`); codex:
+  `openai/gpt-5.6-terra` (was `gpt-5.4`); opencode, kilo, pi:
+  `openai/gpt-5.6-terra` (were `gpt-5-mini`); kimi: `moonshotai/kimi-k2.7-code`
+  (was `anthropic/claude-sonnet-4-6`). Pass `--model` to override, as
+  before.
 - Added: `orq launch <agent> --local` runs the agent directly on this computer.
   `--sandbox` could already skip the safety prompt; local mode had no flag —
   only `ORQ_LAUNCH_NON_INTERACTIVE=1` or a non-TTY run got past it. Passing
@@ -160,7 +174,7 @@ the version and this changelog as the source of truth for breaking changes.
 reaches the agent untouched. Its flags are therefore parsed by hand and do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
-`--model`, `--mount-cwd`, `--rebuild`, `--no-mcp`, `--no-skills` or
+`--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or
 `--no-fetch-models` will not fail CI. Treat them as covered by the stability
 contract anyway and announce changes here by hand, exactly as with `--json`
 response field shapes.

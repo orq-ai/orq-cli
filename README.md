@@ -283,20 +283,20 @@ orq launch pi                     # Pi Coding Agent
 
 For local mode the agent CLI itself must be installed (each subcommand prints an install hint when it is missing); `--sandbox` installs it into the container image for you. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-The [orq MCP server](https://api.orq.ai/v2/mcp) is wired into each launched agent automatically using its native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there.
+Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. For persistent MCP wiring, use `orq setup`.
 
-For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) is loaded **session-only** via `--plugin-url` — nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
+With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
 ### Shared flags
 
 | Flag | Description |
 |---|---|
-| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-4-6` |
+| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-5` |
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
-| `--no-mcp` | Do not wire the orq MCP server into the agent |
-| `--no-skills` | Do not load the orq skills plugin (claude only) |
+| `--mcp` | Wire the orq MCP server (workspace tools) into the agent |
+| `--no-skills` | With `--mcp`, skip the orq skills plugin (claude only) |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--local` | Run directly on this computer |
 | `--sandbox` | Run inside a throwaway Docker container |
