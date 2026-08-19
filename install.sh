@@ -335,21 +335,41 @@ if [ "${already_current:-0}" != "1" ]; then
 
   mkdir -p "$INSTALL_DIR"
 
+  # On an upgrade, keep the previous binary until the new one proves it runs;
+  # a failed probe must not leave the user with less than they started with.
+  previous=""
+  if [ -f "$target" ]; then
+    previous="$target.previous"
+    if ! mv "$target" "$previous"; then
+      err "failed to move the existing binary aside ($target)"
+      err "does the user have write permission to $INSTALL_DIR?"
+      exit 1
+    fi
+  fi
+
   # Atomic replace so a partial install can't corrupt an existing binary.
   if ! mv "$tmp_file" "$target"; then
+    [ -n "$previous" ] && mv "$previous" "$target"
     err "failed to move binary into $target"
     err "does the user have write permission to $INSTALL_DIR?"
     exit 1
   fi
 
-  # rm on failure: the EXIT trap covers only the temp file, which has already been moved.
+  # The EXIT trap covers only the temp file, which has already been moved.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
+    [ -n "$previous" ] && rm -f "$previous"
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
+  elif [ -n "$previous" ]; then
+    mv "$previous" "$target"
+    err "the new binary did not run here (--version printed nothing), so the"
+    err "previous one was restored: $("$target" --version 2>/dev/null || echo unknown)"
+    exit 1
   else
     rm -f "$target"
     err "the downloaded binary does not run on this machine (--version failed)"
-    err "it passed the checksum, so this is a platform mismatch or an exec policy"
+    err "it passed the checksum, so this may be a platform mismatch, an exec"
+    err "policy, or a HOME/.orq directory the binary cannot create"
     err "nothing was left at $target"
     exit 1
   fi
