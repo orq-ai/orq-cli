@@ -1318,10 +1318,12 @@ func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
 	}
 }
 
-// The unfunded and --no-verify paths both reach the writers with no proven
-// model. Codex omits its model key in that case (TestCodexProfileOmitsBlankModel);
-// kimi must likewise leave default_model out rather than write an empty one,
-// which kimi would read as a model named "".
+// Defensive backstop for the writers' empty-defaultModel contract: no live
+// path yields one today (writers are skipped on an empty catalogue and
+// defaultCodingModel otherwise always returns a model), but codex omits its
+// model key on empty (TestCodexProfileOmitsBlankModel) and kimi must likewise
+// leave default_model out rather than write an empty one, which kimi would
+// read as a model named "".
 func TestKimiProfileOmitsBlankDefaultModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-key", openCodeModels(), ""); err != nil {
@@ -1335,13 +1337,13 @@ func TestKimiProfileOmitsBlankDefaultModel(t *testing.T) {
 		t.Errorf("wrote a default_model with nothing to put in it:\n%s", data)
 	}
 
-	// With a proven model it must appear, or the omission above proves nothing.
+	// With a default model it must appear, or the omission above proves nothing.
 	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-key",
 		openCodeModels(), "openai/gpt-5.4"); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(path)
 	if !strings.Contains(string(data), `default_model = "openai/gpt-5.4"`) {
-		t.Errorf("proven default model missing:\n%s", data)
+		t.Errorf("default model missing:\n%s", data)
 	}
 }

@@ -407,7 +407,7 @@ func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult)
 	return doctorCheck{
 		ID:     "gateway_funding",
 		Status: "warn",
-		Message: "No credits — the gateway refuses model calls unless a provider key (BYOK) is connected. " +
+		Message: "No credits — the gateway may refuse model calls unless a provider key (BYOK) is connected. " +
 			"Add credits at " + credits,
 		Details: map[string]any{"credits": balance.Balance, "credits_url": credits},
 	}, true
