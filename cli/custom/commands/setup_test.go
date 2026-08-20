@@ -1008,6 +1008,87 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	}
 }
 
+// The subcommand's documented case: a logged-in user with a saved key and no
+// --api-key. The saved key is durable, so the provider must be wired with it —
+// not skipped as "no durable API key", which is what happened when adopting
+// the key set the bearer without its durability.
+func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost:
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+		default:
+			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],
+			 "preferences":{"active_workspace":"acme"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() {
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+	})
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED-DURABLE", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	key := "acme"
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	if err := auth.SaveSession(&auth.Session{
+		Version:            1,
+		APIBaseURL:         srv.URL,
+		AuthBaseURL:        srv.URL,
+		V1BaseURL:          srv.URL,
+		ProfileBaseURL:     srv.URL,
+		RefreshToken:       "refresh",
+		BootstrapToken:     auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+		ActiveWorkspaceKey: &key,
+		WorkspaceTokens: map[string]auth.StoredAccessToken{
+			key: {Token: "session-token", ExpiresAt: exp},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	sub := newSetupCodingAgentsCommand()
+	sub.SetArgs([]string{"--coding-agent", "kimi"})
+	if err := sub.Execute(); err != nil {
+		t.Fatalf("coding-agents: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if err != nil {
+		t.Fatalf("provider not wired at all: %v", err)
+	}
+	tree := mustParseKimiTOML(t, string(data))
+	got, _ := tree.Get("providers.orq.api_key").(string)
+	if got != "sk-orq-SAVED-DURABLE" {
+		t.Errorf("agent config carries api_key %q, want the saved key", got)
+	}
+}
+
 // The check answers "can this workspace pay", and every way of failing to
 // answer has to be reported as "do not know" — a 403 from the permission the
 // API key cannot hold must never be rendered to the user as "no credits".
@@ -1609,8 +1690,8 @@ func sessionWithToken(apiBase string) *authState {
 	key := "acme"
 	return &authState{
 		apiBase: apiBase,
-		// By step 3 a real run has minted an API key as the bearer.
-		minted: true,
+		// By step 3 a real run has an API key as the bearer.
+		durableKey: true,
 		session: &auth.Session{
 			ActiveWorkspaceKey: &key,
 			WorkspaceTokens: map[string]auth.StoredAccessToken{

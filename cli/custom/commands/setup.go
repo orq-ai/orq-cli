@@ -190,7 +190,7 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 	client := auth.NewClient(authState.apiBase)
 	// Only fall back to the saved key when the user supplied none this run, or agents get the stale credential resolveAuth has already replaced.
 	if saved != "" && authState.suppliedKey == "" {
-		authState.bearer = saved
+		authState.useDurableKey(saved)
 	}
 
 	result := map[string]any{}
@@ -266,8 +266,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	result["api_key"] = keyInfo
 	// Verify with the credential the agents will use, not this run's session token.
 	if mintedToken != "" {
-		authState.bearer = mintedToken
-		authState.minted = true
+		authState.useDurableKey(mintedToken)
 	}
 
 	rep.step(3, setupSteps, "Coding agents")
@@ -334,17 +333,25 @@ type authState struct {
 	bearer string
 	// suppliedKey is set when the user brought their own key; we never mint then.
 	suppliedKey string
-	// minted is set when this run created or reused a saved API key as the bearer.
-	minted bool
+	// durableKey is set whenever an API key becomes the bearer — minted this run or reused from a previous one.
+	durableKey bool
 	// gatewayFunding is what this run learned about the workspace's ability to pay for a model call.
 	gatewayFunding fundingState
+}
+
+// useDurableKey makes an API key the bearer. Durability and the bearer move
+// together: a second assignment site that sets one without the other is how a
+// valid key ends up reported as "no durable API key".
+func (s *authState) useDurableKey(key string) {
+	s.bearer = key
+	s.durableKey = true
 }
 
 // durableBearer reports whether bearer is an API key rather than the session's
 // expiring access token. Only a key may be wired into agent configs: kimi
 // embeds the literal value, and a session token 401s within the hour.
 func (s *authState) durableBearer() bool {
-	return s.suppliedKey != "" || s.minted || s.session == nil
+	return s.suppliedKey != "" || s.durableKey || s.session == nil
 }
 
 // Three-valued on purpose: the question is often never asked, and that is not "cannot pay".
@@ -1188,15 +1195,19 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		switch {
 		case opts.noGateway && spec.writeProvider != nil:
 		case spec.writeProvider != nil:
-			if path, perr := spec.providerConfig(opts.global); perr == nil && path == "" {
+			path, perr := spec.providerConfig(opts.global)
+			switch {
+			case perr != nil:
+				rep.fail("%-8s provider  %v", id, perr)
+				res.Error = perr.Error()
+			case path == "":
 				// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
 				rep.fail("%-8s provider  no config path for this scope", id)
 				res.Error = "provider config path resolved empty"
-			} else if !state.durableBearer() {
-				// Same invariant 'setup coding-agents' enforces up front; here the
-				// user declined the mint, so skipping is the consequence, not an error.
-				rep.warn("%-8s provider  skipped: no durable API key to wire (you declined creating one) — re-run 'orq setup' to mint it", id)
-			} else if perr == nil && path != "" {
+			case !state.durableBearer():
+				// Declining the mint is a choice, not an error.
+				rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
+			default:
 				models := codingModels(rep, client, state)
 				// Must match the [models."<key>"] form the writer emits: the full provider/model ref.
 				defaultModel := ""
@@ -1217,18 +1228,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 				}
 				// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
 				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
-				switch {
-				case werr != nil:
-					// A wire the user consented to and did not get must reach the exit code and the JSON, not evaporate as a warning.
+				if werr != nil {
+					// A consented wire that failed must reach the exit code and the JSON.
 					rep.fail("%-8s provider  %v", id, werr)
 					res.Error = werr.Error()
-				default:
+				} else {
 					res.Provider = path
 					res.ModelCount = written
 				}
-			} else if perr != nil {
-				rep.fail("%-8s provider  %v", id, perr)
-				res.Error = perr.Error()
 			}
 		}
 
