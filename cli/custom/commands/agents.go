@@ -720,9 +720,15 @@ bearer_token_env_var = "ORQ_API_KEY"
 // Doctor checks
 // ============================================================================
 
-// codingAgentChecks reports, per detected agent, whether MCP and the provider are wired. Detected-but-unwired is a warn; statuses never drive doctor's exit code.
+// codingAgentChecks reports, per detected agent, whether MCP and the provider
+// are wired, plus one coding_agents summary row. Detected-but-unwired is info,
+// not warn: leaving an agent unconnected is a choice, and only the two states
+// that actually break something (wired without ORQ_API_KEY, partially wired)
+// warn. Statuses never drive doctor's exit code.
 func codingAgentChecks() []doctorCheck {
 	var checks []doctorCheck
+	var wiredIDs []string
+	detected, fullyWired := 0, 0
 	// Read once, both are per-process: detectShell spells the source line for fish and honours a non-default config directory.
 	keyExported := agentKeyExported()
 	sourceLine := detectShell(viper.GetString("config-directory")).displayLine()
@@ -752,9 +758,15 @@ func codingAgentChecks() []doctorCheck {
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
 		details["api_key_in_env"] = keyExported
 
-		switch {
-		case offered == 0:
+		if offered == 0 {
 			continue
+		}
+		detected++
+		if wired == offered {
+			fullyWired++
+			wiredIDs = append(wiredIDs, spec.ID)
+		}
+		switch {
 		case wired == offered && !keyExported:
 			// Name the half that breaks: kimi's provider TOML holds the key literally, so its
 			// model calls keep working and only the MCP tools fail. Saying "will fail to
@@ -770,7 +782,7 @@ func codingAgentChecks() []doctorCheck {
 			check.Status = "pass"
 			check.Message = spec.Label + " is wired to orq"
 		case wired == 0:
-			check.Status = "warn"
+			check.Status = "info"
 			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
 		default:
 			check.Status = "warn"
@@ -778,7 +790,29 @@ func codingAgentChecks() []doctorCheck {
 		}
 		checks = append(checks, check)
 	}
+	if detected > 0 {
+		checks = append(checks, codingAgentsSummary(detected, fullyWired, wiredIDs))
+	}
 	return checks
+}
+
+// codingAgentsSummary is the one row the human view keeps when every per-agent
+// check is healthy. Never warn: how many agents to connect is the user's call.
+func codingAgentsSummary(detected, fullyWired int, wiredIDs []string) doctorCheck {
+	check := doctorCheck{
+		ID:      "coding_agents",
+		Status:  "info",
+		Details: map[string]any{"detected": detected, "wired": fullyWired},
+	}
+	if fullyWired == detected {
+		check.Status = "pass"
+	}
+	if fullyWired == 0 {
+		check.Message = fmt.Sprintf("0 of %d wired — run 'orq connect'", detected)
+	} else {
+		check.Message = fmt.Sprintf("%d of %d wired: %s", fullyWired, detected, strings.Join(wiredIDs, ", "))
+	}
+	return check
 }
 
 // wiredPath checks both scopes: setup may have written either, and checking only the global one misreported project-scoped agents as unwired.

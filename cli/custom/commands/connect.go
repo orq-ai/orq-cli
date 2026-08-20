@@ -67,6 +67,7 @@ func detectedAgents() []string {
 func NewConnectCommand() *cobra.Command {
 	opts := setupOptions{}
 	dryRun := false
+	status := false
 
 	cmd := &cobra.Command{
 		Use:   "connect [agent...] [capability...]",
@@ -82,6 +83,9 @@ Reuses the credential from ` + "`orq setup`" + ` — it never creates keys or ed
 Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if status {
+				return runConnectStatus(&opts, args)
+			}
 			return runConnect(cmd, &opts, args, dryRun)
 		},
 	}
@@ -92,7 +96,48 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
+	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
 	return cmd
+}
+
+// runConnectStatus is the read-only view of on-disk wiring. It never prompts,
+// never authenticates, always exits 0.
+func runConnectStatus(opts *setupOptions, args []string) error {
+	if err := resolveScope(opts); err != nil {
+		return err
+	}
+	rep := newReporter(opts.noInput)
+	agents, caps, err := partitionConnectArgs(args)
+	if err != nil {
+		return err
+	}
+	if len(caps) == 0 {
+		caps = []string{capGateway, capMCP}
+	}
+	if len(agents) == 0 {
+		agents = detectedAgents()
+	}
+	wired := wiredTargets(agents, caps, opts)
+	if len(wired) == 0 {
+		rep.info("nothing wired on this machine")
+	}
+	for _, w := range wired {
+		rep.info("%-8s %-9s %s", w.agent, w.capability, tilde(w.path))
+	}
+	isWired := map[string]bool{}
+	for _, w := range wired {
+		isWired[w.agent] = true
+	}
+	var unwired []string
+	for _, id := range detectedAgents() {
+		if !isWired[id] {
+			unwired = append(unwired, id)
+		}
+	}
+	if len(unwired) > 0 {
+		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
+	}
+	return nil
 }
 
 func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {

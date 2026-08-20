@@ -221,6 +221,56 @@ func TestDisconnectDryRunRemovesNothing(t *testing.T) {
 	}
 }
 
+// --status is the read-only question disconnect --dry-run used to answer with
+// a destructive verb: no prompt, no auth, no writes, exit 0 either way.
+func TestConnectStatusIsReadOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	// Bare and without a TTY, where plain connect refuses: status just answers.
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"--status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("status on an unwired machine: %v", err)
+	}
+	if !strings.Contains(out.String(), "nothing wired") {
+		t.Errorf("unwired machine not reported:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "detected but not wired") {
+		t.Errorf("detected agents not named:\n%s", out.String())
+	}
+
+	before := `{"mcpServers":{"` + mcpServerName + `":{"url":"x"}}}`
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	cmd = NewConnectCommand()
+	cmd.SetArgs([]string{"--status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("status on a wired machine: %v", err)
+	}
+	if !strings.Contains(out.String(), "claude") || !strings.Contains(out.String(), ".claude.json") {
+		t.Errorf("wired path not shown:\n%s", out.String())
+	}
+	if got := string(mustRead(t, filepath.Join(home, ".claude.json"))); got != before {
+		t.Errorf("--status changed a config file:\n%s", got)
+	}
+}
+
 // An unwired machine gets one line, not one per registered agent.
 func TestDisconnectOnAnUnwiredMachineIsQuiet(t *testing.T) {
 	home := t.TempDir()

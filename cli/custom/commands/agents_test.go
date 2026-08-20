@@ -1342,8 +1342,8 @@ func TestCodexProviderDetectorReadsContentNotExistence(t *testing.T) {
 }
 
 // Doctor's coding-agent checks are the read-side of what the writers produce:
-// wired = pass, detected-but-unwired = warn (an agent nobody wired is an
-// offer, not a failure — the exit code must stay healthy), undetected = absent.
+// wired = pass, detected-but-unwired = info (an agent nobody wired is a
+// choice, not a fault), undetected = absent, plus one coding_agents summary.
 func TestCodingAgentChecksReadWiring(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1360,19 +1360,23 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 		t.Fatalf("no agents installed but got %d checks: %+v", len(got), got)
 	}
 
-	// Kimi installed but unwired → warn naming the wiring command.
+	// Kimi installed but unwired → info naming the wiring command, plus the
+	// zero-wired summary.
 	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	checks := codingAgentChecks()
-	if len(checks) != 1 || checks[0].ID != "coding_agent_kimi" {
-		t.Fatalf("want one kimi check, got %+v", checks)
+	if len(checks) != 2 || checks[0].ID != "coding_agent_kimi" || checks[1].ID != "coding_agents" {
+		t.Fatalf("want a kimi check plus the summary, got %+v", checks)
 	}
-	if checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "orq connect ") {
-		t.Fatalf("unwired agent should warn and name the fix, got %+v", checks[0])
+	if checks[0].Status != "info" || !strings.Contains(checks[0].Message, "orq connect ") {
+		t.Fatalf("unwired agent should be info and name the fix, got %+v", checks[0])
+	}
+	if checks[1].Status != "info" || !strings.Contains(checks[1].Message, "0 of 1 wired") {
+		t.Fatalf("summary should be info counting zero wired, got %+v", checks[1])
 	}
 
-	// Wire both halves the way setup does, then it must pass.
+	// Wire both halves the way setup does, then agent and summary must pass.
 	mcpPath := filepath.Join(home, ".kimi-code", "mcp.json")
 	if err := writeMCPKimiJSON(mcpPath, "https://api.orq.ai/v2/mcp"); err != nil {
 		t.Fatal(err)
@@ -1383,8 +1387,11 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	checks = codingAgentChecks()
-	if len(checks) != 1 || checks[0].Status != "pass" {
+	if len(checks) != 2 || checks[0].Status != "pass" {
 		t.Fatalf("wired agent should pass, got %+v", checks)
+	}
+	if checks[1].Status != "pass" || !strings.Contains(checks[1].Message, "1 of 1 wired: kimi") {
+		t.Fatalf("all-wired summary should pass naming the agent, got %+v", checks[1])
 	}
 
 	// opencode registers MCP under "mcp", not "mcpServers" — the check must

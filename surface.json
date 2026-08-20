@@ -1946,6 +1946,10 @@
           "type": "bool"
         },
         {
+          "name": "status",
+          "type": "bool"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"
