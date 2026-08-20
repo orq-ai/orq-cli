@@ -48,6 +48,19 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- Added: `orq connect --status` — the read-only answer to "what is wired?":
+  one line per wired capability with its file, one naming detected-but-unwired
+  agents. No prompt, no auth, no writes, exit 0.
+- Changed: `orq doctor` no longer warns about agents you simply have not
+  connected. Healthy per-agent rows collapse into one `coding_agents` summary
+  (`2 of 6 wired: claude, kimi`); the states that break something — wired
+  without `ORQ_API_KEY` in the shell, partially wired — still get their own
+  warning row. `--json` keeps every per-agent row plus the summary.
+- Changed: interactive `orq connect` with no saved key offers to log in (or
+  mint a key when you are already signed in) and continues, instead of erroring
+  after you finished selecting. Declining exits 0 with a hint; non-interactive
+  and `--yes` runs keep the error and never create credentials. Selecting
+  skills now actually runs the installer, and needs no API key on its own.
 - Added: `orq connect [agent...] [capability...]` and `orq disconnect` — wire
   coding agents to orq permanently, and remove exactly what was written.
   Capabilities are positional (`gateway`, `mcp`); none named means both, no
