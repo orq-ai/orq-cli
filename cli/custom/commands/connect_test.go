@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -218,6 +219,160 @@ func TestDisconnectDryRunRemovesNothing(t *testing.T) {
 	}
 	if got := string(mustRead(t, filepath.Join(home, ".claude.json"))); got != before {
 		t.Errorf("dry run changed the file:\n%s", got)
+	}
+}
+
+// Non-interactive runs never create credentials: no key and no TTY (or --yes)
+// keeps the hard error naming the one-command fix.
+func TestConnectNoCredentialNonInteractiveKeepsTheError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", t.TempDir())
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	ensureCreds(t)
+	resetSetupMemos(t)
+
+	for _, args := range [][]string{{"kimi"}, {"kimi", "--yes"}} {
+		cmd := NewConnectCommand()
+		cmd.SetArgs(args)
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "no saved API key") {
+			t.Errorf("connect %v: err = %v, want the no-saved-key error", args, err)
+		}
+	}
+}
+
+// Declining the inline login offer is a clean exit, not a fault: nothing
+// written, nothing wired, exit 0.
+func TestConnectLoginDeclinedIsACleanExit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", t.TempDir())
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	ensureCreds(t)
+	resetSetupMemos(t)
+
+	// noInput false forces the offer; the survey prompt fails without a TTY,
+	// which the CLI treats as a decline everywhere.
+	opts := &setupOptions{}
+	rep := newReporter(true)
+	_, _, err := resolveConnectAuth(NewConnectCommand(), rep, opts)
+	if !errors.Is(err, errLoginDeclined) {
+		t.Fatalf("err = %v, want errLoginDeclined", err)
+	}
+
+	// The caller maps the decline to success with nothing written.
+	if err := connectSelected(NewConnectCommand(), rep, opts, []string{"kimi"}, []string{capGateway, capMCP}, false, false); err != nil {
+		t.Fatalf("declined login should exit clean, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
+		t.Error("declined login still wired the provider")
+	}
+}
+
+// ensureCreds gives bartolocli a credentials store when the test process has
+// none, so savedAPIKey reads an empty profile instead of panicking.
+func ensureCreds(t *testing.T) {
+	t.Helper()
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+}
+
+// fakeNpx puts an npx shim on PATH that records its arguments.
+func fakeNpx(t *testing.T) (marker string) {
+	t.Helper()
+	bin := t.TempDir()
+	marker = filepath.Join(bin, "npx-args")
+	script := "#!/bin/sh\necho \"$@\" > " + marker + "\n"
+	if err := os.WriteFile(filepath.Join(bin, "npx"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	return marker
+}
+
+// Skills is npx against a public repo: selecting only skills must run the
+// installer and never demand an orq credential.
+func TestSkillsOnlyConnectNeedsNoCredential(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	viper.Set("config-directory", t.TempDir())
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	ensureCreds(t)
+	resetSetupMemos(t)
+	marker := fakeNpx(t)
+
+	rep := newReporter(true)
+	if err := connectSelected(NewConnectCommand(), rep, &setupOptions{}, []string{"claude"}, nil, true, false); err != nil {
+		t.Fatalf("skills-only connect: %v", err)
+	}
+	args, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal("skills installer never ran")
+	}
+	if !strings.Contains(string(args), "skills add "+skillsRepo) {
+		t.Errorf("installer args = %q", args)
+	}
+}
+
+// The skills answer survives past wiring: a keyed run that also selected
+// skills runs the installer after the agents are wired.
+func TestSkillsSelectionRunsInstallerAfterWiring(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", ""); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+	marker := fakeNpx(t)
+
+	rep := newReporter(true)
+	if err := connectSelected(NewConnectCommand(), rep, &setupOptions{}, []string{"kimi"}, []string{capMCP}, true, false); err != nil {
+		t.Fatalf("connect with skills: %v", err)
+	}
+	// Scope was not resolved here, so the writer picked the project-relative path.
+	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
+		t.Error("mcp not wired")
+	}
+	if _, err := os.ReadFile(marker); err != nil {
+		t.Error("skills selection was dropped after wiring")
 	}
 }
 

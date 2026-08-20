@@ -158,10 +158,10 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if len(caps) == 0 {
 		caps = []string{capGateway, capMCP}
 	}
+	skills := false
 	// Naming an agent is the intent; leaving it bare is not, so ask rather than
 	// act on every agent the machine happens to have.
-	namedAgents := len(agents) > 0
-	if !namedAgents {
+	if len(agents) == 0 {
 		detected := detectedAgents()
 		if len(detected) == 0 {
 			rep.info("no coding agents detected — name one: orq connect <%s>", strings.Join(agentIDs(), "|"))
@@ -174,6 +174,10 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			return fmt.Errorf("name the agents to connect (%s), or pass --yes to connect all detected",
 				strings.Join(detected, ", "))
 		default:
+			// The ask must not surprise anyone after two selections.
+			if saved, _ := savedAPIKey(); saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
+				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
+			}
 			agents, err = promptForAgents(rep)
 			if err != nil {
 				return fmt.Errorf("cancelled at the agent selection: %w", err)
@@ -183,18 +187,25 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 				return nil
 			}
 			if len(rawCaps) == 0 {
-				chosen, _, err := promptForCapabilities(rep, opts)
+				chosen, wantsSkills, err := promptForCapabilities(rep, opts)
 				if err != nil {
 					return fmt.Errorf("cancelled at the capability selection: %w", err)
 				}
-				if len(chosen) == 0 {
+				if len(chosen) == 0 && !wantsSkills {
 					rep.info("no capabilities selected")
 					return nil
 				}
-				caps = chosen
+				caps, skills = chosen, wantsSkills
 			}
 		}
 	}
+	return connectSelected(cmd, rep, opts, agents, caps, skills, dryRun)
+}
+
+// connectSelected acts on a settled selection. The credential check lives here,
+// after selection, because whether a key is needed depends on what was
+// selected: skills is npx against a public repo and needs no orq credential.
+func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents, caps []string, skills bool, dryRun bool) error {
 	opts.agents = agents
 	opts.noMCP = !hasCap(caps, capMCP)
 	opts.noGateway = !hasCap(caps, capGateway)
@@ -202,14 +213,27 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if dryRun {
 		return dryRunConnect(rep, opts, agents, caps)
 	}
+	if len(caps) == 0 {
+		if skills {
+			runSkillsInstall(rep)
+		}
+		return nil
+	}
 
 	state, client, err := resolveConnectAuth(cmd, rep, opts)
+	if errors.Is(err, errLoginDeclined) {
+		rep.info("nothing wired — run 'orq setup' when ready, or pass --api-key")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	agentResults, err := instrumentAgents(rep, client, state, opts)
 	if err != nil {
 		return err
+	}
+	if skills {
+		runSkillsInstall(rep)
 	}
 	if !wantsHumanView(cmd) {
 		if err := emit(map[string]any{"agents": agentResults}); err != nil {
@@ -293,17 +317,31 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 	return nil
 }
 
-// resolveConnectAuth is the credential path connect and setup share: a durable
-// key must exist (never minted here), and it must belong to the workspace this
-// run resolved.
+// errLoginDeclined marks the user's "no" to the inline login offer: not a
+// fault, so the caller turns it into a hint and exit 0.
+var errLoginDeclined = errors.New("login declined")
+
+// resolveConnectAuth is connect's credential path. It reuses whatever exists —
+// saved key, ORQ_API_KEY, --api-key, session — and when nothing does, an
+// interactive run offers to log in and mint one right here, so the selection
+// already made is never wasted. Non-interactive runs never create credentials.
 func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (*authState, *auth.Client, error) {
 	saved, savedWS := savedAPIKey()
 	envKey := UserEnvAPIKey()
 	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
-		return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
+		if opts.noInput || opts.yes {
+			return nil, nil, errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
+		}
+		message := "No API key on this machine — log in now?"
+		if session, _ := auth.ReadSession(); session != nil {
+			message = "No API key on this machine — create one now?"
+		}
+		if !opts.confirm(message, true) {
+			return nil, nil, errLoginDeclined
+		}
 	}
 	// A saved key with no session must not fall into resolveAuth's login path:
-	// this command reuses credentials, never creates them.
+	// the credential exists, so nothing may prompt for another.
 	if strings.TrimSpace(opts.apiKey) == "" && saved != "" {
 		if session, _ := auth.ReadSession(); session == nil {
 			rep.ok("api key (saved profile: %s)", auth.ActiveProfile())
@@ -316,6 +354,7 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 	if err != nil {
 		return nil, nil, err
 	}
+	client := auth.NewClient(state.apiBase)
 	if active := activeWorkspaceKey(state.session); saved != "" && keyWorkspaceMismatch(savedWS, active) {
 		return nil, nil, fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
 	}
@@ -325,9 +364,23 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 			state.useDurableKey(saved)
 		case envKey != "":
 			state.useDurableKey(envKey)
+		default:
+			// The user accepted the offer above: mint and persist the durable
+			// key the wiring writes against, exactly as setup would. No shell
+			// profile prompt here — doctor names the source line if it's missing.
+			token, _, err := ensureDurableKey(rep, client, state, opts)
+			if err != nil {
+				return nil, nil, err
+			}
+			state.useDurableKey(token)
+			if path, err := writeShellEnvFile(token); err != nil {
+				rep.warn("could not write the shell env file: %v", err)
+			} else {
+				rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
+			}
 		}
 	}
-	return state, auth.NewClient(state.apiBase), nil
+	return state, client, nil
 }
 
 func NewDisconnectCommand() *cobra.Command {

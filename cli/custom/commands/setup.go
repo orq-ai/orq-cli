@@ -289,9 +289,9 @@ func (f fundingState) String() string {
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
-	// persistKey is false on connect, which promises it never creates keys: saving
-	// there replaces a credential the user did not ask to replace, and blanks its
-	// recorded workspace, which disables the mismatch guard permanently.
+	// persistKey is false on connect: saving there replaces a credential the user
+	// did not ask to replace, and blanks its recorded workspace, which disables
+	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
 		if opts.persistKey {
 			if err := saveAPIKeyProfile(key, ""); err != nil {
@@ -716,7 +716,31 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		return info, "", nil
 	}
 
-	// Reuse the saved key, but only for the workspace this run resolved: keys are workspace-scoped at mint time, and minting per run orphaned every copy of the old one.
+	token, created, err := ensureDurableKey(rep, client, state, opts)
+	if err != nil {
+		return nil, "", err
+	}
+	info["created"] = created
+	if token == "" {
+		return info, "", nil
+	}
+	if path, err := writeShellEnvFile(token); err != nil {
+		// Not fatal: the key is saved, and the final screen still shows how to export it.
+		rep.warn("could not write the shell env file: %v", err)
+	} else {
+		// Labelled, not indented under "key saved": that line is skipped when an earlier setup's key is reused.
+		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
+		offerProfileSourceLine(rep, opts)
+	}
+
+	return info, token, nil
+}
+
+// ensureDurableKey reuses the saved workspace key or mints and persists a new
+// one. Reuse is workspace-scoped: keys are minted per workspace, and minting
+// per run orphaned every copy of the old one. An interactive setup may decline
+// the mint, which returns an empty token.
+func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (token string, created bool, err error) {
 	token, tokenWS := savedAPIKey()
 	active := activeWorkspaceKey(state.session)
 	switch {
@@ -730,47 +754,37 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	default:
 		rep.ok("reusing the key from an earlier setup")
 	}
-	if token == "" {
-		if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
-			rep.ok("skipped creating an API key")
-			return info, "", nil
-		}
-
-		// Plain ASCII: the dashboard echoes the name back and we do not know its validation rules.
-		hostname, _ := os.Hostname()
-		hostname = strings.TrimSuffix(hostname, ".local")
-		if hostname == "" {
-			hostname = "unknown-host"
-		}
-		keyName := sanitizeKeyName("orq-cli " + hostname)
-
-		// Without a user id the API mints against a service account, which only admins may create.
-		userID := ""
-		if state.session != nil && state.session.User != nil {
-			userID = state.session.User.ID
-		}
-		minted, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID)
-		if err != nil {
-			return nil, "", err
-		}
-		token = minted
-		// The API returns the raw token once: persist before anything else can fail.
-		if err := saveAPIKeyProfile(token, active); err != nil {
-			return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
-		}
-		info["created"] = true
-		rep.ok("key saved   %s  (workspace-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
+	if token != "" {
+		return token, false, nil
 	}
-	if path, err := writeShellEnvFile(token); err != nil {
-		// Not fatal: the key is saved, and the final screen still shows how to export it.
-		rep.warn("could not write the shell env file: %v", err)
-	} else {
-		// Labelled, not indented under "key saved": that line is skipped when an earlier setup's key is reused.
-		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
-		offerProfileSourceLine(rep, opts)
+	if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
+		rep.ok("skipped creating an API key")
+		return "", false, nil
 	}
 
-	return info, token, nil
+	// Plain ASCII: the dashboard echoes the name back and we do not know its validation rules.
+	hostname, _ := os.Hostname()
+	hostname = strings.TrimSuffix(hostname, ".local")
+	if hostname == "" {
+		hostname = "unknown-host"
+	}
+	keyName := sanitizeKeyName("orq-cli " + hostname)
+
+	// Without a user id the API mints against a service account, which only admins may create.
+	userID := ""
+	if state.session != nil && state.session.User != nil {
+		userID = state.session.User.ID
+	}
+	minted, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID)
+	if err != nil {
+		return "", false, err
+	}
+	// The API returns the raw token once: persist before anything else can fail.
+	if err := saveAPIKeyProfile(minted, active); err != nil {
+		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
+	}
+	rep.ok("key saved   %s  (workspace-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
+	return minted, true, nil
 }
 
 func sanitizeKeyName(name string) string {
