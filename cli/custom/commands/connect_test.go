@@ -156,3 +156,94 @@ func TestConnectDryRunWritesNothing(t *testing.T) {
 		t.Error("dry run wrote the mcp config")
 	}
 }
+
+// Naming agents is intent; a bare invocation is not. Without a TTY to ask,
+// both verbs refuse rather than act on every agent the machine happens to
+// have — and disconnect, the destructive one, refuses even after listing.
+func TestBareInvocationsRefuseToActWithoutConsent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// claude wired, so disconnect has something to find.
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"),
+		[]byte(`{"mcpServers":{"`+mcpServerName+`":{"url":"x"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "name the agents") {
+		t.Errorf("bare connect without a TTY: err = %v, want a refusal naming the agents", err)
+	}
+
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{})
+	err = d.Execute()
+	if err == nil || !strings.Contains(err.Error(), "without confirmation") {
+		t.Errorf("bare disconnect without a TTY: err = %v, want a refusal", err)
+	}
+	// It refused, so the config survives.
+	data, readErr := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if readErr != nil || !strings.Contains(string(data), mcpServerName) {
+		t.Error("a refused disconnect still removed the entry")
+	}
+}
+
+// --dry-run previews without needing consent, and changes nothing.
+func TestDisconnectDryRunRemovesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before := `{"mcpServers":{"` + mcpServerName + `":{"url":"x"}}}`
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	cmd := NewDisconnectCommand()
+	cmd.SetArgs([]string{"--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if got := string(mustRead(t, filepath.Join(home, ".claude.json"))); got != before {
+		t.Errorf("dry run changed the file:\n%s", got)
+	}
+}
+
+// An unwired machine gets one line, not one per registered agent.
+func TestDisconnectOnAnUnwiredMachineIsQuiet(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code", ".config/opencode"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	cmd := NewDisconnectCommand()
+	cmd.SetArgs([]string{})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if n := strings.Count(out.String(), "nothing"); n > 1 {
+		t.Errorf("one line expected, got %d:\n%s", n, out.String())
+	}
+}

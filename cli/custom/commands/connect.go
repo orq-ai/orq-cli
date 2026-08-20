@@ -105,6 +105,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if err != nil {
 		return err
 	}
+	rawCaps := caps
 	caps = dropUnavailableCaps(rep, caps)
 	if len(caps) == 0 && capsWereOnlyTracing(args) {
 		return nil
@@ -112,11 +113,41 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if len(caps) == 0 {
 		caps = []string{capGateway, capMCP}
 	}
-	if len(agents) == 0 {
-		agents = detectedAgents()
-		if len(agents) == 0 {
+	// Naming an agent is the intent; leaving it bare is not, so ask rather than
+	// act on every agent the machine happens to have.
+	namedAgents := len(agents) > 0
+	if !namedAgents {
+		detected := detectedAgents()
+		if len(detected) == 0 {
 			rep.info("no coding agents detected — name one: orq connect <%s>", strings.Join(agentIDs(), "|"))
 			return nil
+		}
+		switch {
+		case opts.yes || dryRun:
+			agents = detected
+		case opts.noInput:
+			return fmt.Errorf("name the agents to connect (%s), or pass --yes to connect all detected",
+				strings.Join(detected, ", "))
+		default:
+			agents, err = promptForAgents(rep)
+			if err != nil {
+				return fmt.Errorf("cancelled at the agent selection: %w", err)
+			}
+			if len(agents) == 0 {
+				rep.info("nothing selected")
+				return nil
+			}
+			if len(rawCaps) == 0 {
+				chosen, _, err := promptForCapabilities(rep, opts)
+				if err != nil {
+					return fmt.Errorf("cancelled at the capability selection: %w", err)
+				}
+				if len(chosen) == 0 {
+					rep.info("no capabilities selected")
+					return nil
+				}
+				caps = chosen
+			}
 		}
 	}
 	opts.agents = agents
@@ -256,25 +287,30 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 
 func NewDisconnectCommand() *cobra.Command {
 	opts := setupOptions{}
+	dryRun := false
 
 	cmd := &cobra.Command{
 		Use:   "disconnect [agent...] [capability...]",
 		Short: "Remove what orq connect wrote",
-		Long: bartolocli.Markdown(`Removes orq's entries from agent configs: only the keys and tables ` +
-			"`orq connect`" + ` (or ` + "`orq setup`" + `) wrote, never the rest of the file. No agents ` +
-			`named means every detected agent; no capabilities means all of them.`),
+		Long: bartolocli.Markdown(`Edits your agents' config files: it removes the keys and tables ` +
+			"`orq connect`" + ` (or ` + "`orq setup`" + `) wrote, and nothing else.
+
+Naming agents removes from those. A bare ` + "`orq disconnect`" + ` targets every detected agent ` +
+			`and lists what it would remove before asking. ` + "`--dry-run`" + ` shows the list and stops.`),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDisconnect(cmd, &opts, args)
+			return runDisconnect(cmd, &opts, args, dryRun)
 		},
 	}
 	f := cmd.Flags()
 	f.BoolVar(&opts.global, "global", false, "Remove from the home-directory config instead of this project")
 	f.BoolVar(&opts.local, "local", false, "Remove from this project's config even when inference would pick $HOME")
+	f.BoolVarP(&opts.yes, "yes", "y", false, "Remove without confirming")
+	f.BoolVar(&dryRun, "dry-run", false, "Show what would be removed, remove nothing")
 	return cmd
 }
 
-func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string) error {
+func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {
 	if err := resolveScope(opts); err != nil {
 		return err
 	}
@@ -287,8 +323,37 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string) error 
 	if len(caps) == 0 {
 		caps = []string{capGateway, capMCP}
 	}
-	if len(agents) == 0 {
+	namedAgents := len(agents) > 0
+	if !namedAgents {
 		agents = detectedAgents()
+	}
+
+	// Removal is the one destructive verb, so it says what it will remove
+	// before it does. Naming agents is intent; a bare run is not.
+	wired := wiredTargets(agents, caps, opts)
+	if len(wired) == 0 {
+		rep.info("nothing wired on this machine")
+		return nil
+	}
+	if dryRun {
+		rep.info("dry run — what would be removed, nothing changed")
+		for _, w := range wired {
+			rep.info("%-8s %-9s %s", w.agent, w.capability, tilde(w.path))
+		}
+		return nil
+	}
+	if !opts.yes && !namedAgents {
+		rep.warn("about to remove orq from %d config file(s):", len(wired))
+		for _, w := range wired {
+			rep.warn("  %-8s %-9s %s", w.agent, w.capability, tilde(w.path))
+		}
+		if opts.noInput {
+			return errors.New("refusing to remove from every detected agent without confirmation; name the agents, or pass --yes")
+		}
+		if !opts.confirm("Remove these?", false) {
+			rep.info("nothing removed")
+			return nil
+		}
 	}
 
 	type row struct {
@@ -328,12 +393,11 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string) error 
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
 		}
-		if len(removedFrom) == 0 && r.Error == "" {
-			rep.info("%-8s nothing to remove", id)
-		}
 		r.Removed = strings.Join(removedFrom, "+")
 		rows = append(rows, r)
 	}
+
+	reportBackups(rep, wired)
 
 	if !wantsHumanView(cmd) {
 		if err := emit(map[string]any{"agents": rows}); err != nil {
@@ -344,6 +408,52 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string) error 
 		return errAgentFailed
 	}
 	return nil
+}
+
+// wiredTarget is one agent's capability and the file holding it.
+type wiredTarget struct{ agent, capability, path string }
+
+// wiredTargets is what disconnect would act on: only capabilities actually
+// present on disk, so the preview never lists a file it will not touch.
+func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
+	var out []wiredTarget
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			continue
+		}
+		if hasCap(caps, capMCP) {
+			if path, ok := wiredPath(spec.mcpConfig, mcpEntryPresent); ok {
+				out = append(out, wiredTarget{id, capMCP, path})
+			}
+		}
+		if hasCap(caps, capGateway) {
+			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
+				out = append(out, wiredTarget{id, capGateway, path})
+			}
+		}
+	}
+	return out
+}
+
+// reportBackups names the copies writeJSONConfig took, once. A safety net the
+// user cannot see is not one.
+func reportBackups(rep *reporter, wired []wiredTarget) {
+	seen := map[string]bool{}
+	var backups []string
+	for _, w := range wired {
+		backup := w.path + ".orq-bak"
+		if seen[backup] {
+			continue
+		}
+		seen[backup] = true
+		if _, err := os.Stat(backup); err == nil {
+			backups = append(backups, tilde(backup))
+		}
+	}
+	if len(backups) > 0 {
+		rep.info("a copy from before orq first wrote is at: %s", strings.Join(backups, ", "))
+	}
 }
 
 // bothScopePaths resolves the project and global paths, deduplicated: many

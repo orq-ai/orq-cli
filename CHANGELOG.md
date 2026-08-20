@@ -51,8 +51,12 @@ the version and this changelog as the source of truth for breaking changes.
 - Added: `orq connect [agent...] [capability...]` and `orq disconnect` — wire
   coding agents to orq permanently, and remove exactly what was written.
   Capabilities are positional (`gateway`, `mcp`); none named means both, no
-  agents named means every detected agent. `--dry-run` shows the files that
-  would change. `tracing` is reserved vocabulary and says so when selected.
+  agents named means every detected agent, which both verbs ask about before
+  acting: naming agents is intent, a bare run is not. Without a TTY they refuse
+  rather than guess — name the agents or pass `--yes`. `disconnect` lists the
+  files it would touch before asking (default no), takes `--dry-run`, and names
+  the pre-orq backup when one exists. `tracing` is reserved vocabulary and says
+  so when selected.
 - Changed: `orq setup` owns the machine, not the agents. It authenticates,
   mints or reuses the key, and ends by offering to connect detected agents
   (a consent gate, then agent and capability selection). Non-interactive runs

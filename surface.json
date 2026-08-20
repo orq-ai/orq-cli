@@ -2369,11 +2369,20 @@
       "use": "disconnect [agent...] [capability...]",
       "flags": [
         {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
           "name": "global",
           "type": "bool"
         },
         {
           "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
           "type": "bool"
         }
       ]
