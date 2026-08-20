@@ -135,9 +135,9 @@ func agentRegistry() []agentSpec {
 			ID:    "pi",
 			Label: "Pi Coding Agent",
 			// Gateway only: pi has no native MCP, extensions only.
-			detect: detectAny(".pi/agent", ".pi"),
+			detect: piDetect,
 			// pi reads models.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.pi/agent) only.
-			providerConfig:  alwaysGlobalPath(".pi/agent/models.json"),
+			providerConfig:  piPath("models.json"),
 			writeProvider:   writePiProviderJSON,
 			providerPresent: jsonProviderPresentAt("providers", launch.PiProvider),
 			// The model has to be named. Verified against pi 0.83.0: a bare
@@ -187,6 +187,33 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 		}
 		return filepath.Join(home, rel), nil
 	}
+}
+
+// piPath resolves inside pi's agent directory: $PI_CODING_AGENT_DIR when set,
+// ~/.pi/agent otherwise — the same order pi itself resolves it, and the same
+// variable `orq launch pi` sets to point pi at a temp dir.
+func piPath(rel string) func(bool) (string, error) {
+	return func(bool) (string, error) {
+		if dir := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); dir != "" {
+			return filepath.Join(dir, rel), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".pi", "agent", rel), nil
+	}
+}
+
+// piDetect mirrors piPath: when $PI_CODING_AGENT_DIR names pi's directory, that
+// directory alone decides — falling through to ~/.pi would detect an install
+// the write path then ignores, and setup would report a file pi never reads.
+func piDetect() bool {
+	if dir := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); dir != "" {
+		_, err := os.Stat(dir)
+		return err == nil
+	}
+	return detectAny(".pi/agent", ".pi")()
 }
 
 // codexPath resolves inside codex's config directory: $CODEX_HOME when set, ~/.codex otherwise.
