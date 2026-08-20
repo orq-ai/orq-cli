@@ -4928,6 +4928,142 @@
       ]
     },
     {
+      "path": "orq model-catalog",
+      "use": "model-catalog"
+    },
+    {
+      "path": "orq model-catalog get",
+      "use": "get id"
+    },
+    {
+      "path": "orq model-catalog list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "endpoint",
+          "type": "string"
+        },
+        {
+          "name": "feature",
+          "type": "string"
+        },
+        {
+          "name": "input-modality",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "location",
+          "type": "string"
+        },
+        {
+          "name": "offering-of",
+          "type": "string"
+        },
+        {
+          "name": "order",
+          "type": "string"
+        },
+        {
+          "name": "output-modality",
+          "type": "string"
+        },
+        {
+          "name": "provider",
+          "type": "string"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "sort-by",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "supported-parameter",
+          "type": "string"
+        },
+        {
+          "name": "tier",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq model-catalog list-offerings",
+      "use": "list-offerings model",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "endpoint",
+          "type": "string"
+        },
+        {
+          "name": "feature",
+          "type": "string"
+        },
+        {
+          "name": "input-modality",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "location",
+          "type": "string"
+        },
+        {
+          "name": "order",
+          "type": "string"
+        },
+        {
+          "name": "output-modality",
+          "type": "string"
+        },
+        {
+          "name": "provider",
+          "type": "string"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "sort-by",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "supported-parameter",
+          "type": "string"
+        },
+        {
+          "name": "tier",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "path": "orq model-sharing",
       "use": "model-sharing"
     },
