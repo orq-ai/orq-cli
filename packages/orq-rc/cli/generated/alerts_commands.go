@@ -28,11 +28,11 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an alert",
-			Long:    bartolocli.Markdown("Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string, required)\n- `query` (allOf, required)\n- `signal` (string)\n\nRequired fields: `condition`, `display_name`, `project_id`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string, required)\n- `query` (allOf, required)\n- ... and 1 more fields\n\nRequired fields: `condition`, `display_name`, `project_id`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"30s\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -48,6 +48,12 @@ func registeralertsCommands(root *cobra.Command) {
 							FlagName:    "description",
 							Type:        "string",
 							Description: "Short human-readable summary of what the alert watches.",
+						},
+						{
+							Name:        "display",
+							FlagName:    "display",
+							Type:        "json",
+							Description: "Display options for the alert activity chart.",
 						},
 						{
 							Name:        "display_name",
@@ -118,6 +124,12 @@ func registeralertsCommands(root *cobra.Command) {
 					FlagName:    "description",
 					Type:        "string",
 					Description: "Short human-readable summary of what the alert watches.",
+				},
+				{
+					Name:        "display",
+					FlagName:    "display",
+					Type:        "json",
+					Description: "Display options for the alert activity chart.",
 				},
 				{
 					Name:        "display_name",
@@ -359,11 +371,11 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update alert-id",
 			Short:   "Update an alert",
-			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"30s\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\"\n  },\n  \"signal\": \"signal\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\"\n  },\n  \"signal\": \"signal\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -379,6 +391,12 @@ func registeralertsCommands(root *cobra.Command) {
 							FlagName:    "description",
 							Type:        "string",
 							Description: "New description. Omit to keep the current description.",
+						},
+						{
+							Name:        "display",
+							FlagName:    "display",
+							Type:        "json",
+							Description: "Display options to merge. Omitted fields keep their current values.",
 						},
 						{
 							Name:        "display_name",
@@ -443,6 +461,12 @@ func registeralertsCommands(root *cobra.Command) {
 					FlagName:    "description",
 					Type:        "string",
 					Description: "New description. Omit to keep the current description.",
+				},
+				{
+					Name:        "display",
+					FlagName:    "display",
+					Type:        "json",
+					Description: "Display options to merge. Omitted fields keep their current values.",
 				},
 				{
 					Name:        "display_name",

@@ -32,7 +32,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"embedding_config\": {\n    \"model\": \"model\"\n  },\n  \"key\": \"key\",\n  \"path\": \"Default\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"embedding_config\": {\n    \"model\": \"model\"\n  },\n  \"key\": \"key\",\n  \"path\": \"path\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -41,7 +41,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
-							Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
+							Description: "",
 						},
 						{
 							Name:        "embedding_config",
@@ -59,13 +59,13 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path. With workspace-level API keys, the first element identifies the project. With project-level API keys, the path is relative to that project.",
 						},
 						{
 							Name:        "ttl",
 							FlagName:    "ttl",
 							Type:        "float64-nullable",
-							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+							Description: "",
 						},
 					},
 				)
@@ -93,7 +93,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
-					Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
+					Description: "",
 				},
 				{
 					Name:        "embedding_config",
@@ -111,13 +111,13 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path. With workspace-level API keys, the first element identifies the project. With project-level API keys, the path is relative to that project.",
 				},
 				{
 					Name:        "ttl",
 					FlagName:    "ttl",
 					Type:        "float64-nullable",
-					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+					Description: "",
 				},
 			},
 		)
@@ -153,7 +153,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "metadata",
 							FlagName:    "metadata",
 							Type:        "string-map",
-							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs.",
 						},
 						{
 							Name:        "text",
@@ -187,7 +187,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "string-map",
-					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs.",
 				},
 				{
 					Name:        "text",
@@ -312,7 +312,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-document memory-store-key memory-entity-id document-id",
 			Short:   "Delete a specific memory document",
-			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\n        Use this endpoint to:\n        - Remove a document from a memory\n        - Clean up unused documents\n        - Manage document storage space"),
+			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\nUse this endpoint to:\n- Remove a document from a memory\n- Clean up unused documents\n- Manage document storage space"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -346,7 +346,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-memory memory-store-key memory-entity-id",
 			Short:   "Delete a specific memory",
-			Long:    bartolocli.Markdown("Permanently deletes a specific memory.\n\n        Use this endpoint to:\n        - Remove a memory from the store\n        - Clean up unused memories\n        - Manage memory storage space"),
+			Long:    bartolocli.Markdown("Permanently deletes a specific memory.\n\nUse this endpoint to:\n- Remove a memory from the store\n- Clean up unused memories\n- Manage memory storage space"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -398,7 +398,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("search", "", "Filter memory stores by key (case-insensitive match)")
@@ -439,7 +439,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("updated-after", "", "Filter documents updated after this ISO datetime")
@@ -479,7 +479,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		}
 		memoryStoresCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("q", "", "Search query to filter memories by entity_id")
@@ -617,7 +617,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
-							Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
+							Description: "",
 						},
 						{
 							Name:        "path",
@@ -629,7 +629,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "ttl",
 							FlagName:    "ttl",
 							Type:        "float64-nullable",
-							Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+							Description: "",
 						},
 					},
 				)
@@ -657,7 +657,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
-					Description: "The description of the memory store. Be as precise as possible to help the AI to understand the purpose of the memory store.",
+					Description: "",
 				},
 				{
 					Name:        "path",
@@ -669,7 +669,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "ttl",
 					FlagName:    "ttl",
 					Type:        "float64-nullable",
-					Description: "The default time to live of every memory document created within the memory store. Useful to control if the documents in the memory should be store for short or long term.",
+					Description: "",
 				},
 			},
 		)
@@ -705,7 +705,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							Name:        "metadata",
 							FlagName:    "metadata",
 							Type:        "string-map",
-							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+							Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs.",
 						},
 						{
 							Name:        "text",
@@ -739,7 +739,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					Name:        "metadata",
 					FlagName:    "metadata",
 					Type:        "string-map",
-					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs (e.g., document type, source, topic, relevance score, or any custom taxonomy).",
+					Description: "Flexible key-value pairs for custom filtering and categorization. Clients can add arbitrary string metadata to enable future filtering of memory documents based on their specific needs.",
 				},
 				{
 					Name:        "text",

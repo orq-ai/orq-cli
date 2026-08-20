@@ -40,7 +40,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
 						},
 						{
@@ -110,7 +110,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
 				},
 				{
@@ -336,7 +336,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
 						},
 						{
@@ -418,7 +418,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
 				},
 				{

@@ -28,7 +28,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a guardrail rule",
-			Long:    bartolocli.Markdown("Creates a guardrail rule with metadata and optional evaluator, plugin, timeout, and matching configuration. Rules default to disabled when `enabled` is omitted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n- `project_id` (string)\n- `timeout` (integer)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a guardrail rule with metadata and optional evaluator, plugin, and matching configuration. Rules default to disabled when `enabled` is omitted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n- `project_id` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -79,12 +79,6 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							FlagName:    "project-id",
 							Type:        "string",
 							Description: "Optional project scope. Omit for a workspace-wide rule.",
-						},
-						{
-							Name:        "timeout",
-							FlagName:    "timeout",
-							Type:        "int64",
-							Description: "",
 						},
 					},
 				)
@@ -149,12 +143,6 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					FlagName:    "project-id",
 					Type:        "string",
 					Description: "Optional project scope. Omit for a workspace-wide rule.",
-				},
-				{
-					Name:        "timeout",
-					FlagName:    "timeout",
-					Type:        "int64",
-					Description: "",
 				},
 			},
 		)
@@ -328,12 +316,12 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update guardrail-rule-id",
 			Short:   "Update a guardrail rule",
-			Long:    bartolocli.Markdown("Partially updates guardrail-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n- `timeout` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates guardrail-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `guardrails` (array)\n- `plugins` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ],\n  \"timeout\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ]\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -372,12 +360,6 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 							Name:        "plugins",
 							FlagName:    "plugins",
 							Type:        "json",
-							Description: "",
-						},
-						{
-							Name:        "timeout",
-							FlagName:    "timeout",
-							Type:        "int64",
 							Description: "",
 						},
 					},
@@ -436,12 +418,6 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					Name:        "plugins",
 					FlagName:    "plugins",
 					Type:        "json",
-					Description: "",
-				},
-				{
-					Name:        "timeout",
-					FlagName:    "timeout",
-					Type:        "int64",
 					Description: "",
 				},
 			},
