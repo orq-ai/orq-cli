@@ -183,31 +183,9 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 
 	rep := newReporter(opts.noInput)
 
-	// Checked before authenticating: wiring needs a durable key (kimi embeds the literal value, session tokens expire within the hour) and this command never mints one.
-	saved, savedWS := savedAPIKey()
-	envKey := UserEnvAPIKey()
-	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
-		return errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
-	}
-
-	authState, err := resolveAuth(cmd.Context(), rep, opts)
+	authState, client, err := resolveConnectAuth(cmd, rep, opts)
 	if err != nil {
 		return err
-	}
-	// The saved key is workspace-scoped: refuse rather than wire every agent to the key's workspace. This command never mints.
-	if active := activeWorkspaceKey(authState.session); saved != "" && keyWorkspaceMismatch(savedWS, active) {
-		return fmt.Errorf("saved API key belongs to workspace %s, but the active workspace is %s — run 'orq setup --workspace %s' to create one for it", savedWS, active, active)
-	}
-	client := auth.NewClient(authState.apiBase)
-	// Only fall back to the saved key when the user supplied none this run, or agents get the stale credential resolveAuth has already replaced.
-	// The env key is the other durable credential the guard above admits: without this the run is let in and then skips every provider write.
-	if authState.suppliedKey == "" {
-		switch {
-		case saved != "":
-			authState.useDurableKey(saved)
-		case envKey != "":
-			authState.useDurableKey(envKey)
-		}
 	}
 
 	result := map[string]any{}
@@ -803,6 +781,14 @@ func warnLingeringAPIKeys() {
 	// Independent sources: explicitAPIKey is snapshotted before our PreRun injects a token, and an export matching the dotenv value is indistinguishable from it.
 	if explicitAPIKey && envAPIKeySet() && (file == "" || v != strings.TrimSpace(os.Getenv("ORQ_API_KEY"))) {
 		Warn("ORQ_API_KEY is still exported in this shell — logout cannot unset it; run: unset ORQ_API_KEY")
+	}
+	for _, spec := range agentRegistry() {
+		_, mcp := wiredPath(spec.mcpConfig, mcpEntryPresent)
+		_, prov := wiredPath(spec.providerConfig, spec.providerPresent)
+		if mcp || prov {
+			Warn("coding agents keep their orq config after logout — 'orq disconnect' removes it")
+			return
+		}
 	}
 }
 

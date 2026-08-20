@@ -278,6 +278,8 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewSetupCommand())
+	root.AddCommand(commands.NewConnectCommand())
+	root.AddCommand(commands.NewDisconnectCommand())
 }
 
 func replaceDoctor(root *cobra.Command) {

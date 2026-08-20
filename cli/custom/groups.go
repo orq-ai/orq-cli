@@ -25,13 +25,15 @@ var helpGroups = []*cobra.Group{
 }
 
 var commandGroup = map[string]string{
-	"setup":  groupGetStarted,
-	"launch": groupGetStarted,
-	"doctor": groupGetStarted,
-	"auth":   groupGetStarted,
-	"login":  groupGetStarted,
-	"logout": groupGetStarted,
-	"whoami": groupGetStarted,
+	"setup":      groupGetStarted,
+	"connect":    groupGetStarted,
+	"disconnect": groupGetStarted,
+	"launch":     groupGetStarted,
+	"doctor":     groupGetStarted,
+	"auth":       groupGetStarted,
+	"login":      groupGetStarted,
+	"logout":     groupGetStarted,
+	"whoami":     groupGetStarted,
 
 	"models":          groupGateway,
 	"chat":            groupGateway,
