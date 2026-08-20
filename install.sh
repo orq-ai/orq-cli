@@ -348,8 +348,12 @@ if [ "${already_current:-0}" != "1" ]; then
   fi
 
   # Atomic replace so a partial install can't corrupt an existing binary.
+  # Restores are `if ! mv`, never `&& mv`: under set -e a failing last command
+  # of an AND-list exits before the diagnostics below it print.
   if ! mv "$tmp_file" "$target"; then
-    [ -n "$previous" ] && mv "$previous" "$target"
+    if [ -n "$previous" ] && ! mv "$previous" "$target"; then
+      err "restoring the previous binary also failed; it is at $previous"
+    fi
     err "failed to move binary into $target"
     err "does the user have write permission to $INSTALL_DIR?"
     exit 1
@@ -358,19 +362,23 @@ if [ "${already_current:-0}" != "1" ]; then
   # The EXIT trap covers only the temp file, which has already been moved.
   installed_version="$("$target" --version 2>/dev/null || echo '')"
   if [ -n "$installed_version" ]; then
-    [ -n "$previous" ] && rm -f "$previous"
+    if [ -n "$previous" ]; then
+      rm -f "$previous" || true
+    fi
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
   elif [ -n "$previous" ]; then
-    mv "$previous" "$target"
+    if ! mv "$previous" "$target"; then
+      err "restoring the previous binary also failed; it is at $previous"
+      exit 1
+    fi
     err "the new binary did not run here (--version printed nothing), so the"
     err "previous one was restored: $("$target" --version 2>/dev/null || echo unknown)"
     exit 1
   else
-    rm -f "$target"
-    err "the downloaded binary does not run on this machine (--version failed)"
+    err "the installed binary does not run on this machine (--version failed)"
     err "it passed the checksum, so this may be a platform mismatch, an exec"
     err "policy, or a HOME/.orq directory the binary cannot create"
-    err "nothing was left at $target"
+    err "it was left at $target for inspection"
     exit 1
   fi
 fi
@@ -481,7 +489,7 @@ if [ "$RUN_SETUP" = "1" ] && have_tty; then
     if [ "$setup_status" = "130" ]; then
       err "setup was interrupted; run 'orq setup' when you are ready"
     else
-      err "setup exited $setup_status; the CLI is installed — rerun 'orq setup'"
+      err "setup exited $setup_status; the CLI is installed, rerun 'orq setup'"
     fi
   fi
 fi

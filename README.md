@@ -22,7 +22,7 @@ Requires Node.js 14 or newer. The matching native binary is downloaded automatic
 curl -fsSL https://cli.orq.ai/install.sh | sh
 ```
 
-Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published per-asset `.sha256`, adds the install directory to your shell profile, and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
+Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published per-asset `.sha256`, asks before adding the install directory to your shell profile (declining is fine — PATH just stays unset), and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
 
 ```sh
 # pin a version
