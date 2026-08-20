@@ -404,28 +404,54 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 	}
 }
 
-// A "providers" that is null or a list cannot be merged into; overwriting it
+// A section that is null or a list cannot be merged into; overwriting it
 // destroys user config, the same offence readJSONConfig refuses for invalid
-// JSON. Both must fail the same way: error, file untouched.
+// JSON. Every writer must fail the same way: error, file untouched. A
+// top-level `null` is the sharper case — it is valid JSON, so it reaches the
+// writers, and it unmarshals to a nil map that panics on assignment.
 func TestWritersRefuseANonObjectSection(t *testing.T) {
-	for name, body := range map[string]string{
-		"null": `{"providers": null}`,
-		"list": `{"providers": ["ollama"]}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "models.json")
-			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			_, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
-				openCodeModels(), "anthropic/claude-sonnet-4-6")
-			if err == nil {
-				t.Fatal("a non-object providers value was overwritten, not refused")
-			}
-			if got := string(mustRead(t, path)); got != body {
-				t.Errorf("file changed despite the refusal:\n%s", got)
-			}
-		})
+	// Each writer with the section key it merges into.
+	writers := map[string]struct {
+		section string
+		write   func(path string) error
+	}{
+		"pi/providers": {"providers", func(p string) error {
+			_, err := writePiProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), "anthropic/claude-sonnet-4-6")
+			return err
+		}},
+		"opencode/provider": {"provider", func(p string) error {
+			_, err := writeOpenCodeProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), "anthropic/claude-sonnet-4-6")
+			return err
+		}},
+		"claude/mcpServers": {"mcpServers", func(p string) error {
+			return writeMCPServersJSON(p, "https://api.orq.ai/v2/mcp")
+		}},
+		"opencode-mcp/mcp": {"mcp", func(p string) error {
+			return writeMCPRemoteJSON(p, "https://api.orq.ai/v2/mcp")
+		}},
+		"kimi-mcp/mcpServers": {"mcpServers", func(p string) error {
+			return writeMCPKimiJSON(p, "https://api.orq.ai/v2/mcp")
+		}},
+	}
+	for name, w := range writers {
+		for shape, body := range map[string]string{
+			"section null":  `{"` + w.section + `": null}`,
+			"section list":  `{"` + w.section + `": ["x"]}`,
+			"document null": `null`,
+		} {
+			t.Run(name+"/"+shape, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "config.json")
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := w.write(path); err == nil {
+					t.Fatal("a non-object value was overwritten, not refused")
+				}
+				if got := string(mustRead(t, path)); got != body {
+					t.Errorf("file changed despite the refusal:\n%s", got)
+				}
+			})
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -741,6 +742,147 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 	}
 	if results[0].Error == "" {
 		t.Errorf("provider write failed but agent Error is empty — the failure would exit 0; output:\n%s", out.String())
+	}
+}
+
+// The field above only matters because it becomes a non-zero exit. Both
+// commands turn agentResult.Error into errAgentFailed, and neither return was
+// covered: gating them off left the whole suite green, so "wire failed, exit 0"
+// could come back untouched by the test that exists to prevent it.
+// The mint path is what a first `orq setup` takes, and it was the untested
+// half of useDurableKey: setting the bearer there without its durability made
+// every provider write skip with "no durable API key to wire", and no test
+// noticed. Drives the real command end to end, from a fresh HOME with no saved
+// credential, and asserts the minted key reaches the agent config.
+func TestSetupWiresTheKeyItJustMinted(t *testing.T) {
+	const minted = "sk-orq-MINTED-THIS-RUN"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "api-keys"):
+			fmt.Fprintf(w, `{"token":%q}`, minted)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
+			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
+		default:
+			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	// --no-input is a global flag, not one of setup's own; resolveScope reads it here.
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", ""); viper.Set("no-input", false) })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	key := "acme"
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
+		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+		ActiveWorkspaceKey: &key,
+		WorkspaceTokens:    map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	cmd := NewSetupCommand()
+	cmd.SetArgs([]string{"--coding-agent", "kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if err != nil {
+		t.Fatalf("provider not wired at all — the minted key was not durable: %v", err)
+	}
+	tree := mustParseKimiTOML(t, string(data))
+	if got, _ := tree.Get("providers.orq.api_key").(string); got != minted {
+		t.Errorf("agent config carries api_key %q, want the minted key", got)
+	}
+	if strings.Contains(string(data), "session-token") {
+		t.Error("the session token reached an agent config")
+	}
+}
+
+func TestAFailedWireExitsNonZero(t *testing.T) {
+	for name, run := range map[string]func() error{
+		"setup": func() error {
+			c := NewSetupCommand()
+			c.SetArgs([]string{"--api-key", "sk-orq-x", "--coding-agent", "kimi", "--no-coding-agents=false"})
+			return c.Execute()
+		},
+		"setup coding-agents": func() error {
+			c := newSetupCodingAgentsCommand()
+			c.SetArgs([]string{"--api-key", "sk-orq-x", "--coding-agent", "kimi"})
+			return c.Execute()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.Contains(r.URL.Path, "model"):
+					fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+					 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+					 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+				default:
+					fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A","workspaces":[],"preferences":{}}`)
+				}
+			}))
+			defer srv.Close()
+
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ORQ_API_KEY", "")
+			t.Setenv("ORQ_API_BASE_URL", srv.URL)
+			t.Chdir(t.TempDir())
+			// ~/.kimi-code as a regular file: the provider write cannot succeed under it.
+			if err := os.WriteFile(filepath.Join(home, ".kimi-code"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			viper.Set("config-directory", t.TempDir())
+			viper.Set("profile", "default")
+			t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+			if bartolocli.Creds == nil {
+				bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+				t.Cleanup(func() { bartolocli.Creds = nil })
+			}
+			if bartolocli.Formatter == nil {
+				bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+				t.Cleanup(func() { bartolocli.Formatter = nil })
+			}
+			resetSetupMemos(t)
+
+			err := run()
+			if err == nil {
+				t.Fatal("a failed provider write exited 0")
+			}
+			if !errors.Is(err, errAgentFailed) {
+				t.Errorf("error = %v, want errAgentFailed", err)
+			}
+		})
 	}
 }
 

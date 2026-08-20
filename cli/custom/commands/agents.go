@@ -48,7 +48,9 @@ type agentSpec struct {
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
 	// providerPresent is the read-side pair of writeProvider, in that agent's own format; required whenever writeProvider is set.
 	providerPresent func(path string) bool
-	providerUsage   string
+	// providerEmbedsKey marks a provider config holding the credential literally rather than referencing ORQ_API_KEY.
+	providerEmbedsKey bool
+	providerUsage     string
 	// runCommand starts the agent against what setup wrote; empty means the bare ID does.
 	runCommand string
 }
@@ -114,9 +116,10 @@ func agentRegistry() []agentSpec {
 			manualSnippet: snippetMCPKimiJSON,
 			detect:        detectAny(".kimi-code", ".kimi"),
 			// Kimi reads config.toml only from the home directory.
-			providerConfig:  alwaysGlobalPath(".kimi-code/config.toml"),
-			writeProvider:   writeKimiProviderTOML,
-			providerPresent: tomlTablePresent("providers." + launch.KimiChatProvider),
+			providerConfig:    alwaysGlobalPath(".kimi-code/config.toml"),
+			writeProvider:     writeKimiProviderTOML,
+			providerPresent:   tomlTablePresent("providers." + launch.KimiChatProvider),
+			providerEmbedsKey: true,
 		},
 		{
 			ID:    "kilo",
@@ -283,7 +286,11 @@ func readJSONConfig(path string) (map[string]any, error) {
 	}
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("%s is not valid JSON — left untouched", path)
+		return nil, fmt.Errorf("%s is not valid JSON — left untouched: %w", path, err)
+	}
+	// Valid JSON that is not an object: `null` unmarshals into a nil map, which then panics on assignment.
+	if out == nil {
+		return nil, fmt.Errorf("%s is valid JSON but not an object — left untouched", path)
 	}
 	return out, nil
 }
@@ -730,17 +737,22 @@ func codingAgentChecks() []doctorCheck {
 		}
 
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
-		// Every config except kimi's provider TOML reaches the key through ORQ_API_KEY, so a wired agent in a shell without it 401s on every call.
 		details["api_key_in_env"] = keyExported
 
 		switch {
 		case offered == 0:
 			continue
 		case wired == offered && !keyExported:
+			// Name the half that breaks: kimi's provider TOML holds the key literally, so its
+			// model calls keep working and only the MCP tools fail. Saying "will fail to
+			// authenticate" there sends the user hunting for a gateway fault that is not there.
+			breaks := "agents started from here will fail to authenticate"
+			if spec.providerEmbedsKey && details["mcp"] != nil {
+				breaks = "its MCP tools will fail to authenticate (model calls keep working — the key is in its provider config)"
+			}
 			check.Status = "warn"
 			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
-				"agents started from here will fail to authenticate. Run '" + sourceLine +
-				"', or start them from a new shell"
+				breaks + ". Run '" + sourceLine + "', or start them from a new shell"
 		case wired == offered:
 			check.Status = "pass"
 			check.Message = spec.Label + " is wired to orq"

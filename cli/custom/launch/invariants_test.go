@@ -15,78 +15,100 @@ const canaryKey = "sk-canary-8f3a1b9c-secret"
 // the delivery mechanism) — never inside argv, never inside a substring of a
 // composed env value, and never in any file the resolver writes. A new agent
 // fails this automatically if it embeds the key anywhere.
+//
+// Both flag states, because the MCP writers only run under --mcp: sweeping the
+// zero value alone stopped exercising every MCP config the moment MCP became
+// opt-in, and a key inlined there would have gone unnoticed.
 func TestCanaryKeyNeverLeaks(t *testing.T) {
 	for _, def := range Agents() {
 		def := def
-		t.Run(def.Name, func(t *testing.T) {
-			plan, err := def.Resolve(&AgentContext{
-				Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL},
-				Getenv: env(nil),
-				Flags:  GatewayFlags{},
-				Fetch: func(_, _ string) ([]ModelInfo, error) {
-					return []ModelInfo{{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
-						{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000}}, nil
-				},
-				ExecProbe: func(string, ...string) (string, error) {
-					return "", io.EOF // catalog probes degrade to a warning
-				},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if plan.Cleanup != nil {
-				defer plan.Cleanup()
-			}
-
-			for _, arg := range plan.PreArgs {
-				if strings.Contains(arg, canaryKey) {
-					t.Fatalf("key leaked into argv: %q", arg)
-				}
-			}
-			for k, v := range plan.Env {
-				if v != canaryKey && strings.Contains(v, canaryKey) {
-					t.Fatalf("key embedded in composed env %s=%q", k, v)
-				}
-			}
-			for _, dir := range plan.TempDirs {
-				err := filepath.Walk(dir.HostPath, func(path string, info os.FileInfo, err error) error {
-					if err != nil || info.IsDir() {
-						return err
-					}
-					// Kimi is the sole sanctioned exception: it resolves
-					// provider credentials from config.toml only (no env
-					// fallback or interpolation), so the key lives in a 0600
-					// file inside a temp dir removed at session end.
-					if def.Name == "kimi" && filepath.Base(path) == "config.toml" {
-						if info.Mode().Perm() != 0o600 {
-							t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
-						}
-						return nil
-					}
-					data, err := os.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					if strings.Contains(string(data), canaryKey) {
-						t.Fatalf("key written to %s", path)
-					}
-					return nil
+		for _, flags := range flagStates() {
+			flags := flags
+			t.Run(def.Name+flags.label, func(t *testing.T) {
+				plan, err := def.Resolve(&AgentContext{
+					Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL},
+					Getenv: env(nil),
+					Flags:  flags.GatewayFlags,
+					Fetch: func(_, _ string) ([]ModelInfo, error) {
+						return []ModelInfo{{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
+							{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000}}, nil
+					},
+					ExecProbe: func(string, ...string) (string, error) {
+						return "", io.EOF // catalog probes degrade to a warning
+					},
 				})
 				if err != nil {
 					t.Fatal(err)
 				}
-			}
+				if plan.Cleanup != nil {
+					defer plan.Cleanup()
+				}
 
-			// Every host path handed to the agent must be declared in
-			// TempDirs — sandbox mode only delivers declared dirs, so an
-			// undeclared path breaks exclusively inside the container.
-			for _, arg := range plan.PreArgs {
-				assertDeclaredIfPath(t, arg, plan.TempDirs)
-			}
-			for _, v := range plan.Env {
-				assertDeclaredIfPath(t, v, plan.TempDirs)
-			}
-		})
+				for _, arg := range plan.PreArgs {
+					if strings.Contains(arg, canaryKey) {
+						t.Fatalf("key leaked into argv: %q", arg)
+					}
+				}
+				for k, v := range plan.Env {
+					if v != canaryKey && strings.Contains(v, canaryKey) {
+						t.Fatalf("key embedded in composed env %s=%q", k, v)
+					}
+				}
+				for _, dir := range plan.TempDirs {
+					err := filepath.Walk(dir.HostPath, func(path string, info os.FileInfo, err error) error {
+						if err != nil || info.IsDir() {
+							return err
+						}
+						// Kimi is the sole sanctioned exception: it resolves
+						// provider credentials from config.toml only (no env
+						// fallback or interpolation), so the key lives in a 0600
+						// file inside a temp dir removed at session end.
+						if def.Name == "kimi" && filepath.Base(path) == "config.toml" {
+							if info.Mode().Perm() != 0o600 {
+								t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
+							}
+							return nil
+						}
+						data, err := os.ReadFile(path)
+						if err != nil {
+							return err
+						}
+						if strings.Contains(string(data), canaryKey) {
+							t.Fatalf("key written to %s", path)
+						}
+						return nil
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				// Every host path handed to the agent must be declared in
+				// TempDirs — sandbox mode only delivers declared dirs, so an
+				// undeclared path breaks exclusively inside the container.
+				for _, arg := range plan.PreArgs {
+					assertDeclaredIfPath(t, arg, plan.TempDirs)
+				}
+				for _, v := range plan.Env {
+					assertDeclaredIfPath(t, v, plan.TempDirs)
+				}
+			})
+		}
+	}
+}
+
+// flagStates are the states that change which writers run. MCP is opt-in, so
+// its config writers execute only under --mcp.
+func flagStates() []struct {
+	GatewayFlags
+	label string
+} {
+	return []struct {
+		GatewayFlags
+		label string
+	}{
+		{GatewayFlags{}, ""},
+		{GatewayFlags{MCP: true}, "/--mcp"},
 	}
 }
 
