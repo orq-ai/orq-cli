@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/rs/zerolog"
@@ -1493,7 +1492,11 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 
 // The verdict line is the one row that says whether to trust the run, and the
 // footer rows are the only way out of a bad one. Both were unasserted: swapping
-// the verdict branches left the whole suite green.
+// the verdict branches left the whole suite green, and links was an empty map in
+// every other test, so the Workspace and Stuck? rows were never rendered at all.
+//
+// Every label row is anchored, so a label that outgrows labelWidth fails here
+// rather than silently starting its value one column left of the others.
 func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1508,9 +1511,10 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 
 	for _, want := range []string{
 		"Setup finished with failed checks",
+		"\n  Start       kimi\n",
+		"\n  Try         \"list my orq.ai agents\"\n",
 		"\n  Workspace   https://my.orq.ai/ws\n",
-		"orq doctor",
-		docsURL,
+		"\n  Stuck?      orq doctor  ·  " + docsURL + "\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q:\n%s", want, got)
@@ -1518,16 +1522,6 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 	}
 	if strings.Contains(got, "Setup complete") {
 		t.Errorf("claimed success on a failed run:\n%s", got)
-	}
-}
-
-// padLabel pads to labelWidth and cannot pad past it, so a label longer than the
-// column silently shifts its own row out of alignment with every other row.
-func TestLabelColumnFitsEveryLabel(t *testing.T) {
-	for _, label := range []string{"Start", "Try", "Workspace", "Stuck?"} {
-		if n := utf8.RuneCountInString(label); n >= labelWidth {
-			t.Errorf("label %q is %d runes, labelWidth is %d", label, n, labelWidth)
-		}
 	}
 }
 

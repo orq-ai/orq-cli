@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 
@@ -927,7 +926,7 @@ func resolveGatewayFunding(client *auth.Client, state *authState) {
 }
 
 // Zero enabled models is a blocker and warns; a zero balance may block nothing at all, so it states a remedy and asks nothing.
-// Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. warn and info rather than note, since notes are suppressed under --no-input.
+// Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. Both go out as warn or info, never note, since notes are suppressed under --no-input.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	noModels := count == 0
 	unfunded := state != nil && state.gatewayFunding == fundingNone
@@ -1293,9 +1292,9 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 			return group[0], true
 		}
 	}
-	// No preferred family, but anything callable beats no default: writers omit
-	// the key when this is empty, and the agent then falls back to a bundled id
-	// the gateway cannot address.
+	// No preferred family, but anything callable beats reporting none: on false
+	// the caller leaves defaultModel empty, writers omit the key, and the agent
+	// falls back to a bundled id the gateway cannot address.
 	return models[0], true
 }
 
@@ -1401,7 +1400,6 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	mcpWired := []string{}
 	gatewayOnly := []string{}
 	// starts are the wired agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
-	// The no-agent branch below is the one place 'orq launch' is the right answer, because nothing durable was written for it to shadow.
 	starts := []string{}
 	for _, a := range agents {
 		if a.Error != "" {
@@ -1431,6 +1429,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
 		}
 	default:
+		// 'orq launch' only belongs here: nothing durable was written for it to shadow.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
@@ -1467,7 +1466,6 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if len(starts) > 0 {
 		fmt.Fprintln(w)
 		for i, cmd := range starts {
-			// One label over the whole block: the rows after the first are continuations.
 			label := "Start"
 			if i > 0 {
 				label = ""
@@ -1489,13 +1487,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 // labelWidth pads every action and link label; wide enough for "Workspace", the longest one printed.
 const labelWidth = 11
 
-// padLabel pads outside the dim escape, or the column would shift by the width
-// of the escape sequence the moment colour is on.
 func padLabel(s string) string {
-	if s == "" {
-		return pad("", labelWidth)
-	}
-	return paint(ansiDim, s) + pad("", labelWidth-utf8.RuneCountInString(s))
+	return paint(ansiDim, pad(s, labelWidth))
 }
 
 func pluralize(n int, one, many string) string {
