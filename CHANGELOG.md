@@ -58,9 +58,19 @@ the version and this changelog as the source of truth for breaking changes.
   and registers the orq MCP server and gateway provider in the config files of
   the coding agents it detects. Unlike `orq launch`, these writes are
   persistent. It does not ask about projects: API keys are workspace-scoped.
-  `pi` is wired gateway only — an `orq` provider merged into
-  `~/.pi/agent/models.json`, reached with `pi --model orq/<model>` — because pi
-  has no native MCP.
+  `pi` is wired gateway only — an `orq` provider merged into its agent
+  directory's `models.json` (`$PI_CODING_AGENT_DIR`, or `~/.pi/agent`), reached
+  with `pi --model orq/<model>` — because pi has no native MCP.
+- Fixed: declining "Create a workspace API key now?" no longer wires the
+  session's expiring access token into agent configs. kimi embeds the
+  credential literally, so the token landed in `~/.kimi-code/config.toml`,
+  worked for under an hour, then failed every prompt with a 401. The provider
+  write is now skipped with a warning until a durable key exists.
+- Changed: when `ORQ_API_KEY` in the environment points at a different
+  workspace than your login, setup says which workspace wins; the note no
+  longer appears when both point at the same place. After MCP wiring, setup
+  suggests the agent-skills install, and the final screen's agent rows no
+  longer overflow narrow terminals.
 - Changed: the API key `orq setup` saves is reused only for the workspace it
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring
