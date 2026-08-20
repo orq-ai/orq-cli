@@ -48,25 +48,6 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
-- Changed: `orq launch` wires the orq MCP server (and, for claude, the skills
-  plugin) only when `--mcp` is passed; until now both were wired into every
-  launch by default. Launch is the throwaway path, and MCP tool calls share
-  the free plan's daily request quota with model calls; persistent MCP wiring
-  belongs to `orq setup`, where it stays the default. `--no-mcp` is still
-  accepted as a no-op, and `--no-skills` still opts the plugin out of an
-  `--mcp` run.
-- Changed: every `orq launch` default model is refreshed against the live
-  catalogue, and each vendor's agent now defaults to that vendor's flagship.
-  claude: `anthropic/claude-sonnet-5` (was `claude-sonnet-4-6`); codex:
-  `openai/gpt-5.6-terra` (was `gpt-5.4`); opencode, kilo, pi:
-  `openai/gpt-5.6-terra` (were `gpt-5-mini`); kimi: `moonshotai/kimi-k2.7-code`
-  (was `anthropic/claude-sonnet-4-6`). Pass `--model` to override, as
-  before.
-- Added: `orq launch <agent> --local` runs the agent directly on this computer.
-  `--sandbox` could already skip the safety prompt; local mode had no flag —
-  only `ORQ_LAUNCH_NON_INTERACTIVE=1` or a non-TTY run got past it. Passing
-  both flags is an error.
-
 - Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
   pi preconfigured to route every model call through the orq AI Router, with
   `--sandbox` (throwaway Docker container, nothing mounted unless
@@ -77,9 +58,19 @@ the version and this changelog as the source of truth for breaking changes.
   and registers the orq MCP server and gateway provider in the config files of
   the coding agents it detects. Unlike `orq launch`, these writes are
   persistent. It does not ask about projects: API keys are workspace-scoped.
-  `pi` is wired gateway only — an `orq` provider merged into
-  `~/.pi/agent/models.json`, reached with `pi --model orq/<model>` — because pi
-  has no native MCP.
+  `pi` is wired gateway only — an `orq` provider merged into its agent
+  directory's `models.json` (`$PI_CODING_AGENT_DIR`, or `~/.pi/agent`), reached
+  with `pi --model orq/<model>` — because pi has no native MCP.
+- Fixed: declining "Create a workspace API key now?" no longer wires the
+  session's expiring access token into agent configs. kimi embeds the
+  credential literally, so the token landed in `~/.kimi-code/config.toml`,
+  worked for under an hour, then failed every prompt with a 401. The provider
+  write is now skipped with a warning until a durable key exists.
+- Changed: when `ORQ_API_KEY` in the environment points at a different
+  workspace than your login, setup says which workspace wins; the note no
+  longer appears when both point at the same place. After MCP wiring, setup
+  suggests the agent-skills install, and the final screen's agent rows no
+  longer overflow narrow terminals.
 - Changed: the API key `orq setup` saves is reused only for the workspace it
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring
@@ -174,7 +165,7 @@ the version and this changelog as the source of truth for breaking changes.
 reaches the agent untouched. Its flags are therefore parsed by hand and do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
-`--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or
+`--model`, `--mount-cwd`, `--rebuild`, `--no-mcp`, `--no-skills` or
 `--no-fetch-models` will not fail CI. Treat them as covered by the stability
 contract anyway and announce changes here by hand, exactly as with `--json`
 response field shapes.
