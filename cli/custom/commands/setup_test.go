@@ -907,15 +907,15 @@ func TestCodexPathsHonorCodexHome(t *testing.T) {
 	}
 }
 
-// The subcommand exists to re-run wiring, so its contract is: reuse the saved
-// credential, never create one, and refuse clearly when none exists. Scope
-// flags conflict loudly rather than one silently winning.
+// Pins the subcommand's shape: the name, its flag set, and that the scope
+// flags conflict loudly rather than one silently winning. The credential
+// contract it advertises is covered by the wiring tests above.
 func TestCodingAgentsSubcommand(t *testing.T) {
 	sub := newSetupCodingAgentsCommand()
 	if sub.Name() != "coding-agents" {
 		t.Fatalf("subcommand is %q — the name is load-bearing, 'agents' collides with the platform product", sub.Name())
 	}
-	for _, flag := range []string{"agent", "gateway", "mcp", "global", "local"} {
+	for _, flag := range []string{"coding-agent", "gateway", "mcp", "global", "local"} {
 		if sub.Flags().Lookup(flag) == nil {
 			t.Errorf("missing flag --%s", flag)
 		}
@@ -944,22 +944,17 @@ func TestCodingAgentsSubcommand(t *testing.T) {
 }
 
 // The noun is "coding agents" everywhere the surface names it, so the flags
-// spell it the same way — `--agent` next to `--no-coding-agents` was the same
-// word twice in two spellings on one command. The old names shipped in a
-// release, so they keep working as hidden aliases rather than breaking a
-// script written against them.
-func TestCodingAgentFlagsAndTheirLegacyAliases(t *testing.T) {
+// spell it the same way. The v4.13 spellings --agent/--no-agent are gone, not
+// hidden: a script still passing them must fail loudly at parse time rather
+// than have the flag quietly ignored.
+func TestCodingAgentFlagsDropTheirV413Spellings(t *testing.T) {
 	for _, cmd := range []*cobra.Command{NewSetupCommand(), newSetupCodingAgentsCommand()} {
 		f := cmd.Flags()
 		if f.Lookup("coding-agent") == nil {
 			t.Errorf("%s: missing --coding-agent", cmd.Name())
 		}
-		legacy := f.Lookup("agent")
-		if legacy == nil {
-			t.Fatalf("%s: --agent must keep working for scripts written against it", cmd.Name())
-		}
-		if !legacy.Hidden {
-			t.Errorf("%s: deprecated --agent should not appear in help", cmd.Name())
+		if f.Lookup("agent") != nil {
+			t.Errorf("%s: --agent should be removed, not kept hidden", cmd.Name())
 		}
 	}
 
@@ -967,24 +962,18 @@ func TestCodingAgentFlagsAndTheirLegacyAliases(t *testing.T) {
 	if setup.Lookup("no-coding-agents") == nil {
 		t.Error("missing --no-coding-agents")
 	}
-	old := setup.Lookup("no-agent")
-	if old == nil || !old.Hidden {
-		t.Error("--no-agent should survive as a hidden alias")
+	if setup.Lookup("no-agent") != nil {
+		t.Error("--no-agent should be removed, not kept hidden")
 	}
 
-	// Both spellings must land on the same field, or one of them silently
-	// does nothing.
-	for _, name := range []string{"coding-agent", "agent"} {
-		opts := setupOptions{}
-		c := &cobra.Command{}
-		c.Flags().StringSliceVar(&opts.agents, "coding-agent", nil, "")
-		c.Flags().StringSliceVar(&opts.agents, "agent", nil, "")
-		if err := c.Flags().Parse([]string{"--" + name, "codex"}); err != nil {
-			t.Fatal(err)
-		}
-		if len(opts.agents) != 1 || opts.agents[0] != "codex" {
-			t.Errorf("--%s did not populate the agent list: %v", name, opts.agents)
-		}
+	// Removed means rejected: a silently-accepted unknown flag is the failure
+	// mode a removal exists to avoid.
+	cmd := NewSetupCommand()
+	cmd.SetArgs([]string{"--agent", "codex"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err == nil {
+		t.Error("--agent was accepted after removal")
 	}
 }
 

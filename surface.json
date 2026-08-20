@@ -7132,10 +7132,6 @@
       "use": "setup",
       "flags": [
         {
-          "name": "agent",
-          "type": "stringSlice"
-        },
-        {
           "name": "api-key",
           "type": "string"
         },
@@ -7154,10 +7150,6 @@
         },
         {
           "name": "local",
-          "type": "bool"
-        },
-        {
-          "name": "no-agent",
           "type": "bool"
         },
         {
@@ -7183,10 +7175,6 @@
       "path": "orq setup coding-agents",
       "use": "coding-agents",
       "flags": [
-        {
-          "name": "agent",
-          "type": "stringSlice"
-        },
         {
           "name": "api-key",
           "type": "string"

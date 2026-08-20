@@ -90,9 +90,6 @@ func NewSetupCommand() *cobra.Command {
 			`workspace API key, and wires your coding agents to orq — the AI Gateway as a ` +
 			`model provider, and the orq.ai MCP server for workspace tools.
 
-Projects are never asked about here: keys are workspace-scoped, and project ` +
-			`scope belongs where resources are created (agents, deployments).
-
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
 			`flagged with ` + "`--no-input`" + ` for CI.
 
@@ -114,13 +111,8 @@ wins over a key left exported in your shell.`),
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
-	f.StringSliceVar(&opts.agents, "agent", nil, "Deprecated alias for --coding-agent")
-	_ = f.MarkHidden("agent")
 	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
 	f.BoolVar(&opts.noCodingAgents, "no-coding-agents", false, "Skip coding-agent wiring entirely")
-	// Hidden, not removed: with no value to disambiguate it, --no-agent reads as "do not create an Orq Agent".
-	f.BoolVar(&opts.noCodingAgents, "no-agent", false, "Deprecated alias for --no-coding-agents")
-	_ = f.MarkHidden("no-agent")
 	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
@@ -157,8 +149,6 @@ Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your
 
 	f := cmd.Flags()
 	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
-	f.StringSliceVar(&opts.agents, "agent", nil, "Deprecated alias for --coding-agent")
-	_ = f.MarkHidden("agent")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of the one a previous setup saved")
 	f.BoolVar(&gatewayOnly, "gateway", false, "Wire only the AI Gateway provider")
 	f.BoolVar(&mcpOnly, "mcp", false, "Wire only the MCP server")

@@ -48,6 +48,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Removed (breaking):** `orq setup --agent` and `orq setup --no-agent`, the
+  v4.13 spellings, are gone. Use `--coding-agent` and `--no-coding-agents`.
+  They were briefly kept as hidden aliases; removing them means a script still
+  passing the old name fails at parse time rather than having the flag ignored.
 - Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
   pi preconfigured to route every model call through the orq AI Router, with
   `--sandbox` (throwaway Docker container, nothing mounted unless
