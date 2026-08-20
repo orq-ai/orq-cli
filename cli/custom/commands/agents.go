@@ -771,10 +771,10 @@ func codingAgentChecks() []doctorCheck {
 			check.Message = spec.Label + " is wired to orq"
 		case wired == 0:
 			check.Status = "warn"
-			check.Message = spec.Label + " detected but not wired — run 'orq setup coding-agents'"
+			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
 		default:
 			check.Status = "warn"
-			check.Message = spec.Label + " is partially wired — run 'orq setup coding-agents'"
+			check.Message = spec.Label + " is partially wired — run 'orq connect " + spec.ID + "'"
 		}
 		checks = append(checks, check)
 	}

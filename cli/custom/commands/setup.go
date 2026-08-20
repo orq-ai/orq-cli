@@ -289,9 +289,9 @@ func (f fundingState) String() string {
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
-	// persistKey is false on 'setup coding-agents', which promises it never creates
-	// keys: saving there replaces a credential the user did not ask to replace, and
-	// blanks its recorded workspace, which disables the mismatch guard permanently.
+	// persistKey is false on connect, which promises it never creates keys: saving
+	// there replaces a credential the user did not ask to replace, and blanks its
+	// recorded workspace, which disables the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
 		if opts.persistKey {
 			if err := saveAPIKeyProfile(key, ""); err != nil {
@@ -1334,7 +1334,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "  %s orq launch %s\n", padLabel("Launch"), detectedAgentID())
-		fmt.Fprintf(w, "  %s orq setup coding-agents\n", padLabel("Wire"))
+		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
 	}
 	// MCP entries reference ORQ_API_KEY too; checking only Provider left kimi with a dead MCP server and no warning.
 	keyReferenced := false

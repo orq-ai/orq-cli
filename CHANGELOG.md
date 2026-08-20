@@ -108,7 +108,7 @@ the version and this changelog as the source of truth for breaking changes.
 - Changed: the API key `orq setup` saves is reused only for the workspace it
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring
-  every agent config to the old one; `orq setup coding-agents` refuses in that
+  every agent config to the old one; `orq connect` refuses in that
   situation, since it never creates keys. Keys saved by earlier builds, and keys
   supplied with `--api-key`, carry no workspace record — their provenance is
   unknowable, so they are reused as before rather than refused. `orq setup

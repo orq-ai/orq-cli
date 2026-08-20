@@ -1790,7 +1790,7 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 			agents: nil,
 			// Ephemeral launch is legitimately the answer here, for a detected
 			// agent (the harness installs kimi), never a hardcoded claude.
-			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq setup coding-agents"},
+			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq connect"},
 			wantAbsent: []string{"orq launch claude", "Start "},
 		},
 		"errored agent does not count as wired": {
@@ -1916,7 +1916,7 @@ func TestFinalScreenGoldens(t *testing.T) {
 			"      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n" +
 			"                      base_url=\"https://api.orq.ai/v3/router\")\n\n" +
 			"  \033[2mLaunch     \033[0m orq launch kimi\n" +
-			"  \033[2mWire       \033[0m orq setup coding-agents\n\n" +
+			"  \033[2mWire       \033[0m orq connect\n\n" +
 			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
 	} {
@@ -2103,7 +2103,7 @@ func TestZeroBalanceIsActionableNotAlarming(t *testing.T) {
 	}
 }
 
-// 'setup coding-agents' documents that it never creates keys. It also must not
+// connect documents that it never creates keys. It also must not
 // replace one: saving --api-key overwrote the credential every other command
 // authenticates with, and blanked its recorded workspace, which disables the
 // mismatch guard for good — a one-off borrowed key silently becoming permanent.

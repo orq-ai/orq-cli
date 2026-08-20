@@ -1368,7 +1368,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	if len(checks) != 1 || checks[0].ID != "coding_agent_kimi" {
 		t.Fatalf("want one kimi check, got %+v", checks)
 	}
-	if checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "orq setup coding-agents") {
+	if checks[0].Status != "warn" || !strings.Contains(checks[0].Message, "orq connect ") {
 		t.Fatalf("unwired agent should warn and name the fix, got %+v", checks[0])
 	}
 
