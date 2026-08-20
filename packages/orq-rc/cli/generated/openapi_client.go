@@ -5924,6 +5924,260 @@ func OpenapiUpdateMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 	return resp, decoded, nil
 }
 
+// OpenapiModelCatalogGet Retrieve a model catalog entry
+func OpenapiModelCatalogGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "model-catalog get id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/model-catalog/{id}"
+	url = strings.Replace(url, "{id}", paramId, 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiModelCatalogList List the model catalog
+func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "model-catalog list"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/model-catalog"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramEndingBefore := params.GetString("ending-before")
+	if paramEndingBefore != "" {
+		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramProvider := params.GetString("provider")
+	if paramProvider != "" {
+		req = req.AddQuery("provider", fmt.Sprintf("%v", paramProvider))
+	}
+	paramEndpoint := params.GetString("endpoint")
+	if paramEndpoint != "" {
+		req = req.AddQuery("endpoint", fmt.Sprintf("%v", paramEndpoint))
+	}
+	paramInputModality := params.GetString("input-modality")
+	if paramInputModality != "" {
+		req = req.AddQuery("input_modality", fmt.Sprintf("%v", paramInputModality))
+	}
+	paramOutputModality := params.GetString("output-modality")
+	if paramOutputModality != "" {
+		req = req.AddQuery("output_modality", fmt.Sprintf("%v", paramOutputModality))
+	}
+	paramLocation := params.GetString("location")
+	if paramLocation != "" {
+		req = req.AddQuery("location", fmt.Sprintf("%v", paramLocation))
+	}
+	paramType := params.GetString("type")
+	if paramType != "" {
+		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
+	}
+	paramStatus := params.GetString("status")
+	if paramStatus != "" {
+		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	}
+	paramSupportedParameter := params.GetString("supported-parameter")
+	if paramSupportedParameter != "" {
+		req = req.AddQuery("supported_parameter", fmt.Sprintf("%v", paramSupportedParameter))
+	}
+	paramTier := params.GetString("tier")
+	if paramTier != "" {
+		req = req.AddQuery("tier", fmt.Sprintf("%v", paramTier))
+	}
+	paramOfferingOf := params.GetString("offering-of")
+	if paramOfferingOf != "" {
+		req = req.AddQuery("offering_of", fmt.Sprintf("%v", paramOfferingOf))
+	}
+	paramDeprecated := params.GetBool("deprecated")
+	if paramDeprecated != false {
+		req = req.AddQuery("deprecated", fmt.Sprintf("%v", paramDeprecated))
+	}
+	paramSearch := params.GetString("search")
+	if paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramSortBy := params.GetString("sort-by")
+	if paramSortBy != "" {
+		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
+	}
+	paramOrder := params.GetString("order")
+	if paramOrder != "" {
+		req = req.AddQuery("order", fmt.Sprintf("%v", paramOrder))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiModelCatalogListOfferings List model catalog offerings
+func OpenapiModelCatalogListOfferings(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "model-catalog list-offerings"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/model-catalog/offerings"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramEndingBefore := params.GetString("ending-before")
+	if paramEndingBefore != "" {
+		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramProvider := params.GetString("provider")
+	if paramProvider != "" {
+		req = req.AddQuery("provider", fmt.Sprintf("%v", paramProvider))
+	}
+	paramEndpoint := params.GetString("endpoint")
+	if paramEndpoint != "" {
+		req = req.AddQuery("endpoint", fmt.Sprintf("%v", paramEndpoint))
+	}
+	paramInputModality := params.GetString("input-modality")
+	if paramInputModality != "" {
+		req = req.AddQuery("input_modality", fmt.Sprintf("%v", paramInputModality))
+	}
+	paramOutputModality := params.GetString("output-modality")
+	if paramOutputModality != "" {
+		req = req.AddQuery("output_modality", fmt.Sprintf("%v", paramOutputModality))
+	}
+	paramLocation := params.GetString("location")
+	if paramLocation != "" {
+		req = req.AddQuery("location", fmt.Sprintf("%v", paramLocation))
+	}
+	paramType := params.GetString("type")
+	if paramType != "" {
+		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
+	}
+	paramStatus := params.GetString("status")
+	if paramStatus != "" {
+		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	}
+	paramSupportedParameter := params.GetString("supported-parameter")
+	if paramSupportedParameter != "" {
+		req = req.AddQuery("supported_parameter", fmt.Sprintf("%v", paramSupportedParameter))
+	}
+	paramTier := params.GetString("tier")
+	if paramTier != "" {
+		req = req.AddQuery("tier", fmt.Sprintf("%v", paramTier))
+	}
+	paramOfferingOf := params.GetString("offering-of")
+	if paramOfferingOf != "" {
+		req = req.AddQuery("offering_of", fmt.Sprintf("%v", paramOfferingOf))
+	}
+	paramDeprecated := params.GetBool("deprecated")
+	if paramDeprecated != false {
+		req = req.AddQuery("deprecated", fmt.Sprintf("%v", paramDeprecated))
+	}
+	paramSearch := params.GetString("search")
+	if paramSearch != "" {
+		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
+	}
+	paramSortBy := params.GetString("sort-by")
+	if paramSortBy != "" {
+		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
+	}
+	paramOrder := params.GetString("order")
+	if paramOrder != "" {
+		req = req.AddQuery("order", fmt.Sprintf("%v", paramOrder))
+	}
+	paramModel := params.GetString("model")
+	if paramModel != "" {
+		req = req.AddQuery("model", fmt.Sprintf("%v", paramModel))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiModelAzureFoundryDeployments List Azure Foundry deployments under a resource
 func OpenapiModelAzureFoundryDeployments(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models azure-foundry-deployments"
