@@ -55,9 +55,21 @@ the version and this changelog as the source of truth for breaking changes.
 - Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
   pi preconfigured to route every model call through the orq AI Router, with
   `--sandbox` (throwaway Docker container, nothing mounted unless
-  `--mount-cwd`), `--dry-run`, `--model`, and the orq MCP server wired in
-  automatically (`--no-mcp` to opt out). Per-invocation only: nothing is
-  written to your agent's own configuration.
+  `--mount-cwd`), `--dry-run`, `--model`, and `--mcp` to wire the orq MCP
+  server. Per-invocation only: nothing is written to your agent's own
+  configuration.
+- **Changed (breaking):** `orq launch --mcp` is opt-in. The orq MCP server used
+  to be wired on every launch with `--no-mcp` to decline; it is now off unless
+  you pass `--mcp`, and `--no-mcp` is accepted but does nothing. The skills
+  plugin follows MCP, so it is off by default too. A wrapper relying on the old
+  default gets an agent with no orq tools and no error.
+- **Changed:** the API key `orq setup` mints is owned by you, not by a service
+  account. Service accounts can only be created by workspace admins, so the old
+  behaviour failed for Developer and Researcher members of an Enterprise
+  workspace. The consequence worth knowing: a user-owned key is revoked when
+  that user leaves the organisation, where a service-account key outlived them.
+  Runs with no session, or a session carrying no user record, still mint against
+  a service account.
 - Added: `orq setup` — signs you in, creates (or reuses) a workspace API key,
   and registers the orq MCP server and gateway provider in the config files of
   the coding agents it detects. Unlike `orq launch`, these writes are
@@ -79,8 +91,12 @@ the version and this changelog as the source of truth for breaking changes.
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring
   every agent config to the old one; `orq setup coding-agents` refuses in that
-  situation, since it never creates keys. Keys saved by earlier builds carry no
-  workspace record and are reused as before.
+  situation, since it never creates keys. Keys saved by earlier builds, and keys
+  supplied with `--api-key`, carry no workspace record — their provenance is
+  unknowable, so they are reused as before rather than refused. `orq setup
+  coding-agents --api-key` no longer saves the key it was handed: it is used for
+  that run only, leaving the credential every other command authenticates with
+  untouched.
 - Removed: `orq setup` no longer writes `ORQ_API_KEY` into `./.env`, and the
   `--no-env` flag is gone with it. The key lives in `~/.orq/credentials.json`
   for the CLI and `~/.orq/env` for your agents: configs reference the
@@ -95,8 +111,6 @@ the version and this changelog as the source of truth for breaking changes.
   account ever saw in Traces. The default model is chosen from the catalogue
   ranking instead, and the first real agent request is the test. `orq doctor`
   reports gateway funding for free.
-  **Removed with it:** the `--no-verify` flag, which existed only to decline
-  that call.
 - Changed: `orq setup` asks about credits only when it is wiring the gateway,
   and only on a deployment with a known dashboard. Choosing "MCP tools only",
   passing `--no-coding-agents`, or running against a self-hosted install now
@@ -109,6 +123,8 @@ the version and this changelog as the source of truth for breaking changes.
   when an agent is wired but `ORQ_API_KEY` is absent from the current shell —
   the state every agent launched from a terminal older than your last `orq
   setup` is in, and one that looks like a broken install from inside the agent.
+  The warning names what actually breaks: for kimi, whose provider config holds
+  the key literally, model calls keep working and only the MCP tools fail.
   It also reports gateway funding when a login session is present. Detected but
   unwired is a warning, never a failure, so the exit code stays 0.
   **--json field change:** `checks[]` gains `coding_agent_<id>` entries and,
@@ -169,7 +185,7 @@ the version and this changelog as the source of truth for breaking changes.
 reaches the agent untouched. Its flags are therefore parsed by hand and do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
-`--model`, `--mount-cwd`, `--rebuild`, `--no-mcp`, `--no-skills` or
+`--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or
 `--no-fetch-models` will not fail CI. Treat them as covered by the stability
 contract anyway and announce changes here by hand, exactly as with `--json`
 response field shapes.
