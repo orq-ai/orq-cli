@@ -964,26 +964,6 @@ func TestSetupHasNoAgentFlags(t *testing.T) {
 	}
 }
 
-// The skip line names the flag of the command the user ran. Naming the
-// parent's --no-gateway from a subcommand that has no such flag sent people
-// looking for something that does not exist.
-func TestSkipFlagNamesTheCommandsOwnSpelling(t *testing.T) {
-	parent := &setupOptions{}
-	if got := parent.skipFlag("mcp"); got != "--no-mcp" {
-		t.Errorf("parent mcp skip names %q", got)
-	}
-	if got := parent.skipFlag("gateway"); got != "--no-gateway" {
-		t.Errorf("parent gateway skip names %q", got)
-	}
-	sub := &setupOptions{narrowing: true}
-	if got := sub.skipFlag("gateway"); got != "--mcp" {
-		t.Errorf("subcommand gateway skip names %q, want the flag that caused it", got)
-	}
-	if got := sub.skipFlag("mcp"); got != "--gateway" {
-		t.Errorf("subcommand mcp skip names %q, want the flag that caused it", got)
-	}
-}
-
 // The final screen must not tell the user to append a source line to a profile
 // that already has one. The "is it exported here" check is always false on the
 // run that just wrote the profile — the edit lands in new shells, not this one
@@ -1364,13 +1344,12 @@ func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
 	}
 }
 
-// resetSetupMemos clears the package-level state that carries decisions across
-// setup's steps, so tests cannot leak funding or probe results into each other.
+// resetSetupMemos clears the catalogue memo so one test's empty catalogue
+// cannot short-circuit the next.
 func resetSetupMemos(t *testing.T) {
 	t.Helper()
 	reset := func() {
 		codingModelsFetched, cachedCodingModels = false, nil
-		enabledModels, enabledModelsCounted = 0, false
 	}
 	reset()
 	t.Cleanup(reset)
@@ -1495,7 +1474,7 @@ func TestCreditsAreOnlyReadWhenTheGatewayIsWired(t *testing.T) {
 		"gateway and mcp": {setupOptions{noInput: true, agents: []string{"kimi"}}, true},
 		"gateway only":    {setupOptions{noInput: true, agents: []string{"kimi"}, noMCP: true}, true},
 		"mcp only":        {setupOptions{noInput: true, agents: []string{"kimi"}, noGateway: true}, false},
-		"nothing wired":   {setupOptions{noInput: true, noCodingAgents: true}, false},
+		"nothing wired":   {setupOptions{noInput: true}, false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -2212,8 +2191,8 @@ func TestGatewayOnlyOnAnAgentWithoutAProviderSaysSo(t *testing.T) {
 	srv := emptyCatalogueServer(t)
 	var out strings.Builder
 	rep := &reporter{w: &out}
-	// --gateway on the subcommand: MCP off, gateway on, for an agent with no provider.
-	opts := &setupOptions{noInput: true, noMCP: true, narrowing: true, agents: []string{"claude"}}
+	// connect claude gateway: MCP off, gateway on, for an agent with no provider.
+	opts := &setupOptions{noInput: true, noMCP: true, agents: []string{"claude"}}
 	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "sk-orq-fixture"}, opts)
 	if err != nil {
 		t.Fatalf("instrumentAgents: %v", err)
@@ -2300,25 +2279,6 @@ func TestSkillsSuggestedOnlyWithMCP(t *testing.T) {
 				t.Errorf("skills suggested = %v, want %v\n%s", got, tc.want, out.String())
 			}
 		})
-	}
-}
-
-func TestEnvKeyShadowsLogin(t *testing.T) {
-	cases := map[string]struct {
-		envKey, savedKey, savedWS, active string
-		want                              bool
-	}{
-		"our key, same workspace":  {"k1", "k1", "wsA", "wsA", false},
-		"our key, other workspace": {"k1", "k1", "wsA", "wsB", true},
-		"our key, unrecorded":      {"k1", "k1", "", "wsA", false},
-		"a key we did not mint":    {"k2", "k1", "wsA", "wsA", true},
-		"nothing exported":         {"", "k1", "wsA", "wsB", false},
-		"session has no workspace": {"k2", "k1", "wsA", "", false},
-	}
-	for name, tc := range cases {
-		if got := envKeyShadowsLogin(tc.envKey, tc.savedKey, tc.savedWS, tc.active); got != tc.want {
-			t.Errorf("%s: got %v, want %v", name, got, tc.want)
-		}
 	}
 }
 

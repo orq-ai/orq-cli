@@ -28,33 +28,18 @@ const (
 )
 
 type setupOptions struct {
-	interactive    bool
-	workspace      string
-	apiKey         string
-	agents         []string
-	global         bool
-	local          bool
-	noCodingAgents bool
-	noMCP          bool
-	noGateway      bool
-	noInput        bool
-	yes            bool
-	// narrowing records that the branch flags came from 'setup coding-agents', whose spellings are --gateway/--mcp.
-	narrowing bool
+	interactive bool
+	workspace   string
+	apiKey      string
+	agents      []string
+	global      bool
+	local       bool
+	noMCP       bool
+	noGateway   bool
+	noInput     bool
+	yes         bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
-}
-
-// skipFlag names the flag in the spelling of the command actually run: the subcommand has no --no-gateway to send people looking for.
-func (o *setupOptions) skipFlag(branch string) string {
-	if o.narrowing {
-		// On the subcommand, a branch is off because the *other* one was named.
-		if branch == "mcp" {
-			return "--gateway"
-		}
-		return "--mcp"
-	}
-	return "--no-" + branch
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
@@ -196,7 +181,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	result["agents"] = agentResults
 	result["gateway_funded"] = authState.gatewayFunding.String()
-	if n, counted := enabledModelCount(); counted {
+	if n, counted := authState.enabledModels, authState.enabledModelsCounted; counted {
 		result["models_enabled"] = n
 	}
 
@@ -255,7 +240,9 @@ type authState struct {
 	// durableKey is set whenever an API key becomes the bearer — minted this run or reused from a previous one.
 	durableKey bool
 	// gatewayFunding is what this run learned about the workspace's ability to pay for a model call.
-	gatewayFunding fundingState
+	gatewayFunding       fundingState
+	enabledModels        int
+	enabledModelsCounted bool
 }
 
 // useDurableKey makes an API key the bearer. Durability and the bearer move
@@ -337,7 +324,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	if session != nil {
 		envKey := UserEnvAPIKey()
 		savedKey, savedWS := savedAPIKey()
-		if envKeyShadowsLogin(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
+		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
 			if envKey == savedKey {
 				rep.note("the exported ORQ_API_KEY is for workspace %s; this run follows your login instead", savedWS)
 			} else {
@@ -621,17 +608,6 @@ func activeWorkspaceKey(session *auth.Session) string {
 	return ""
 }
 
-// Setup writes ~/.orq/env exporting the key it mints, so an exported key alongside a session is the ordinary state, not a conflict. Only a key that points elsewhere is worth a note.
-func envKeyShadowsLogin(envKey, savedKey, savedWS, active string) bool {
-	if envKey == "" || active == "" {
-		return false
-	}
-	if envKey != savedKey {
-		return true // not the key we minted; its workspace is unknowable
-	}
-	return keyWorkspaceMismatch(savedWS, active)
-}
-
 // Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
 func keyWorkspaceMismatch(savedWS, active string) bool {
 	return savedWS != "" && active != "" && savedWS != active
@@ -894,7 +870,7 @@ func canAdviseOnCredits(state *authState) bool {
 
 // The balance is a hint, not a verdict: the gateway also serves at zero credits via BYOK, private models, the recently-created flag, or shared keys.
 func resolveGatewayFunding(client *auth.Client, state *authState) {
-	if state == nil || state.gatewayFunding != fundingUnknown || !canAdviseOnCredits(state) {
+	if state == nil || !canAdviseOnCredits(state) {
 		return
 	}
 	credits, known := workspaceCanSpend(client, state)
@@ -980,15 +956,14 @@ func listEnabledModels(client *auth.Client, state *authState) (int, error) {
 
 // Dashboard paths must be prefixed with the workspace key; unprefixed ones 404. Keyless runs get the docs page.
 func workspaceURL(state *authState, path string) string {
-	key := ""
+	if u := workspaceLink(state, path); u != "" {
+		return u
+	}
 	apiBase := ""
 	if state != nil {
 		apiBase = state.apiBase
-		if state.session != nil && state.session.ActiveWorkspaceKey != nil {
-			key = *state.session.ActiveWorkspaceKey
-		}
 	}
-	return dashboardURL(apiBase, key, path)
+	return dashboardURL(apiBase, "", path)
 }
 
 // dashboardURL is the one place a settings link is built; doctor builds the same links through it.
@@ -1031,7 +1006,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		if count, err := listEnabledModels(client, state); err != nil {
 			rep.warn("could not list gateway models: %v", err)
 		} else {
-			rememberEnabledModelCount(count)
+			state.enabledModels, state.enabledModelsCounted = count, true
 			resolveGatewayFunding(client, state)
 			reportGatewayReadiness(rep, state, opts, count)
 		}
@@ -1184,13 +1159,6 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
-// enabledModels is the chat-model count and whether anyone counted: only the gateway branch counts, so unknown is not zero.
-var enabledModels int
-var enabledModelsCounted bool
-
-func rememberEnabledModelCount(n int) { enabledModels, enabledModelsCounted = n, true }
-func enabledModelCount() (int, bool)  { return enabledModels, enabledModelsCounted }
-
 // codingModels fetches the gateway catalogue once per run: the enabled chat models with function calling, the same pool 'orq launch' writes.
 // The error is returned, not swallowed into an empty slice: a fetch that failed and a workspace with nothing enabled are different facts, and
 // reporting the first as the second told users to go enable models in a workspace that already had them, then exited 0 having wired nothing.
@@ -1287,14 +1255,7 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 }
 
 // webBaseURL is the dashboard origin, "" when self-hosted without ORQ_WEB_BASE_URL.
-func webBaseURL(state *authState) string {
-	if state == nil {
-		return webBaseFor("")
-	}
-	return webBaseFor(state.apiBase)
-}
-
-// webBaseFor is webBaseURL without an authState, so doctor can build the same links.
+// webBaseFor derives the dashboard host, shared with doctor.
 func webBaseFor(apiBase string) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
 	if webBase == "" && apiBase == auth.DefaultAPIBaseURL {
@@ -1305,7 +1266,11 @@ func webBaseFor(apiBase string) string {
 
 func buildLinks(state *authState) map[string]string {
 	links := map[string]string{"docs": docsURL}
-	webBase := webBaseURL(state)
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+	}
+	webBase := webBaseFor(apiBase)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
 	}

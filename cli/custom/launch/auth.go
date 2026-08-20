@@ -81,11 +81,8 @@ func shadowsSession(key string, session *auth.Session) bool {
 		return false // no credential store to compare against
 	}
 	profile := bartolocli.GetProfile()
-	if strings.TrimSpace(profile["api_key"]) != key {
-		return true // not the key we minted; its workspace is unknowable
-	}
-	saved := strings.TrimSpace(profile["workspace"])
-	return saved != "" && saved != active
+	return auth.EnvKeyShadowsWorkspace(key,
+		strings.TrimSpace(profile["api_key"]), strings.TrimSpace(profile["workspace"]), active)
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly

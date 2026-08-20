@@ -225,3 +225,18 @@ func ClearSession() error {
 	}
 	return nil
 }
+
+// EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts
+// with the login": a key we did not mint has an unknowable workspace and
+// always conflicts; the minted key conflicts only on a recorded mismatch.
+// Either side unknown means no mismatch, so an unrecorded workspace never
+// invalidates a working credential.
+func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
+	if envKey == "" || activeWS == "" {
+		return false
+	}
+	if envKey != savedKey {
+		return true
+	}
+	return savedWS != "" && savedWS != activeWS
+}
