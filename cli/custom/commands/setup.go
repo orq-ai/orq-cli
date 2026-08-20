@@ -584,6 +584,11 @@ func detectShell(dir string) shellSetup {
 	return posix
 }
 
+func fileMissing(path string) bool {
+	_, err := os.Stat(path)
+	return err != nil
+}
+
 func tilde(path string) string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" || !strings.HasPrefix(path, home+string(os.PathSeparator)) {
@@ -1464,6 +1469,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),
 			"ORQ_API_KEY is not exported here, and agents inherit it from this shell.")
 		switch {
+		// A declined mint leaves no env file; sourcing it would be the remedy that fails.
+		case fileMissing(sh.EnvFile):
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "run 'orq setup' to create an API key and its env file"))
 		case sh.Profile != "" && profileSourcesEnvFile(sh):
 			fmt.Fprintf(w, "    %s\n", sh.displayLine())
 			fmt.Fprintf(w, "    %s\n", paint(ansiDim, fmt.Sprintf("new shells already get it from %s", tilde(sh.Profile))))

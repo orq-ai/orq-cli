@@ -898,6 +898,10 @@ func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// The mint wrote the env file; without it the screen points at 'orq setup' instead.
+	if err := os.WriteFile(filepath.Join(dir, "env"), []byte("export ORQ_API_KEY=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	viper.Set("config-directory", dir)
 	t.Cleanup(func() { viper.Set("config-directory", "") })
 

@@ -404,6 +404,31 @@ func TestOpenCodeProviderRefreshesOnRerun(t *testing.T) {
 	}
 }
 
+// A "providers" that is null or a list cannot be merged into; overwriting it
+// destroys user config, the same offence readJSONConfig refuses for invalid
+// JSON. Both must fail the same way: error, file untouched.
+func TestWritersRefuseANonObjectSection(t *testing.T) {
+	for name, body := range map[string]string{
+		"null": `{"providers": null}`,
+		"list": `{"providers": ["ollama"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "models.json")
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := writePiProviderJSON(path, "https://api.orq.ai/v3/router", "sk-k",
+				openCodeModels(), "anthropic/claude-sonnet-4-6")
+			if err == nil {
+				t.Fatal("a non-object providers value was overwritten, not refused")
+			}
+			if got := string(mustRead(t, path)); got != body {
+				t.Errorf("file changed despite the refusal:\n%s", got)
+			}
+		})
+	}
+}
+
 // pi's models.json is where users declare their own local providers (ollama,
 // vLLM, LM Studio), so setup adds one key to it and leaves the rest alone.
 func TestPiProviderMergePreservesUserProviders(t *testing.T) {

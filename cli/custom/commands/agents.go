@@ -331,13 +331,17 @@ func writeJSONConfig(path string, cfg map[string]any) error {
 	return os.Rename(tmpName, path)
 }
 
-func nestedMap(cfg map[string]any, key string) map[string]any {
+// A present non-object value is refused, matching readJSONConfig's rule for invalid JSON: never overwrite what we cannot merge into.
+func nestedMap(cfg map[string]any, key string) (map[string]any, error) {
 	if existing, ok := cfg[key].(map[string]any); ok {
-		return existing
+		return existing, nil
+	}
+	if v, present := cfg[key]; present {
+		return nil, fmt.Errorf("%q holds %T, not an object — left untouched", key, v)
 	}
 	created := map[string]any{}
 	cfg[key] = created
-	return created
+	return created, nil
 }
 
 func writeMCPServersJSON(path, url string) error {
@@ -345,7 +349,11 @@ func writeMCPServersJSON(path, url string) error {
 	if err != nil {
 		return err
 	}
-	nestedMap(cfg, "mcpServers")[mcpServerName] = map[string]any{
+	servers, err := nestedMap(cfg, "mcpServers")
+	if err != nil {
+		return err
+	}
+	servers[mcpServerName] = map[string]any{
 		"type":    "http",
 		"url":     url,
 		"headers": map[string]any{"Authorization": "Bearer ${ORQ_API_KEY}"},
@@ -358,7 +366,11 @@ func writeMCPRemoteJSON(path, url string) error {
 	if err != nil {
 		return err
 	}
-	nestedMap(cfg, "mcp")[mcpServerName] = map[string]any{
+	servers, err := nestedMap(cfg, "mcp")
+	if err != nil {
+		return err
+	}
+	servers[mcpServerName] = map[string]any{
 		"type":    "remote",
 		"url":     url,
 		"enabled": true,
@@ -372,7 +384,11 @@ func writeMCPKimiJSON(path, url string) error {
 	if err != nil {
 		return err
 	}
-	nestedMap(cfg, "mcpServers")[mcpServerName] = map[string]any{
+	servers, err := nestedMap(cfg, "mcpServers")
+	if err != nil {
+		return err
+	}
+	servers[mcpServerName] = map[string]any{
 		"url":               url,
 		"bearerTokenEnvVar": "ORQ_API_KEY",
 	}
@@ -425,7 +441,10 @@ func writeOpenCodeProviderJSON(path, routerURL, _ string, models []auth.RouterMo
 		return 0, err
 	}
 
-	providers := nestedMap(cfg, "provider")
+	providers, err := nestedMap(cfg, "provider")
+	if err != nil {
+		return 0, err
+	}
 	// Drop ours first so a provider that lost all its models leaves no stale entry.
 	for _, name := range []string{launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider} {
 		delete(providers, name)
@@ -465,7 +484,10 @@ func writePiProviderJSON(path, routerURL, _ string, models []auth.RouterModel, _
 		return 0, err
 	}
 
-	providers := nestedMap(cfg, "providers")
+	providers, err := nestedMap(cfg, "providers")
+	if err != nil {
+		return 0, err
+	}
 	// Drop ours first so a rerun replaces the block rather than merging into a
 	// stale model list.
 	delete(providers, launch.PiProvider)
