@@ -16,7 +16,6 @@ import (
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"orq/cli/custom/auth"
@@ -730,16 +729,10 @@ func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 	}
 }
 
-// The field above only matters because it becomes a non-zero exit. Both
-// commands turn agentResult.Error into errAgentFailed, and neither return was
-// covered: gating them off left the whole suite green, so "wire failed, exit 0"
-// could come back untouched by the test that exists to prevent it.
-// The mint path is what a first `orq setup` takes, and it was the untested
-// half of useDurableKey: setting the bearer there without its durability made
-// every provider write skip with "no durable API key to wire", and no test
-// noticed. Drives the real command end to end, from a fresh HOME with no saved
-// credential, and asserts the minted key reaches the agent config.
-func TestSetupWiresTheKeyItJustMinted(t *testing.T) {
+// Non-interactive setup mints and saves the key, wires nothing, and points at
+// connect; connect then wires with the key setup saved. The pair is the CI
+// composition and covers the mint-to-config chain end to end.
+func TestSetupMintsThenConnectWires(t *testing.T) {
 	const minted = "sk-orq-MINTED-THIS-RUN"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -769,7 +762,6 @@ func TestSetupWiresTheKeyItJustMinted(t *testing.T) {
 	}
 	viper.Set("config-directory", t.TempDir())
 	viper.Set("profile", "default")
-	// --no-input is a global flag, not one of setup's own; resolveScope reads it here.
 	viper.Set("no-input", true)
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", ""); viper.Set("no-input", false) })
 	if bartolocli.Creds == nil {
@@ -792,19 +784,30 @@ func TestSetupWiresTheKeyItJustMinted(t *testing.T) {
 	}
 	resetSetupMemos(t)
 
-	cmd := NewSetupCommand()
-	cmd.SetArgs([]string{"--coding-agent", "kimi"})
-	if err := cmd.Execute(); err != nil {
+	setup := NewSetupCommand()
+	setup.SetArgs([]string{})
+	if err := setup.Execute(); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
+	if saved, _ := savedAPIKey(); saved != minted {
+		t.Fatalf("saved key = %q, want the minted one", saved)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
+		t.Error("non-interactive setup wired an agent")
+	}
 
+	resetSetupMemos(t)
+	connect := NewConnectCommand()
+	connect.SetArgs([]string{"kimi"})
+	if err := connect.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
 	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
 	if err != nil {
-		t.Fatalf("provider not wired at all — the minted key was not durable: %v", err)
+		t.Fatalf("provider not wired: %v", err)
 	}
-	tree := mustParseKimiTOML(t, string(data))
-	if got, _ := tree.Get("providers.orq.api_key").(string); got != minted {
-		t.Errorf("agent config carries api_key %q, want the minted key", got)
+	if !strings.Contains(string(data), minted) {
+		t.Error("the minted key did not reach the agent config")
 	}
 	if strings.Contains(string(data), "session-token") {
 		t.Error("the session token reached an agent config")
@@ -850,74 +853,47 @@ func TestSetupCompleteRequiresBothHalves(t *testing.T) {
 	}
 }
 
+// agentResult.Error must become a non-zero exit: "wire failed, exit 0" is the
+// regression this pins. connect is the wiring path drivable without a TTY.
 func TestAFailedWireExitsNonZero(t *testing.T) {
-	for name, run := range map[string]func() error{
-		"setup": func() error {
-			c := NewSetupCommand()
-			c.SetArgs([]string{"--api-key", "sk-orq-x", "--coding-agent", "kimi", "--no-coding-agents=false"})
-			return c.Execute()
-		},
-		"setup coding-agents": func() error {
-			c := newSetupCodingAgentsCommand()
-			c.SetArgs([]string{"--api-key", "sk-orq-x", "--coding-agent", "kimi"})
-			return c.Execute()
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				switch {
-				case strings.Contains(r.URL.Path, "model"):
-					fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
-					 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-					 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
-				default:
-					fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A","workspaces":[],"preferences":{}}`)
-				}
-			}))
-			defer srv.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+		 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+		 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+	}))
+	defer srv.Close()
 
-			home := t.TempDir()
-			t.Setenv("HOME", home)
-			t.Setenv("ORQ_API_KEY", "")
-			t.Setenv("ORQ_API_BASE_URL", srv.URL)
-			t.Chdir(t.TempDir())
-			// ~/.kimi-code as a regular file: the provider write cannot succeed under it.
-			if err := os.WriteFile(filepath.Join(home, ".kimi-code"), []byte("x"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			viper.Set("config-directory", t.TempDir())
-			viper.Set("profile", "default")
-			t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-			if bartolocli.Creds == nil {
-				bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
-				t.Cleanup(func() { bartolocli.Creds = nil })
-			}
-			if bartolocli.Formatter == nil {
-				bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-				t.Cleanup(func() { bartolocli.Formatter = nil })
-			}
-			resetSetupMemos(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+	// ~/.kimi-code as a regular file: the provider write cannot succeed under it.
+	if err := os.WriteFile(filepath.Join(home, ".kimi-code"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
 
-			// The screen the user reads comes out of bartolocli.Stderr; capture it
-			// so the verdict is asserted against the run, not against a hand-built
-			// call to printFinalScreen.
-			var screen strings.Builder
-			prevStderr := bartolocli.Stderr
-			bartolocli.Stderr = &screen
-			t.Cleanup(func() { bartolocli.Stderr = prevStderr })
-
-			err := run()
-			if err == nil {
-				t.Fatal("a failed provider write exited 0")
-			}
-			if !errors.Is(err, errAgentFailed) {
-				t.Errorf("error = %v, want errAgentFailed", err)
-			}
-			if strings.Contains(screen.String(), "Setup complete") {
-				t.Errorf("a run with a failed agent still claimed completion:\n%s", screen.String())
-			}
-		})
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-x"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("a failed provider write exited 0")
+	}
+	if !errors.Is(err, errAgentFailed) {
+		t.Errorf("error = %v, want errAgentFailed", err)
 	}
 }
 
@@ -942,90 +918,49 @@ func TestCodexPathsHonorCodexHome(t *testing.T) {
 	}
 }
 
-// Pins the subcommand's shape: the name, its flag set, and that the scope
-// flags conflict loudly rather than one silently winning. The credential
-// contract it advertises is covered by the wiring tests above.
-func TestCodingAgentsSubcommand(t *testing.T) {
-	sub := newSetupCodingAgentsCommand()
-	if sub.Name() != "coding-agents" {
-		t.Fatalf("subcommand is %q — the name is load-bearing, 'agents' collides with the platform product", sub.Name())
+// Pins connect's and disconnect's shape: names, flags, and that the scope
+// flags conflict loudly rather than one silently winning.
+func TestConnectCommandShape(t *testing.T) {
+	c := NewConnectCommand()
+	if c.Name() != "connect" {
+		t.Fatalf("command is %q", c.Name())
 	}
-	for _, flag := range []string{"coding-agent", "gateway", "mcp", "global", "local"} {
-		if sub.Flags().Lookup(flag) == nil {
-			t.Errorf("missing flag --%s", flag)
+	for _, flag := range []string{"api-key", "global", "local", "yes", "dry-run"} {
+		if c.Flags().Lookup(flag) == nil {
+			t.Errorf("connect missing flag --%s", flag)
 		}
 	}
-
+	d := NewDisconnectCommand()
+	if d.Name() != "disconnect" {
+		t.Fatalf("command is %q", d.Name())
+	}
+	for _, flag := range []string{"global", "local"} {
+		if d.Flags().Lookup(flag) == nil {
+			t.Errorf("disconnect missing flag --%s", flag)
+		}
+	}
 	if err := resolveScope(&setupOptions{global: true, local: true}); err == nil {
 		t.Error("--global with --local did not conflict")
 	}
-
-	// --local forces project scope even where inference would pick $HOME.
-	t.Chdir(t.TempDir()) // no project markers here
-	forced := &setupOptions{local: true}
-	if err := resolveScope(forced); err != nil {
-		t.Fatal(err)
-	}
-	if forced.global {
-		t.Error("--local was overridden by home-directory inference")
-	}
-	inferred := &setupOptions{}
-	if err := resolveScope(inferred); err != nil {
-		t.Fatal(err)
-	}
-	if !inferred.global {
-		t.Error("inference in a non-project directory should pick $HOME")
-	}
 }
 
-// The noun is "coding agents" everywhere the surface names it, so the flags
-// spell it the same way. The v4.13 spellings --agent/--no-agent are gone, not
-// hidden: a script still passing them must fail loudly at parse time rather
-// than have the flag quietly ignored.
-func TestCodingAgentFlagsDropTheirV413Spellings(t *testing.T) {
-	for _, cmd := range []*cobra.Command{NewSetupCommand(), newSetupCodingAgentsCommand()} {
-		f := cmd.Flags()
-		if f.Lookup("coding-agent") == nil {
-			t.Errorf("%s: missing --coding-agent", cmd.Name())
-		}
-		if f.Lookup("agent") != nil {
-			t.Errorf("%s: --agent should be removed, not kept hidden", cmd.Name())
+// setup owns the machine, not the agents: it carries no agent flags at all.
+// The v4.13 spellings and the interim --coding-agent must fail at parse time
+// rather than be silently ignored; agent selection lives on connect as
+// positional arguments.
+func TestSetupHasNoAgentFlags(t *testing.T) {
+	f := NewSetupCommand().Flags()
+	for _, name := range []string{"agent", "no-agent", "coding-agent", "no-coding-agents", "no-mcp", "no-gateway", "global", "local"} {
+		if f.Lookup(name) != nil {
+			t.Errorf("setup still has --%s", name)
 		}
 	}
-
-	setup := NewSetupCommand().Flags()
-	if setup.Lookup("no-coding-agents") == nil {
-		t.Error("missing --no-coding-agents")
-	}
-	if setup.Lookup("no-agent") != nil {
-		t.Error("--no-agent should be removed, not kept hidden")
-	}
-
-	// Removed means rejected: a silently-accepted unknown flag is the failure
-	// mode a removal exists to avoid.
 	cmd := NewSetupCommand()
-	cmd.SetArgs([]string{"--agent", "codex"})
+	cmd.SetArgs([]string{"--coding-agent", "kimi"})
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
 	if err := cmd.Execute(); err == nil {
-		t.Error("--agent was accepted after removal")
-	}
-}
-
-// --gateway and --mcp each narrow to one half. Both together narrow to
-// nothing, which used to exit 0 having silently done no work while
-// --global with --local refused loudly for the same class of mistake.
-func TestCodingAgentsRefusesContradictoryNarrowing(t *testing.T) {
-	cmd := newSetupCodingAgentsCommand()
-	cmd.SetArgs([]string{"--gateway", "--mcp"})
-	cmd.SetOut(io.Discard)
-	cmd.SetErr(io.Discard)
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("--gateway with --mcp should refuse, not silently wire nothing")
-	}
-	if !strings.Contains(err.Error(), "nothing to wire") {
-		t.Errorf("error should explain the contradiction, got: %v", err)
+		t.Error("--coding-agent was accepted after removal")
 	}
 }
 
@@ -1163,8 +1098,8 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 
 	resetSetupMemos(t)
 
-	sub := newSetupCodingAgentsCommand()
-	sub.SetArgs([]string{"--api-key", "sk-orq-NEW-SUPPLIED", "--coding-agent", "kimi"})
+	sub := NewConnectCommand()
+	sub.SetArgs([]string{"kimi", "--api-key", "sk-orq-NEW-SUPPLIED"})
 	if err := sub.Execute(); err != nil {
 		t.Fatalf("coding-agents: %v", err)
 	}
@@ -1293,8 +1228,8 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	}
 	resetSetupMemos(t)
 
-	sub := newSetupCodingAgentsCommand()
-	sub.SetArgs([]string{"--coding-agent", "kimi"})
+	sub := NewConnectCommand()
+	sub.SetArgs([]string{"kimi"})
 	if err := sub.Execute(); err != nil {
 		t.Fatalf("coding-agents: %v", err)
 	}
@@ -1377,8 +1312,8 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 	}
 	resetSetupMemos(t)
 
-	sub := newSetupCodingAgentsCommand()
-	sub.SetArgs([]string{"--coding-agent", "kimi"})
+	sub := NewConnectCommand()
+	sub.SetArgs([]string{"kimi"})
 	if err := sub.Execute(); err != nil {
 		t.Fatalf("coding-agents: %v", err)
 	}
@@ -2217,8 +2152,8 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	}
 	resetSetupMemos(t)
 
-	sub := newSetupCodingAgentsCommand()
-	sub.SetArgs([]string{"--api-key", "sk-orq-BORROWED", "--coding-agent", "kimi"})
+	sub := NewConnectCommand()
+	sub.SetArgs([]string{"kimi", "--api-key", "sk-orq-BORROWED"})
 	_ = sub.Execute() // the wire outcome is another test's subject
 
 	key, ws := savedAPIKey()

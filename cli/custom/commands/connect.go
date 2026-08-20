@@ -3,11 +3,14 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
@@ -356,4 +359,90 @@ func bothScopePaths(resolve func(bool) (string, error)) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// setupConnectStep is setup's step 3: a consent gate, then connect's
+// interactive selection. Non-interactive runs wire nothing and point at
+// `orq connect`, which composes with setup in CI.
+func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
+	if opts.noInput {
+		rep.info("Next: orq connect — wires the coding agents on this machine")
+		return nil, nil
+	}
+	rep.note("Connecting gives an agent: model calls routed through the orq gateway,")
+	rep.note("and workspace read/write tools via MCP.")
+	if !opts.confirm("Connect your coding agents now?", true) {
+		rep.info("Next: orq connect — anytime, same credential")
+		return nil, nil
+	}
+	agents, err := promptForAgents(rep)
+	if err != nil {
+		return nil, fmt.Errorf("setup cancelled at the agent selection: %w", err)
+	}
+	if len(agents) == 0 {
+		rep.info("nothing selected — orq connect wires an agent anytime")
+		return nil, nil
+	}
+	caps, skills, err := promptForCapabilities(rep, opts)
+	if err != nil {
+		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
+	}
+	opts.agents = agents
+	opts.noMCP = !hasCap(caps, capMCP)
+	opts.noGateway = !hasCap(caps, capGateway)
+	results, err := instrumentAgents(rep, client, state, opts)
+	if err != nil {
+		return nil, err
+	}
+	if skills {
+		runSkillsInstall(rep)
+	}
+	return results, nil
+}
+
+// promptForCapabilities returns the selected capabilities and whether the
+// skills install was requested. Skills is a consented command run, not a
+// capability: it never enters connect's vocabulary or disconnect's.
+func promptForCapabilities(rep *reporter, opts *setupOptions) (caps []string, skills bool, err error) {
+	const (
+		optGateway = "gateway   route model calls through orq"
+		optMCP     = "mcp       workspace read/write tools"
+		optTracing = "tracing   send sessions to orq Traces (not available yet)"
+		optSkills  = "skills    install the orq skills pack (runs npx skills add " + skillsRepo + ")"
+	)
+	if opts.yes {
+		return []string{capGateway, capMCP}, false, nil
+	}
+	chosen := []string{optGateway, optMCP}
+	if err := survey.AskOne(&survey.MultiSelect{
+		Message: "Which capabilities?",
+		Options: []string{optGateway, optMCP, optTracing, optSkills},
+		Default: []string{optGateway, optMCP},
+	}, &chosen, promptStdio()); err != nil {
+		return nil, false, err
+	}
+	for _, c := range chosen {
+		switch c {
+		case optGateway:
+			caps = append(caps, capGateway)
+		case optMCP:
+			caps = append(caps, capMCP)
+		case optTracing:
+			rep.info("tracing is not available yet — see RES-1407")
+		case optSkills:
+			skills = true
+		}
+	}
+	return caps, skills, nil
+}
+
+// runSkillsInstall runs the installer the user just consented to. Failure is a
+// warning: skills are an extra, not part of the wire.
+func runSkillsInstall(rep *reporter) {
+	rep.info("running: npx skills add %s", skillsRepo)
+	cmd := exec.Command("npx", "skills", "add", skillsRepo)
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
+	if err := cmd.Run(); err != nil {
+		rep.warn("skills install failed: %v — run 'npx skills add %s' yourself anytime", err, skillsRepo)
+	}
 }

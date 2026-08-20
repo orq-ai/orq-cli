@@ -48,6 +48,20 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- Added: `orq connect [agent...] [capability...]` and `orq disconnect` — wire
+  coding agents to orq permanently, and remove exactly what was written.
+  Capabilities are positional (`gateway`, `mcp`); none named means both, no
+  agents named means every detected agent. `--dry-run` shows the files that
+  would change. `tracing` is reserved vocabulary and says so when selected.
+- Changed: `orq setup` owns the machine, not the agents. It authenticates,
+  mints or reuses the key, and ends by offering to connect detected agents
+  (a consent gate, then agent and capability selection). Non-interactive runs
+  wire nothing and print `Next: orq connect`. The unreleased
+  `setup coding-agents` subcommand and the agent flags (`--coding-agent`,
+  `--no-coding-agents`, `--no-mcp`, `--no-gateway`, `--global`, `--local`)
+  moved to `connect`; none of them ever shipped.
+- Changed: `orq auth logout` warns when wired agents remain, naming
+  `orq disconnect`.
 - **Removed (breaking):** `orq setup --agent` and `orq setup --no-agent`, the
   v4.13 spellings, are gone. Use `--coding-agent` and `--no-coding-agents`.
   They were briefly kept as hidden aliases; removing them means a script still

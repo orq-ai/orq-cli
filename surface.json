@@ -1926,6 +1926,33 @@
       ]
     },
     {
+      "path": "orq connect",
+      "use": "connect [agent...] [capability...]",
+      "flags": [
+        {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq datasets",
       "use": "datasets"
     },
@@ -2334,6 +2361,20 @@
         {
           "name": "thread",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq disconnect",
+      "use": "disconnect [agent...] [capability...]",
+      "flags": [
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
         }
       ]
     },
@@ -7136,67 +7177,13 @@
           "type": "string"
         },
         {
-          "name": "coding-agent",
-          "type": "stringSlice"
-        },
-        {
-          "name": "global",
-          "type": "bool"
-        },
-        {
           "name": "interactive",
           "shorthand": "i",
           "type": "bool"
         },
         {
-          "name": "local",
-          "type": "bool"
-        },
-        {
-          "name": "no-coding-agents",
-          "type": "bool"
-        },
-        {
-          "name": "no-gateway",
-          "type": "bool"
-        },
-        {
-          "name": "no-mcp",
-          "type": "bool"
-        },
-        {
           "name": "yes",
           "shorthand": "y",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq setup coding-agents",
-      "use": "coding-agents",
-      "flags": [
-        {
-          "name": "api-key",
-          "type": "string"
-        },
-        {
-          "name": "coding-agent",
-          "type": "stringSlice"
-        },
-        {
-          "name": "gateway",
-          "type": "bool"
-        },
-        {
-          "name": "global",
-          "type": "bool"
-        },
-        {
-          "name": "local",
-          "type": "bool"
-        },
-        {
-          "name": "mcp",
           "type": "bool"
         }
       ]

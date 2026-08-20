@@ -129,83 +129,8 @@ wins over a key left exported in your shell.`),
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
-	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
-	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
-	f.BoolVar(&opts.noCodingAgents, "no-coding-agents", false, "Skip coding-agent wiring entirely")
-	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
-	f.BoolVar(&opts.noGateway, "no-gateway", false, "Do not register the orq AI Gateway as a model provider in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
-	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
-	cmd.AddCommand(newSetupCodingAgentsCommand())
 	return cmd
-}
-
-// newSetupCodingAgentsCommand re-runs just the coding-agent wiring against an existing credential.
-func newSetupCodingAgentsCommand() *cobra.Command {
-	opts := setupOptions{}
-	var gatewayOnly, mcpOnly bool
-
-	cmd := &cobra.Command{
-		Use:   "coding-agents",
-		Short: "Wire coding agents to orq (gateway provider and MCP server)",
-		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine: the AI Gateway ` +
-			`as a model provider, and the orq.ai MCP server for workspace tools. Reuses the ` +
-			`credential from a previous ` + "`orq setup`" + ` — it never creates keys or edits your shell.
-
-Not to be confused with ` + "`orq agents`" + `, which manages Orq Agents on your workspace. ` +
-			`Coding agents are the CLIs on this machine: ` + strings.Join(agentIDs(), ", ") + `.`),
-		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if gatewayOnly && mcpOnly {
-				return errors.New("--gateway and --mcp each narrow to one half; passing both leaves nothing to wire (omit them to wire both)")
-			}
-			opts.noMCP = gatewayOnly
-			opts.noGateway = mcpOnly
-			opts.narrowing = gatewayOnly || mcpOnly
-			return runCodingAgents(cmd, &opts)
-		},
-	}
-
-	f := cmd.Flags()
-	f.StringSliceVar(&opts.agents, "coding-agent", nil, "Coding agent to wire (repeatable): "+strings.Join(agentIDs(), ", "))
-	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of the one a previous setup saved")
-	f.BoolVar(&gatewayOnly, "gateway", false, "Wire only the AI Gateway provider")
-	f.BoolVar(&mcpOnly, "mcp", false, "Wire only the MCP server")
-	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
-	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
-	return cmd
-}
-
-func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
-	if err := resolveScope(opts); err != nil {
-		return err
-	}
-
-	rep := newReporter(opts.noInput)
-
-	authState, client, err := resolveConnectAuth(cmd, rep, opts)
-	if err != nil {
-		return err
-	}
-
-	result := map[string]any{}
-	agentResults, err := instrumentAgents(rep, client, authState, opts)
-	if err != nil {
-		return err
-	}
-	result["agents"] = agentResults
-
-	if !wantsHumanView(cmd) {
-		if err := emit(result); err != nil {
-			return err
-		}
-	}
-	for _, a := range agentResults {
-		if a.Error != "" {
-			return errAgentFailed
-		}
-	}
-	return nil
 }
 
 // resolveScope settles the global/local decision once for every entry point, defaulting to $HOME outside a project.
@@ -265,7 +190,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 
 	rep.step(3, setupSteps, "Coding agents")
-	agentResults, err := instrumentAgents(rep, client, authState, opts)
+	agentResults, err := setupConnectStep(rep, client, authState, opts)
 	if err != nil {
 		return err
 	}
@@ -1096,53 +1021,9 @@ func workspaceLink(state *authState, path string) string {
 // ============================================================================
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
-	if opts.noCodingAgents {
-		rep.ok("skipped coding-agent wiring (--no-coding-agents)")
-		return nil, nil
-	}
 	mcpURL := client.MCPServerURL()
-
 	selected := opts.agents
-	if len(selected) == 0 {
-		if opts.noInput {
-			rep.ok("no agent selected — pass --coding-agent to wire one")
-			return nil, nil
-		}
-		var err error
-		selected, err = promptForAgents(rep)
-		if err != nil || len(selected) == 0 {
-			return nil, nil
-		}
-	}
-
-	// One consent question for both writes: they edit the user's own config files, and the MCP half grants agents workspace read/write.
-	if !opts.noMCP && !opts.noGateway && !opts.yes && !opts.noInput {
-		const (
-			wireBoth    = "Gateway + MCP tools (recommended)"
-			wireGateway = "Gateway only — route model calls through orq"
-			wireMCP     = "MCP tools only — agents read/write your workspace"
-			wireNothing = "Skip"
-		)
-		choice := wireBoth
-		if err := survey.AskOne(&survey.Select{
-			Message: "Wire your coding agents to orq?",
-			Options: []string{wireBoth, wireGateway, wireMCP, wireNothing},
-			Default: wireBoth,
-		}, &choice, promptStdio()); err != nil {
-			// An abort is "no": failing open here wired exactly what the user backed out of.
-			return nil, fmt.Errorf("setup cancelled at the wiring question: %w", err)
-		}
-		switch choice {
-		case wireGateway:
-			opts.noMCP = true
-		case wireMCP:
-			opts.noGateway = true
-		case wireNothing:
-			opts.noMCP, opts.noGateway = true, true
-		}
-	}
-	if opts.noMCP && opts.noGateway {
-		rep.ok("skipped coding-agent wiring (nothing selected)")
+	if len(selected) == 0 || (opts.noMCP && opts.noGateway) {
 		return nil, nil
 	}
 
