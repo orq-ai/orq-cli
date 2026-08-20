@@ -1123,6 +1123,45 @@ func TestSetupMakesNoRouterCall(t *testing.T) {
 	}
 }
 
+// pi is the registry's only gateway-only agent: writeProvider and no writeMCP.
+// Run through the shared loop it must take the "nothing to configure" MCP
+// branch — not an error, not a skip of the whole agent — and still wire the
+// provider. This is the one branch pi adds to instrumentAgents.
+func TestInstrumentAgentsWiresPiGatewayOnly(t *testing.T) {
+	srv, _ := gatewayFixture(t, "25", oneChatModel)
+	wiringHarness(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"pi"}})
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "no MCP support in this agent") {
+		t.Errorf("missing the no-MCP note for pi:\n%s", out.String())
+	}
+	cfg := filepath.Join(os.Getenv("HOME"), ".pi", "agent", "models.json")
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatalf("provider config not written: %v", err)
+	}
+	if !strings.Contains(string(data), `"openai/gpt-5.4"`) {
+		t.Errorf("catalogue model missing from models.json:\n%s", data)
+	}
+	if len(results) != 1 || results[0].Error != "" {
+		t.Fatalf("pi result carries an error: %+v", results)
+	}
+	if results[0].MCP != "" {
+		t.Errorf("MCP reported as wired for an agent without MCP support: %+v", results[0])
+	}
+	if results[0].Provider == "" {
+		t.Errorf("provider not reported as wired: %+v", results[0])
+	}
+}
+
 // The credit balance is only the gateway's business. A user who wires MCP tools
 // and no gateway is not routing model calls through orq, so the CLI has no
 // reason to read their balance or lecture them about it, which is what it did

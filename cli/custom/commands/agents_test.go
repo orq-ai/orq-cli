@@ -504,6 +504,57 @@ func TestPiProviderDetectorPairsWithTheWriter(t *testing.T) {
 	}
 }
 
+// pi resolves its agent dir as $PI_CODING_AGENT_DIR, then ~/.pi/agent — and
+// `orq launch pi` sets that variable itself. Path, detection and the write must
+// follow the same resolution, or setup detects one directory, writes a second,
+// and reports wired while pi reads a third.
+func TestPiPathAndDetectHonorTheEnvDir(t *testing.T) {
+	pi, ok := lookupAgent("pi")
+	if !ok {
+		t.Fatal("pi is not registered")
+	}
+
+	// Env set, directory exists: both halves point inside it.
+	dir := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", dir)
+	t.Setenv("HOME", t.TempDir()) // a ~/.pi/agent leftover must not win
+	path, err := pi.providerConfig(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "models.json"); path != want {
+		t.Errorf("providerConfig = %q, want %q", path, want)
+	}
+	if !pi.detect() {
+		t.Error("env dir exists but pi was not detected")
+	}
+
+	// Env set to a directory that does not exist: not detected, even though
+	// ~/.pi/agent does — writing there would report a file pi never reads.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(home, "nonexistent"))
+	if pi.detect() {
+		t.Error("detected via ~/.pi/agent while PI_CODING_AGENT_DIR points elsewhere")
+	}
+
+	// Env unset: the home fallback still works.
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	if !pi.detect() {
+		t.Error("~/.pi/agent exists but pi was not detected")
+	}
+	path, err = pi.providerConfig(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".pi", "agent", "models.json"); path != want {
+		t.Errorf("providerConfig = %q, want %q", path, want)
+	}
+}
+
 // The profile is only useful if codex can load it standalone, so it must parse
 // and carry model / model_provider at the root. Dotted keys emitted in place,
 // or root keys written after the [model_providers.orq] header, would both read
