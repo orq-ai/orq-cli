@@ -486,7 +486,7 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 	}
 	kept := stripOrqKimiTables(string(existing))
 	// Only when the file has none: kimi writes this key when the user picks.
-	// Keyed by ModelID to match the [models."<id>"] tables below.
+	// Keyed by the full ref (m.Ref()), to match the [models."<ref>"] tables below.
 	prefix := ""
 	if defaultModel != "" && !hasKimiDefaultModel(kept) {
 		prefix = fmt.Sprintf("default_model = %q\n\n", defaultModel)
