@@ -129,6 +129,7 @@ func installSessionPreRun() {
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
 		commands.SetExplicitAPIKey(apiKeyConfigured())
+		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
 				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+

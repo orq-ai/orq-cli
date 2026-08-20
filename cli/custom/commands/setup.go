@@ -56,6 +56,8 @@ func (o *setupOptions) skipFlag(branch string) string {
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
+// A prompt that was drawn and then failed (Ctrl-C, closed terminal) is a decline, never the default: at a true-default
+// prompt the default is "yes", and taking an abort as consent mints keys and edits shell profiles the user backed out of.
 func (o *setupOptions) confirm(message string, def bool) bool {
 	if o.yes {
 		return true
@@ -65,7 +67,7 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 	}
 	answer := def
 	if err := survey.AskOne(&survey.Confirm{Message: message, Default: def}, &answer, promptStdio()); err != nil {
-		return def
+		return false
 	}
 	return answer
 }
@@ -174,7 +176,8 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 
 	// Checked before authenticating: wiring needs a durable key (kimi embeds the literal value, session tokens expire within the hour) and this command never mints one.
 	saved, savedWS := savedAPIKey()
-	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+	envKey := UserEnvAPIKey()
+	if saved == "" && strings.TrimSpace(opts.apiKey) == "" && envKey == "" {
 		return errors.New("no saved API key — run 'orq setup' once to create one, or pass --api-key")
 	}
 
@@ -188,8 +191,14 @@ func runCodingAgents(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	client := auth.NewClient(authState.apiBase)
 	// Only fall back to the saved key when the user supplied none this run, or agents get the stale credential resolveAuth has already replaced.
-	if saved != "" && authState.suppliedKey == "" {
-		authState.useDurableKey(saved)
+	// The env key is the other durable credential the guard above admits: without this the run is let in and then skips every provider write.
+	if authState.suppliedKey == "" {
+		switch {
+		case saved != "":
+			authState.useDurableKey(saved)
+		case envKey != "":
+			authState.useDurableKey(envKey)
+		}
 	}
 
 	result := map[string]any{}
@@ -350,6 +359,12 @@ func (s *authState) useDurableKey(key string) {
 // expiring access token. Only a key may be wired into agent configs: kimi
 // embeds the literal value, and a session token 401s within the hour.
 func (s *authState) durableBearer() bool {
+	// A bearer must exist before it can be durable: session == nil is a proxy for
+	// "an API key is the bearer", and on its own it makes the zero value report a
+	// credential it does not have, writing api_key = "" into every agent config.
+	if s.bearer == "" {
+		return false
+	}
 	return s.suppliedKey != "" || s.durableKey || s.session == nil
 }
 
@@ -390,7 +405,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	// Bartolo auto-loads ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
-	if envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY")); envKey != "" && session == nil {
+	if envKey := UserEnvAPIKey(); envKey != "" && session == nil {
 		if file, v := dotEnvAPIKey(); file != "" && v == envKey {
 			rep.ok("api key from ./%s", file)
 			rep.note("orq loads ./%s automatically — remove its ORQ_API_KEY line to sign in instead; unsetting the shell variable is not enough.", file)
@@ -402,7 +417,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	if session != nil {
-		envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY"))
+		envKey := UserEnvAPIKey()
 		savedKey, savedWS := savedAPIKey()
 		if envKeyShadowsLogin(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
 			if envKey == savedKey {
@@ -1463,7 +1478,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 	}
 	// The env var is empty in this shell even on a wired machine, so the branches below consult the profile: re-printing the append line stacks duplicates.
-	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+	if keyReferenced && UserEnvAPIKey() == "" {
 		sh := detectShell(viper.GetString("config-directory"))
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),

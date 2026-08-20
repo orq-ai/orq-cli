@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"orq/cli/custom/auth"
 
@@ -39,9 +40,30 @@ func hasInteractiveTTY() bool {
 // that let the two copies drift.
 var explicitAPIKey bool
 
+// userEnvAPIKey is ORQ_API_KEY as the user's shell exported it, snapshotted at
+// the same moment. Empty is the honest answer for "the user exported nothing",
+// which os.Getenv can no longer give after the injection.
+var userEnvAPIKey string
+
+// userEnvAPIKeyTaken distinguishes "the user exported nothing" from "PreRun
+// never ran", which is the case in unit tests that set the variable directly.
+var userEnvAPIKeyTaken bool
+
 // SetExplicitAPIKey is called once per invocation from custom's PreRun, before
 // the session-token injection.
 func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
+
+// SetUserEnvAPIKey is called alongside SetExplicitAPIKey, before the injection.
+func SetUserEnvAPIKey(v string) { userEnvAPIKey, userEnvAPIKeyTaken = strings.TrimSpace(v), true }
+
+// UserEnvAPIKey reports the key the user exported, never the injected session
+// token. Every credential decision must read this rather than the environment.
+func UserEnvAPIKey() string {
+	if userEnvAPIKeyTaken {
+		return userEnvAPIKey
+	}
+	return strings.TrimSpace(os.Getenv("ORQ_API_KEY"))
+}
 
 func selectWorkspace(workspaces []map[string]any, message string) (string, error) {
 	if len(workspaces) == 0 {

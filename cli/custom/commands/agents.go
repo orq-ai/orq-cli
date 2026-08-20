@@ -823,6 +823,7 @@ func tomlTablePresent(table string) func(path string) bool {
 }
 
 // agentKeyExported is deliberately narrower than envAPIKeySet: agent configs interpolate ORQ_API_KEY by name, so ORQ_TOKEN alone must not pass.
+// The snapshot, not the environment: our own PreRun injects a session token into ORQ_API_KEY, which would report every shell as already exporting it.
 func agentKeyExported() bool {
-	return strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != ""
+	return UserEnvAPIKey() != ""
 }

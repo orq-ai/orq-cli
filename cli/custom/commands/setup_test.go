@@ -676,7 +676,7 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 			var out strings.Builder
 			rep := &reporter{w: &out}
 			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
-			results, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts)
+			results, err := instrumentAgents(rep, auth.NewClient(""), &authState{bearer: "sk-orq-fixture"}, opts)
 			if err != nil {
 				t.Fatalf("instrumentAgents: %v", err)
 			}
@@ -1011,6 +1011,139 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	got, _ := tree.Get("providers.orq.api_key").(string)
 	if got != "sk-orq-NEW-SUPPLIED" {
 		t.Errorf("agent config carries api_key %q, want the supplied key — the saved key overrode --api-key", got)
+	}
+}
+
+// durableBearer answers "may this credential be written into an agent config".
+// Both halves matter: a bearer that exists, and evidence it is a key rather
+// than a session token. Reporting the zero value as durable writes api_key = ""
+// into every config, and the agent then 401s while doctor calls it wired.
+// A prompt that could not be drawn is not consent. Under test there is no TTY,
+// so survey fails and the interactive path takes the error branch: at a
+// true-default prompt, returning the default would mint keys and edit shell
+// profiles for a user who pressed Ctrl-C. --yes and --no-input are unaffected,
+// because both decide before a prompt is drawn.
+func TestConfirmFailsClosedWhenThePromptCannotBeAsked(t *testing.T) {
+	if got := (&setupOptions{}).confirm("mint a key?", true); got {
+		t.Error("a prompt that failed to ask was taken as yes")
+	}
+	if got := (&setupOptions{yes: true}).confirm("mint a key?", true); !got {
+		t.Error("--yes must still answer yes without asking")
+	}
+	if got := (&setupOptions{noInput: true}).confirm("mint a key?", true); !got {
+		t.Error("--no-input must take the default, which is decided before any prompt")
+	}
+}
+
+// Our own PreRun writes the session token into ORQ_API_KEY, so the environment
+// cannot answer "did the user export a key". Reading it there told every
+// logged-in user their shell was already exporting the key, suppressing the one
+// hint that explains why their agents come up with an empty bearer.
+func TestAgentKeyExportedReadsTheSnapshotNotTheInjection(t *testing.T) {
+	t.Setenv("ORQ_API_KEY", "injected-session-token")
+	prev, prevTaken := userEnvAPIKey, userEnvAPIKeyTaken
+	t.Cleanup(func() { userEnvAPIKey, userEnvAPIKeyTaken = prev, prevTaken })
+
+	SetUserEnvAPIKey("") // the user exported nothing
+	if agentKeyExported() {
+		t.Error("the injected session token was read as a user-exported key")
+	}
+	SetUserEnvAPIKey("sk-orq-real")
+	if !agentKeyExported() {
+		t.Error("a real exported key was not seen")
+	}
+}
+
+func TestDurableBearerNeedsBothABearerAndItsProvenance(t *testing.T) {
+	session := &auth.Session{}
+	for name, tc := range map[string]struct {
+		state *authState
+		want  bool
+	}{
+		"zero value":            {&authState{}, false},
+		"no session, no bearer": {&authState{apiBase: "x"}, false},
+		"durableKey, no bearer": {&authState{durableKey: true}, false},
+		"session token only":    {&authState{bearer: "sess", session: session}, false},
+		"supplied key":          {&authState{bearer: "k", suppliedKey: "k", session: session}, true},
+		"adopted or minted key": {&authState{bearer: "k", durableKey: true, session: session}, true},
+		"api-key run":           {&authState{bearer: "k"}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := tc.state.durableBearer(); got != tc.want {
+				t.Errorf("durableBearer() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// runCodingAgents admits a run when ORQ_API_KEY is exported, so the wiring must
+// accept the same credential. resolveAuth ranks the session above the env key,
+// which left the run admitted and then skipping every provider write — the
+// failure the skip message itself tells the user to fix by re-running setup.
+func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost:
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+		default:
+			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+	// The shape PreRun leaves behind: the user exported a key, and no profile was saved.
+	t.Setenv("ORQ_API_KEY", "sk-orq-EXPORTED")
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	key := "acme"
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
+		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+		ActiveWorkspaceKey: &key,
+		WorkspaceTokens:    map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	sub := newSetupCodingAgentsCommand()
+	sub.SetArgs([]string{"--coding-agent", "kimi"})
+	if err := sub.Execute(); err != nil {
+		t.Fatalf("coding-agents: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if err != nil {
+		t.Fatalf("provider not wired at all: %v", err)
+	}
+	tree := mustParseKimiTOML(t, string(data))
+	got, _ := tree.Get("providers.orq.api_key").(string)
+	if got != "sk-orq-EXPORTED" {
+		t.Errorf("agent config carries api_key %q, want the exported key", got)
+	}
+	if strings.Contains(string(data), "session-token") {
+		t.Error("the session token reached an agent config")
 	}
 }
 
@@ -1763,7 +1896,9 @@ func sessionWithToken(apiBase string) *authState {
 	key := "acme"
 	return &authState{
 		apiBase: apiBase,
-		// By step 3 a real run has an API key as the bearer.
+		// By step 3 a real run has an API key as the bearer. Both fields, never
+		// one: durableKey without a bearer is the illegal state useDurableKey exists to prevent.
+		bearer:     "sk-orq-fixture",
 		durableKey: true,
 		session: &auth.Session{
 			ActiveWorkspaceKey: &key,
@@ -1913,7 +2048,7 @@ func TestEmptyCatalogueSaysWhetherAnEarlierWireSurvives(t *testing.T) {
 			var out strings.Builder
 			rep := &reporter{w: &out}
 			opts := &setupOptions{noInput: true, noMCP: true, global: true, agents: []string{"kimi"}}
-			if _, err := instrumentAgents(rep, auth.NewClient(""), &authState{}, opts); err != nil {
+			if _, err := instrumentAgents(rep, auth.NewClient(""), &authState{bearer: "sk-orq-fixture"}, opts); err != nil {
 				t.Fatalf("instrumentAgents: %v", err)
 			}
 			got := out.String()
