@@ -952,7 +952,7 @@ func resolveGatewayFunding(client *auth.Client, state *authState) {
 }
 
 // Zero enabled models is a blocker and warns; a zero balance may block nothing at all, so it states a remedy and asks nothing.
-// Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. Warn rather than note, since notes are suppressed under --no-input.
+// Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. Both go out as warn or info, never note, since notes are suppressed under --no-input.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	noModels := count == 0
 	unfunded := state != nil && state.gatewayFunding == fundingNone
@@ -1273,7 +1273,6 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 	}
 }
 
-// codingModels fetches the gateway catalogue once per run: the enabled chat models with function calling, the same pool 'orq launch' writes.
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
@@ -1284,6 +1283,7 @@ var enabledModelsCounted bool
 func rememberEnabledModelCount(n int) { enabledModels, enabledModelsCounted = n, true }
 func enabledModelCount() (int, bool)  { return enabledModels, enabledModelsCounted }
 
+// codingModels fetches the gateway catalogue once per run: the enabled chat models with function calling, the same pool 'orq launch' writes.
 func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
 	if codingModelsFetched {
 		return cachedCodingModels
@@ -1315,7 +1315,9 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 			return group[0], true
 		}
 	}
-	// No preferred family: writers omit the key and the agent falls back to a bundled id the gateway cannot address.
+	// No preferred family, but anything callable beats reporting none: on false
+	// the caller leaves defaultModel empty, writers omit the key, and the agent
+	// falls back to a bundled id the gateway cannot address.
 	return models[0], true
 }
 
@@ -1420,7 +1422,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// Classified per agent: only MCP-wired agents may be told they can read and write the workspace.
 	mcpWired := []string{}
 	gatewayOnly := []string{}
-	// starts are the agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
+	// starts are the wired agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
 	starts := []string{}
 	for _, a := range agents {
 		if a.Error != "" {
@@ -1450,6 +1452,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
 		}
 	default:
+		// 'orq launch' only belongs here: nothing durable was written for it to shadow.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
@@ -1485,8 +1488,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	// After the env warning on purpose: these commands only authenticate once ORQ_API_KEY is exported.
 	if len(starts) > 0 {
 		fmt.Fprintln(w)
-		label := pluralize(len(starts), "Start", "Start")
 		for i, cmd := range starts {
+			label := "Start"
 			if i > 0 {
 				label = ""
 			}
@@ -1511,14 +1514,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 const labelWidth = 11
 
 func padLabel(s string) string {
-	pad := labelWidth - len([]rune(s))
-	if pad < 0 {
-		pad = 0
-	}
-	if s == "" {
-		return strings.Repeat(" ", labelWidth)
-	}
-	return paint(ansiDim, s) + strings.Repeat(" ", pad)
+	return paint(ansiDim, pad(s, labelWidth))
 }
 
 func pluralize(n int, one, many string) string {

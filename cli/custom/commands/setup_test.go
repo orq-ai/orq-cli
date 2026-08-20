@@ -1529,6 +1529,41 @@ func TestFinalScreenHasThreeStates(t *testing.T) {
 	}
 }
 
+// The verdict line is the one row that says whether to trust the run, and the
+// footer rows are the only way out of a bad one. Both were unasserted: swapping
+// the verdict branches left the whole suite green, and links was an empty map in
+// every other test, so the Workspace and Stuck? rows were never rendered at all.
+//
+// Every label row is anchored, so a label that outgrows labelWidth fails here
+// rather than silently starting its value one column left of the others.
+func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out},
+		[]agentResult{{Agent: "kimi", MCP: "~/.kimi-code/config.toml"}},
+		map[string]string{"workspace": "https://my.orq.ai/ws"},
+		"https://api.orq.ai/v3/router", false, &setupOptions{})
+	got := out.String()
+
+	for _, want := range []string{
+		"Setup finished with failed checks",
+		"\n  Start       kimi\n",
+		"\n  Try         \"list my orq.ai agents\"\n",
+		"\n  Workspace   https://my.orq.ai/ws\n",
+		"\n  Stuck?      orq doctor  ·  " + docsURL + "\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Setup complete") {
+		t.Errorf("claimed success on a failed run:\n%s", got)
+	}
+}
+
 // The bare command only authenticates once ORQ_API_KEY is exported, so the
 // suggestion must sit below the warning that says the shell lacks it — or the
 // screen walks the user into the exact failure it just predicted.
