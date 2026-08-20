@@ -34,6 +34,7 @@ INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
 MODIFY_PATH=1
 RUN_SETUP=1
+unverified=0
 
 PATH_MARKER_START="# >>> orq cli >>>"
 PATH_MARKER_END="# <<< orq cli <<<"
@@ -200,7 +201,11 @@ esac
 # --- Resolve version -------------------------------------------------------
 
 version_label="$VERSION"
+# Whether the user named the version. A missing checksum is only forgivable for
+# a pinned old release; on "latest" it means something is wrong with the fetch.
+version_pinned=1
 if [ -z "$VERSION" ]; then
+  version_pinned=0
   # GitHub's latest-release API returns JSON; awk out the tag_name field
   # without requiring jq. Pre-releases are excluded by the endpoint itself.
   api_url="https://api.github.com/repos/$REPO/releases/latest"
@@ -232,9 +237,17 @@ printf '\n'
 # The binary reports a bare semver; release tags carry a leading v.
 expected_version="${VERSION#v}"
 if [ -x "$target" ]; then
-  current="$("$target" --version 2>/dev/null | tr -d '\n' || echo '')"
-  case "$current" in
-    *"$expected_version"*)
+  # Exit status required, and the version token compared whole: a substring
+  # match reports 4.13.10 as satisfying a pinned 4.13.1 and installs nothing.
+  if current="$("$target" --version 2>/dev/null)"; then
+    current="$(printf '%s' "$current" | tr -d '\n')"
+    current_version="$(printf '%s' "$current" | awk '{print $NF}')"
+  else
+    current=""
+    current_version=""
+  fi
+  case "$current_version" in
+    "$expected_version")
       printf '%s already up to date  (%s)\n' "$G_OK" "$current"
       # Skip the download, but still let the PATH check run: an existing binary
       # does not mean an existing PATH entry.
@@ -250,10 +263,18 @@ if [ "${already_current:-0}" != "1" ]; then
 
   tmp_file="$(mktemp -t orq-cli.XXXXXX)"
   tmp_sum="$(mktemp -t orq-sum.XXXXXX)"
+  # previous holds the outgoing binary between the two renames below. A signal
+  # in that window would otherwise leave no orq at $target and an unexplained
+  # orq.previous beside it. HUP is in the list because `curl | sh` over ssh or
+  # tmux is this installer's main invocation.
+  previous=""
   cleanup() {
     rm -f "$tmp_file" "$tmp_sum"
+    if [ -n "$previous" ] && [ -f "$previous" ] && [ ! -e "$target" ]; then
+      mv "$previous" "$target" || true
+    fi
   }
-  trap cleanup EXIT INT TERM
+  trap cleanup EXIT INT TERM HUP
 
   if ! fetch -f --progress-bar -o "$tmp_file" "$download_url"; then
     err "failed to download $download_url"
@@ -309,7 +330,15 @@ if [ "${already_current:-0}" != "1" ]; then
       esac
       ;;
     404)
-      printf '! checksum not verified (this release publishes no .sha256)\n'
+      # Every release since the checksum assets landed publishes one, so a 404
+      # on "latest" is a broken fetch, not an old release.
+      if [ "$version_pinned" = "0" ]; then
+        err "no checksum published for $asset at the latest release"
+        err "refusing to install unverified; pin an older release with --version if that is what you want"
+        exit 1
+      fi
+      printf '! installing UNVERIFIED: %s publishes no .sha256\n' "$VERSION"
+      unverified=1
       ;;
     *)
       err "failed to fetch checksum ($checksum_url returned HTTP ${checksum_status:-000})"
@@ -337,12 +366,19 @@ if [ "${already_current:-0}" != "1" ]; then
 
   # On an upgrade, keep the previous binary until the new one proves it runs;
   # a failed probe must not leave the user with less than they started with.
-  previous=""
+  # `previous` is declared with the trap above, which restores it on a signal.
   if [ -f "$target" ]; then
     previous="$target.previous"
     if ! mv "$target" "$previous"; then
-      err "failed to move the existing binary aside ($target)"
-      err "does the user have write permission to $INSTALL_DIR?"
+      # A signal can land after rename(2) returned, so mv reports failure on a
+      # move that happened; say which of the two states the user is in.
+      if [ -e "$target" ]; then
+        previous=""
+        err "failed to move the existing binary aside ($target)"
+        err "does the user have write permission to $INSTALL_DIR?"
+      else
+        err "interrupted while moving $target aside; it is at $previous"
+      fi
       exit 1
     fi
   fi
@@ -359,25 +395,37 @@ if [ "${already_current:-0}" != "1" ]; then
     exit 1
   fi
 
-  # The EXIT trap covers only the temp file, which has already been moved.
-  installed_version="$("$target" --version 2>/dev/null || echo '')"
+  # Exit status, not just output: a binary that prints something and exits
+  # non-zero is broken, and `|| echo ''` accepted it. Stderr is kept so the
+  # failure branches can quote the real reason instead of guessing at it.
+  probe_err="$(mktemp -t orq-probe.XXXXXX)"
+  if installed_version="$("$target" --version 2>"$probe_err")"; then
+    installed_version="$(printf '%s' "$installed_version" | tr -d '\n')"
+  else
+    installed_version=""
+  fi
+  probe_reason="$(tr -d '\r' < "$probe_err" | head -3)"
+  rm -f "$probe_err"
   if [ -n "$installed_version" ]; then
     if [ -n "$previous" ]; then
       rm -f "$previous" || true
     fi
     printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
+    if [ "$unverified" = "1" ]; then
+      printf '! this binary was NOT checksum-verified\n'
+    fi
   elif [ -n "$previous" ]; then
     if ! mv "$previous" "$target"; then
       err "restoring the previous binary also failed; it is at $previous"
       exit 1
     fi
-    err "the new binary did not run here (--version printed nothing), so the"
-    err "previous one was restored: $("$target" --version 2>/dev/null || echo unknown)"
+    err "the new binary did not run here, so the previous one was restored"
+    [ -n "$probe_reason" ] && err "  $probe_reason"
     exit 1
   else
     err "the installed binary does not run on this machine (--version failed)"
-    err "it passed the checksum, so this may be a platform mismatch, an exec"
-    err "policy, or a HOME/.orq directory the binary cannot create"
+    [ -n "$probe_reason" ] && err "  $probe_reason"
+    err "it passed the checksum, so this may be a platform mismatch or an exec policy"
     err "it was left at $target for inspection"
     exit 1
   fi
