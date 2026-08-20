@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -1294,13 +1295,28 @@ func TestCodexHonoursCodexHomeForDetectionAndHeader(t *testing.T) {
 	}
 }
 
-// Every provider writer must ship with its read-side detector, in the same
-// registry entry. Without one, doctor silently reports the agent unwired
-// forever — the drift class the field exists to kill.
-func TestProviderWritersPairWithDetectors(t *testing.T) {
+// Every writer must ship with its read-side detector and its remover, in the
+// same registry entry. A missing detector leaves doctor blind; a missing
+// remover leaves `orq disconnect` unable to undo what connect wrote.
+func TestWritersPairWithDetectorsAndRemovers(t *testing.T) {
 	for _, spec := range agentRegistry() {
 		if spec.writeProvider != nil && spec.providerPresent == nil {
-			t.Errorf("%s has writeProvider but no providerPresent — doctor cannot see its wiring", spec.ID)
+			t.Errorf("%s has writeProvider but no providerPresent", spec.ID)
+		}
+		if spec.writeProvider != nil && spec.removeProvider == nil {
+			t.Errorf("%s has writeProvider but no removeProvider", spec.ID)
+		}
+		if spec.writeMCP != nil && spec.removeMCP == nil {
+			t.Errorf("%s has writeMCP but no removeMCP", spec.ID)
+		}
+		if spec.writeProvider != nil && spec.providerConfig == nil {
+			t.Errorf("%s has writeProvider but no providerConfig path", spec.ID)
+		}
+		if spec.mcpConfig != nil && spec.writeMCP == nil {
+			t.Errorf("%s has an mcpConfig path but no writeMCP", spec.ID)
+		}
+		if spec.detect == nil {
+			t.Errorf("%s has no detect — doctor would panic on it", spec.ID)
 		}
 	}
 }
@@ -1527,5 +1543,129 @@ func TestKimiProfileOmitsBlankDefaultModel(t *testing.T) {
 	data, _ = os.ReadFile(path)
 	if !strings.Contains(string(data), `default_model = "openai/gpt-5.4"`) {
 		t.Errorf("default model missing:\n%s", data)
+	}
+}
+
+// What connect writes, disconnect removes: every writer round-trips against a
+// pre-existing user config (user's data intact, ours gone) and against a fresh
+// file (removed entirely). JSON is compared semantically — writeJSONConfig
+// re-marshals, so byte identity is only promised where we append or own the file.
+func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
+	const url = "https://api.orq.ai/v2/mcp"
+	const router = "https://api.orq.ai/v3/router"
+	models := openCodeModels()
+
+	mcpSection := map[string]string{"claude": "mcpServers", "codex": "", "opencode": "mcp", "kimi": "mcpServers", "kilo": "mcp"}
+	provSection := map[string]string{"opencode": "provider", "kilo": "provider", "pi": "providers"}
+
+	jsonEqual := func(t *testing.T, a, b []byte) {
+		t.Helper()
+		var av, bv any
+		if json.Unmarshal(a, &av) != nil || json.Unmarshal(b, &bv) != nil || !reflect.DeepEqual(av, bv) {
+			t.Errorf("user config changed:\nbefore: %s\nafter:  %s", a, b)
+		}
+	}
+
+	for _, spec := range agentRegistry() {
+		spec := spec
+		if spec.writeMCP != nil {
+			t.Run(spec.ID+"/mcp", func(t *testing.T) {
+				dir := t.TempDir()
+				ext := ".json"
+				var user []byte
+				if spec.ID == "codex" {
+					ext = ".toml"
+					user = []byte("model = \"user-choice\"\n\n[profiles.mine]\nfoo = \"bar\"\n")
+				} else {
+					user = []byte(`{"other":{"keep":true},"` + mcpSection[spec.ID] + `":{"user-entry":{"url":"http://mine"}}}`)
+				}
+				path := filepath.Join(dir, "config"+ext)
+
+				// fresh: our write creates the file, removal deletes it
+				if err := spec.writeMCP(path, url); err != nil {
+					t.Fatal(err)
+				}
+				if removed, err := spec.removeMCP(path); err != nil || !removed {
+					t.Fatalf("remove on fresh file: removed=%v err=%v", removed, err)
+				}
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("fresh file survives removal")
+				}
+
+				// user content survives the round trip
+				if err := os.WriteFile(path, user, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := spec.writeMCP(path, url); err != nil {
+					t.Fatal(err)
+				}
+				if removed, err := spec.removeMCP(path); err != nil || !removed {
+					t.Fatalf("remove: removed=%v err=%v", removed, err)
+				}
+				after := mustRead(t, path)
+				if spec.ID == "codex" {
+					if string(after) != string(user) {
+						t.Errorf("codex config not byte-identical:\nbefore: %q\nafter:  %q", user, after)
+					}
+				} else {
+					jsonEqual(t, user, after)
+				}
+				// second removal is a no-op, not an error
+				if removed, err := spec.removeMCP(path); err != nil || removed {
+					t.Errorf("second removal: removed=%v err=%v", removed, err)
+				}
+			})
+		}
+		if spec.writeProvider != nil {
+			t.Run(spec.ID+"/provider", func(t *testing.T) {
+				dir := t.TempDir()
+				ext := ".json"
+				var user []byte
+				switch spec.ID {
+				case "codex":
+					ext = ".toml" // whole file ours: fresh case only
+				case "kimi":
+					ext = ".toml"
+					user = []byte("[providers.mine]\napi_key = \"k\"\n\n[models.\"mine/model\"]\nprovider = \"mine\"\n")
+				default:
+					user = []byte(`{"` + provSection[spec.ID] + `":{"user-prov":{"baseUrl":"http://mine"}},"top":1}`)
+				}
+				path := filepath.Join(dir, "config"+ext)
+
+				if _, err := spec.writeProvider(path, router, "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+					t.Fatal(err)
+				}
+				if removed, err := spec.removeProvider(path); err != nil || !removed {
+					t.Fatalf("remove on fresh file: removed=%v err=%v", removed, err)
+				}
+				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("fresh file survives removal")
+				}
+
+				if user == nil {
+					return
+				}
+				if err := os.WriteFile(path, user, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := spec.writeProvider(path, router, "sk-k", models, "anthropic/claude-sonnet-4-6"); err != nil {
+					t.Fatal(err)
+				}
+				if removed, err := spec.removeProvider(path); err != nil || !removed {
+					t.Fatalf("remove: removed=%v err=%v", removed, err)
+				}
+				after := mustRead(t, path)
+				if ext == ".toml" {
+					if string(after) != string(user) {
+						t.Errorf("kimi config not byte-identical:\nbefore: %q\nafter:  %q", user, after)
+					}
+				} else {
+					jsonEqual(t, user, after)
+				}
+				if removed, err := spec.removeProvider(path); err != nil || removed {
+					t.Errorf("second removal: removed=%v err=%v", removed, err)
+				}
+			})
+		}
 	}
 }

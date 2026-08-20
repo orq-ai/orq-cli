@@ -48,6 +48,9 @@ type agentSpec struct {
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
 	// providerPresent is the read-side pair of writeProvider, in that agent's own format; required whenever writeProvider is set.
 	providerPresent func(path string) bool
+	// removeMCP and removeProvider are the writers' inverses; required whenever the writer is set.
+	removeMCP      func(path string) (bool, error)
+	removeProvider func(path string) (bool, error)
 	// providerEmbedsKey marks a provider config holding the credential literally rather than referencing ORQ_API_KEY.
 	providerEmbedsKey bool
 	providerUsage     string
@@ -77,6 +80,7 @@ func agentRegistry() []agentSpec {
 			Label:         "Claude Code",
 			mcpConfig:     pathFor(".mcp.json", ".claude.json"),
 			writeMCP:      writeMCPServersJSON,
+			removeMCP:     func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", mcpServerName) },
 			manualSnippet: snippetMCPServersJSON,
 			detect:        detectAny(".claude", ".claude.json"),
 		},
@@ -86,11 +90,13 @@ func agentRegistry() []agentSpec {
 			// Codex reads MCP servers only from its config directory, so both scopes resolve there.
 			mcpConfig:     codexPath("config.toml"),
 			writeMCP:      writeMCPCodexTOML,
+			removeMCP:     removeMCPCodexTOML,
 			manualSnippet: snippetMCPCodexTOML,
 			// Same resolution the writers use, or a CODEX_HOME machine is never offered codex.
 			detect:          detectPath(codexPath("")),
 			providerConfig:  codexPath(codexProfileName + ".config.toml"),
 			writeProvider:   writeCodexProviderTOML,
+			removeProvider:  removeCodexProfile,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
 			providerUsage:   "run 'codex --profile " + codexProfileName + "'",
 			runCommand:      "codex --profile " + codexProfileName,
@@ -101,10 +107,12 @@ func agentRegistry() []agentSpec {
 			// Global only: opencode and kilo reject {env:...} references in a project config.
 			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeMCP:        writeMCPRemoteJSON,
+			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", mcpServerName) },
 			manualSnippet:   snippetMCPRemoteJSON,
 			detect:          detectAny(".config/opencode"),
 			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
+			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
@@ -113,11 +121,13 @@ func agentRegistry() []agentSpec {
 			Label:         "Kimi Code",
 			mcpConfig:     pathFor(".kimi-code/mcp.json", ".kimi-code/mcp.json"),
 			writeMCP:      writeMCPKimiJSON,
+			removeMCP:     func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", mcpServerName) },
 			manualSnippet: snippetMCPKimiJSON,
 			detect:        detectAny(".kimi-code", ".kimi"),
 			// Kimi reads config.toml only from the home directory.
 			providerConfig:    alwaysGlobalPath(".kimi-code/config.toml"),
 			writeProvider:     writeKimiProviderTOML,
+			removeProvider:    removeKimiProviderTOML,
 			providerPresent:   tomlTablePresent("providers." + launch.KimiChatProvider),
 			providerEmbedsKey: true,
 		},
@@ -127,10 +137,12 @@ func agentRegistry() []agentSpec {
 			// Global only — same env-reference restriction as opencode above.
 			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeMCP:        writeMCPRemoteJSON,
+			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", mcpServerName) },
 			manualSnippet:   snippetMCPRemoteJSON,
 			detect:          detectAny(".config/kilo"),
 			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
+			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
@@ -142,6 +154,7 @@ func agentRegistry() []agentSpec {
 			// pi reads models.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.pi/agent) only.
 			providerConfig:  piPath("models.json"),
 			writeProvider:   writePiProviderJSON,
+			removeProvider:  func(p string) (bool, error) { return removeJSONKeys(p, "providers", launch.PiProvider) },
 			providerPresent: jsonProviderPresentAt("providers", launch.PiProvider),
 			// The model has to be named. Verified against pi 0.83.0: a bare
 			// `pi --provider orq` answers from whatever model pi already had
@@ -838,4 +851,162 @@ func tomlTablePresent(table string) func(path string) bool {
 // The snapshot, not the environment: our own PreRun injects a session token into ORQ_API_KEY, which would report every shell as already exporting it.
 func agentKeyExported() bool {
 	return UserEnvAPIKey() != ""
+}
+
+// ============================================================================
+// Removers — the inverse of each writer, for `orq disconnect`
+// ============================================================================
+
+// removeJSONKeys deletes keys from one section of a JSON config. Reports
+// whether anything was removed. A file we created (no prior backup) that ends
+// empty is deleted; a user file is rewritten, never removed.
+func removeJSONKeys(path, section string, keys ...string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil || cfg == nil {
+		return false, fmt.Errorf("%s is not a JSON object — left untouched", path)
+	}
+	sec, ok := cfg[section].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	removed := false
+	for _, k := range keys {
+		if _, present := sec[k]; present {
+			delete(sec, k)
+			removed = true
+		}
+	}
+	if !removed {
+		return false, nil
+	}
+	if len(sec) == 0 {
+		delete(cfg, section)
+	}
+	if len(cfg) == 0 {
+		if _, err := os.Stat(path + ".orq-bak"); errors.Is(err, os.ErrNotExist) {
+			return true, os.Remove(path)
+		}
+	}
+	return true, writeJSONConfig(path, cfg)
+}
+
+// stripTOMLTables drops every table whose header the predicate claims,
+// preserving the rest of the file verbatim. Lines before the first header
+// belong to the root table and are always kept.
+func stripTOMLTables(content string, owned func(header string) bool) (string, bool) {
+	var out, table strings.Builder
+	header := ""
+	removed := false
+	flush := func() {
+		if header != "" && owned(header) {
+			removed = true
+		} else {
+			out.WriteString(table.String())
+		}
+		table.Reset()
+	}
+	for _, line := range strings.SplitAfter(content, "\n") {
+		if h := strings.TrimSpace(strings.TrimSuffix(line, "\n")); strings.HasPrefix(h, "[") {
+			flush()
+			header = h
+		}
+		table.WriteString(line)
+	}
+	flush()
+	return out.String(), removed
+}
+
+// removeTOMLTables applies stripTOMLTables to a file. A file left with only
+// whitespace held nothing but our block, so it is deleted.
+func removeTOMLTables(path string, owned func(header string) bool) (bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	kept, removed := stripTOMLTables(string(data), owned)
+	if !removed {
+		return false, nil
+	}
+	if strings.TrimSpace(kept) == "" {
+		return true, os.Remove(path)
+	}
+	kept = strings.TrimRight(kept, "\n") + "\n"
+	return true, os.WriteFile(path, []byte(kept), 0o600)
+}
+
+func removeOpenCodeProviders(path string) (bool, error) {
+	return removeJSONKeys(path, "provider", launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider)
+}
+
+func removeMCPCodexTOML(path string) (bool, error) {
+	return removeTOMLTables(path, func(h string) bool {
+		return h == "[mcp_servers."+mcpServerName+"]" ||
+			strings.HasPrefix(h, "[mcp_servers."+mcpServerName+".")
+	})
+}
+
+// The codex profile file is entirely ours; removal is deletion.
+func removeCodexProfile(path string) (bool, error) {
+	err := os.Remove(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func removeKimiProviderTOML(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	kept := stripOrqKimiTables(string(data))
+	if kept == string(data) {
+		return false, nil
+	}
+	kept = strings.TrimLeft(dropDanglingKimiDefault(kept), "\n")
+	if strings.TrimSpace(kept) == "" {
+		return true, os.Remove(path)
+	}
+	kept = strings.TrimRight(kept, "\n") + "\n"
+	return true, os.WriteFile(path, []byte(kept), 0o600)
+}
+
+// dropDanglingKimiDefault removes a default_model whose model table is gone.
+// The writer only ever adds the key alongside its table, so a dangling one is
+// ours; a user's own default still has its table and is kept.
+func dropDanglingKimiDefault(content string) string {
+	var def string
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "default_model") {
+			if _, v, ok := strings.Cut(t, "="); ok {
+				def = strings.Trim(strings.TrimSpace(v), `"`)
+			}
+			break
+		}
+	}
+	if def == "" || strings.Contains(content, "[models."+fmt.Sprintf("%q", def)+"]") {
+		return content
+	}
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(content, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "default_model") {
+			continue
+		}
+		out.WriteString(line)
+	}
+	return out.String()
 }
