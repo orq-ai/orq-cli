@@ -226,15 +226,25 @@ func (c *Client) ListModels(bearer string) ([]RouterModel, error) {
 // "Best" is the lexically greatest model_id, which tracks version suffixes
 // (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but stronger editions
 // are ranked above cut-down ones first, see SizeVariantRank.
+// UsableForCodingAgent is the one definition of a model a coding agent can be
+// wired to: in the workspace's enabled set, a chat model, and able to call
+// tools. Every path that counts, ranks or writes models reads it from here —
+// four copies drifted before, and the count a user saw could exceed the set the
+// writers would accept.
+//
+// Enabled, not Active: is_active is true for the whole catalogue, so filtering
+// on it offered models the workspace had disabled, which a workspace with
+// enforce_enabled_models on rejects outright.
+func UsableForCodingAgent(m RouterModel) bool {
+	return m.Enabled && m.Type == "chat" && m.Functions
+}
+
 func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterModel {
 	groups := make([][]RouterModel, 0, len(preferred))
 	for _, prefix := range preferred {
 		matches := []RouterModel{}
 		for _, m := range models {
-			// Enabled, not Active: is_active is true for the whole catalogue,
-			// so filtering on it offered models the workspace had disabled —
-			// which a workspace with enforce_enabled_models on rejects outright.
-			if !m.Enabled || m.Type != "chat" || !m.Functions {
+			if !UsableForCodingAgent(m) {
 				continue
 			}
 			if strings.HasPrefix(m.Ref(), prefix) {

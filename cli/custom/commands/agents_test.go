@@ -168,7 +168,10 @@ func model(provider, id string, ctx int, enabled, fns bool, kind string) auth.Ro
 	return m
 }
 
-// Both commands read the same endpoint and must address a model the same way.
+// Both commands read the same endpoint and must address a model the same way,
+// starting from the same set. The payload carries a tools-less model and a
+// disabled one so a filter that drifts on either axis changes one side's output
+// and fails here — without them both sides agree no matter how they filter.
 // They did not: launch uses the published refId, setup composed
 // provider + "/" + model_id. For a workspace's custom models and autorouters
 // the endpoint sends refId "workspace@orq/<name>" while provider is "orq", so
@@ -183,7 +186,13 @@ func TestSetupAndLaunchAddressModelsIdentically(t *testing.T) {
 	   "metadata":{"context_window":200000,"max_output_tokens":64000}},
 	  {"provider":"orq","model_id":"router-fast","refId":"acme@orq/router-fast",
 	   "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-	   "metadata":{"context_window":128000,"max_output_tokens":8192}}
+	   "metadata":{"context_window":128000,"max_output_tokens":8192}},
+	  {"provider":"openai","model_id":"o1-preview","refId":"openai/o1-preview",
+	   "model_type":"chat","enabled":true,"is_active":true,"has_functions":false,
+	   "metadata":{"context_window":128000,"max_output_tokens":32768}},
+	  {"provider":"openai","model_id":"gpt-4-disabled","refId":"openai/gpt-4-disabled",
+	   "model_type":"chat","enabled":false,"is_active":true,"has_functions":true,
+	   "metadata":{"context_window":8192,"max_output_tokens":4096}}
 	]`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -196,8 +205,10 @@ func TestSetupAndLaunchAddressModelsIdentically(t *testing.T) {
 		t.Fatal(err)
 	}
 	var setupRefs []string
-	for _, m := range usableCodingModels(catalogue) {
-		setupRefs = append(setupRefs, m.Ref())
+	for _, m := range catalogue {
+		if auth.UsableForCodingAgent(m) {
+			setupRefs = append(setupRefs, m.Ref())
+		}
 	}
 
 	infos, err := launch.FetchEnabledModels("t", srv.URL)
@@ -1077,18 +1088,6 @@ func providerOfModel(t *testing.T, toml, ref string) string {
 func kimiBlock(routerURL, apiKey string, models []auth.RouterModel) string {
 	refs, infos := launchCatalog(models)
 	return launch.BuildKimiConfigTOML(routerURL, apiKey, "", refs, infos)
-}
-
-// usableCodingModels applies the filter both commands use, so the comparison
-// starts from the same set rather than from each path's own idea of it.
-func usableCodingModels(all []auth.RouterModel) []auth.RouterModel {
-	out := []auth.RouterModel{}
-	for _, m := range all {
-		if m.Enabled && m.Type == "chat" && m.Functions {
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // Re-running setup must be idempotent. The strip step has to recognise every

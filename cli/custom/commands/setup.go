@@ -1057,11 +1057,10 @@ func listEnabledModels(client *auth.Client, state *authState) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Same filter as codingModels: the count must never exceed what the agent wiring can use.
 	// m.Enabled, not is_active: is_active covers the whole catalogue and reported hundreds of models on a workspace with no provider connected.
 	enabled := 0
 	for _, m := range models {
-		if m.Enabled && m.Type == "chat" && m.Functions {
+		if auth.UsableForCodingAgent(m) {
 			enabled++
 		}
 	}
@@ -1340,7 +1339,7 @@ func codingModels(rep *reporter, client *auth.Client, state *authState) ([]auth.
 	}
 	codingModelsFetched = true
 	for _, m := range all {
-		if m.Enabled && m.Type == "chat" && m.Functions {
+		if auth.UsableForCodingAgent(m) {
 			cachedCodingModels = append(cachedCodingModels, m)
 		}
 	}
