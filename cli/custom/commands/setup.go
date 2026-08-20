@@ -41,6 +41,8 @@ type setupOptions struct {
 	yes            bool
 	// narrowing records that the branch flags came from 'setup coding-agents', whose spellings are --gateway/--mcp.
 	narrowing bool
+	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
+	persistKey bool
 }
 
 // skipFlag names the flag in the spelling of the command actually run: the subcommand has no --no-gateway to send people looking for.
@@ -70,6 +72,22 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 		return false
 	}
 	return answer
+}
+
+// setupComplete is the run's verdict, and drives both the final screen and the
+// setup_complete field. verified is one narrow fact — the API answered — so on
+// its own it printed a green "Setup complete" directly above an agent that
+// failed to wire, and told a CI job keying on the field that the run succeeded.
+func setupComplete(verified bool, agents []agentResult) bool {
+	if !verified {
+		return false
+	}
+	for _, a := range agents {
+		if a.Error != "" {
+			return false
+		}
+	}
+	return true
 }
 
 type agentResult struct {
@@ -103,6 +121,7 @@ wins over a key left exported in your shell.`),
 		// A failure here is a runtime problem, not a usage problem.
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.persistKey = true
 			return runSetup(cmd, &opts)
 		},
 	}
@@ -288,19 +307,18 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if len(links) > 0 {
 		result["links"] = links
 	}
-	result["setup_complete"] = verified
+	complete := setupComplete(verified, agentResults)
+	result["setup_complete"] = complete
 
-	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), verified, opts)
+	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), complete, opts)
 
 	if !wantsHumanView(cmd) {
 		if err := emit(result); err != nil {
 			return err
 		}
 	}
-	for _, a := range agentResults {
-		if a.Error != "" {
-			return errAgentFailed
-		}
+	if !complete && verified {
+		return errAgentFailed
 	}
 	if !verified {
 		return errors.New("setup finished but the verification call failed")
@@ -381,11 +399,18 @@ func (f fundingState) String() string {
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
+	// persistKey is false on 'setup coding-agents', which promises it never creates
+	// keys: saving there replaces a credential the user did not ask to replace, and
+	// blanks its recorded workspace, which disables the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if err := saveAPIKeyProfile(key, ""); err != nil {
-			return nil, err
+		if opts.persistKey {
+			if err := saveAPIKeyProfile(key, ""); err != nil {
+				return nil, err
+			}
+			rep.ok("api key (profile: %s)", auth.ActiveProfile())
+		} else {
+			rep.ok("api key from --api-key (not saved)")
 		}
-		rep.ok("api key (profile: %s)", auth.ActiveProfile())
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
 	}
 
@@ -1186,48 +1211,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			}
 		}
 
-		if !opts.noGateway && spec.writeProvider != nil {
-			path, perr := spec.providerConfig(opts.global)
-			switch {
-			case perr != nil:
-				rep.fail("%-8s provider  %v", id, perr)
-				res.Error = perr.Error()
-			case path == "":
-				// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
-				rep.fail("%-8s provider  no config path for this scope", id)
-				res.Error = "provider config path resolved empty"
-			case !state.durableBearer():
-				// Declining the mint is a choice, not an error.
-				rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
-			default:
-				models := codingModels(rep, client, state)
-				// Must match the [models."<key>"] form the writer emits: the full provider/model ref.
-				defaultModel := ""
-				if best, ok := defaultCodingModel(rep, client, state); ok {
-					defaultModel = best.Ref()
-				}
-				// Every writer clears its own keys before emitting, so writing an empty catalogue would delete a working provider block from an earlier run.
-				if len(models) == 0 {
-					// Say which of the two states this is: an earlier run's block
-					// still wires the agent, an absent one leaves it unwired.
-					if spec.providerPresent != nil && spec.providerPresent(path) {
-						rep.warn("%-8s provider  no models to offer; kept the orq provider already in %s", id, tilde(path))
-					} else {
-						rep.warn("%-8s provider  no models to offer; nothing written to %s", id, tilde(path))
-					}
-					results = append(results, res)
-					continue
-				}
-				// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
-				written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
-				if werr != nil {
-					// A consented wire that failed must reach the exit code and the JSON.
-					rep.fail("%-8s provider  %v", id, werr)
-					res.Error = werr.Error()
-				} else {
-					res.Provider = path
-					res.ModelCount = written
-				}
+		if !opts.noGateway {
+			if spec.writeProvider == nil {
+				// Mirrors the MCP arm's "nothing to configure": claude routes through
+				// env only, so asking for its gateway half must say so rather than
+				// print nothing and exit 0 as though the wire happened.
+				rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
+			} else {
+				writeAgentProvider(rep, client, state, opts, spec, &res)
 			}
 		}
 
@@ -1235,6 +1226,58 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		results = append(results, res)
 	}
 	return results, nil
+}
+
+// writeAgentProvider registers orq as a model provider for one agent, recording
+// the outcome on res: an error only where the user consented to a wire that
+// then failed, so the exit code and the JSON agree with the terminal.
+func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, spec agentSpec, res *agentResult) {
+	id := spec.ID
+	path, perr := spec.providerConfig(opts.global)
+	switch {
+	case perr != nil:
+		rep.fail("%-8s provider  %v", id, perr)
+		res.Error = perr.Error()
+	case path == "":
+		// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
+		rep.fail("%-8s provider  no config path for this scope", id)
+		res.Error = "provider config path resolved empty"
+	case !state.durableBearer():
+		// Declining the mint is a choice, not an error.
+		rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
+	default:
+		models, merr := codingModels(rep, client, state)
+		switch {
+		case merr != nil:
+			// An unreadable catalogue is a failed wire, not an empty workspace.
+			rep.fail("%-8s provider  %v", id, merr)
+			res.Error = merr.Error()
+		case len(models) == 0:
+			// Every writer clears its own keys before emitting, so writing an empty catalogue would delete a working provider block from an earlier run.
+			// Say which of the two states this is: an earlier run's block still wires the agent, an absent one leaves it unwired.
+			if spec.providerPresent != nil && spec.providerPresent(path) {
+				rep.warn("%-8s provider  no models to offer; kept the orq provider already in %s", id, tilde(path))
+			} else {
+				rep.warn("%-8s provider  no models to offer; nothing written to %s", id, tilde(path))
+			}
+		default:
+			// Must match the [models."<key>"] form the writer emits: the full provider/model ref.
+			defaultModel := ""
+			if best, ok := defaultCodingModel(rep, client, state); ok {
+				defaultModel = best.Ref()
+			}
+			// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
+			written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
+			if werr != nil {
+				// A consented wire that failed must reach the exit code and the JSON.
+				rep.fail("%-8s provider  %v", id, werr)
+				res.Error = werr.Error()
+			} else {
+				res.Provider = path
+				res.ModelCount = written
+			}
+		}
+	}
 }
 
 func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOptions) {
@@ -1283,29 +1326,31 @@ func rememberEnabledModelCount(n int) { enabledModels, enabledModelsCounted = n,
 func enabledModelCount() (int, bool)  { return enabledModels, enabledModelsCounted }
 
 // codingModels fetches the gateway catalogue once per run: the enabled chat models with function calling, the same pool 'orq launch' writes.
-func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
+// The error is returned, not swallowed into an empty slice: a fetch that failed and a workspace with nothing enabled are different facts, and
+// reporting the first as the second told users to go enable models in a workspace that already had them, then exited 0 having wired nothing.
+func codingModels(rep *reporter, client *auth.Client, state *authState) ([]auth.RouterModel, error) {
 	if codingModelsFetched {
-		return cachedCodingModels
+		return cachedCodingModels, nil
 	}
-	codingModelsFetched = true
 
 	all, err := client.ListModels(state.bearer)
 	if err != nil {
-		rep.warn("could not list gateway models: %v", err)
-		return nil
+		// Not memoized: one transient failure would otherwise poison every later agent in the loop.
+		return nil, fmt.Errorf("could not list gateway models: %w", err)
 	}
+	codingModelsFetched = true
 	for _, m := range all {
 		if m.Enabled && m.Type == "chat" && m.Functions {
 			cachedCodingModels = append(cachedCodingModels, m)
 		}
 	}
-	return cachedCodingModels
+	return cachedCodingModels, nil
 }
 
 // defaultCodingModel picks by preference order, then anything enabled. No probe: it would bill a completion, and a tools-less probe passed models that later failed.
 func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
-	models := codingModels(rep, client, state)
-	if len(models) == 0 {
+	models, err := codingModels(rep, client, state)
+	if err != nil || len(models) == 0 {
 		return auth.RouterModel{}, false
 	}
 

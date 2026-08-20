@@ -677,7 +677,8 @@ func TestWiringFlagsMapToBranches(t *testing.T) {
 			var out strings.Builder
 			rep := &reporter{w: &out}
 			opts := &setupOptions{noMCP: tc.noMCP, noGateway: tc.noGateway, yes: tc.yes, noInput: tc.noInput, agents: []string{"kimi"}}
-			results, err := instrumentAgents(rep, auth.NewClient(""), &authState{bearer: "sk-orq-fixture"}, opts)
+			srv := emptyCatalogueServer(t)
+			results, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "sk-orq-fixture"}, opts)
 			if err != nil {
 				t.Fatalf("instrumentAgents: %v", err)
 			}
@@ -826,6 +827,45 @@ func TestSetupWiresTheKeyItJustMinted(t *testing.T) {
 	}
 }
 
+// verified only says the API answered. Deriving the verdict from it alone
+// printed "✓ Setup complete" and "setup_complete": true directly above an agent
+// that failed to wire — the exit code was right, so a human saw a green verdict
+// and CI keying on the field read success.
+func TestSetupCompleteRequiresBothHalves(t *testing.T) {
+	wired := agentResult{Agent: "kimi", MCP: "/x/mcp.json", Provider: "/x/config.toml"}
+	failed := agentResult{Agent: "kimi", MCP: "/x/mcp.json", Error: "permission denied"}
+	for name, tc := range map[string]struct {
+		verified bool
+		agents   []agentResult
+		want     bool
+	}{
+		"verified, all wired":      {true, []agentResult{wired}, true},
+		"verified, one failed":     {true, []agentResult{wired, failed}, false},
+		"verified, nothing to do":  {true, nil, true},
+		"unverified, all wired":    {false, []agentResult{wired}, false},
+		"unverified and a failure": {false, []agentResult{failed}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := setupComplete(tc.verified, tc.agents); got != tc.want {
+				t.Errorf("setupComplete(%v, %d agents) = %v, want %v", tc.verified, len(tc.agents), got, tc.want)
+			}
+		})
+	}
+
+	// The screen renders the same verdict it is given.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out}, []agentResult{failed}, map[string]string{},
+		"https://api.orq.ai/v3/router", setupComplete(true, []agentResult{failed}), &setupOptions{})
+	if strings.Contains(out.String(), "Setup complete") {
+		t.Errorf("a run with a failed agent claimed completion:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "failed checks") {
+		t.Errorf("a failed run did not say so:\n%s", out.String())
+	}
+}
+
 func TestAFailedWireExitsNonZero(t *testing.T) {
 	for name, run := range map[string]func() error{
 		"setup": func() error {
@@ -875,12 +915,23 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 			}
 			resetSetupMemos(t)
 
+			// The screen the user reads comes out of bartolocli.Stderr; capture it
+			// so the verdict is asserted against the run, not against a hand-built
+			// call to printFinalScreen.
+			var screen strings.Builder
+			prevStderr := bartolocli.Stderr
+			bartolocli.Stderr = &screen
+			t.Cleanup(func() { bartolocli.Stderr = prevStderr })
+
 			err := run()
 			if err == nil {
 				t.Fatal("a failed provider write exited 0")
 			}
 			if !errors.Is(err, errAgentFailed) {
 				t.Errorf("error = %v, want errAgentFailed", err)
+			}
+			if strings.Contains(screen.String(), "Setup complete") {
+				t.Errorf("a run with a failed agent still claimed completion:\n%s", screen.String())
 			}
 		})
 	}
@@ -2040,6 +2091,19 @@ func sessionWithToken(apiBase string) *authState {
 	}
 }
 
+// emptyCatalogueServer answers /v2/models with an enabled-but-empty catalogue.
+// Tests that mean "this workspace has no models" must use this rather than an
+// unreachable client: a failed fetch is a different outcome and now reports as one.
+func emptyCatalogueServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[]`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // The funding row is a diagnostic, so no way of failing to read the balance
 // may fail doctor. A missing or expired session gives no row; an API error on
 // a session token — which does hold the permission — is a warn row, so a
@@ -2141,6 +2205,108 @@ func TestZeroBalanceIsActionableNotAlarming(t *testing.T) {
 	}
 }
 
+// 'setup coding-agents' documents that it never creates keys. It also must not
+// replace one: saving --api-key overwrote the credential every other command
+// authenticates with, and blanked its recorded workspace, which disables the
+// mismatch guard for good — a one-off borrowed key silently becoming permanent.
+func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
+	srv := emptyCatalogueServer(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	sub := newSetupCodingAgentsCommand()
+	sub.SetArgs([]string{"--api-key", "sk-orq-BORROWED", "--coding-agent", "kimi"})
+	_ = sub.Execute() // the wire outcome is another test's subject
+
+	key, ws := savedAPIKey()
+	if key != "sk-orq-SAVED" {
+		t.Errorf("saved key is now %q — the borrowed key replaced it", key)
+	}
+	if ws != "acme" {
+		t.Errorf("saved workspace is now %q — blanking it disables the mismatch guard", ws)
+	}
+}
+
+// An unreachable gateway is not an empty workspace. Reporting the first as the
+// second told users to go enable models in a workspace that already had them,
+// recorded no error, and exited 0 having wired nothing — and because the
+// catalogue is memoized per run, one transient failure did it for every agent.
+func TestACatalogueFetchFailureIsAnAgentError(t *testing.T) {
+	// Closed immediately: the port is dead, so ListModels fails at the transport.
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	dead := srv.URL
+	srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	chdir(t, t.TempDir())
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	opts := &setupOptions{noInput: true, noMCP: true, global: true, agents: []string{"kimi"}}
+	results, err := instrumentAgents(rep, auth.NewClient(dead), &authState{apiBase: dead, bearer: "sk-orq-fixture"}, opts)
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].Error == "" {
+		t.Errorf("a failed catalogue fetch left Error empty — the run would exit 0:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "no models to offer") {
+		t.Errorf("a fetch failure was reported as an empty workspace:\n%s", out.String())
+	}
+}
+
+// claude has no provider config at all. Asking for the gateway half must say so,
+// as the MCP arm does for pi, rather than print nothing and exit 0 — the user
+// named an agent and a half, and every signal said it worked.
+func TestGatewayOnlyOnAnAgentWithoutAProviderSaysSo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, t.TempDir())
+	resetSetupMemos(t)
+
+	srv := emptyCatalogueServer(t)
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	// --gateway on the subcommand: MCP off, gateway on, for an agent with no provider.
+	opts := &setupOptions{noInput: true, noMCP: true, narrowing: true, agents: []string{"claude"}}
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "sk-orq-fixture"}, opts)
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if !strings.Contains(out.String(), "no gateway provider config") {
+		t.Errorf("gateway-only on claude printed nothing about the half that cannot exist:\n%q", out.String())
+	}
+	if len(results) != 1 || results[0].Provider != "" {
+		t.Errorf("claude reported a provider it cannot have: %+v", results)
+	}
+}
+
 // Skipping an empty catalogue protects a provider block an earlier run wrote,
 // but "left unchanged" reads as "nothing is configured" — the state a user
 // cannot tell apart by reading the file they were just told was untouched.
@@ -2179,7 +2345,8 @@ func TestEmptyCatalogueSaysWhetherAnEarlierWireSurvives(t *testing.T) {
 			var out strings.Builder
 			rep := &reporter{w: &out}
 			opts := &setupOptions{noInput: true, noMCP: true, global: true, agents: []string{"kimi"}}
-			if _, err := instrumentAgents(rep, auth.NewClient(""), &authState{bearer: "sk-orq-fixture"}, opts); err != nil {
+			srv := emptyCatalogueServer(t)
+			if _, err := instrumentAgents(rep, auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "sk-orq-fixture"}, opts); err != nil {
 				t.Fatalf("instrumentAgents: %v", err)
 			}
 			got := out.String()
