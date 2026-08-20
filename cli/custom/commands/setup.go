@@ -1447,8 +1447,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  Or start a coding agent:      orq launch %s\n", detectedAgentID())
-		fmt.Fprintln(w, "  Or wire one durably:          orq setup coding-agents")
+		fmt.Fprintf(w, "  %s orq launch %s\n", padLabel("Launch"), detectedAgentID())
+		fmt.Fprintf(w, "  %s orq setup coding-agents\n", padLabel("Wire"))
 	}
 	// MCP entries reference ORQ_API_KEY too; checking only Provider left kimi with a dead MCP server and no warning.
 	keyReferenced := false

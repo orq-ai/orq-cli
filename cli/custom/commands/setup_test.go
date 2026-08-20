@@ -1647,6 +1647,73 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 	}
 }
 
+// Everything above asserts the stripped rendering, because no test runs on a
+// TTY. These goldens force the colour path through the humanOutput seam with a
+// pinned palette, so recolouring the check, dropping the bold, or padding the
+// painted label — mutations the stripped tests cannot see — fail on bytes.
+func TestFinalScreenGoldens(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+	t.Setenv("NO_COLOR", "")
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	prevHuman := humanOutput
+	prevBrand, prevOK, prevWarn := ansiBrand, ansiOK, ansiWarn
+	t.Cleanup(func() {
+		humanOutput = prevHuman
+		ansiBrand, ansiOK, ansiWarn = prevBrand, prevOK, prevWarn
+	})
+	ansiBrand, ansiOK, ansiWarn = "\033[95m", "\033[92m", "\033[93m"
+
+	wired := []agentResult{{Agent: "kimi", MCP: ".kimi-code/mcp.json", Provider: "~/.kimi-code/config.toml"}}
+	links := map[string]string{"workspace": "https://my.orq.ai/ws"}
+
+	for name, tc := range map[string]struct {
+		colour   bool
+		agents   []agentResult
+		verified bool
+		want     string
+	}{
+		"wired, colour off": {false, wired, true, "" +
+			"\n  ✓ Setup complete\n\n" +
+			"  Kimi Code can now read and write your orq.ai workspace.\n\n" +
+			"  Start       kimi\n" +
+			"  Try         \"list my orq.ai agents\"\n" +
+			"  Skills      npx skills add orq-ai/assistant-plugins\n\n" +
+			"  Workspace   https://my.orq.ai/ws\n" +
+			"  Stuck?      orq doctor  ·  https://docs.orq.ai\n\n"},
+		"wired, colour on": {true, wired, true, "" +
+			"\n  \033[92m✓\033[0m \033[1mSetup complete\033[0m\n\n" +
+			"  Kimi Code can now read and write your orq.ai workspace.\n\n" +
+			"  \033[2mStart      \033[0m kimi\n" +
+			"  \033[2mTry        \033[0m \"list my orq.ai agents\"\n" +
+			"  \033[2mSkills     \033[0m npx skills add orq-ai/assistant-plugins\n\n" +
+			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
+			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
+		"nothing wired, failed, colour on": {true, nil, false, "" +
+			"\n  \033[93m!\033[0m \033[1mSetup finished with failed checks — see above\033[0m\n\n" +
+			"  Route an existing OpenAI client through the gateway:\n\n" +
+			"      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n" +
+			"                      base_url=\"https://api.orq.ai/v3/router\")\n\n" +
+			"  \033[2mLaunch     \033[0m orq launch kimi\n" +
+			"  \033[2mWire       \033[0m orq setup coding-agents\n\n" +
+			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
+			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			humanOutput = func() bool { return tc.colour }
+			var out strings.Builder
+			printFinalScreen(&reporter{w: &out}, tc.agents, links, "https://api.orq.ai/v3/router", tc.verified, &setupOptions{})
+			if got := out.String(); got != tc.want {
+				t.Errorf("golden mismatch:\ngot:  %q\nwant: %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // The bare command only authenticates once ORQ_API_KEY is exported, so the
 // suggestion must sit below the warning that says the shell lacks it — or the
 // screen walks the user into the exact failure it just predicted.
