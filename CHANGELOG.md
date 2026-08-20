@@ -69,8 +69,8 @@ the version and this changelog as the source of truth for breaking changes.
 - Changed: when `ORQ_API_KEY` in the environment points at a different
   workspace than your login, setup says which workspace wins; the note no
   longer appears when both point at the same place. After MCP wiring, setup
-  suggests the agent-skills install, and the final screen's agent rows no
-  longer overflow narrow terminals.
+  suggests the agent-skills install, and the step-3 agent rows drop the
+  scope-note suffix.
 - Changed: the API key `orq setup` saves is reused only for the workspace it
   was minted in. Running setup against a different workspace (`--workspace`, or
   the interactive picker) mints a fresh key for it instead of silently wiring

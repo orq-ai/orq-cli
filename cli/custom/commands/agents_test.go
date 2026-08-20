@@ -541,6 +541,16 @@ func TestPiPathAndDetectHonorTheEnvDir(t *testing.T) {
 		t.Error("detected via ~/.pi/agent while PI_CODING_AGENT_DIR points elsewhere")
 	}
 
+	// A regular file at the env path is not an agent dir.
+	file := filepath.Join(home, "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", file)
+	if pi.detect() {
+		t.Error("a regular file at PI_CODING_AGENT_DIR read as detected")
+	}
+
 	// Env unset: the home fallback still works.
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	if !pi.detect() {

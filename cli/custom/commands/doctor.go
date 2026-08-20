@@ -371,7 +371,8 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 // needs credits.view, which the API-key capability catalogue cannot express, so
 // an API-key run would get a 403 that means nothing about the workspace. Rather
 // than render a row that says "unknown" on every non-session run, the row is
-// absent. Any error is treated the same way — no row, never a false alarm.
+// absent. A session token does hold the permission, so an error on this path
+// is a backend or install problem and gets a warn row rather than silence.
 //
 // Reuses the token already on disk instead of refreshing one: doctor is a
 // diagnostic and must not write state, and a refresh persists new tokens.
@@ -387,7 +388,11 @@ func gatewayFundingCheck(client *auth.Client, inspect auth.SessionInspectResult)
 	}
 	balance, err := client.Credits(token)
 	if err != nil {
-		return doctorCheck{}, false
+		return doctorCheck{
+			ID:      "gateway_funding",
+			Status:  "warn",
+			Message: fmt.Sprintf("could not read the credit balance: %v", err),
+		}, true
 	}
 	if balance.Balance > 0 {
 		return doctorCheck{

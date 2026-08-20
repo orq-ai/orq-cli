@@ -194,21 +194,23 @@ func TestSanitizeKeyName(t *testing.T) {
 // The providers step exists to tell "no provider connected" apart from "the
 // catalogue is full of models nobody enabled". is_active is true for every
 // entry the gateway knows about, so counting it reported hundreds of models on
-// a workspace with nothing connected and the warning could never fire; only the
-// workspace's enabled set counts.
+// a workspace with nothing connected and the warning could never fire. The
+// count also requires function calling, or "N models available" precedes
+// "no models to offer" from the same catalogue.
 func TestCountEnabledModelsIgnoresInactive(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v2/models") {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 		// /v2/models answers with a bare array, not a {data: []} envelope.
-		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5-mini","model_type":"chat","is_active":true,"enabled":true},
-		                {"provider":"openai","model_id":"gpt-4","model_type":"chat","is_active":true,"enabled":false},
+		fmt.Fprint(w, `[{"provider":"openai","model_id":"gpt-5-mini","model_type":"chat","is_active":true,"enabled":true,"has_functions":true},
+		                {"provider":"openai","model_id":"gpt-4","model_type":"chat","is_active":true,"enabled":false,"has_functions":true},
+		                {"provider":"openai","model_id":"old-chat","model_type":"chat","is_active":true,"enabled":true},
 		                {"provider":"openai","model_id":"dall-e","model_type":"image","is_active":true,"enabled":true}]`)
 	}))
 	defer srv.Close()
 
-	got, _, err := listEnabledModels(auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"})
+	got, err := listEnabledModels(auth.NewClient(srv.URL), &authState{apiBase: srv.URL, bearer: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1424,18 +1426,18 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	}{
 		"models and money": {
 			balance: "25", catalogue: oneChatModel,
-			wantFacts:  []string{"1 chat models available"},
+			wantFacts:  []string{"1 models available to coding agents"},
 			wantAbsent: []string{"Enable models", "credit balance"},
 		},
 		"funded, no models": {
 			balance: "25", catalogue: `[]`,
 			wantFacts:      []string{"no models enabled for this workspace", "/acme/router/models"},
-			wantAbsent:     []string{"credit balance", "0 chat models available"},
+			wantAbsent:     []string{"credit balance", "0 models available"},
 			wantLinkBlocks: 1,
 		},
 		"models, no money": {
 			balance: "0", catalogue: oneChatModel,
-			wantFacts:      []string{"1 chat models available", "if model calls get refused", "/acme/admin/credits"},
+			wantFacts:      []string{"1 models available to coding agents", "if model calls get refused", "/acme/admin/credits"},
 			wantAbsent:     []string{"no models enabled", "Enable models", "/acme/router/providers", "How it works"},
 			wantLinkBlocks: 0,
 		},
@@ -1445,7 +1447,7 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 				"no models enabled for this workspace", "if model calls get refused",
 				"/acme/router/models", "/acme/admin/credits", "How it works",
 			},
-			wantAbsent:     []string{"0 chat models available", "/acme/router/providers"},
+			wantAbsent:     []string{"0 models available", "/acme/router/providers"},
 			wantLinkBlocks: 1,
 		},
 		"self-hosted, no models": {
@@ -1701,9 +1703,10 @@ func sessionWithToken(apiBase string) *authState {
 	}
 }
 
-// The funding row is a diagnostic, so every way of failing to read the balance
-// must leave doctor unharmed: no row rather than a scary one, and never a
-// failure. A 403 is the expected answer for an API key, not a problem.
+// The funding row is a diagnostic, so no way of failing to read the balance
+// may fail doctor. A missing or expired session gives no row; an API error on
+// a session token — which does hold the permission — is a warn row, so a
+// broken backend is distinguishable from an unfunded workspace.
 func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
 	key := "acme"
 	session := func() *auth.Session {
@@ -1727,7 +1730,9 @@ func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
 		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`,
 			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
 		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}},
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
+		{name: "server error", status: 500, body: `{"message":"boom"}`,
+			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
 		{name: "no session", status: 200, body: `{"balance":12}`,
 			inspect: auth.SessionInspectResult{Status: auth.StatusMissing}},
 		{name: "expired token", status: 200, body: `{"balance":12}`,

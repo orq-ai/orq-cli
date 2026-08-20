@@ -8,7 +8,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -403,9 +402,14 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	if session != nil {
+		envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY"))
 		savedKey, savedWS := savedAPIKey()
-		if envKeyShadowsLogin(strings.TrimSpace(os.Getenv("ORQ_API_KEY")), savedKey, savedWS, activeWorkspaceKey(session)) {
-			rep.note("the exported ORQ_API_KEY is for another workspace; this run follows your login instead")
+		if envKeyShadowsLogin(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
+			if envKey == savedKey {
+				rep.note("the exported ORQ_API_KEY is for workspace %s; this run follows your login instead", savedWS)
+			} else {
+				rep.note("the exported ORQ_API_KEY is not the key setup saved, so its workspace is unknown; this run follows your login instead")
+			}
 		}
 	}
 
@@ -968,7 +972,7 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 	credits := workspaceLink(state, creditsPath)
 
 	if !noModels {
-		rep.ok("%d chat models available", count)
+		rep.ok("%d models available to coding agents", count)
 	} else {
 		rep.warn("no models enabled for this workspace")
 		if models != "" {
@@ -1003,30 +1007,8 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 	}
 }
 
-// Derived from the catalogue, not GET /v2/integrations: that endpoint 403s for a workspace API key.
-func connectedProviders(models []auth.RouterModel) []string {
-	counts := map[string]int{}
-	for _, m := range models {
-		if m.Enabled && m.Type == "chat" && m.Provider != "" {
-			counts[m.Provider]++
-		}
-	}
-	out := make([]string, 0, len(counts))
-	for p := range counts {
-		out = append(out, p)
-	}
-	// Busiest first: only the head of this list gets shown.
-	sort.Slice(out, func(i, j int) bool {
-		if counts[out[i]] != counts[out[j]] {
-			return counts[out[i]] > counts[out[j]]
-		}
-		return out[i] < out[j]
-	})
-	return out
-}
-
-// listEnabledModels returns the enabled-model count and their providers, retrying because a freshly created key is not live yet.
-func listEnabledModels(client *auth.Client, state *authState) (int, []string, error) {
+// listEnabledModels returns the enabled-model count, retrying because a freshly created key is not live yet.
+func listEnabledModels(client *auth.Client, state *authState) (int, error) {
 	var models []auth.RouterModel
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
@@ -1038,16 +1020,17 @@ func listEnabledModels(client *auth.Client, state *authState) (int, []string, er
 		}
 	}
 	if err != nil {
-		return 0, nil, err
+		return 0, err
 	}
+	// Same filter as codingModels: the count must never exceed what the agent wiring can use.
 	// m.Enabled, not is_active: is_active covers the whole catalogue and reported hundreds of models on a workspace with no provider connected.
 	enabled := 0
 	for _, m := range models {
-		if m.Enabled && m.Type == "chat" {
+		if m.Enabled && m.Type == "chat" && m.Functions {
 			enabled++
 		}
 	}
-	return enabled, connectedProviders(models), nil
+	return enabled, nil
 }
 
 // Dashboard paths must be prefixed with the workspace key; unprefixed ones 404. Keyless runs get the docs page.
@@ -1144,7 +1127,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	}
 
 	if !opts.noGateway {
-		if count, _, err := listEnabledModels(client, state); err != nil {
+		if count, err := listEnabledModels(client, state); err != nil {
 			rep.warn("could not list gateway models: %v", err)
 		} else {
 			rememberEnabledModelCount(count)
@@ -1171,30 +1154,29 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		if spec.mcpConfig != nil {
 			configPath, err = spec.mcpConfig(opts.global)
 		}
-		switch {
-		case opts.noMCP:
-		case err != nil:
-			rep.fail("%-8s %v", id, err)
-			res.Error = err.Error()
-		case configPath == "":
-			rep.note("%-8s no MCP support in this agent — nothing to configure", id)
-		default:
-			if err := spec.writeMCP(configPath, mcpURL); err != nil {
+		if !opts.noMCP {
+			switch {
+			case err != nil:
 				rep.fail("%-8s %v", id, err)
-				rep.blank()
-				rep.note("Add this manually to %s:", tilde(configPath))
-				for _, line := range strings.Split(spec.manualSnippet(mcpURL), "\n") {
-					rep.note("    %s", line)
-				}
 				res.Error = err.Error()
-			} else {
-				res.MCP = configPath
+			case configPath == "":
+				rep.info("%-8s no MCP support in this agent — nothing to configure", id)
+			default:
+				if err := spec.writeMCP(configPath, mcpURL); err != nil {
+					rep.fail("%-8s %v", id, err)
+					rep.blank()
+					rep.note("Add this manually to %s:", tilde(configPath))
+					for _, line := range strings.Split(spec.manualSnippet(mcpURL), "\n") {
+						rep.note("    %s", line)
+					}
+					res.Error = err.Error()
+				} else {
+					res.MCP = configPath
+				}
 			}
 		}
 
-		switch {
-		case opts.noGateway && spec.writeProvider != nil:
-		case spec.writeProvider != nil:
+		if !opts.noGateway && spec.writeProvider != nil {
 			path, perr := spec.providerConfig(opts.global)
 			switch {
 			case perr != nil:

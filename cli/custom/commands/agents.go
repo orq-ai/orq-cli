@@ -205,15 +205,14 @@ func piPath(rel string) func(bool) (string, error) {
 	}
 }
 
-// piDetect mirrors piPath: when $PI_CODING_AGENT_DIR names pi's directory, that
-// directory alone decides — falling through to ~/.pi would detect an install
-// the write path then ignores, and setup would report a file pi never reads.
+// piDetect mirrors piPath so detection and the write agree on one directory.
 func piDetect() bool {
-	if dir := strings.TrimSpace(os.Getenv("PI_CODING_AGENT_DIR")); dir != "" {
-		_, err := os.Stat(dir)
-		return err == nil
+	dir, err := piPath("")(true)
+	if err != nil {
+		return false
 	}
-	return detectAny(".pi/agent", ".pi")()
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
 }
 
 // codexPath resolves inside codex's config directory: $CODEX_HOME when set, ~/.codex otherwise.

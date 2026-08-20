@@ -45,6 +45,7 @@ var commandGroup = map[string]string{
 	"moderations":     groupGateway,
 	"ocr":             groupGateway,
 	"rerank":          groupGateway,
+	"chunking":        groupGateway,
 	"smart-routers":   groupGateway,
 	"routing-rules":   groupGateway,
 	"guardrail-rules": groupGateway,
@@ -66,7 +67,6 @@ var commandGroup = map[string]string{
 	"tools":            groupAgents,
 	"memory-stores":    groupAgents,
 	"knowledge-bases":  groupAgents,
-	"chunking":         groupAgents,
 	"schedules":        groupAgents,
 	"prompts":          groupAgents,
 
