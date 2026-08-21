@@ -89,6 +89,9 @@ func NewDoctorCommand() *cobra.Command {
 			if shadow, ok := gatewayKeyShadowsSessionCheck(inspect); ok {
 				checks = append(checks, shadow)
 			}
+			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
+				checks = append(checks, expiry)
+			}
 			if funding, ok := gatewayFundingCheck(client, inspect); ok {
 				checks = append(checks, funding)
 			}
@@ -403,6 +406,35 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 		Status:  "warn",
 		Message: "ORQ_API_KEY in this shell is the gateway-scoped key, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead",
 	}, true
+}
+
+// gatewayKeyExpiryCheck counts down to the minted key's expiry. Wired agents
+// hold that key, so the day it lapses every one of them 401s at once; the row
+// exists so that day is never a surprise. Absent when no expiry is recorded,
+// which is a key minted before expiry existed rather than one that never
+// expires.
+func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
+	at, ok := gatewayKeyExpiry()
+	if !ok {
+		return doctorCheck{}, false
+	}
+	days := int(at.Sub(now).Hours() / 24)
+	check := doctorCheck{
+		ID:      "gateway_key_expiry",
+		Details: map[string]any{"expires_at": at.UTC().Format(time.RFC3339), "days_left": days},
+	}
+	switch {
+	case !at.After(now):
+		check.Status = "fail"
+		check.Message = "The gateway key expired — wired agents are failing to authenticate. Run 'orq connect' to replace it"
+	case at.Sub(now) < gatewayKeyRenewWindow:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("The gateway key expires in %d days — run 'orq connect' to replace it and rewrite agent configs", days)
+	default:
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("The gateway key expires in %d days", days)
+	}
+	return check, true
 }
 
 // needs credits.view, which the API-key capability catalogue cannot express, so

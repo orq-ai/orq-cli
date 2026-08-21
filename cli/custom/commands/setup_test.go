@@ -2303,3 +2303,182 @@ func TestLegacyAPIKeyProfileIsReusedNotReminted(t *testing.T) {
 		t.Errorf("token=%q created=%v, want the saved legacy key reused", token, created)
 	}
 }
+
+// Renewal exists so an agent never meets the 401 itself: the replacement is
+// minted and wired while the old key is still valid. A key with no recorded
+// expiry is one minted before expiry existed, or one the user brought — no
+// expiry recorded means none known, and re-minting on that guess orphans a
+// working credential.
+func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		expiresAt string
+		want      bool
+	}{
+		"31 days left":     {now.Add(31 * 24 * time.Hour).Format(time.RFC3339), false},
+		"29 days left":     {now.Add(29 * 24 * time.Hour).Format(time.RFC3339), true},
+		"already expired":  {now.Add(-time.Hour).Format(time.RFC3339), true},
+		"no expiry stored": {"", false},
+		"unparseable":      {"whenever", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme"); err != nil {
+				t.Fatal(err)
+			}
+			bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", tc.expiresAt)
+			if got := gatewayKeyDueForRenewal(now); got != tc.want {
+				t.Errorf("dueForRenewal = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The superseded key is deliberately not revoked: it stays valid until its own
+// expiry, and that overlap is what keeps an agent config working until this run
+// rewrites it.
+func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			t.Errorf("renewal revoked the superseded key: %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			return
+		}
+		atomic.AddInt64(&mints, 1)
+		fmt.Fprint(w, `{"token":"sk-orq-NEWID-secret","api_key":{"id":"NEWID"}}`)
+	}))
+	defer srv.Close()
+
+	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "t",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	token, created, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created || token != "sk-orq-NEWID-secret" {
+		t.Fatalf("token=%q created=%v, want a freshly minted key", token, created)
+	}
+	if n := atomic.LoadInt64(&mints); n != 1 {
+		t.Errorf("minted %d keys, want 1", n)
+	}
+	profile := bartolocli.GetProfile()
+	if profile["gateway_key"] != token || profile["gateway_key_id"] != "NEWID" {
+		t.Errorf("profile still holds the superseded key: %v", profile)
+	}
+	at, ok := gatewayKeyExpiry()
+	if !ok || at.Before(time.Now().Add(80*24*time.Hour)) {
+		t.Errorf("expiry = %v (recorded %v), want roughly 90 days out", at, ok)
+	}
+}
+
+// The mint sends an expiry and records it locally, so the renewal check needs
+// no network and works offline.
+func TestMintRecordsExpiryLocallyAndRemotely(t *testing.T) {
+	credsHarness(t)
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		fmt.Fprint(w, `{"token":"sk-orq-KEYID-secret","api_key":{"id":"KEYID"}}`)
+	}))
+	defer srv.Close()
+
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "t",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	if _, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	sent, _ := body["expires_at"].(string)
+	at, err := time.Parse(time.RFC3339, sent)
+	if err != nil {
+		t.Fatalf("expires_at %q is not RFC3339: %v", sent, err)
+	}
+	if days := time.Until(at).Hours() / 24; days < 89 || days > 91 {
+		t.Errorf("expiry is %.1f days out, want 90", days)
+	}
+	stored, ok := gatewayKeyExpiry()
+	if !ok || stored.Sub(at).Abs() > time.Minute {
+		t.Errorf("stored expiry %v does not match the one sent %v", stored, at)
+	}
+}
+
+// Wired agents all hold the same key, so the day it lapses they fail together.
+// The countdown is what stops that being a surprise.
+func TestGatewayKeyExpiryCheckBands(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		expiresAt time.Time
+		want      string
+	}{
+		"healthy": {now.Add(60 * 24 * time.Hour), "pass"},
+		"soon":    {now.Add(29 * 24 * time.Hour), "warn"},
+		"expired": {now.Add(-24 * time.Hour), "fail"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme"); err != nil {
+				t.Fatal(err)
+			}
+			check, ok := gatewayKeyExpiryCheck(now)
+			if !ok {
+				t.Fatal("no expiry row for a key that records one")
+			}
+			if check.Status != tc.want {
+				t.Errorf("status = %q, want %q (%s)", check.Status, tc.want, check.Message)
+			}
+		})
+	}
+
+	// A key with no recorded expiry gets no row at all: silence is honest,
+	// "expires in 0 days" would not be.
+	credsHarness(t)
+	if err := saveAPIKeyProfile("sk-orq-legacy", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := gatewayKeyExpiryCheck(now); ok {
+		t.Error("a key with no recorded expiry produced an expiry row")
+	}
+}
+
+// A spend cap that stops an agent mid-task is worse than the leak it prevents
+// on a key that already expires, and budgets are a workspace-scope RPC a
+// Developer is refused. So the mint recommends and never calls.
+func TestMintSuggestsABudgetWithoutCreatingOne(t *testing.T) {
+	credsHarness(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "budget") {
+			t.Errorf("the mint path called the budget API: %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"token":"sk-orq-KEYID-secret","api_key":{"id":"KEYID"}}`)
+	}))
+	defer srv.Close()
+
+	var out strings.Builder
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "t",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	if _, _, err := ensureDurableKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "orq budgets create") || !strings.Contains(got, "KEYID") {
+		t.Errorf("no runnable budget suggestion naming the key:\n%s", got)
+	}
+}

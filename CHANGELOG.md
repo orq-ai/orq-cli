@@ -65,9 +65,24 @@ the version and this changelog as the source of truth for breaking changes.
   `orq prompts list` and friends. Commands now use your login session, and only
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
-- Added: `orq doctor` warns when `ORQ_API_KEY` in your shell is the
-  gateway-scoped key, which would make platform commands fail in a shell where
-  your login would have worked.
+- **Changed:** minted keys now expire after 90 days instead of never. `orq setup`
+  and `orq connect` replace one with under 30 days left, minting the new key and
+  rewriting agent configs in the same run. The superseded key is **not** revoked
+  — it stays valid until its own expiry, so the cutover overlaps and an agent
+  config that has not been rewritten yet keeps working. Keys minted before this
+  release record no expiry and are never renewed automatically; re-run
+  `orq setup` to move to a key that does.
+- Added: `orq doctor` counts down to the gateway key's expiry, warns under 30
+  days, and fails once it has lapsed. Also warns when `ORQ_API_KEY` in your shell
+  is the gateway-scoped key, which would make platform commands fail in a shell
+  where your login would have worked.
+- Added: after minting, `orq setup` prints a ready-to-run `orq budgets create`
+  command scoped to the new key. It is a suggestion, never applied: a silent
+  spend ceiling would stop an agent mid-task, and budgets are workspace-scoped,
+  so non-admin members cannot create one anyway.
+- Added: `orq connect` now says when an agent's config holds the key itself
+  rather than a reference to `ORQ_API_KEY` — today only Kimi Code, whose TOML
+  has no env indirection.
 - **Removed (breaking):** MCP and skills support in `orq setup`, `orq connect`
   and `orq disconnect`. The `mcp` capability is no longer accepted, the skills
   option is gone from the capability prompt, and `disconnect` no longer removes

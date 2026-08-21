@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Project mirrors the fields of the v2 Project schema that the CLI needs.
@@ -175,30 +176,43 @@ func GatewayAccess(domains []Domain) map[string]string {
 // values, while the committed spec documents wrapper objects and
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
 // actually validates against (verified against /v2/api-keys, both owner types).
-func createAPIKeyBody(name, projectID, userID string, access map[string]string) (body map[string]any, scopedToProject bool) {
+func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject bool) {
 	scope := map[string]any{"mode": "all"}
-	if ProjectScopable(projectID) {
+	if ProjectScopable(req.ProjectID) {
 		scope = map[string]any{
 			"mode":       "single",
-			"project_id": strings.TrimPrefix(projectID, "proj_"),
+			"project_id": strings.TrimPrefix(req.ProjectID, "proj_"),
 		}
 		scopedToProject = true
 	}
 	owner := map[string]any{"type": "service_account"}
-	if id := strings.TrimSpace(userID); id != "" {
+	if id := strings.TrimSpace(req.UserID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
 	}
 	out := map[string]any{
-		"name":            name,
+		"name":            req.Name,
 		"owner":           owner,
 		"project_scope":   scope,
 		"permission_mode": "all",
 	}
-	if len(access) > 0 {
+	if len(req.Access) > 0 {
 		out["permission_mode"] = "restricted"
-		out["access"] = access
+		out["access"] = req.Access
+	}
+	if !req.ExpiresAt.IsZero() {
+		out["expires_at"] = req.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 	return out, scopedToProject
+}
+
+// APIKeyRequest is what a mint decides. Zero ExpiresAt means the key never
+// expires; an empty Access map means every permission in the catalog.
+type APIKeyRequest struct {
+	Name      string
+	ProjectID string
+	UserID    string
+	Access    map[string]string
+	ExpiresAt time.Time
 }
 
 // CreateAPIKey mints a key and returns the raw token, which the API returns
@@ -209,8 +223,8 @@ func createAPIKeyBody(name, projectID, userID string, access map[string]string) 
 // accepts, and to the whole workspace otherwise. scopedToProject reports which
 // happened so the caller can tell the user. userID attributes the key to a
 // person; see createAPIKeyBody for why that is the default.
-func (c *Client) CreateAPIKey(bearer, name, projectID, userID string, access map[string]string) (token, keyID string, scopedToProject bool, err error) {
-	body, scopedToProject := createAPIKeyBody(name, projectID, userID, access)
+func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID string, scopedToProject bool, err error) {
+	body, scopedToProject := createAPIKeyBody(req)
 	var resp struct {
 		Token  string `json:"token"`
 		APIKey struct {

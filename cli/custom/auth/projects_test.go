@@ -1,12 +1,15 @@
 package auth
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // A service-account key can only be created by a workspace admin, so asking for
 // one unconditionally locks every non-admin member out of `orq setup`. When the
 // caller knows who is logged in, the key must be attributed to them.
 func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
-	body, scoped := createAPIKeyBody("orq-cli laptop", "", "user_123", nil)
+	body, scoped := createAPIKeyBody(APIKeyRequest{Name: "orq-cli laptop", UserID: "user_123"})
 	if scoped {
 		t.Error("no project id given, key should not claim project scope")
 	}
@@ -20,7 +23,7 @@ func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
 
 	// No session, no user to attribute to: the service account is the only
 	// remaining option, and this path never mints anyway.
-	body, _ = createAPIKeyBody("orq-cli laptop", "", "  ", nil)
+	body, _ = createAPIKeyBody(APIKeyRequest{Name: "orq-cli laptop", UserID: "  "})
 	if owner := body["owner"].(map[string]any); owner["type"] != "service_account" {
 		t.Errorf("owner without a user id = %v, want service_account", owner)
 	}
@@ -38,7 +41,7 @@ func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
 		{"019def44-a743-7000-a442-c0db96b06699", false},
 		{"", false},
 	} {
-		body, scoped := createAPIKeyBody("k", tc.projectID, "user_1", nil)
+		body, scoped := createAPIKeyBody(APIKeyRequest{Name: "k", ProjectID: tc.projectID, UserID: "user_1"})
 		if scoped != tc.wantScope {
 			t.Errorf("%q: scopedToProject = %v, want %v", tc.projectID, scoped, tc.wantScope)
 		}
@@ -57,7 +60,7 @@ func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
 // it must hold gateway verbs and nothing else. Under permission_mode "all" the
 // server resolves the whole catalog, including member, billing and sso.
 func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
-	body, _ := createAPIKeyBody("k", "", "user_1", map[string]string{"chat_completions": "write", "model": "read"})
+	body, _ := createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "user_1", Access: map[string]string{"chat_completions": "write", "model": "read"}})
 	if body["permission_mode"] != "restricted" {
 		t.Errorf("permission_mode = %v, want restricted", body["permission_mode"])
 	}
@@ -71,7 +74,7 @@ func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
 
 	// No map means the caller could not read the catalog; the legacy shape is
 	// the deliberate fallback, and it must not carry an empty access map.
-	body, _ = createAPIKeyBody("k", "", "user_1", nil)
+	body, _ = createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "user_1"})
 	if body["permission_mode"] != "all" {
 		t.Errorf("permission_mode = %v, want all", body["permission_mode"])
 	}
@@ -137,5 +140,21 @@ func TestKeyIDFromToken(t *testing.T) {
 		if got := keyIDFromToken(token); got != want {
 			t.Errorf("%q: key id = %q, want %q", token, got, want)
 		}
+	}
+}
+
+// A key with no expiry is one nobody ever revisits. Absent ExpiresAt still has
+// to mean "never expires", though, because that is the only safe shape when the
+// caller has no lifetime policy to apply.
+func TestCreateAPIKeyBodyCarriesExpiry(t *testing.T) {
+	at := time.Date(2026, 11, 19, 8, 30, 0, 0, time.FixedZone("CET", 3600))
+	body, _ := createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u", ExpiresAt: at})
+	if got := body["expires_at"]; got != "2026-11-19T07:30:00Z" {
+		t.Errorf("expires_at = %v, want the UTC RFC3339 form", got)
+	}
+
+	body, _ = createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u"})
+	if _, present := body["expires_at"]; present {
+		t.Error("a zero ExpiresAt must not send an expiry")
 	}
 }

@@ -20,6 +20,13 @@ import (
 )
 
 const (
+	// A key living in cleartext in another program's config is the highest-risk
+	// class PCI DSS 8.6.2 describes; 8.6.3 wants rotation at least annually and
+	// sooner by risk. Renewal starts early enough that the replacement is wired
+	// before the old key lapses.
+	gatewayKeyLifetime    = 90 * 24 * time.Hour
+	gatewayKeyRenewWindow = 30 * 24 * time.Hour
+
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
 	setupSteps        = 3
@@ -567,10 +574,33 @@ func saveAPIKeyProfile(key, workspace string) error {
 // saveGatewayKeyProfile stores the minted key under its own field. Writing it as
 // api_key would make apiKeyConfigured true, and every generated command would
 // then authenticate with a gateway-scoped credential instead of the session.
-func saveGatewayKeyProfile(key, keyID, workspace string) error {
+func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
 	profile := auth.ActiveProfile()
 	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", keyID)
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
 	return writeGatewayKeyProfile(profile, key, workspace)
+}
+
+// gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry is
+// recorded — a key minted before expiry existed, or one the user brought — and
+// callers must treat that as "unknown", never as "expired".
+func gatewayKeyExpiry() (time.Time, bool) {
+	raw := strings.TrimSpace(bartolocli.GetProfile()["gateway_key_expires_at"])
+	if raw == "" {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// gatewayKeyDueForRenewal reports whether the saved key is close enough to
+// expiry to replace now, so an agent never meets the 401 itself.
+func gatewayKeyDueForRenewal(now time.Time) bool {
+	at, ok := gatewayKeyExpiry()
+	return ok && at.Sub(now) < gatewayKeyRenewWindow
 }
 
 // clearAPIKeyProfile removes the stored keys; without it logout leaves a live key in credentials.json.
@@ -583,6 +613,7 @@ func clearAPIKeyProfile() (bool, error) {
 	}
 	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
 	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", "")
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", "")
 	return true, writeAPIKeyProfile(profile, "", "")
 }
 
@@ -758,6 +789,11 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case keyWorkspaceMismatch(tokenWS, active):
 		rep.note("saved key belongs to workspace %s — creating one for %s", tokenWS, active)
 		token = ""
+	case gatewayKeyDueForRenewal(time.Now()):
+		// The superseded key is left alive until its own expiry: that overlap is
+		// what keeps an agent config working until this run rewrites it.
+		rep.note("saved key expires soon — creating its replacement")
+		token = ""
 	case tokenWS == "":
 		rep.ok("reusing the key from an earlier setup (workspace unrecorded)")
 	default:
@@ -784,16 +820,37 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if state.session != nil && state.session.User != nil {
 		userID = state.session.User.ID
 	}
-	minted, keyID, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID, gatewayAccess(rep, client, state))
+	expiresAt := time.Now().Add(gatewayKeyLifetime)
+	minted, keyID, _, err := client.CreateAPIKey(state.bearer, auth.APIKeyRequest{
+		Name:      keyName,
+		UserID:    userID,
+		Access:    gatewayAccess(rep, client, state),
+		ExpiresAt: expiresAt,
+	})
 	if err != nil {
 		return "", false, err
 	}
 	// The API returns the raw token and its id once: persist before anything else can fail.
-	if err := saveGatewayKeyProfile(minted, keyID, active); err != nil {
+	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
-	rep.ok("key saved   %s  (gateway-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
+	rep.ok("key saved   %s  (gateway-scoped, expires in %d days)",
+		tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")),
+		int(gatewayKeyLifetime.Hours()/24))
+	suggestKeyBudget(rep, keyID)
 	return minted, true, nil
+}
+
+// suggestKeyBudget recommends a spend ceiling rather than setting one. Budgets
+// are a workspace-scope RPC, so a Developer or Researcher — most of the people
+// onboarding — is refused, and a cap applied silently would stop an agent
+// mid-task with nothing naming the cause.
+func suggestKeyBudget(rep *reporter, keyID string) {
+	if keyID == "" {
+		return
+	}
+	rep.note("cap this key's spend: orq budgets create --scope '{\"api_key\":{\"api_key_id\":\"%s\"}}' \\", keyID)
+	rep.note("      --limits '{\"period\":\"BUDGET_PERIOD_MONTHLY\",\"amount\":50}'")
 }
 
 // gatewayAccess resolves the permission map for a minted key from the live
@@ -1141,8 +1198,13 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 
 	rep.ok("%-8s %-24s %s", spec.ID, wired, tilde(res.Provider))
 
+	// Every other agent reads ORQ_API_KEY from the environment. This one cannot,
+	// so the user should know a live credential is now sitting in that file.
+	if spec.providerEmbedsKey {
+		rep.note("         this config holds the key itself, not a reference to ORQ_API_KEY")
+	}
 	// orq is registered as an option, not the default, so some agents need a step the user would never find.
-	if res.Provider != "" && spec.providerUsage != "" {
+	if spec.providerUsage != "" {
 		rep.note("         %s", spec.providerUsage)
 	}
 }
