@@ -26,7 +26,7 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 			flags := flags
 			t.Run(def.Name+flags.label, func(t *testing.T) {
 				plan, err := def.Resolve(&AgentContext{
-					Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL},
+					Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 					Getenv: env(nil),
 					Flags:  flags.GatewayFlags,
 					Fetch: func(_, _ string) ([]ModelInfo, error) {

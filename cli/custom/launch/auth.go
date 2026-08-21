@@ -14,17 +14,31 @@ import (
 	"orq/cli/custom/auth"
 )
 
+// CredentialKind is what ResolveCredentials decided the key is. The zero value
+// is unknown on purpose: a credential nobody resolved must not claim a
+// capability. This was two bools, where "real API key" was the zero value of
+// FromSession, so a Credentials nobody filled in reported that it could reach
+// the MCP server — which is how the pre-MCP-scopes warning stopped firing once
+// the CLI began injecting its own session token into ORQ_API_KEY.
+type CredentialKind int
+
+const (
+	CredentialUnknown CredentialKind = iota
+	// CredentialAPIKey is a key the user exported or brought.
+	CredentialAPIKey
+	// CredentialSessionToken is a workspace token from the login session.
+	CredentialSessionToken
+)
+
 // Credentials is the resolved auth pair every launch needs.
 type Credentials struct {
 	APIKey     string
 	APIBaseURL string
-	// FromSession is set when APIKey is a login-session workspace token
-	// rather than a real API key.
-	FromSession bool
+	Kind       CredentialKind
 	// MCPScoped reports whether a session token carries the mcp:* scopes.
-	// Logins made before the CLI requested them produce tokens without, and
-	// the MCP server rejects those with insufficient_scope. Real API keys
-	// (FromSession false) always pass MCP auth and skip this check.
+	// Logins made before the CLI requested them produce tokens without, and the
+	// MCP server rejects those with insufficient_scope. Meaningful only for
+	// CredentialSessionToken.
 	MCPScoped bool
 	// ShadowsSession is set when ORQ_API_KEY won over an existing login
 	// session. The workspace the key belongs to is then in force instead of
@@ -32,10 +46,20 @@ type Credentials struct {
 	ShadowsSession bool
 }
 
-// SupportsMCP reports whether the credential can authenticate against the
-// orq MCP server.
+// SupportsMCP reports whether the credential can authenticate against the orq
+// MCP server. An API key is assumed to pass: we cannot read its permissions
+// from here, and the key `orq setup` mints does not carry mcp_gateway, so this
+// answer is optimistic for exactly that case. The MCP server's own rejection is
+// the authority; this only decides whether to warn first.
 func (c *Credentials) SupportsMCP() bool {
-	return !c.FromSession || c.MCPScoped
+	switch c.Kind {
+	case CredentialAPIKey:
+		return true
+	case CredentialSessionToken:
+		return c.MCPScoped
+	default:
+		return false
+	}
 }
 
 // isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
@@ -110,14 +134,18 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		session, _ := auth.ReadSession()
-		creds := &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: shadowsSession(key, session)}
+		creds := &Credentials{
+			APIKey:         key,
+			APIBaseURL:     apiBase,
+			Kind:           CredentialAPIKey,
+			ShadowsSession: shadowsSession(key, session),
+		}
 		// installSessionPreRun injects the session's own workspace token into
 		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
-		// split made the ordinary state. Treating it as a user-supplied key left
-		// FromSession false, and SupportsMCP is `!FromSession || MCPScoped` — so
-		// the pre-MCP-scopes warning could never fire again.
+		// split made the ordinary state. Reading it as an exported key is what
+		// stopped the pre-MCP-scopes warning firing.
 		if session != nil && isSessionWorkspaceToken(key, session) {
-			creds.FromSession = true
+			creds.Kind = CredentialSessionToken
 			creds.MCPScoped = tokenHasMCPScope(key)
 		}
 		return creds, nil
@@ -141,10 +169,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		return nil, err
 	}
 	return &Credentials{
-		APIKey:      active.AccessToken,
-		APIBaseURL:  apiBase,
-		FromSession: true,
-		MCPScoped:   tokenHasMCPScope(active.AccessToken),
+		APIKey:     active.AccessToken,
+		APIBaseURL: apiBase,
+		Kind:       CredentialSessionToken,
+		MCPScoped:  tokenHasMCPScope(active.AccessToken),
 	}, nil
 }
 

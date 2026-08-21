@@ -82,7 +82,7 @@ func TestClaudeBareLaunchWiresNothing(t *testing.T) {
 
 func TestClaudeSkillsOverride(t *testing.T) {
 	plan, err := resolveClaude(&AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(map[string]string{"ORQ_SKILLS_URL": "https://example.com/custom.zip"}),
 		Flags:  GatewayFlags{MCP: true, NoSkills: false},
 	})
@@ -140,7 +140,7 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 func TestKimiMCPFile(t *testing.T) {
 	def := kimiAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
 		Flags:  GatewayFlags{MCP: true},
 		Fetch:  func(_, _ string) ([]ModelInfo, error) { return kimiInfos, nil },

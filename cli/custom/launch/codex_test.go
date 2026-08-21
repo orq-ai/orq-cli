@@ -13,7 +13,7 @@ const codexTemplateCatalog = `{"models":[{"slug":"gpt-5.4","display_name":"GPT-5
 
 func codexCtx(envMap map[string]string, flags GatewayFlags, probe func(string, ...string) (string, error)) *AgentContext {
 	return &AgentContext{
-		Creds:     &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:     &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv:    env(envMap),
 		Flags:     flags,
 		Fetch:     fetcherOf("openai/gpt-5.4"),

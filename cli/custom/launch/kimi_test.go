@@ -77,7 +77,7 @@ func TestKimiTOMLEscaping(t *testing.T) {
 func TestKimiResolvePlan(t *testing.T) {
 	def := kimiAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
 		Flags:  GatewayFlags{},
 		Fetch: func(_, _ string) ([]ModelInfo, error) {

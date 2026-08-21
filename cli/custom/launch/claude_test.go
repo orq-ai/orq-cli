@@ -7,7 +7,7 @@ import (
 
 func claudeCtx(envMap map[string]string, flags GatewayFlags) *AgentContext {
 	return &AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(envMap),
 		Flags:  flags,
 	}

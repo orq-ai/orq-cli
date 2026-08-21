@@ -275,7 +275,7 @@ func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			def := FindAgent(agent)
 			plan, err := def.Resolve(&AgentContext{
-				Creds:  &Credentials{APIKey: "k", APIBaseURL: onprem},
+				Creds:  &Credentials{APIKey: "k", APIBaseURL: onprem, Kind: CredentialAPIKey},
 				Getenv: func(string) string { return "" },
 				Flags:  GatewayFlags{NoFetchModels: true},
 			})
