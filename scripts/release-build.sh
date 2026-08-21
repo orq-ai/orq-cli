@@ -40,6 +40,14 @@ if [ ! -d "$BUILD_DIR/cmd/orq" ]; then
   exit 1
 fi
 
+# Fingerprint the vendored skills tree so the binary can compare its own
+# skill set to what's on disk without hashing the embedded FS at runtime. The
+# skills tree is vendored once at the repo root (cli/custom/skills/assets),
+# not per-module, so this is computed relative to ROOT_DIR regardless of
+# MODULE_DIR. The value only has to be stable and change when the tree
+# changes; it does not have to match the in-binary hashTree() fallback.
+SKILLS_FP="$(find "$ROOT_DIR/cli/custom/skills/assets" -type f | sort | xargs shasum -a 256 | shasum -a 256 | cut -c1-16)"
+
 # Platforms we ship: "goos goarch npm-package-suffix exe-name"
 PLATFORMS=(
   "darwin arm64 cli-darwin-arm64 orq"
@@ -73,7 +81,7 @@ for row in "${PLATFORMS[@]}"; do
     GOARCH="$goarch" \
     go build \
       -trimpath \
-      -ldflags "-s -w -X main.version=$VERSION" \
+      -ldflags "-s -w -X main.version=$VERSION -X orq/cli/custom/skills.buildFingerprint=$SKILLS_FP" \
       -o "$target_dir/$exe" \
       ./cmd/orq
   )
