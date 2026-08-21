@@ -284,7 +284,7 @@ orq launch kimi                   # Kimi Code
 orq launch pi                     # Pi Coding Agent
 ```
 
-For local mode the agent CLI itself must be installed (each subcommand prints an install hint when it is missing); `--sandbox` installs it into the container image for you. All requests appear in your orq.ai traces and logs like any other gateway traffic.
+The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
 Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. For persistent MCP wiring, use `orq setup`.
 
@@ -301,28 +301,21 @@ With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-a
 | `--mcp` | Wire the orq MCP server (workspace tools) into the agent |
 | `--no-skills` | With `--mcp`, skip the orq skills plugin (claude only) |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
-| `--local` | Run directly on this computer |
-| `--sandbox` | Run inside a throwaway Docker container |
-| `--mount-cwd` | Sandbox only: mount the current directory read-write at `/workspace` |
-| `--rebuild` | Sandbox only: rebuild the Docker image (`--no-cache --pull`) |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim (so agent flags that collide with ours, like codex's `--sandbox <mode>`, stay reachable). Everything after `--` is passed to the agent untouched:
+Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim, so agent flags stay reachable. Everything after `--` is passed to the agent untouched:
 
 ```sh
 orq launch claude -- --resume
 orq launch codex -- exec --full-auto "fix the build"
+orq launch codex --dry-run --sandbox read-only   # --sandbox is codex's; put launcher flags first
 ```
 
-### Local vs sandbox
+### Running locally
 
-Local mode runs the agent directly on your machine — it has full access to your filesystem, shell, and network, so an interactive warning is shown on TTYs. `--local` states that intent up front and skips the warning; `ORQ_LAUNCH_NON_INTERACTIVE=1` suppresses every prompt. Passing `--local` with `--sandbox` is an error.
+The agent runs directly on your machine, with full access to your filesystem, shell, and network — the same access it has when you start it yourself. `ORQ_LAUNCH_NON_INTERACTIVE=1` suppresses every prompt, including the login prompt.
 
-`--sandbox` runs the agent inside a throwaway Docker container instead: the image is built locally on first use, **nothing is mounted by default** (opt in with `--mount-cwd`), and the container is removed when the session ends. Works with Docker Desktop (the `docker` CLI is the only requirement). The routing env (including the API key) is passed at `docker exec` time via name-only `-e` flags, so it never appears in the container's `docker inspect` config or in host `ps`. Leftover containers can be removed manually with:
-
-```sh
-docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
-```
+Sandboxed execution is not available in this version.
 
 ### Per-agent environment overrides
 

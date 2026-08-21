@@ -1,19 +1,14 @@
 package launch
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
-
-	"golang.org/x/term"
 )
 
-// Run resolves and launches an agent, returning the child exit code. Local
-// mode execs directly; --sandbox dispatches to RunSandbox.
+// Run resolves and launches an agent, returning the child exit code.
 func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
 		Prompt:      def.Prompt,
@@ -30,24 +25,6 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if flags.Help {
 		printAgentHelp(def)
 		return 0, nil
-	}
-
-	if err := validateModeFlags(flags); err != nil {
-		return 1, err
-	}
-	// The prompt exists to catch an unstated intent. --local states it, so
-	// asking again is just a keystroke tax on the answer already given.
-	if !flags.Sandbox && !flags.Local && !flags.DryRun {
-		switch promptLocalWarning(os.Getenv) {
-		case localCancel:
-			fmt.Fprintln(os.Stderr, "Cancelled.")
-			return 0, nil
-		case localSandbox:
-			flags.Sandbox = true
-		}
-	}
-	if flags.Sandbox {
-		return RunSandbox(def, flags, passthrough)
 	}
 
 	// Dry-run stays non-interactive: scripts use it and must get the plain
@@ -98,57 +75,6 @@ func hostExecProbe(binary string, args ...string) (string, error) {
 	return string(out), err
 }
 
-type localChoice int
-
-const (
-	localOk localChoice = iota
-	localSandbox
-	localCancel
-)
-
-// validateModeFlags rejects the two mode flags together. Split out of Run so a
-// test can reach it without Run's valid-combo paths, which exec an agent.
-func validateModeFlags(flags GatewayFlags) error {
-	if flags.Sandbox && flags.Local {
-		return errors.New("--local and --sandbox choose opposite modes; pass one")
-	}
-	return nil
-}
-
-// promptLocalWarning warns that local mode gives the agent full host access
-// and offers sandbox instead. TTY-only; skipped for non-interactive runs.
-func promptLocalWarning(getenv func(string) string) localChoice {
-	if getenv("ORQ_LAUNCH_NON_INTERACTIVE") == "1" {
-		return localOk
-	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
-		return localOk
-	}
-
-	fmt.Fprintln(os.Stderr, "⚠  Local execution: the agent will have full access to your filesystem, shell, and network.")
-	fmt.Fprint(os.Stderr, "Proceed? [o]k / [s]andbox / [c]ancel: ")
-
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
-		return localCancel // read failure fails closed
-	}
-	return parseLocalChoice(line)
-}
-
-// parseLocalChoice maps the safety-prompt answer to an action. Bare Enter
-// accepts: the prompt already interrupted the user's explicit `orq launch
-// <agent>` intent, and Enter-to-continue is the CLI convention there.
-func parseLocalChoice(line string) localChoice {
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "o", "ok", "y", "yes", "":
-		return localOk
-	case "s", "sandbox":
-		return localSandbox
-	default:
-		return localCancel
-	}
-}
-
 func printAgentHelp(def *AgentDef) {
 	fmt.Printf(`Launch %s preconfigured to route through the orq.ai AI Router.
 
@@ -171,16 +97,11 @@ Flags:
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")
 	}
-	fmt.Print(`  --local               Run directly on this computer
-  --sandbox             Run inside a throwaway Docker container
-  --mount-cwd           Sandbox only: mount current directory at /workspace
-  --rebuild             Sandbox only: rebuild the Docker image
-  --dry-run             Print the resolved command and env (key redacted) without
+	fmt.Print(`  --dry-run             Print the resolved command and env (key redacted) without
                         starting the agent. It still resolves credentials and any
                         model catalogue the agent needs.
   -h, --help            Show this help
 
---local and --sandbox are opposites; passing both is an error.
 Everything after -- is passed to the agent untouched.
 `)
 }
@@ -207,9 +128,6 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-// Shared by the local and sandbox paths: --sandbox used to skip both, so a
-// container silently ran against the ORQ_API_KEY workspace while the user
-// believed their `orq auth login` choice applied.
 func reportCredentialNotices(creds *Credentials, flags GatewayFlags) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")

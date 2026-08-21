@@ -169,10 +169,16 @@ the version and this changelog as the source of truth for breaking changes.
   passing the old name fails at parse time rather than having the flag ignored.
 - Added: `orq launch <agent>` — starts claude, codex, opencode, kilo, kimi or
   pi preconfigured to route every model call through the orq AI Router, with
-  `--sandbox` (throwaway Docker container, nothing mounted unless
-  `--mount-cwd`), `--dry-run`, `--model`, and `--mcp` to wire the orq MCP
-  server. Per-invocation only: nothing is written to your agent's own
-  configuration.
+  `--dry-run`, `--model`, and `--mcp` to wire the orq MCP server.
+  Per-invocation only: nothing is written to your agent's own configuration.
+- **Changed:** `orq launch` runs locally only. `--sandbox`, `--mount-cwd`,
+  `--rebuild` and `--local` are gone, along with the Docker image build and the
+  "local execution" safety prompt — with no sandbox to switch to, a prompt
+  offering one option was a keystroke tax. The names now belong to the agent,
+  which fixes a collision: codex's own `--sandbox <mode>` is reachable again.
+  Launcher flags are still recognised only before the first agent-owned
+  argument, so put them first: `orq launch codex --dry-run --sandbox read-only`.
+  Sandboxing returns as its own piece of work.
 - **Changed (breaking):** `orq launch --mcp` is opt-in. The orq MCP server used
   to be wired on every launch with `--no-mcp` to decline; it is now off unless
   you pass `--mcp`, and `--no-mcp` is accepted but does nothing. The skills

@@ -20,7 +20,6 @@ func piAgent() AgentDef {
 		Binary:        "pi",
 		Label:         "Pi Coding Agent",
 		InstallHint:   "npm install -g @earendil-works/pi-coding-agent (https://github.com/badlogic/pi-mono)",
-		NpmPackage:    "@earendil-works/pi-coding-agent",
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{

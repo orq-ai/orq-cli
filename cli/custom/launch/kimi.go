@@ -33,7 +33,6 @@ func kimiAgent() AgentDef {
 		Binary:        "kimi",
 		Label:         "Kimi Code",
 		InstallHint:   "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
-		NpmPackage:    "@moonshot-ai/kimi-code",
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{

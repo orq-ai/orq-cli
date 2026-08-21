@@ -62,13 +62,6 @@ type GatewayFlags struct {
 	// the free plan's daily request quota with model calls.
 	MCP      bool
 	NoSkills bool
-	Sandbox  bool
-	// Local is the explicit opposite of Sandbox: it states the intent the
-	// safety prompt would otherwise ask for, so the prompt can be skipped in
-	// both directions rather than only towards the sandbox.
-	Local    bool
-	MountCwd bool
-	Rebuild  bool
 	DryRun   bool
 	Help     bool
 }

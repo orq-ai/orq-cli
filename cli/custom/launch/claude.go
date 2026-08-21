@@ -29,7 +29,6 @@ func claudeAgent() AgentDef {
 		Binary:      "claude",
 		Label:       "Claude Code",
 		InstallHint: "npm install -g @anthropic-ai/claude-code",
-		NpmPackage:  "@anthropic-ai/claude-code",
 		AllowModels: false,
 		Prompt:      nil, // claude's own -p passes through untouched
 		Resolve:     resolveClaude,

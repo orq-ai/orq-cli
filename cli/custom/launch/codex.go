@@ -18,7 +18,6 @@ func codexAgent() AgentDef {
 		Binary:        "codex",
 		Label:         "OpenAI Codex CLI",
 		InstallHint:   "npm install -g @openai/codex",
-		NpmPackage:    "@openai/codex",
 		FetchesModels: true,
 		AllowModels:   false,
 		Prompt: &PromptMapping{
@@ -55,10 +54,9 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 
 	catalogPath := ""
 	if ctx.ExecProbe == nil {
-		// Sandbox dry-run: no container to probe, so the catalog step is
-		// skipped — say so, or the printed command silently differs from a
-		// real run.
-		plan.Warnings = append(plan.Warnings, "codex model catalog skipped (no container on dry-run); a real run adds -c model_catalog_json=…")
+		// No probe available, so the catalog step is skipped — say so, or the
+		// printed command silently differs from a real run.
+		plan.Warnings = append(plan.Warnings, "codex model catalog skipped (no exec probe); a real run adds -c model_catalog_json=…")
 	} else if path, cleanup, err := writeCodexCatalog(ctx, resolved.GatewayModels); err != nil {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"could not build codex model catalog (model picker will show bundled models): %v", err))

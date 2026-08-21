@@ -84,8 +84,8 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 				}
 
 				// Every host path handed to the agent must be declared in
-				// TempDirs — sandbox mode only delivers declared dirs, so an
-				// undeclared path breaks exclusively inside the container.
+				// TempDirs — an undeclared dir is never cleaned up, and never
+				// reported by --dry-run.
 				for _, arg := range plan.PreArgs {
 					assertDeclaredIfPath(t, arg, plan.TempDirs)
 				}
@@ -128,41 +128,19 @@ func assertDeclaredIfPath(t *testing.T, value string, dirs []TempDir) {
 	t.Fatalf("host path %q not declared in TempDirs %v", value, dirs)
 }
 
-func TestParseLocalChoice(t *testing.T) {
-	cases := map[string]localChoice{
-		"o":         localOk,
-		"OK":        localOk,
-		"yes":       localOk,
-		"\n":        localOk, // bare Enter accepts, by design (see comment)
-		"s":         localSandbox,
-		"Sandbox\n": localSandbox,
-		"c":         localCancel,
-		"no":        localCancel,
-		"garbage":   localCancel,
-	}
-	for in, want := range cases {
-		if got := parseLocalChoice(in); got != want {
-			t.Fatalf("parseLocalChoice(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
-// Regressions for the launcher-flag collision review findings: launcher flags
-// are leading-only, values must not look like flags, prompt expansions land
-// at the front, and `--` after agent args reaches the agent.
 func TestParseArgvLeadingOnly(t *testing.T) {
-	// codex's own --sandbox <mode> after a subcommand stays codex's.
-	flags, rest, err := ParseArgv([]string{"exec", "--sandbox", "workspace-write", "do it"}, ParseArgvOptions{})
-	if err != nil || flags.Sandbox {
-		t.Fatalf("agent --sandbox consumed: %+v err=%v", flags, err)
+	// codex's own -p <profile> after a subcommand stays codex's.
+	flags, rest, err := ParseArgv([]string{"exec", "-p", "work", "do it"}, ParseArgvOptions{})
+	if err != nil {
+		t.Fatalf("err=%v", err)
 	}
-	if strings.Join(rest, " ") != "exec --sandbox workspace-write do it" {
+	if strings.Join(rest, " ") != "exec -p work do it" {
 		t.Fatalf("passthrough mangled: %v", rest)
 	}
 
 	// Leading launcher flags still work.
-	flags, rest, err = ParseArgv([]string{"--sandbox", "--dry-run", "exec"}, ParseArgvOptions{})
-	if err != nil || !flags.Sandbox || !flags.DryRun || strings.Join(rest, " ") != "exec" {
+	flags, rest, err = ParseArgv([]string{"--mcp", "--dry-run", "exec"}, ParseArgvOptions{})
+	if err != nil || !flags.MCP || !flags.DryRun || strings.Join(rest, " ") != "exec" {
 		t.Fatalf("leading flags: %+v rest=%v err=%v", flags, rest, err)
 	}
 
@@ -190,8 +168,8 @@ func TestParseArgvLeadingOnly(t *testing.T) {
 		t.Fatalf("agent's -- dropped: %v", rest)
 	}
 	// Leading -- delimits launcher flags and is consumed.
-	flags, rest, err = ParseArgv([]string{"--", "--sandbox"}, ParseArgvOptions{})
-	if err != nil || flags.Sandbox || strings.Join(rest, " ") != "--sandbox" {
+	flags, rest, err = ParseArgv([]string{"--", "--dry-run"}, ParseArgvOptions{})
+	if err != nil || flags.DryRun || strings.Join(rest, " ") != "--dry-run" {
 		t.Fatalf("leading --: %+v %v", flags, rest)
 	}
 }

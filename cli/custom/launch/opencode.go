@@ -55,7 +55,6 @@ func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 		Binary:        family.binary,
 		Label:         family.label,
 		InstallHint:   family.installHint,
-		NpmPackage:    family.npmPackage,
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{
