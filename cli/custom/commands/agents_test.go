@@ -1172,6 +1172,11 @@ func TestWritersPairWithDetectorsAndRemovers(t *testing.T) {
 		if spec.detect == nil {
 			t.Errorf("%s has no detect — doctor would panic on it", spec.ID)
 		}
+		// Without the reader, doctor cannot tell a wired agent from one still
+		// holding the key a renewal replaced.
+		if spec.providerEmbedsKey != (spec.providerKey != nil) {
+			t.Errorf("%s: providerEmbedsKey and providerKey must be set together", spec.ID)
+		}
 	}
 }
 
