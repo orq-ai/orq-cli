@@ -828,7 +828,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	minted, keyID, _, err := client.CreateAPIKey(state.bearer, auth.APIKeyRequest{
 		Name:      keyName,
 		UserID:    userID,
-		Access:    gatewayAccess(rep, client, state),
+		Access:    auth.GatewayAccess(),
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
@@ -855,24 +855,6 @@ func suggestKeyBudget(rep *reporter, keyID string) {
 	}
 	rep.note("cap this key's spend: orq budgets create --scope '{\"api_key\":{\"api_key_id\":\"%s\"}}' \\", keyID)
 	rep.note("      --limits '{\"period\":\"BUDGET_PERIOD_MONTHLY\",\"amount\":50}'")
-}
-
-// gatewayAccess resolves the permission map for a minted key from the live
-// capability catalog. An empty map means the mint falls back to the legacy
-// all-permissions key: onboarding must not hard-fail on a diagnostic endpoint,
-// and the warning is what stops that being silent.
-func gatewayAccess(rep *reporter, client *auth.Client, state *authState) map[string]string {
-	domains, err := client.ListCapabilities(state.bearer)
-	if err != nil {
-		rep.warn("could not read the permission catalog (%v) — creating a key with full permissions", err)
-		return nil
-	}
-	access := auth.GatewayAccess(domains)
-	if len(access) == 0 {
-		rep.warn("the permission catalog listed no gateway domains — creating a key with full permissions")
-		return nil
-	}
-	return access
 }
 
 func sanitizeKeyName(name string) string {

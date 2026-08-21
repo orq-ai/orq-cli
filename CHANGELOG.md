@@ -53,12 +53,12 @@ the version and this changelog as the source of truth for breaking changes.
   workspace. Keys minted by v4.13.10 carry `permission_mode: "all"`, which
   resolves to the whole capability catalog — including `member`, `billing`,
   `sso`, `group` and `workspace` — and is written in cleartext into coding-agent
-  config files. The new key can route model calls and read the model list, and
-  nothing else. The permission set is read from the live capability catalog at
-  mint time, so it tracks the API rather than a hardcoded list; if that endpoint
-  cannot be reached the CLI says so and falls back to the old behaviour rather
-  than failing onboarding. **Existing keys are not changed** — re-run
-  `orq setup` to mint a narrower one, and revoke the old key in the dashboard.
+  config files. The new key holds the gateway preset: chat completions,
+  responses, embeddings, images, audio, moderations, rerank, OCR, batches,
+  token counting, conversations, and read-only access to the model list. A call
+  to any platform endpoint is refused with `insufficient_scope`. **Existing keys
+  are not changed** — re-run `orq setup` to mint a narrower one, and revoke the
+  old key in the dashboard.
 - **Changed:** minted keys are now named `orq-cli gateway <hostname>` rather than
   `orq-cli <hostname>`. The dashboard lists every restricted key as `Restricted`
   without saying restricted to what, so the name is the only place the purpose

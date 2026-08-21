@@ -2243,40 +2243,38 @@ func TestMintedKeyIsGatewayScopedAndStoredSeparately(t *testing.T) {
 	}
 }
 
-// The catalog endpoint is a diagnostic, not the credential path: losing it must
-// not block onboarding. The mint falls back to the legacy all-permissions key
-// and says so, because a silent downgrade is how the over-privileged key got
-// shipped in the first place.
-func TestCatalogFailureStillMintsAndWarns(t *testing.T) {
+// There is no unrestricted path any more. The permission map is local, so a
+// mint cannot fall back to full permissions the way it did while the map came
+// from an endpoint that 404s in production.
+func TestMintIsAlwaysRestricted(t *testing.T) {
 	credsHarness(t)
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v2/api-keys/capabilities" {
-			w.WriteHeader(http.StatusForbidden)
-			return
+		if strings.Contains(r.URL.Path, "capabilities") {
+			t.Errorf("mint called the capability endpoint: %s", r.URL.Path)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		fmt.Fprint(w, `{"token":"sk-orq-KEYID2-secret"}`)
+		fmt.Fprint(w, `{"token":"sk-orq-01HZXW2K7Y8Q9M0N1P2R3S4T5V-secret"}`)
 	}))
 	defer srv.Close()
 
-	var out strings.Builder
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "t",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
-	token, created, err := ensureDurableKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	token, created, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
 	if err != nil || !created {
 		t.Fatalf("mint: created=%v err=%v", created, err)
 	}
-	if body["permission_mode"] != "all" {
-		t.Errorf("permission_mode = %v, want the all fallback", body["permission_mode"])
-	}
-	if !strings.Contains(out.String(), "full permissions") {
-		t.Errorf("the downgrade was silent:\n%s", out.String())
+	if body["permission_mode"] != "restricted" {
+		t.Errorf("permission_mode = %v, want restricted with no fallback", body["permission_mode"])
 	}
 	// No id in the response: it still comes back, parsed out of the token.
-	if id := savedGatewayKeyID(); id != "KEYID2" {
-		t.Errorf("gateway_key_id = %q, want KEYID2 parsed from %q", id, token)
+	if id := savedGatewayKeyID(); id != "01HZXW2K7Y8Q9M0N1P2R3S4T5V" {
+		t.Errorf("gateway_key_id = %q, want the id parsed from %q", id, token)
+	}
+	// source is the field the live endpoint actually acts on.
+	if body["source"] != "router" {
+		t.Errorf("source = %v, want router — without it the server mints permission_mode all", body["source"])
 	}
 }
 
@@ -2401,10 +2399,10 @@ func TestMintRecordsExpiryLocallyAndRemotely(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sent, _ := body["expires_at"].(string)
+	sent, _ := body["expiration"].(string)
 	at, err := time.Parse(time.RFC3339, sent)
 	if err != nil {
-		t.Fatalf("expires_at %q is not RFC3339: %v", sent, err)
+		t.Fatalf("expiration %q is not RFC3339: %v", sent, err)
 	}
 	if days := time.Until(at).Hours() / 24; days < 89 || days > 91 {
 		t.Errorf("expiry is %.1f days out, want 90", days)

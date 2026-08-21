@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -83,47 +86,49 @@ func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
 	}
 }
 
-// The catalog is read at runtime, so a domain added to the gateway group is
-// picked up without a release — and one added anywhere else is not.
+// A coding-agent key must hold gateway verbs and nothing else. The map is local
+// because the catalog endpoint is unreachable in production — see the comment on
+// gatewayAccessMap — and a fetch that fails means minting with full permissions.
 func TestGatewayAccessGrantsOnlyGatewayDomains(t *testing.T) {
-	domains := []Domain{
-		{ID: "chat_completions", Group: "DOMAIN_GROUP_GATEWAY", Writable: true},
-		{ID: "responses", Group: "3", Readable: true, Writable: true},
-		{ID: "model", Group: "DOMAIN_GROUP_GATEWAY", Readable: true},
-		{ID: "mcp_gateway", Group: "DOMAIN_GROUP_GATEWAY", Writable: true},
-		{ID: "member", Group: "DOMAIN_GROUP_WORKSPACE_ADMIN", Readable: true, Writable: true},
-		{ID: "prompt", Group: "DOMAIN_GROUP_PLATFORM", Readable: true, Writable: true},
-		{ID: "future", Group: "DOMAIN_GROUP_SOMETHING_NEW", Writable: true},
+	access := GatewayAccess()
+
+	for _, denied := range []string{
+		"member", "billing", "sso", "group", "workspace", "audit-log", // workspace admin
+		"prompt", "dataset", "agent", "traces", "logs", "project", "file", // platform
+		"mcp_gateway", // gateway group, but MCP data plane rather than wiring
+	} {
+		if level, granted := access[denied]; granted {
+			t.Errorf("%s granted at %q to a gateway-only key", denied, level)
+		}
 	}
-	got := GatewayAccess(domains)
-	want := map[string]string{"chat_completions": "write", "responses": "write", "model": "read"}
-	if len(got) != len(want) {
-		t.Fatalf("access = %v, want %v", got, want)
+
+	// Execution plus the catalogue read every coding agent needs to list models.
+	for domain, want := range map[string]string{
+		"chat_completions": "write",
+		"responses":        "write",
+		"count_tokens":     "write",
+		"model":            "read",
+	} {
+		if access[domain] != want {
+			t.Errorf("%s = %q, want %q", domain, access[domain], want)
+		}
 	}
-	for id, level := range want {
-		if got[id] != level {
-			t.Errorf("%s = %q, want %q", id, got[id], level)
+
+	// model is read-only in the catalog; asking for write resolves to nothing.
+	for domain, level := range access {
+		if level != "read" && level != "write" {
+			t.Errorf("%s has level %q, want read or write", domain, level)
 		}
 	}
 }
 
-// group arrives as the enum name from one encoder and its integer value from
-// another; anything else must fail closed rather than grant.
-func TestDomainGroupAcceptsBothEncodings(t *testing.T) {
-	for raw, want := range map[string]bool{
-		`"DOMAIN_GROUP_GATEWAY"`:  true,
-		`3`:                       true,
-		`"DOMAIN_GROUP_PLATFORM"`: false,
-		`2`:                       false,
-		`null`:                    false,
-	} {
-		var g domainGroup
-		if err := g.UnmarshalJSON([]byte(raw)); err != nil && raw != "null" {
-			t.Fatalf("%s: %v", raw, err)
-		}
-		if got := g.isGateway(); got != want {
-			t.Errorf("%s: isGateway = %v, want %v", raw, got, want)
-		}
+// Callers pass the map straight into a request body; a shared map would let one
+// mint mutate the next.
+func TestGatewayAccessReturnsACopy(t *testing.T) {
+	first := GatewayAccess()
+	first["member"] = "write"
+	if _, leaked := GatewayAccess()["member"]; leaked {
+		t.Error("mutating the returned map changed the shared one")
 	}
 }
 
@@ -132,10 +137,12 @@ func TestDomainGroupAcceptsBothEncodings(t *testing.T) {
 func TestKeyIDFromToken(t *testing.T) {
 	for token, want := range map[string]string{
 		"sk-orq-01HZXW2K7Y8Q9M0N1P2R3S4T5V-abcdef": "01HZXW2K7Y8Q9M0N1P2R3S4T5V",
-		"sk-orq-id-secret-with-dashes":             "id",
+		"sk-orq-id-secret-with-dashes":             "",
 		"sk-orq-noseparator":                       "",
 		"sk-other-01HZ-secret":                     "",
 		"":                                         "",
+		// A router token: same prefix, a JWT after it, and base64url has dashes.
+		"sk-orq-eyJhbGciOiJIUzI1NiJ9.eyJ3-x.sig": "",
 	} {
 		if got := keyIDFromToken(token); got != want {
 			t.Errorf("%q: key id = %q, want %q", token, got, want)
@@ -149,12 +156,45 @@ func TestKeyIDFromToken(t *testing.T) {
 func TestCreateAPIKeyBodyCarriesExpiry(t *testing.T) {
 	at := time.Date(2026, 11, 19, 8, 30, 0, 0, time.FixedZone("CET", 3600))
 	body, _ := createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u", ExpiresAt: at})
-	if got := body["expires_at"]; got != "2026-11-19T07:30:00Z" {
-		t.Errorf("expires_at = %v, want the UTC RFC3339 form", got)
+	// "expiration": the live endpoint rejects the spec's "expires_at" outright
+	// with `unknown field`, which fails the whole mint.
+	if got := body["expiration"]; got != "2026-11-19T07:30:00Z" {
+		t.Errorf("expiration = %v, want the UTC RFC3339 form", got)
+	}
+	if _, wrong := body["expires_at"]; wrong {
+		t.Error("sent expires_at, which the live API rejects")
 	}
 
 	body, _ = createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u"})
-	if _, present := body["expires_at"]; present {
+	if _, present := body["expiration"]; present {
 		t.Error("a zero ExpiresAt must not send an expiry")
+	}
+}
+
+// The live endpoint answers flat; the proto service nests under api_key; and
+// the token carries the id regardless. All three have to resolve, or the key id
+// is lost at the one moment it is recoverable.
+func TestCreateAPIKeyReadsTheKeyIDFromEitherShape(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want string
+	}{
+		"flat, as the live API answers": {`{"token":"sk-orq-TOK-secret","id":"FLAT"}`, "FLAT"},
+		"nested, as the proto service":  {`{"token":"sk-orq-TOK-secret","api_key":{"id":"NESTED"}}`, "NESTED"},
+		"neither, parsed from token":    {`{"token":"sk-orq-01HZXW2K7Y8Q9M0N1P2R3S4T5V-secret"}`, "01HZXW2K7Y8Q9M0N1P2R3S4T5V"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			_, keyID, _, err := NewClient(srv.URL).CreateAPIKey("t", APIKeyRequest{Name: "k", UserID: "u"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if keyID != tc.want {
+				t.Errorf("key id = %q, want %q", keyID, tc.want)
+			}
+		})
 	}
 }

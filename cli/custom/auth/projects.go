@@ -1,13 +1,11 @@
 package auth
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -86,73 +84,44 @@ func ProjectScopable(projectID string) bool {
 	return ulidPattern.MatchString(strings.TrimPrefix(projectID, "proj_"))
 }
 
-// mcpGatewayDomain executes calls against workspace MCP gateways. It sits in
-// the gateway group but is not part of gateway wiring.
-const mcpGatewayDomain = "mcp_gateway"
-
-// domainGroup accepts both encodings the capability endpoint has been seen to
-// return: the enum name and its integer value.
-type domainGroup string
-
-func (g *domainGroup) UnmarshalJSON(data []byte) error {
-	var name string
-	if err := json.Unmarshal(data, &name); err == nil {
-		*g = domainGroup(name)
-		return nil
-	}
-	var n int
-	if err := json.Unmarshal(data, &n); err != nil {
-		return err
-	}
-	*g = domainGroup(strconv.Itoa(n))
-	return nil
+// gatewayAccessMap is the permission set for a key that only routes model
+// calls: every domain in the catalog's GATEWAY group except mcp_gateway, which
+// is MCP data-plane execution rather than gateway wiring.
+//
+// Held locally rather than fetched. The catalog endpoint (GET
+// /v2/api-keys/capabilities, declared public in the platform-api proto) is
+// unreachable in production: identity-api owns /v2/api-keys/* and its /:id
+// route matches "capabilities", returning 404 "API Key not found." Fetching it
+// meant every mint silently fell back to full permissions, which is the exact
+// failure this map exists to prevent.
+//
+// Mirrors libs/catalog/orq/apikeys/v1/catalog.textpb in orquesta-web. A domain
+// added there and missing here costs a capability, never a permission; the
+// server ignores access-map entries it does not recognise.
+var gatewayAccessMap = map[string]string{
+	"chat_completions":    "write",
+	"responses":           "write",
+	"embeddings":          "write",
+	"moderations":         "write",
+	"images":              "write",
+	"audio_speech":        "write",
+	"audio_transcription": "write",
+	"realtime":            "write",
+	"rerank":              "write",
+	"ocr":                 "write",
+	"batches":             "write",
+	"count_tokens":        "write",
+	// Read-only in the catalog; write would resolve to nothing.
+	"model": "read",
 }
 
-// isGateway fails closed: an encoding we do not recognise is not the gateway
-// group, so an unknown domain is never granted.
-func (g domainGroup) isGateway() bool {
-	return g == "DOMAIN_GROUP_GATEWAY" || g == "3"
-}
-
-type Domain struct {
-	ID       string      `json:"id"`
-	Group    domainGroup `json:"group"`
-	Readable bool        `json:"readable"`
-	Writable bool        `json:"writable"`
-}
-
-// ListCapabilities reads the live permission catalog. It needs the login
-// session: the `api-key` domain is deliberately absent from the API-key catalog
-// (ENG-2346), so a minted key gets 403 here.
-func (c *Client) ListCapabilities(bearer string) ([]Domain, error) {
-	var resp struct {
-		Domains []Domain `json:"domains"`
+// GatewayAccess returns a copy, so a caller cannot mutate the shared map.
+func GatewayAccess() map[string]string {
+	out := make(map[string]string, len(gatewayAccessMap))
+	for domain, level := range gatewayAccessMap {
+		out[domain] = level
 	}
-	if err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/api-keys/capabilities", bearer, nil, &resp); err != nil {
-		return nil, err
-	}
-	if len(resp.Domains) == 0 {
-		return nil, errors.New("capability catalog is empty")
-	}
-	return resp.Domains, nil
-}
-
-// GatewayAccess is the access map for a key that only routes model calls.
-// Write subsumes read server-side, so one level per domain is enough.
-func GatewayAccess(domains []Domain) map[string]string {
-	access := map[string]string{}
-	for _, d := range domains {
-		if !d.Group.isGateway() || d.ID == mcpGatewayDomain {
-			continue
-		}
-		switch {
-		case d.Writable:
-			access[d.ID] = "write"
-		case d.Readable:
-			access[d.ID] = "read"
-		}
-	}
-	return access
+	return out
 }
 
 // createAPIKeyBody builds the request the live API validates against, split out
@@ -196,11 +165,19 @@ func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject b
 		"permission_mode": "all",
 	}
 	if len(req.Access) > 0 {
+		// source is what actually restricts the key. identity-api, which serves
+		// this route in production, never reads permission_mode or access — it
+		// discards both and applies the catalog's router preset when, and only
+		// when, source is "router". The two fields are still sent because
+		// platform-api's proto service does honour them, and either may answer.
+		out["source"] = "router"
 		out["permission_mode"] = "restricted"
 		out["access"] = req.Access
 	}
+	// "expiration", not "expires_at": the live endpoint is identity-api's strict
+	// decoder, which rejects the field name the committed spec documents.
 	if !req.ExpiresAt.IsZero() {
-		out["expires_at"] = req.ExpiresAt.UTC().Format(time.RFC3339)
+		out["expiration"] = req.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 	return out, scopedToProject
 }
@@ -225,8 +202,12 @@ type APIKeyRequest struct {
 // person; see createAPIKeyBody for why that is the default.
 func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID string, scopedToProject bool, err error) {
 	body, scopedToProject := createAPIKeyBody(req)
+	// The live endpoint answers flat (`id` alongside `token`); the proto service
+	// documented in openapi.yaml nests under `api_key`. Read both, then fall back
+	// to the id carried in the token itself.
 	var resp struct {
 		Token  string `json:"token"`
+		ID     string `json:"id"`
 		APIKey struct {
 			ID string `json:"id"`
 		} `json:"api_key"`
@@ -237,22 +218,26 @@ func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID st
 	if strings.TrimSpace(resp.Token) == "" {
 		return "", "", false, errors.New("api key create returned no token")
 	}
-	keyID = strings.TrimSpace(resp.APIKey.ID)
-	if keyID == "" {
-		keyID = keyIDFromToken(resp.Token)
+	for _, candidate := range []string{resp.ID, resp.APIKey.ID, keyIDFromToken(resp.Token)} {
+		if keyID = strings.TrimSpace(candidate); keyID != "" {
+			break
+		}
 	}
 	return resp.Token, keyID, scopedToProject, nil
 }
 
-// keyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`. Returns ""
-// on any other shape rather than guessing.
+// keyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`, the opaque
+// token shape. Router tokens share the `sk-orq-` prefix but carry a JWT after
+// it, and base64url contains "-", so the id is only trusted when it is shaped
+// like one. A wrong id is worse than none: it would be stored and later used to
+// address somebody else's key.
 func keyIDFromToken(token string) string {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "sk-orq-")
 	if !ok {
 		return ""
 	}
 	id, _, ok := strings.Cut(rest, "-")
-	if !ok {
+	if !ok || !ulidPattern.MatchString(id) {
 		return ""
 	}
 	return id
