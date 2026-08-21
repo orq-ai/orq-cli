@@ -1260,6 +1260,9 @@ func promptForAgents(rep *reporter) ([]string, error) {
 
 	detected := []string{}
 	for _, spec := range registry {
+		if spec.writeProvider == nil {
+			continue
+		}
 		label := fmt.Sprintf("%-9s %s", spec.ID, spec.Label)
 		options = append(options, label)
 		byOption[label] = spec.ID

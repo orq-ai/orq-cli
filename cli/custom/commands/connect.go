@@ -51,10 +51,14 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 	return agents, caps, nil
 }
 
+// detectedAgents lists the agents on this machine that connect can act on.
+// claude is installed on plenty of machines and has no gateway provider config
+// — it reads the endpoint from its environment — so offering it, or reporting
+// it as "not wired", promises a wire that cannot exist.
 func detectedAgents() []string {
 	var out []string
 	for _, spec := range agentRegistry() {
-		if spec.detect() {
+		if spec.writeProvider != nil && spec.detect() {
 			out = append(out, spec.ID)
 		}
 	}

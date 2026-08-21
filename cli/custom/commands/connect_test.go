@@ -410,3 +410,28 @@ func TestStaleMCPEntriesAreLeftUntouched(t *testing.T) {
 		}
 	}
 }
+
+// claude has no gateway provider config — it reads the endpoint from its
+// environment — so connect cannot wire it. Offering it, or reporting it as
+// "detected but not wired", promises a wire that cannot exist.
+func TestUnconnectableAgentsAreNotOffered(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetSetupMemos(t)
+
+	got := detectedAgents()
+	if len(got) != 1 || got[0] != "kimi" {
+		t.Errorf("detected = %v, want only the connectable agent", got)
+	}
+	// Still addressable by name, so `orq connect claude` explains itself
+	// instead of failing at parse time with "not an agent".
+	if _, _, err := partitionConnectArgs([]string{"claude"}); err != nil {
+		t.Errorf("claude stopped parsing as an agent: %v", err)
+	}
+}
