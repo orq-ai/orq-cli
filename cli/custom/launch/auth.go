@@ -11,8 +11,6 @@ import (
 
 	"golang.org/x/term"
 
-	bartolocli "github.com/orq-ai/bartolo/cli"
-
 	"orq/cli/custom/auth"
 )
 
@@ -77,12 +75,18 @@ func shadowsSession(key string, session *auth.Session) bool {
 	if active == "" {
 		return false
 	}
-	if bartolocli.Creds == nil {
-		return false // no credential store to compare against
+	// installSessionPreRun injects the session's own workspace token into
+	// ORQ_API_KEY whenever no api_key is configured, which is now the ordinary
+	// state. That token is ours, not a key the user exported, so comparing it to
+	// the saved key reported a mismatch on every single launch.
+	if tok, ok := session.WorkspaceTokens[active]; ok && strings.TrimSpace(tok.Token) == key {
+		return false
 	}
-	profile := bartolocli.GetProfile()
-	return auth.EnvKeyShadowsWorkspace(key,
-		strings.TrimSpace(profile["api_key"]), strings.TrimSpace(profile["workspace"]), active)
+	// auth.SavedAgentKey, not a local profile read: the minted key moved to
+	// gateway_key and this copy kept reading api_key, so an empty savedKey made
+	// every launch report a mismatch that was not there either.
+	savedKey, savedWS := auth.SavedAgentKey()
+	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly

@@ -173,7 +173,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if err != nil {
 		return err
 	}
-	result["agents"] = agentResults
+	result["coding_agents"] = agentResults
 	if n, counted := authState.enabledModels, authState.enabledModelsCounted; counted {
 		result["models_enabled"] = n
 	}
@@ -544,8 +544,20 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 }
 
 // Mirrors bartolo's saveAuthProfile, then chmods: viper writes 0644 and this file holds a live credential.
+//
+// Clears the gateway triple: savedAPIKey prefers gateway_key, so leaving a
+// previously minted key in place meant a key the user passed with --api-key was
+// silently ignored by the next command that wired an agent.
 func saveAPIKeyProfile(key, workspace string) error {
-	return writeAPIKeyProfile(auth.ActiveProfile(), key, workspace)
+	profile := auth.ActiveProfile()
+	clearGatewayKeyFields(profile)
+	return writeAPIKeyProfile(profile, key, workspace)
+}
+
+func clearGatewayKeyFields(profile string) {
+	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+		bartolocli.Creds.Set("profiles."+profile+"."+field, "")
+	}
 }
 
 // saveGatewayKeyProfile stores the minted key under its own field. Writing it as
@@ -588,22 +600,11 @@ func clearAPIKeyProfile() (bool, error) {
 	if !held {
 		return false, nil
 	}
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", "")
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", "")
+	clearGatewayKeyFields(profile)
 	return true, writeAPIKeyProfile(profile, "", "")
 }
 
-// savedAPIKey returns the credential agent configs are wired with. api_key is
-// the fallback for keys minted before the split and for keys the user brought.
-func savedAPIKey() (key, workspace string) {
-	profile := bartolocli.GetProfile()
-	workspace = strings.TrimSpace(profile["workspace"])
-	if key = strings.TrimSpace(profile["gateway_key"]); key != "" {
-		return key, workspace
-	}
-	return strings.TrimSpace(profile["api_key"]), workspace
-}
+func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
 func savedGatewayKeyID() string {
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
@@ -794,7 +795,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case gatewayKeyDueForRenewal(time.Now()):
 		// The superseded key is left alive until its own expiry: that overlap is
 		// what keeps an agent config working until this run rewrites it.
-		rep.note("saved key expires soon — creating its replacement")
+		rep.note("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
 		token = ""
 	case tokenWS == "":
 		rep.ok("reusing the key from an earlier setup (workspace unrecorded)")

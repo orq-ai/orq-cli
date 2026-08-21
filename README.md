@@ -75,18 +75,18 @@ Setup authenticates the machine; wiring agents is `orq connect`:
 
 ```sh
 orq setup                          # sign in, create the key, then offers to connect
-orq connect                        # wire every detected agent (gateway + mcp)
+orq connect                        # wire every detected agent through the gateway
 orq connect codex kimi             # specific agents
-orq connect claude gateway         # one capability
+orq connect codex gateway          # the capability is optional; gateway is the only one
 orq connect --dry-run              # show the files that would change
 orq disconnect claude              # remove exactly what connect wrote
 ```
 
 An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo`, `pi`. Each gets the `orq-workspace` MCP server registered in its own config format, except `pi`: it has no native MCP (extensions only), so connect wires its gateway provider alone.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered by connect: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route it.
 
-Skills are offered, not imposed: setup's capability question includes `skills`, which runs `npx skills add orq-ai/assistant-plugins` on your behalf when selected — the installer detects your agents and writes into their configs. `orq launch` separately loads them session-only for claude via `--plugin-url`. The plugin is an [Agent Plugins 1.0.0](https://agent-plugins.org) package; shipping the MCP server inside it is deferred, since the spec forbids credentials in headers.
+Connect wires the gateway and nothing else. MCP and skills are not part of it in this version — `orq launch --mcp` is the only place the orq MCP server is still wired, per session, writing nothing to disk.
 
 **Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
@@ -99,7 +99,7 @@ Skills are offered, not imposed: setup's capability question includes `skills`, 
 | `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 
-Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test, and `orq doctor` reports gateway funding for free before you get there.
+Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
 
 Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
 
@@ -113,11 +113,12 @@ Connect and disconnect take agents and capabilities as arguments, plus:
 |---|---|
 | `--api-key <key>` | Use this key for the run; it is not saved |
 | `--dry-run` | Show the files that would change, write nothing (connect only) |
-| `--global` | Write agent config under `$HOME` instead of the current project. Only claude and kimi's MCP config are scope-aware; codex, opencode and kilo read exclusively from their home-directory configs (opencode and kilo reject `{env:…}` references in a project file), so theirs are always global |
+| `--yes` | Act on every detected agent without asking |
+| `--status` | Print what is wired on this machine and exit (connect only) |
 
 Re-running the wiring after installing a new agent is just `orq connect <agent>`; it reuses the key setup saved rather than creating another. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; connect wires the coding-agent CLIs on this machine.
 
-Scope is chosen automatically: connect writes into the current directory when it looks like a project (`.git`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and falls back to `$HOME` otherwise, so installing from your home directory does not scatter config files there.
+Every provider config resolves to one absolute path, so there is no project-versus-home scope to choose: `--global` and `--local` were removed once MCP left, because no config was project-scoped any more.
 
 ---
 
@@ -286,7 +287,7 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. For persistent MCP wiring, use `orq setup`.
+Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
 
 With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
@@ -369,7 +370,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
-| `<host>/v2/mcp` | the orq MCP server registered in each agent |
+| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch --mcp` |
 
 ```sh
 orq --profile acme auth login --api-base-url https://orq.acme.internal

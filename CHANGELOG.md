@@ -53,12 +53,15 @@ the version and this changelog as the source of truth for breaking changes.
   workspace. Keys minted by v4.13.10 carry `permission_mode: "all"`, which
   resolves to the whole capability catalog — including `member`, `billing`,
   `sso`, `group` and `workspace` — and is written in cleartext into coding-agent
-  config files. The new key holds the gateway preset: chat completions,
-  responses, embeddings, images, audio, moderations, rerank, OCR, batches,
-  token counting, conversations, and read-only access to the model list. A call
-  to any platform endpoint is refused with `insufficient_scope`. **Existing keys
-  are not changed** — re-run `orq setup` to mint a narrower one, and revoke the
-  old key in the dashboard.
+  config files. The new key holds the server's router preset — the gateway
+  domains plus read-only access to the model list. The exact set is chosen
+  server-side by `source: "router"`, not by the CLI, so the dashboard's
+  permission list is the source of truth. A call to any platform endpoint is
+  refused with `insufficient_scope` (verified against a live key). **Existing keys are not
+  changed, and re-running `orq setup` will not replace one** — it reuses whatever
+  is saved. To move to a gateway-scoped key today: `orq auth logout`, log in
+  again, then `orq setup`. Revoke the old key in the dashboard. A guided path for
+  this is not built yet.
 - **Changed:** minted keys are now named `orq-cli gateway <hostname>` rather than
   `orq-cli <hostname>`. The dashboard lists every restricted key as `Restricted`
   without saying restricted to what, so the name is the only place the purpose
@@ -71,12 +74,29 @@ the version and this changelog as the source of truth for breaking changes.
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
 - **Changed:** minted keys now expire after 90 days instead of never. `orq setup`
-  and `orq connect` replace one with under 30 days left, minting the new key and
-  rewriting agent configs in the same run. The superseded key is **not** revoked
+  replaces one with under 30 days left; run `orq connect` afterwards to rewrite
+  the agent configs. The superseded key is **not** revoked
   — it stays valid until its own expiry, so the cutover overlaps and an agent
   config that has not been rewritten yet keeps working. Keys minted before this
-  release record no expiry and are never renewed automatically; re-run
-  `orq setup` to move to a key that does.
+  release record no expiry and are never renewed automatically, and no command
+  replaces them in place — see the note above.
+- **Fixed:** `orq launch` no longer warns about a workspace mismatch on every
+  run. Two causes, both introduced by the `gateway_key` split: the check read
+  `api_key`, which is now empty, and the session token the CLI injects into
+  `ORQ_API_KEY` was being compared against the saved key as though the user had
+  exported it. The credential lookup now lives in one place (`auth.SavedAgentKey`)
+  that `launch`, `setup` and `doctor` share.
+- **Fixed:** `orq setup --api-key <key>` is no longer silently overridden. A
+  previously minted `gateway_key` outranks `api_key`, so the supplied key was
+  used for that run and then ignored by the next `orq connect`. Saving an
+  explicit key now clears the minted one.
+- **Fixed:** `orq disconnect tracing` reported "nothing wired" on a wired
+  machine; it now says tracing is not available yet, like `orq connect` does.
+- **Fixed:** `orq connect --status <agent>` no longer reports agents you did not
+  ask about, and `orq connect --help` no longer claims it never creates keys —
+  an interactive run with no credential offers to mint one.
+- **Fixed:** `orq setup --json` names its list `coding_agents`, matching
+  `connect` and `disconnect`.
 - **Fixed:** `orq auth logout` now clears the exported key from `~/.orq/env`
   (and `env.fish`). That file is written by `orq setup`, and a shell profile
   that sources it kept exporting a live key into every new shell after logout —

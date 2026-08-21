@@ -76,8 +76,9 @@ func NewConnectCommand() *cobra.Command {
 		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine, routing the ` +
 			`agent's model calls through the orq gateway. No agents named means every detected agent.
 
-Reuses the credential from ` + "`orq setup`" + ` — it never creates keys or edits your shell. ` +
-			`Undo with ` + "`orq disconnect`" + `. For a single throwaway session, use ` + "`orq launch`" + `.
+Reuses the credential from ` + "`orq setup`" + ` when there is one. With no credential at all, an ` +
+			`interactive run offers to log in and mint one. Undo with ` + "`orq disconnect`" + `. ` +
+			`For a single throwaway session, use ` + "`orq launch`" + `.
 
 Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 		SilenceUsage: true,
@@ -125,8 +126,10 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	for _, w := range wired {
 		isWired[w.agent] = true
 	}
+	// Scoped to what was asked about: `--status codex` reporting on kimi is an
+	// answer to a question nobody asked.
 	var unwired []string
-	for _, id := range detectedAgents() {
+	for _, id := range agents {
 		if !isWired[id] {
 			unwired = append(unwired, id)
 		}
@@ -379,6 +382,13 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
 		return err
+	}
+	// Same filter connect applies: without it `orq disconnect tracing` left caps
+	// as ["tracing"], found no gateway target, and reported "nothing wired" on a
+	// machine that plainly was.
+	caps = dropUnavailableCaps(rep, caps)
+	if len(caps) == 0 && capsWereOnlyTracing(args) {
+		return nil
 	}
 	if len(caps) == 0 {
 		caps = []string{capGateway}

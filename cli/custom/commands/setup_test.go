@@ -2232,3 +2232,69 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 		t.Errorf("second run reported %v, want nothing", got)
 	}
 }
+
+// The logout fix landed with no test: deleting the gateway-clearing lines left
+// the whole suite green, which means "signed out" could go back to leaving a
+// live gateway key in credentials.json without anything noticing.
+func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
+	t.Run("gateway key", func(t *testing.T) {
+		credsHarness(t)
+		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+			t.Fatal(err)
+		}
+		held, err := clearAPIKeyProfile()
+		if err != nil || !held {
+			t.Fatalf("held=%v err=%v, want a cleared gateway key", held, err)
+		}
+		profile := bartolocli.GetProfile()
+		for _, field := range []string{"api_key", "gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+			if profile[field] != "" {
+				t.Errorf("%s survived logout: %q", field, profile[field])
+			}
+		}
+		if key, _ := savedAPIKey(); key != "" {
+			t.Errorf("savedAPIKey still returns %q after logout", key)
+		}
+	})
+
+	t.Run("legacy api key", func(t *testing.T) {
+		credsHarness(t)
+		if err := saveAPIKeyProfile("sk-orq-legacy", "acme"); err != nil {
+			t.Fatal(err)
+		}
+		held, err := clearAPIKeyProfile()
+		if err != nil || !held {
+			t.Fatalf("held=%v err=%v, want a cleared legacy key", held, err)
+		}
+	})
+
+	t.Run("nothing stored", func(t *testing.T) {
+		credsHarness(t)
+		if held, err := clearAPIKeyProfile(); held || err != nil {
+			t.Errorf("held=%v err=%v, want (false, nil)", held, err)
+		}
+	})
+}
+
+// A key passed with --api-key must be the one later commands wire. savedAPIKey
+// prefers gateway_key, so leaving a previously minted key in place made the
+// supplied key silently lose — and only on the *next* command, which is the
+// worst possible latency for this class of bug.
+func TestSuppliedKeyDisplacesAMintedOne(t *testing.T) {
+	credsHarness(t)
+	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveAPIKeyProfile("sk-orq-SUPPLIED", ""); err != nil {
+		t.Fatal(err)
+	}
+	if key, _ := savedAPIKey(); key != "sk-orq-SUPPLIED" {
+		t.Errorf("savedAPIKey = %q, want the key the user just supplied", key)
+	}
+	if id := savedGatewayKeyID(); id != "" {
+		t.Errorf("stale gateway_key_id %q survived; it names a key no longer in use", id)
+	}
+	if _, ok := gatewayKeyExpiry(); ok {
+		t.Error("stale expiry survived, so renewal would fire against a key that is not wired")
+	}
+}

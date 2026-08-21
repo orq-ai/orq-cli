@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -410,7 +411,8 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 	if !ok {
 		return doctorCheck{}, false
 	}
-	days := int(at.Sub(now).Hours() / 24)
+	// Round up: 23 hours left is "1 day", not "0 days" at warn.
+	days := int(math.Ceil(at.Sub(now).Hours() / 24))
 	check := doctorCheck{
 		ID:      "gateway_key_expiry",
 		Details: map[string]any{"expires_at": at.UTC().Format(time.RFC3339), "days_left": days},
@@ -418,10 +420,10 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 	switch {
 	case !at.After(now):
 		check.Status = "fail"
-		check.Message = "The gateway key expired — wired agents are failing to authenticate. Run 'orq connect' to replace it"
+		check.Message = "The gateway key expired — wired agents are failing to authenticate. Run 'orq setup' to replace it, then 'orq connect' to rewire"
 	case at.Sub(now) < gatewayKeyRenewWindow:
 		check.Status = "warn"
-		check.Message = fmt.Sprintf("The gateway key expires in %d days — run 'orq connect' to replace it and rewrite agent configs", days)
+		check.Message = fmt.Sprintf("The gateway key expires in %d days — run 'orq setup' to replace it, then 'orq connect' to rewire", days)
 	default:
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("The gateway key expires in %d days", days)
