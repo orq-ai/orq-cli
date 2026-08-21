@@ -95,3 +95,47 @@ func TestGenerationCollectionKeepsCurrentAndOnePrevious(t *testing.T) {
 		t.Errorf("current generation collected: %v", err)
 	}
 }
+
+func TestManifestRoundTrip(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	if m, err := LoadManifest(); err != nil {
+		t.Fatalf("LoadManifest on a clean machine: %v", err)
+	} else if m != nil {
+		t.Fatalf("LoadManifest on a clean machine returned %+v, want nil", m)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: "aaa", Generation: "/gen-aaa"}
+	m.AddLink(Link{Path: "/home/u/.claude/skills/orq-build-agent", Agent: "claude", Skill: "orq-build-agent", Mode: ModeSymlink})
+	if err := SaveManifest(m); err != nil {
+		t.Fatalf("SaveManifest: %v", err)
+	}
+
+	got, err := LoadManifest()
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if got.Fingerprint != "aaa" || len(got.Links) != 1 || got.Links[0].Agent != "claude" {
+		t.Errorf("round trip lost data: %+v", got)
+	}
+}
+
+func TestManifestOfAnUnknownVersionIsTreatedAsForeign(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	orqHome := filepath.Join(home, ".orq")
+	if err := os.MkdirAll(orqHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orqHome, "materialized-skills.json"),
+		[]byte(`{"version":99,"links":[{"path":"/somewhere"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest()
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if m != nil {
+		t.Errorf("a version-99 manifest was adopted: %+v", m)
+	}
+}

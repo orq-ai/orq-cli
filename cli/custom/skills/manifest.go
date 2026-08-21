@@ -1,0 +1,133 @@
+package skills
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+// manifestVersion is bumped when the schema changes incompatibly. A manifest
+// this binary does not understand is left strictly alone: guessing at a future
+// schema risks deleting paths whose meaning we do not know.
+const manifestVersion = 1
+
+const (
+	ModeSymlink = "symlink"
+	ModeCopy    = "copy"
+)
+
+// Link is one skill installed into one directory. Agent is empty for the
+// shared agents-spec directory, which serves several agents at once.
+type Link struct {
+	Path    string `json:"path"`
+	Agent   string `json:"agent,omitempty"`
+	Skill   string `json:"skill"`
+	Mode    string `json:"mode"`
+	Session bool   `json:"session,omitempty"`
+}
+
+// Session is one live `orq launch` holding session-scoped links. PID is what
+// lets a later invocation tell a running session from a crashed one.
+type Session struct {
+	PID   int      `json:"pid"`
+	Paths []string `json:"paths"`
+}
+
+type Manifest struct {
+	Version     int       `json:"version"`
+	Fingerprint string    `json:"fingerprint"`
+	Generation  string    `json:"generation"`
+	Links       []Link    `json:"links,omitempty"`
+	Sessions    []Session `json:"sessions,omitempty"`
+}
+
+func manifestPath() (string, error) {
+	home, err := Home()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "materialized-skills.json"), nil
+}
+
+// LoadManifest returns nil, nil when there is nothing to load: no file, an
+// unreadable file, or a version this binary does not understand. Every caller
+// treats nil as "this machine has never connected skills", which is the case
+// where we must not touch the filesystem at all.
+func LoadManifest() (*Manifest, error) {
+	path, err := manifestPath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, nil
+	}
+	if m.Version != manifestVersion {
+		return nil, nil
+	}
+	return &m, nil
+}
+
+// SaveManifest writes atomically. Callers must call it only after their links
+// are in place, so an interrupted run re-runs cleanly rather than leaving the
+// manifest claiming links that were never created.
+func SaveManifest(m *Manifest) error {
+	path, err := manifestPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	m.Version = manifestVersion
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// OwnedPaths is every path this CLI created, session-scoped or not. It is the
+// allow-list for removal: nothing outside it is ever deleted.
+func (m *Manifest) OwnedPaths() []string {
+	out := make([]string, 0, len(m.Links))
+	for _, l := range m.Links {
+		out = append(out, l.Path)
+	}
+	return out
+}
+
+func (m *Manifest) AddLink(l Link) {
+	for i, existing := range m.Links {
+		if existing.Path == l.Path {
+			m.Links[i] = l
+			return
+		}
+	}
+	m.Links = append(m.Links, l)
+}
+
+func (m *Manifest) RemoveLinks(paths []string) {
+	drop := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		drop[p] = true
+	}
+	kept := m.Links[:0]
+	for _, l := range m.Links {
+		if !drop[l.Path] {
+			kept = append(kept, l)
+		}
+	}
+	m.Links = kept
+}
