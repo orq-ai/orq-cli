@@ -73,6 +73,18 @@ the version and this changelog as the source of truth for breaking changes.
   `orq prompts list` and friends. Commands now use your login session, and only
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
+- **Changed:** `orq disconnect` output. The result line now reads
+  `orq removed from kimi` rather than `kimi     gateway   removed from <path>`,
+  which put the agent where the object of "removed" goes and read as though the
+  agent itself had been uninstalled. The path appears once per file: in the
+  preview when there is one, on the result line when there is not.
+- **Changed:** the surviving-key notice is one line and leads with the fact that
+  matters: `not revoked: the key still works. To revoke it: orq api-keys delete
+  <id>`. It previously said the key was "untouched — still valid, and still
+  saved for the next `orq connect`", mixing a convenience fact about local
+  storage with a security one about the server, where the reassuring half is the
+  half people read. Disconnect removes the wire; the key stays live in the
+  workspace and still works anywhere else it was copied.
 - **Added:** `orq auth logout` offers to remove orq from this machine's coding
   agents. Logout clears the credentials but never touched the copies already
   written into agent configs, and kimi's holds the key literally, so signing out

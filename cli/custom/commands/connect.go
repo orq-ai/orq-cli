@@ -451,10 +451,12 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 		return nil
 	}
+	previewed := false
 	if !opts.yes && !namedAgents {
-		rep.warn("about to remove orq from %d config file(s):", len(wired))
+		previewed = true
+		rep.warn("about to remove orq from:")
 		for _, w := range wired {
-			rep.warn("  %-8s %-9s %s", w.agent, w.capability, tilde(w.path))
+			rep.warn("  %s", tilde(w.path))
 		}
 		if opts.noInput {
 			return errors.New("refusing to remove from every detected agent without confirmation; name the agents, or pass --yes")
@@ -465,7 +467,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
-	rows, failed := removeWiring(rep, agents, caps)
+	rows, failed := removeWiring(rep, agents, caps, previewed)
 	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
@@ -522,7 +524,10 @@ type disconnectRow struct {
 // surviving credential, or payload emission around it. Split out so `orq auth
 // logout` can offer the same removal without inheriting disconnect's own
 // confirmation or its --json body.
-func removeWiring(rep *reporter, agents, caps []string) (rows []disconnectRow, failed bool) {
+//
+// pathShown says a preview already listed the files, so the result names the
+// agent instead of repeating the path the user just read and approved.
+func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []disconnectRow, failed bool) {
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
@@ -542,7 +547,11 @@ func removeWiring(rep *reporter, agents, caps []string) (rows []disconnectRow, f
 					r.Error = err.Error()
 					failed = true
 				case removed:
-					rep.ok("%-8s %-9s removed from %s", id, cap, tilde(path))
+					where := tilde(path)
+					if pathShown {
+						where = id
+					}
+					rep.ok("orq removed from %s", where)
 					removedFrom = append(removedFrom, cap)
 				}
 			}
@@ -593,22 +602,26 @@ func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
 			return nil
 		}
 	}
-	rows, _ := removeWiring(rep, wired, caps)
+	rows, _ := removeWiring(rep, wired, caps, false)
 	return rows
 }
 
 // reportCredentialSurvives corrects the mental model disconnect otherwise
-// leaves. Removing the config removes the wire, not the credential: the key is
-// still valid, still on the machine, and still exported to anything that reads
-// the environment. Saying nothing here reads as "orq is off this machine".
+// leaves: this removed the wire, not the key. The key is still live in the
+// workspace and still works anywhere else it was copied -- the shell env file,
+// an agent not named in this run, a CI secret. It said "the API key is
+// untouched -- still valid, and still saved for the next 'orq connect'", which
+// mixed a convenience fact about local storage with a security one about the
+// server, and the reassuring half is the half people read.
 func reportCredentialSurvives(rep *reporter) {
 	if saved, _ := savedAPIKey(); saved == "" {
 		return
 	}
-	rep.info("the API key is untouched — still valid, and still saved for the next 'orq connect'")
 	if id := savedGatewayKeyID(); id != "" {
-		rep.info("  to revoke it as well: orq api-keys delete %s", id)
+		rep.info("not revoked: the key still works. To revoke it: orq api-keys delete %s", id)
+		return
 	}
+	rep.info("not revoked: the key still works wherever else it was copied")
 }
 
 // bothScopePaths resolves the project and global paths, deduplicated: many

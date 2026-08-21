@@ -471,7 +471,7 @@ func TestDisconnectSaysTheKeySurvives(t *testing.T) {
 		t.Fatalf("disconnect: %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "API key is untouched") {
+	if !strings.Contains(got, "not revoked") {
 		t.Errorf("disconnect implied the credential went with the config:\n%s", got)
 	}
 	// The remedy names the key it would remove, so it can be acted on.
@@ -712,4 +712,31 @@ func TestDisconnectOnLogoutNeedsConsent(t *testing.T) {
 			t.Errorf("offered a removal with nothing wired: %+v", rows)
 		}
 	})
+}
+
+// "opencode removed" reads as though the agent itself had been uninstalled.
+// orq is what is removed; the agent is where from.
+func TestRemovalNamesOrqAsTheThingRemoved(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	resetSetupMemos(t)
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	removeWiring(&reporter{w: &out}, []string{"kimi"}, []string{capGateway}, false)
+	got := out.String()
+	if !strings.HasPrefix(strings.TrimSpace(got), "✓ orq removed from") {
+		t.Errorf("the agent reads as the thing removed:\n%s", got)
+	}
+	// No preview ran, so this line is the only record of where it came from.
+	if !strings.Contains(got, "config.toml") {
+		t.Errorf("nothing said where orq was removed from:\n%s", got)
+	}
 }
