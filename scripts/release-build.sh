@@ -46,7 +46,14 @@ fi
 # not per-module, so this is computed relative to ROOT_DIR regardless of
 # MODULE_DIR. The value only has to be stable and change when the tree
 # changes; it does not have to match the in-binary hashTree() fallback.
-SKILLS_FP="$(find "$ROOT_DIR/cli/custom/skills/assets" -type f | sort | xargs shasum -a 256 | shasum -a 256 | cut -c1-16)"
+#
+# `cd` into the assets dir first and hash paths relative to it (`find .`)
+# rather than the absolute $ROOT_DIR path: otherwise the fingerprint would
+# depend on where the repo happens to be checked out (a different worktree,
+# a different CI runner, a second clone), not on the tree's actual content.
+# `-print0`/`sort -z`/`xargs -0` keep the pipeline null-delimited so a future
+# vendored skill name containing a space or newline can't get word-split.
+SKILLS_FP="$(cd "$ROOT_DIR/cli/custom/skills/assets" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -c1-16)"
 
 # Platforms we ship: "goos goarch npm-package-suffix exe-name"
 PLATFORMS=(

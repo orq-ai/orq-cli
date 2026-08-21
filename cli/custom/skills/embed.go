@@ -10,7 +10,6 @@ import (
 	"path"
 	"sort"
 	"sync"
-	"testing"
 )
 
 // assets is the vendored skills tree. `all:` keeps dot-prefixed files, which
@@ -90,15 +89,6 @@ func hashTree() string {
 		return nil
 	})
 	return hex.EncodeToString(h.Sum(nil))[:16]
-}
-
-// SetFingerprintForTest makes a test look like a different binary, which is how
-// the update path is exercised without rebuilding.
-func SetFingerprintForTest(t *testing.T, fp string) {
-	t.Helper()
-	prev := testOverride
-	testOverride = fp
-	t.Cleanup(func() { testOverride = prev })
 }
 
 // SkillDir is the path of one skill inside the embedded tree.
