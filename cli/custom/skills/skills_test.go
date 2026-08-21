@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -237,5 +239,71 @@ func TestConcurrentSaveManifestSucceeds(t *testing.T) {
 	}
 	if m.Version != manifestVersion {
 		t.Errorf("manifest version: got %d, want %d", m.Version, manifestVersion)
+	}
+}
+
+func TestTargets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("KIMI_CODE_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	dirs := func(agents ...string) []string {
+		got, err := Targets(agents)
+		if err != nil {
+			t.Fatalf("Targets(%v): %v", agents, err)
+		}
+		var out []string
+		for _, tg := range got {
+			out = append(out, strings.TrimPrefix(tg.Dir, home))
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	if got := dirs("claude"); strings.Join(got, ",") != "/.claude/skills" {
+		t.Errorf("claude alone = %v, want only its own directory", got)
+	}
+	if got := dirs("pi"); strings.Join(got, ",") != "/.agents/skills" {
+		t.Errorf("pi alone = %v, want only the shared directory", got)
+	}
+
+	// kilo also reads an XDG-relative directory, but only on Linux; assert the
+	// shape that is actually correct for the platform running this test so it
+	// passes on Linux and macOS alike instead of being right on only one.
+	wantShared := []string{"/.agents/skills"}
+	if runtime.GOOS == "linux" {
+		wantShared = append(wantShared, "/.config/agents/skills")
+		sort.Strings(wantShared)
+	}
+	if got := dirs("opencode", "pi", "kilo"); strings.Join(got, ",") != strings.Join(wantShared, ",") {
+		t.Errorf("three shared readers = %v, want %v", got, wantShared)
+	}
+
+	if got := dirs("claude", "codex", "kimi"); strings.Join(got, ",") != "/.claude/skills,/.codex/skills,/.kimi-code/skills" {
+		t.Errorf("three own-directory agents = %v", got)
+	}
+}
+
+func TestTargetsHonorAgentHomeEnvironmentVariables(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	kimiHome := t.TempDir()
+	codexHome := t.TempDir()
+	t.Setenv("KIMI_CODE_HOME", kimiHome)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	got, err := Targets([]string{"kimi", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"kimi":  filepath.Join(kimiHome, "skills"),
+		"codex": filepath.Join(codexHome, "skills"),
+	}
+	for _, tg := range got {
+		if want[tg.Agent] != tg.Dir {
+			t.Errorf("%s target = %q, want %q", tg.Agent, tg.Dir, want[tg.Agent])
+		}
 	}
 }
