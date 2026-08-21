@@ -324,8 +324,10 @@ func UsableForCodingAgent(m RouterModel) bool {
 	return m.Enabled && m.Type == "chat" && m.Functions
 }
 
-// CandidateCodingModels groups the usable models by preferred prefix,
-// best-first within each group, so a caller can try candidates in order.
+// CandidateCodingModels groups the catalogue by preferred prefix, best-first
+// within each group, so a caller can try candidates in order. Only tool-capable
+// active chat models are eligible — a coding agent is useless without function
+// calling.
 //
 // "Best" is the lexically greatest model_id, which tracks version suffixes
 // (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but stronger editions

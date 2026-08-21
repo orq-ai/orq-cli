@@ -13,8 +13,8 @@ import (
 )
 
 // Human-facing status lines. These go to STDERR so the structured result on
-// stdout (toon/json/yaml) stays clean for scripts, and success/info render only
-// when stdout is a terminal. Warn is deliberately not gated, see its doc. Color
+// stdout (toon/json/yaml) stays clean for scripts, and they only render on an
+// interactive terminal — a piped or --json invocation sees none of this. Color
 // follows the same --no-color / NO_COLOR rules as the rest of the CLI.
 
 const (
