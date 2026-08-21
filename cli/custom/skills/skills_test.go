@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,5 +138,104 @@ func TestManifestOfAnUnknownVersionIsTreatedAsForeign(t *testing.T) {
 	}
 	if m != nil {
 		t.Errorf("a version-99 manifest was adopted: %+v", m)
+	}
+}
+
+func TestAddLinkReplacesExistingByNormalizedPath(t *testing.T) {
+	m := &Manifest{Version: manifestVersion}
+	link1 := Link{Path: "/home/user/.claude/skills/skill1", Skill: "skill1", Mode: ModeSymlink}
+	m.AddLink(link1)
+	if len(m.Links) != 1 {
+		t.Errorf("after first AddLink: got %d links, want 1", len(m.Links))
+	}
+	// Add the same path with trailing slash (should normalize to same entry).
+	link2 := Link{Path: "/home/user/.claude/skills/skill1/", Skill: "skill1-updated", Mode: ModeCopy}
+	m.AddLink(link2)
+	if len(m.Links) != 1 {
+		t.Errorf("after second AddLink with trailing slash: got %d links, want 1", len(m.Links))
+	}
+	// Verify it was replaced.
+	if m.Links[0].Mode != ModeCopy {
+		t.Errorf("link not replaced: Mode is %q, want %q", m.Links[0].Mode, ModeCopy)
+	}
+}
+
+func TestRemoveLinksFiltersOutSpecifiedPaths(t *testing.T) {
+	m := &Manifest{Version: manifestVersion}
+	m.Links = []Link{
+		{Path: "/path/a", Skill: "skill-a", Mode: ModeSymlink},
+		{Path: "/path/b", Skill: "skill-b", Mode: ModeSymlink},
+		{Path: "/path/c", Skill: "skill-c", Mode: ModeSymlink},
+	}
+	m.RemoveLinks([]string{"/path/b"})
+	if len(m.Links) != 2 {
+		t.Errorf("after RemoveLinks: got %d links, want 2", len(m.Links))
+	}
+	if m.Links[0].Skill != "skill-a" || m.Links[1].Skill != "skill-c" {
+		t.Errorf("wrong links remain: %v", m.Links)
+	}
+}
+
+func TestRemoveLinksNormalizesPathsBeforeMatching(t *testing.T) {
+	m := &Manifest{Version: manifestVersion}
+	m.AddLink(Link{Path: "/path/to/skill", Skill: "skill", Mode: ModeSymlink})
+	// Remove with trailing slash (should normalize and match).
+	m.RemoveLinks([]string{"/path/to/skill/"})
+	if len(m.Links) != 0 {
+		t.Errorf("RemoveLinks did not match normalized path: got %d links, want 0", len(m.Links))
+	}
+}
+
+func TestOwnedPathsReturnsAllLinkPaths(t *testing.T) {
+	m := &Manifest{Version: manifestVersion}
+	m.Links = []Link{
+		{Path: "/path/a", Skill: "skill-a", Mode: ModeSymlink},
+		{Path: "/path/b", Skill: "skill-b", Mode: ModeSymlink},
+	}
+	owned := m.OwnedPaths()
+	if len(owned) != 2 {
+		t.Errorf("OwnedPaths: got %d paths, want 2", len(owned))
+	}
+	if owned[0] != "/path/a" || owned[1] != "/path/b" {
+		t.Errorf("OwnedPaths: got %v, want [\"/path/a\" \"/path/b\"]", owned)
+	}
+}
+
+func TestConcurrentSaveManifestSucceeds(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const numWriters = 16
+	errs := make(chan error, numWriters)
+	for i := 0; i < numWriters; i++ {
+		go func(id int) {
+			m := &Manifest{
+				Version:     manifestVersion,
+				Fingerprint: "test-fp",
+				Generation:  "/gen-test",
+			}
+			m.AddLink(Link{
+				Path:   filepath.Join("/home/user/.claude/skills", "skill", "dir", fmt.Sprintf("link%d", id)),
+				Skill:  fmt.Sprintf("skill%d", id),
+				Mode:   ModeSymlink,
+				Agent:  "agent",
+			})
+			errs <- SaveManifest(m)
+		}(i)
+	}
+	// Collect all errors.
+	for i := 0; i < numWriters; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("SaveManifest %d failed: %v", i, err)
+		}
+	}
+	// Verify the final manifest is valid.
+	m, err := LoadManifest()
+	if err != nil {
+		t.Fatalf("LoadManifest after concurrent saves: %v", err)
+	}
+	if m == nil {
+		t.Fatal("LoadManifest returned nil after concurrent saves")
+	}
+	if m.Version != manifestVersion {
+		t.Errorf("manifest version: got %d, want %d", m.Version, manifestVersion)
 	}
 }

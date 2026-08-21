@@ -49,10 +49,12 @@ func manifestPath() (string, error) {
 	return filepath.Join(home, "materialized-skills.json"), nil
 }
 
-// LoadManifest returns nil, nil when there is nothing to load: no file, an
-// unreadable file, or a version this binary does not understand. Every caller
-// treats nil as "this machine has never connected skills", which is the case
-// where we must not touch the filesystem at all.
+// LoadManifest returns nil, nil when there is nothing to load: no file or a
+// version this binary does not understand. Every caller treats nil as "this
+// machine has never connected skills", which is the case where we must not
+// touch the filesystem at all. Returns (nil, err) for other I/O errors (e.g.,
+// the file is a directory) or JSON parse errors, which are real problems that
+// callers must handle.
 func LoadManifest() (*Manifest, error) {
 	path, err := manifestPath()
 	if err != nil {
@@ -91,11 +93,32 @@ func SaveManifest(m *Manifest) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+	// Use CreateTemp for a unique temp file per writer to avoid concurrent
+	// writers colliding on the same .tmp name.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".materialized-skills-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpName := tmp.Name()
+	// Clean up temp file on error paths.
+	defer func() {
+		if tmpName != "" {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// Rename atomically; on success, clear tmpName so defer does not delete it.
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	tmpName = ""
+	return nil
 }
 
 // OwnedPaths is every path this CLI created, session-scoped or not. It is the
@@ -109,6 +132,8 @@ func (m *Manifest) OwnedPaths() []string {
 }
 
 func (m *Manifest) AddLink(l Link) {
+	// Normalize the path to prevent duplicates from formatting variations.
+	l.Path = filepath.Clean(l.Path)
 	for i, existing := range m.Links {
 		if existing.Path == l.Path {
 			m.Links[i] = l
@@ -121,7 +146,8 @@ func (m *Manifest) AddLink(l Link) {
 func (m *Manifest) RemoveLinks(paths []string) {
 	drop := make(map[string]bool, len(paths))
 	for _, p := range paths {
-		drop[p] = true
+		// Normalize paths to match AddLink's normalization.
+		drop[filepath.Clean(p)] = true
 	}
 	kept := m.Links[:0]
 	for _, l := range m.Links {
