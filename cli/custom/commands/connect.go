@@ -278,7 +278,7 @@ func dropUnavailableCaps(rep *reporter, caps []string) []string {
 	out := caps[:0]
 	for _, c := range caps {
 		if c == capTracing {
-			rep.info("tracing is not available yet — see RES-1407")
+			rep.info("tracing is not available yet")
 			continue
 		}
 		out = append(out, c)

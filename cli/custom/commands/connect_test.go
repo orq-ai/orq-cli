@@ -112,8 +112,8 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	}
 }
 
-// tracing is vocabulary, not behaviour, until RES-1407 lands: it parses, says
-// so, and alone it does nothing at exit 0.
+// tracing is vocabulary, not behaviour: it parses, says so, and alone it does
+// nothing at exit 0.
 func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
@@ -125,8 +125,8 @@ func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
 	if len(caps) != 1 || caps[0] != "gateway" {
 		t.Errorf("caps = %v, want [gateway]", caps)
 	}
-	if !strings.Contains(out.String(), "RES-1407") {
-		t.Errorf("tracing did not point at its ticket:\n%s", out.String())
+	if !strings.Contains(out.String(), "tracing is not available yet") {
+		t.Errorf("tracing was dropped without saying so:\n%s", out.String())
 	}
 	if !capsWereOnlyTracing([]string{"claude", "tracing"}) {
 		t.Error("tracing-only detection missed the only-tracing case")
