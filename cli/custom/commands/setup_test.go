@@ -1249,43 +1249,6 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 	}
 }
 
-// The check answers "can this workspace pay", and every way of failing to
-// answer has to be reported as "do not know" — a 403 from the permission the
-// API key cannot hold must never be rendered to the user as "no credits".
-func TestWorkspaceCanSpendTreatsUnreadableAsUnknown(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		status      int
-		body        string
-		wantKnown   bool
-		wantCredits float64
-	}{
-		{name: "funded", status: 200, body: `{"balance":12.5,"currency":"usd"}`, wantKnown: true, wantCredits: 12.5},
-		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`, wantKnown: true},
-		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`},
-		{name: "server error", status: 500, body: `{}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tc.status)
-				fmt.Fprint(w, tc.body)
-			}))
-			defer srv.Close()
-			credits, known := workspaceCanSpend(auth.NewClient(srv.URL), sessionWithToken(srv.URL))
-			if known != tc.wantKnown || credits != tc.wantCredits {
-				t.Errorf("got (%v, known=%v), want (%v, known=%v)", credits, known, tc.wantCredits, tc.wantKnown)
-			}
-		})
-	}
-
-	// No session means no token that can read the balance at all.
-	if _, known := workspaceCanSpend(auth.NewClient("https://api.orq.ai"), &authState{}); known {
-		t.Error("claimed to know the balance without a session")
-	}
-}
-
-// resetSetupMemos clears the catalogue memo so one test's empty catalogue
-// cannot short-circuit the next.
 func resetSetupMemos(t *testing.T) {
 	t.Helper()
 	reset := func() {
@@ -1394,171 +1357,10 @@ func TestInstrumentAgentsWiresPi(t *testing.T) {
 	}
 }
 
-// The credit balance is only the gateway's business, so a run that wires no
-// gateway has no reason to read the balance or lecture the user about it.
-func TestCreditsAreOnlyReadWhenTheGatewayIsWired(t *testing.T) {
-	cases := map[string]struct {
-		opts       setupOptions
-		wantCredit bool
-	}{
-		"gateway":       {setupOptions{noInput: true, agents: []string{"kimi"}}, true},
-		"no gateway":    {setupOptions{noInput: true, agents: []string{"kimi"}, noGateway: true}, false},
-		"nothing wired": {setupOptions{noInput: true}, false},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			var creditReads int64
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasSuffix(r.URL.Path, "/v2/credits") {
-					atomic.AddInt64(&creditReads, 1)
-					fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
-					return
-				}
-				fmt.Fprint(w, oneChatModel)
-			}))
-			defer srv.Close()
-			wiringHarness(t)
-
-			var out strings.Builder
-			rep := &reporter{w: &out}
-			state := sessionWithToken(srv.URL)
-			state.bearer = "t"
-			opts := tc.opts
-			instrumentAgents(rep, auth.NewClient(srv.URL), state, &opts)
-
-			read := atomic.LoadInt64(&creditReads) > 0
-			if read != tc.wantCredit {
-				t.Errorf("credit balance read = %v, want %v", read, tc.wantCredit)
-			}
-			mentioned := strings.Contains(out.String(), "credit")
-			if mentioned != tc.wantCredit {
-				t.Errorf("credits mentioned = %v, want %v:\n%s", mentioned, tc.wantCredit, out.String())
-			}
-		})
-	}
-}
-
-// Not being able to pay is not a failed setup. Everything that works without
-// funding is still written, the run still exits 0, and the reason is stated once
-// with links the user can act on.
-func TestUnfundedGatewayStillWiresAndExplainsItself(t *testing.T) {
-	srv, routerCalls := gatewayFixture(t, "0", oneChatModel)
-	wiringHarness(t)
-
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	state := sessionWithToken(srv.URL)
-	state.bearer = "t"
-	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
-	if err != nil {
-		t.Fatalf("instrumentAgents: %v", err)
-	}
-
-	if n := atomic.LoadInt64(routerCalls); n != 0 {
-		t.Errorf("made %d router calls on an unfunded workspace, want 0", n)
-	}
-	if state.gatewayFunding != fundingNone {
-		t.Errorf("funding = %v, want unfunded", state.gatewayFunding)
-	}
-	for _, r := range results {
-		if r.Error != "" {
-			t.Errorf("unfunded workspace failed the run: %+v", r)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".kimi-code", "config.toml")); err != nil {
-		t.Errorf("provider config not written on an unfunded workspace: %v", err)
-	}
-
-	got := out.String()
-	// The rule, not a claim about their workspace: the gateway allows a call at
-	// zero credits via BYOK, a private model, the recently-created flag, or a
-	// subscription that has not disabled shared-key use.
-	if strings.Contains(got, "no credits and no provider key") {
-		t.Errorf("asserted a BYOK state the CLI cannot read:\n%s", got)
-	}
-	for _, want := range []string{"if model calls get refused", "/acme/admin/credits"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q:\n%s", want, got)
-		}
-	}
-	// The balance itself is doctor's job; setup carries only the remedy, and
-	// the second page and the docs link are a click from the first.
-	for _, absent := range []string{"credit balance", "/acme/router/providers", "docs.orq.ai"} {
-		if strings.Contains(got, absent) {
-			t.Errorf("unexpected %q on a funded-models run:\n%s", absent, got)
-		}
-	}
-	// Said once. Three mentions of one fact is what made this read as a failure.
-	if n := strings.Count(got, "if model calls get refused"); n != 1 {
-		t.Errorf("stated the funding remedy %d times, want 1:\n%s", n, got)
-	}
-}
-
-// A self-hosted deployment is not metered. The gateway licenses
-// api_keys_use_allowed to true for exactly that reason, and it has no dashboard to
-// link to, so every remedy would degrade to the same docs URL. Raising credits
-// there is advice that is both wrong and unactionable.
-func TestSelfHostedIsNeverToldAboutCredits(t *testing.T) {
-	var creditReads int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/v2/credits") {
-			atomic.AddInt64(&creditReads, 1)
-			fmt.Fprint(w, `{"balance":0,"currency":"usd"}`)
-			return
-		}
-		fmt.Fprint(w, oneChatModel)
-	}))
-	defer srv.Close()
-
-	resetSetupMemos(t)
-	t.Setenv("HOME", t.TempDir())
-	chdir(t, t.TempDir())
-	t.Setenv("ORQ_WEB_BASE_URL", "") // no known dashboard: the self-hosted case
-
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	state := sessionWithToken(srv.URL)
-	state.bearer = "t"
-	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
-
-	if n := atomic.LoadInt64(&creditReads); n != 0 {
-		t.Errorf("read the credit balance %d times on a self-hosted deployment, want 0", n)
-	}
-	if strings.Contains(out.String(), "credit") {
-		t.Errorf("self-hosted run was told about credits:\n%s", out.String())
-	}
-	if state.gatewayFunding != fundingUnknown {
-		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
-	}
-}
-
-// Failing to read the balance is not the same as reading a zero. A 403 from the
-// credits.view permission an API key cannot hold must leave the run exactly as
-// it was before the check existed.
-func TestUnreadableBalanceChangesNothing(t *testing.T) {
-	srv, _ := gatewayFixture(t, "", oneChatModel) // credits endpoint 403s
-	wiringHarness(t)
-
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	state := sessionWithToken(srv.URL)
-	state.bearer = "t"
-	instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
-
-	if state.gatewayFunding != fundingUnknown {
-		t.Errorf("funding = %v, want unknown", state.gatewayFunding)
-	}
-	if strings.Contains(out.String(), "credit balance") {
-		t.Errorf("a permission failure was rendered as a funding verdict:\n%s", out.String())
-	}
-	if got := state.gatewayFunding.String(); got != "unknown" {
-		t.Errorf("--json spelling = %q, want unknown", got)
-	}
-}
-
-// A workspace can be short of models, short of funding, or both, and a fresh
-// account is usually both. Each fact gets its own line; the remedy links are
-// printed once, not once per fact. Zero models never reports as a success.
+// The models half of gateway readiness. The credit balance used to be reported
+// here too and is gone: a zero balance blocks nothing on its own, and the four
+// conditions that decide it — BYOK, private models, the recently-created flag,
+// the subscription — are all unreadable from the CLI.
 func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	cases := map[string]struct {
 		balance, catalogue string
@@ -1567,36 +1369,33 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 		wantAbsent         []string
 		wantLinkBlocks     int
 	}{
-		"models and money": {
+		"models available": {
 			balance: "25", catalogue: oneChatModel,
 			wantFacts:  []string{"1 models available to coding agents"},
-			wantAbsent: []string{"Enable models", "credit balance"},
+			wantAbsent: []string{"Enable models", "credit", "refused"},
 		},
-		"funded, no models": {
+		"no models": {
 			balance: "25", catalogue: `[]`,
 			wantFacts:      []string{"no models enabled for this workspace", "/acme/router/models"},
-			wantAbsent:     []string{"credit balance", "0 models available"},
+			wantAbsent:     []string{"credit", "refused", "0 models available"},
 			wantLinkBlocks: 1,
 		},
-		"models, no money": {
+		// A zero balance is not a fact the CLI reports any more, in either state.
+		"zero balance is silent, models present": {
 			balance: "0", catalogue: oneChatModel,
-			wantFacts:      []string{"1 models available to coding agents", "if model calls get refused", "/acme/admin/credits"},
-			wantAbsent:     []string{"no models enabled", "Enable models", "/acme/router/providers", "How it works"},
-			wantLinkBlocks: 0,
+			wantFacts:  []string{"1 models available to coding agents"},
+			wantAbsent: []string{"credit", "refused", "/acme/admin/credits"},
 		},
-		"neither": {
+		"zero balance is silent, no models": {
 			balance: "0", catalogue: `[]`,
-			wantFacts: []string{
-				"no models enabled for this workspace", "if model calls get refused",
-				"/acme/router/models", "/acme/admin/credits", "How it works",
-			},
-			wantAbsent:     []string{"0 models available", "/acme/router/providers"},
+			wantFacts:      []string{"no models enabled for this workspace", "/acme/router/models", "How it works"},
+			wantAbsent:     []string{"credit", "refused", "/acme/admin/credits"},
 			wantLinkBlocks: 1,
 		},
 		"self-hosted, no models": {
 			balance: "25", catalogue: `[]`, selfHosted: true,
 			wantFacts:  []string{"no models enabled for this workspace", "How it works"},
-			wantAbsent: []string{"my.orq.ai", "credit balance"},
+			wantAbsent: []string{"my.orq.ai", "credit"},
 		},
 	}
 	for name, tc := range cases {
@@ -1844,23 +1643,6 @@ func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
 	}
 }
 
-// The three states must survive into the machine contract as themselves. A bool
-// would put back the ambiguity the tri-state exists to remove, at the one place
-// it cannot be fixed later without a breaking change.
-func TestFundingStateJSONSpelling(t *testing.T) {
-	for state, want := range map[fundingState]string{
-		fundingUnknown: "unknown",
-		fundingOK:      "funded",
-		fundingNone:    "unfunded",
-	} {
-		if got := state.String(); got != want {
-			t.Errorf("%d = %q, want %q", state, got, want)
-		}
-	}
-}
-
-// sessionWithToken is an authState carrying a live workspace session token, the
-// shape setup has by the time step 3 runs.
 func sessionWithToken(apiBase string) *authState {
 	key := "acme"
 	return &authState{
@@ -1891,111 +1673,6 @@ func emptyCatalogueServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// The funding row is a diagnostic, so no way of failing to read the balance
-// may fail doctor. A missing or expired session gives no row; an API error on
-// a session token — which does hold the permission — is a warn row, so a
-// broken backend is distinguishable from an unfunded workspace.
-func TestGatewayFundingCheckIsSilentWhenItCannotKnow(t *testing.T) {
-	key := "acme"
-	session := func() *auth.Session {
-		return &auth.Session{
-			ActiveWorkspaceKey: &key,
-			WorkspaceTokens: map[string]auth.StoredAccessToken{
-				key: {Token: "ws", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
-			},
-		}
-	}
-	for _, tc := range []struct {
-		name       string
-		status     int
-		body       string
-		inspect    auth.SessionInspectResult
-		wantRow    bool
-		wantStatus string
-	}{
-		{name: "funded", status: 200, body: `{"balance":12,"currency":"usd"}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "pass"},
-		{name: "empty", status: 200, body: `{"balance":0,"currency":"usd"}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
-		{name: "forbidden", status: 403, body: `{"code":"insufficient_scope"}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
-		{name: "server error", status: 500, body: `{"message":"boom"}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: session()}, wantRow: true, wantStatus: "warn"},
-		{name: "no session", status: 200, body: `{"balance":12}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusMissing}},
-		{name: "expired token", status: 200, body: `{"balance":12}`,
-			inspect: auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{
-				ActiveWorkspaceKey: &key,
-				WorkspaceTokens: map[string]auth.StoredAccessToken{
-					key: {Token: "ws", ExpiresAt: time.Now().Add(-time.Hour).Format(time.RFC3339)},
-				}}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(tc.status)
-				fmt.Fprint(w, tc.body)
-			}))
-			defer srv.Close()
-			check, ok := gatewayFundingCheck(auth.NewClient(srv.URL), tc.inspect)
-			if ok != tc.wantRow {
-				t.Fatalf("row present = %v, want %v", ok, tc.wantRow)
-			}
-			if ok && check.Status != tc.wantStatus {
-				t.Errorf("status = %q, want %q", check.Status, tc.wantStatus)
-			}
-			if ok && check.Status == "fail" {
-				t.Error("funding must never fail doctor — an unfunded workspace is not a broken one")
-			}
-		})
-	}
-}
-
-// A zero balance is not a broken workspace: a subscription that never bought
-// credits is unmetered, and BYOK, private models and the recently-created flag
-// each serve calls at zero too. The CLI can read none of that, so the line
-// states only the remedy, carries no balance, and must not read as a failure.
-// It stays visible in quiet mode, where it is the only pointer a scripted run
-// gets.
-func TestZeroBalanceIsActionableNotAlarming(t *testing.T) {
-	for _, quiet := range []bool{false, true} {
-		var out strings.Builder
-		rep := &reporter{w: &out, quiet: quiet}
-		key := "acme"
-		state := &authState{
-			apiBase:        "https://api.orq.ai",
-			session:        &auth.Session{ActiveWorkspaceKey: &key},
-			gatewayFunding: fundingNone,
-		}
-		// noInput: the browser-open offer below is not what this test is about.
-		reportGatewayReadiness(rep, state, &setupOptions{noInput: true}, 12)
-		got := out.String()
-
-		if !strings.Contains(got, "if model calls get refused") {
-			t.Fatalf("quiet=%v: funding line missing:\n%s", quiet, got)
-		}
-		if !strings.Contains(got, "provider key") {
-			t.Errorf("quiet=%v: line does not offer the provider-key remedy:\n%s", quiet, got)
-		}
-		if !strings.Contains(got, creditsPath) {
-			t.Errorf("quiet=%v: line carries no credits URL:\n%s", quiet, got)
-		}
-		// The balance is doctor's to report; naming it here is what made a
-		// working setup read as broken.
-		if strings.Contains(got, "credit balance") {
-			t.Errorf("quiet=%v: line states a balance it cannot interpret:\n%s", quiet, got)
-		}
-		for _, line := range strings.Split(got, "\n") {
-			if strings.Contains(line, "if model calls get refused") && strings.Contains(line, "!") {
-				t.Errorf("quiet=%v: funding line still marked as a warning:\n%s", quiet, line)
-			}
-		}
-	}
-}
-
-// connect documents that it never creates keys. It also must not
-// replace one: saving --api-key overwrote the credential every other command
-// authenticates with, and blanked its recorded workspace, which disables the
-// mismatch guard for good — a one-off borrowed key silently becoming permanent.
 func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	srv := emptyCatalogueServer(t)
 	home := t.TempDir()

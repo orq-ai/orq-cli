@@ -174,7 +174,6 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		return err
 	}
 	result["agents"] = agentResults
-	result["gateway_funded"] = authState.gatewayFunding.String()
 	if n, counted := authState.enabledModels, authState.enabledModelsCounted; counted {
 		result["models_enabled"] = n
 	}
@@ -222,9 +221,7 @@ type authState struct {
 	// suppliedKey is set when the user brought their own key; we never mint then.
 	suppliedKey string
 	// durableKey is set whenever an API key becomes the bearer — minted this run or reused from a previous one.
-	durableKey bool
-	// gatewayFunding is what this run learned about the workspace's ability to pay for a model call.
-	gatewayFunding       fundingState
+	durableKey           bool
 	enabledModels        int
 	enabledModelsCounted bool
 }
@@ -251,26 +248,6 @@ func (s *authState) durableBearer() bool {
 }
 
 // Three-valued on purpose: the question is often never asked, and that is not "cannot pay".
-type fundingState int
-
-const (
-	fundingUnknown fundingState = iota
-	fundingOK
-	fundingNone
-)
-
-// String is the --json spelling; a bool would make "never checked" read as "cannot pay".
-func (f fundingState) String() string {
-	switch f {
-	case fundingOK:
-		return "funded"
-	case fundingNone:
-		return "unfunded"
-	default:
-		return "unknown"
-	}
-}
-
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
 	// persistKey is false on connect: saving there replaces a credential the user
@@ -893,7 +870,6 @@ func maskToken(token string) string {
 // Gateway readiness helpers
 // ============================================================================
 
-// BYOK (providersPath) or credits, either one, lets the gateway serve a call.
 const (
 	modelsPath    = "/router/models"
 	providersPath = "/router/providers"
@@ -902,22 +878,9 @@ const (
 	gatewayIntroPath = "/docs/ai-gateway/get-started/introduction"
 )
 
-// Session-only: /v2/credits needs credits.view, which an API key cannot carry (403). known=false means unanswered and must never be reported as "no credits".
-func workspaceCanSpend(client *auth.Client, state *authState) (credits float64, known bool) {
-	token := sessionWorkspaceToken(client, state)
-	if token == "" {
-		return 0, false
-	}
-	balance, err := client.Credits(token)
-	if err != nil {
-		return 0, false
-	}
-	return balance.Balance, true
-}
-
 // sessionWorkspaceToken returns a workspace-scoped session token, preferring the one already in memory.
 func sessionWorkspaceToken(client *auth.Client, state *authState) string {
-	// Without this, an --api-key run would refresh whatever session is on disk and read a different workspace's balance.
+	// Without this, an --api-key run would refresh whatever session is on disk and read the wrong workspace.
 	if state == nil || state.session == nil {
 		return ""
 	}
@@ -944,38 +907,10 @@ func storedWorkspaceToken(session *auth.Session) string {
 	return tok.Token
 }
 
-// No credit advice without a known web URL: self-hosted deployments are not metered (isAllowedToUseSystemDefaultKeys returns before credits) and have no dashboard to link to.
-func canAdviseOnCredits(state *authState) bool {
-	if state == nil {
-		return false
-	}
-	return webBaseFor(state.apiBase) != ""
-}
-
-// The balance is a hint, not a verdict: the gateway also serves at zero credits via BYOK, private models, the recently-created flag, or shared keys.
-func resolveGatewayFunding(client *auth.Client, state *authState) {
-	if state == nil || !canAdviseOnCredits(state) {
-		return
-	}
-	credits, known := workspaceCanSpend(client, state)
-	if !known {
-		return
-	}
-	if credits > 0 {
-		state.gatewayFunding = fundingOK
-		return
-	}
-	state.gatewayFunding = fundingNone
-}
-
-// Zero enabled models is a blocker and warns; a zero balance may block nothing at all, so it states a remedy and asks nothing.
-// Both remedies, neither prescribed: enforce_enabled_models defaults to false and is not readable from this host. Both go out as warn or info, never note, since notes are suppressed under --no-input.
+// Warn rather than note: notes are suppressed under --no-input.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	noModels := count == 0
-	unfunded := state != nil && state.gatewayFunding == fundingNone
-
 	models := workspaceLink(state, modelsPath)
-	credits := workspaceLink(state, creditsPath)
 
 	if !noModels {
 		rep.ok("%d models available to coding agents", count)
@@ -984,18 +919,6 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 		if models != "" {
 			rep.warn("    Enable models   %s", models)
 		}
-	}
-	if unfunded {
-		// Conditional, not a warning. A zero balance only blocks a call when the
-		// subscription meters orq's managed keys, and then only for a public model
-		// with no provider key connected. A workspace that never bought credits is
-		// unmetered and unaffected. None of that is readable from here, and the
-		// balance itself is doctor's to report.
-		line := "if model calls get refused, add credits or connect a provider key"
-		if credits != "" {
-			line += " (" + credits + ")"
-		}
-		rep.info("%s", line)
 	}
 	if !noModels {
 		return
@@ -1090,7 +1013,6 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			rep.warn("could not list gateway models: %v", err)
 		} else {
 			state.enabledModels, state.enabledModelsCounted = count, true
-			resolveGatewayFunding(client, state)
 			reportGatewayReadiness(rep, state, opts, count)
 		}
 	}

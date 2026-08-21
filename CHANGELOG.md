@@ -77,6 +77,16 @@ the version and this changelog as the source of truth for breaking changes.
   config that has not been rewritten yet keeps working. Keys minted before this
   release record no expiry and are never renewed automatically; re-run
   `orq setup` to move to a key that does.
+- **Removed:** the gateway credit check, in `orq doctor` and in `orq setup`. It
+  reported a zero balance as a problem, but a zero balance blocks nothing on its
+  own: the gateway still serves calls when a provider key (BYOK) is connected,
+  when the model is private, when the workspace carries the recently-created
+  flag, or when the subscription has not disabled shared-key use — **which is
+  the default**. None of those four are readable from the CLI, so the warning
+  fired more often on working workspaces than broken ones. A workspace that
+  genuinely cannot serve a call says so at the point of use, with a request id
+  and a documentation link. **`gateway_funded` is gone from `orq setup --json`**,
+  and the `gateway_funding` check is gone from `orq doctor --json`.
 - Added: `orq doctor` counts down to the gateway key's expiry, warns under 30
   days, and fails once it has lapsed. Also warns when `ORQ_API_KEY` in your shell
   is the gateway-scoped key, which would make platform commands fail in a shell
