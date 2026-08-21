@@ -307,3 +307,95 @@ func TestTargetsHonorAgentHomeEnvironmentVariables(t *testing.T) {
 		}
 	}
 }
+
+func TestInstallCreatesOneLinkPerSkillPerTarget(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	res, err := Install([]string{"claude"})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	if len(res.Added) != len(names) {
+		t.Errorf("added %d links, want %d", len(res.Added), len(names))
+	}
+	for _, n := range names {
+		p := filepath.Join(home, ".claude", "skills", n)
+		if _, err := os.Stat(filepath.Join(p, "SKILL.md")); err != nil {
+			t.Errorf("skill %q not readable through the link: %v", n, err)
+		}
+	}
+}
+
+func TestInstallLeavesForeignEntriesAlone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(filepath.Join(dir, "my-own-skill"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "my-own-skill", "SKILL.md"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "my-own-skill", "SKILL.md"))
+	if err != nil || string(data) != "mine" {
+		t.Errorf("install disturbed a skill it does not own: %v %q", err, data)
+	}
+
+	if _, err := Remove([]string{"claude"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "my-own-skill", "SKILL.md")); err != nil {
+		t.Errorf("remove deleted a skill it does not own: %v", err)
+	}
+}
+
+func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	dir := filepath.Join(home, ".claude", "skills")
+	ghost := filepath.Join(dir, "orq-retired-skill")
+	if err := os.Symlink(filepath.Join(home, "nowhere"), ghost); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v %v", m, err)
+	}
+	m.AddLink(Link{Path: ghost, Agent: "claude", Skill: "orq-retired-skill", Mode: ModeSymlink})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "next-release")
+	if _, err := Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := os.Lstat(ghost); !os.IsNotExist(err) {
+		t.Errorf("a skill no longer in the set survived the refresh: %v", err)
+	}
+}
+
+func TestRefreshOnANeverConnectedMachineTouchesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude")); !os.IsNotExist(err) {
+		t.Error("refresh created an agent directory on a machine that never connected")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".orq")); !os.IsNotExist(err) {
+		t.Error("refresh created orq state on a machine that never connected")
+	}
+}
