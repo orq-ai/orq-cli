@@ -73,6 +73,21 @@ the version and this changelog as the source of truth for breaking changes.
   `orq prompts list` and friends. Commands now use your login session, and only
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
+- **Changed:** onboarding output is quieter. `orq setup` and `orq connect` no
+  longer report the files they wrote (`credentials.json`, `~/.orq/env`, each
+  agent's config path), the minted key's id, or the mechanics of which
+  credential won and why. Those details moved to where someone looks for them:
+  `orq doctor` and `orq connect --status`. Paths still appear inside commands
+  you are meant to run, and `orq disconnect` still names every file before it
+  removes it.
+- **Changed:** the per-agent wiring line now names the gateway rather than the
+  agent: `Orq AI Gateway configured for kimi  (137 models available)` in place of
+  `kimi  gateway (137 models)  ~/.kimi-code/config.toml`, which read as though
+  kimi supplied the gateway. The name matches the one the agent shows in its own
+  model list.
+- **Removed:** the `orq budgets create` suggestion printed after a mint. It
+  carried the key id purely to be copy-pasteable; `orq api-keys list` has the id
+  when you need it.
 - **Fixed (security):** minting a gateway key now clears any `api_key` left in
   the profile. Versions before the split wrote the minted key to `api_key` with
   a workspace beside it, so an upgraded machine that switched workspace minted a

@@ -1372,8 +1372,7 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	}{
 		"models available": {
 			balance: "25", catalogue: oneChatModel,
-			wantFacts:  []string{"1 models available to coding agents"},
-			wantAbsent: []string{"Enable models", "credit", "refused"},
+			wantAbsent: []string{"Enable models", "credit", "refused", "available to coding agents"},
 		},
 		"no models": {
 			balance: "25", catalogue: `[]`,
@@ -1384,8 +1383,7 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 		// A zero balance is not a fact the CLI reports any more, in either state.
 		"zero balance is silent, models present": {
 			balance: "0", catalogue: oneChatModel,
-			wantFacts:  []string{"1 models available to coding agents"},
-			wantAbsent: []string{"credit", "refused", "/acme/admin/credits"},
+			wantAbsent: []string{"credit", "refused", "/acme/admin/credits", "available to coding agents"},
 		},
 		"zero balance is silent, no models": {
 			balance: "0", catalogue: `[]`,
@@ -2133,7 +2131,7 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 // A spend cap that stops an agent mid-task is worse than the leak it prevents
 // on a key that already expires, and budgets are a workspace-scope RPC a
 // Developer is refused. So the mint recommends and never calls.
-func TestMintSuggestsABudgetWithoutCreatingOne(t *testing.T) {
+func TestMintNeverCallsTheBudgetAPI(t *testing.T) {
 	credsHarness(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "budget") {
@@ -2154,9 +2152,10 @@ func TestMintSuggestsABudgetWithoutCreatingOne(t *testing.T) {
 	if _, _, err := ensureDurableKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
-	got := out.String()
-	if !strings.Contains(got, "orq budgets create") || !strings.Contains(got, "KEYID") {
-		t.Errorf("no runnable budget suggestion naming the key:\n%s", got)
+	// The key id is deliberately not printed: it is a detail of our storage, and
+	// 'orq api-keys list' is where someone who needs it looks.
+	if got := out.String(); strings.Contains(got, "KEYID") {
+		t.Errorf("mint leaked the key id to the terminal:\n%s", got)
 	}
 }
 
@@ -2397,5 +2396,38 @@ func TestDecliningTheMintIsNotASkipWhenAnEarlierWireSurvives(t *testing.T) {
 func TestARunThatNeverReachedTheAgentStepIsComplete(t *testing.T) {
 	if !setupComplete(true, nil) {
 		t.Error("a run reporting no agents was marked incomplete")
+	}
+}
+
+// The rule the quiet pass encodes: a path or an id may appear only inside a
+// command the user should run, never as a report of what the CLI just did.
+// Wiring an agent used to print the config file it wrote, the credentials file,
+// the env file and the key id; all of that lives in 'orq doctor' and
+// 'orq connect --status' now. Asserting it here so the next verbose line fails
+// rather than quietly landing.
+func TestWiringReportsNoPathsOrIDs(t *testing.T) {
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	kimi, _ := lookupAgent("kimi")
+	codex, _ := lookupAgent("codex")
+
+	reportAgent(rep, kimi, agentResult{Agent: "kimi", Provider: "/home/u/.kimi-code/config.toml", ModelCount: 137}, &setupOptions{})
+	reportAgent(rep, codex, agentResult{Agent: "codex", Provider: "/home/u/.codex/orq.config.toml"}, &setupOptions{})
+
+	got := out.String()
+	for _, leaked := range []string{"config.toml", "/home/u", "credentials.json", ".orq/env"} {
+		if strings.Contains(got, leaked) {
+			t.Errorf("wiring output names %q, which belongs in doctor:\n%s", leaked, got)
+		}
+	}
+	// It still has to say what happened, and whose gateway it is.
+	for _, want := range []string{"Orq AI Gateway", "kimi", "codex", "137 models available"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("wiring output lost %q:\n%s", want, got)
+		}
+	}
+	// codex takes its model list elsewhere, so it must not claim a count.
+	if strings.Contains(got, "0 models") {
+		t.Errorf("codex claimed a model count it does not have:\n%s", got)
 	}
 }

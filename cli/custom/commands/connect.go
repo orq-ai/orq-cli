@@ -349,7 +349,7 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 	// the credential exists, so nothing may prompt for another.
 	if strings.TrimSpace(opts.apiKey) == "" && saved != "" {
 		if session, _ := auth.ReadSession(); session == nil {
-			rep.ok("api key (saved profile: %s)", auth.ActiveProfile())
+			rep.ok("using your saved key")
 			state := &authState{apiBase: apiBaseFromEnv()}
 			state.useDurableKey(saved)
 			return state, auth.NewClient(state.apiBase), nil

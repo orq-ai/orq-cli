@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/launch"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -269,7 +270,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			if err := saveAPIKeyProfile(key, ""); err != nil {
 				return nil, err
 			}
-			rep.ok("api key (profile: %s)", auth.ActiveProfile())
+			rep.ok("using the key you passed")
 		} else {
 			rep.ok("api key from --api-key (not saved)")
 		}
@@ -284,11 +285,10 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	// Bartolo auto-loads ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
 	if envKey := UserEnvAPIKey(); envKey != "" && session == nil {
 		if file, v := dotEnvAPIKey(); file != "" && v == envKey {
-			rep.ok("api key from ./%s", file)
-			rep.note("orq loads ./%s automatically — remove its ORQ_API_KEY line to sign in instead; unsetting the shell variable is not enough.", file)
+			// Naming the file is the action: unsetting the shell variable will not help.
+			rep.ok("using the API key from ./%s", file)
 		} else {
-			rep.ok("api key from ORQ_API_KEY")
-			rep.note("credential order: login session → ORQ_API_KEY (env). No session found, so the environment key is used.")
+			rep.ok("using the API key from ORQ_API_KEY")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
@@ -297,11 +297,8 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		envKey := UserEnvAPIKey()
 		savedKey, savedWS := savedAPIKey()
 		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
-			if envKey == savedKey {
-				rep.note("the exported ORQ_API_KEY is for workspace %s; this run follows your login instead", savedWS)
-			} else {
-				rep.note("the exported ORQ_API_KEY is not the key setup saved, so its workspace is unknown; this run follows your login instead")
-			}
+			// Which one won is the fact; why lives in 'orq doctor'.
+			rep.note("following your login, not the exported ORQ_API_KEY")
 		}
 	}
 
@@ -790,12 +787,11 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	if token == "" {
 		return info, "", nil
 	}
-	if path, err := writeShellEnvFile(token); err != nil {
+	if _, err := writeShellEnvFile(token); err != nil {
 		// Not fatal: the key is saved, and the final screen still shows how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {
-		// Labelled, not indented under "key saved": that line is skipped when an earlier setup's key is reused.
-		rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
+		// The prompt is the point; naming the file we wrote is not.
 		offerProfileSourceLine(rep, opts)
 	}
 
@@ -813,17 +809,15 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case token == "":
 		// nothing saved — fall through to mint
 	case keyWorkspaceMismatch(tokenWS, active):
-		rep.note("saved key belongs to workspace %s — creating one for %s", tokenWS, active)
+		rep.note("creating a key for workspace %s", active)
 		token = ""
 	case gatewayKeyDueForRenewal(time.Now()):
 		// The superseded key is left alive until its own expiry: that overlap is
 		// what keeps an agent config working until this run rewrites it.
 		rep.note("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
 		token = ""
-	case tokenWS == "":
-		rep.ok("reusing the key from an earlier setup (workspace unrecorded)")
 	default:
-		rep.ok("reusing the key from an earlier setup")
+		rep.ok("using your saved key")
 	}
 	if token != "" {
 		return token, false, nil
@@ -863,23 +857,8 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
-	rep.ok("key saved   %s  (gateway-scoped, expires in %d days)",
-		tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")),
-		int(gatewayKeyLifetime.Hours()/24))
-	suggestKeyBudget(rep, keyID)
+	rep.ok("gateway key created — expires in %d days", int(gatewayKeyLifetime.Hours()/24))
 	return minted, true, nil
-}
-
-// suggestKeyBudget recommends a spend ceiling rather than setting one. Budgets
-// are a workspace-scope RPC, so a Developer or Researcher — most of the people
-// onboarding — is refused, and a cap applied silently would stop an agent
-// mid-task with nothing naming the cause.
-func suggestKeyBudget(rep *reporter, keyID string) {
-	if keyID == "" {
-		return
-	}
-	rep.note("cap this key's spend: orq budgets create --scope '{\"api_key\":{\"api_key_id\":\"%s\"}}' \\", keyID)
-	rep.note("      --limits '{\"period\":\"BUDGET_PERIOD_MONTHLY\",\"amount\":50}'")
 }
 
 func sanitizeKeyName(name string) string {
@@ -957,19 +936,14 @@ func storedWorkspaceToken(session *auth.Session) string {
 
 // Warn rather than note: notes are suppressed under --no-input.
 func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
-	noModels := count == 0
-	models := workspaceLink(state, modelsPath)
-
-	if !noModels {
-		rep.ok("%d models available to coding agents", count)
-	} else {
-		rep.warn("no models enabled for this workspace")
-		if models != "" {
-			rep.warn("    Enable models   %s", models)
-		}
-	}
-	if !noModels {
+	if count > 0 {
+		// The per-agent line already carries the count; saying it twice is noise.
 		return
+	}
+	models := workspaceLink(state, modelsPath)
+	rep.warn("no models enabled for this workspace")
+	if models != "" {
+		rep.warn("    Enable models   %s", models)
 	}
 	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
 
@@ -1123,9 +1097,9 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 			// Every writer clears its own keys before emitting, so writing an empty catalogue would delete a working provider block from an earlier run.
 			// Say which of the two states this is: an earlier run's block still wires the agent, an absent one leaves it unwired.
 			if spec.providerPresent != nil && spec.providerPresent(path) {
-				rep.warn("%-8s provider  no models to offer; kept the orq provider already in %s", id, tilde(path))
+				rep.warn("%-8s no models to offer; kept the configuration already on this machine", id)
 			} else {
-				rep.warn("%-8s provider  no models to offer; nothing written to %s", id, tilde(path))
+				rep.warn("%-8s no models to offer; nothing written", id)
 				res.Skipped = "no models to offer"
 			}
 		default:
@@ -1152,22 +1126,23 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 	if res.Provider == "" {
 		return
 	}
-	wired := "gateway"
+	// orq is the subject, the agent the object: "kimi  gateway" read as though
+	// kimi supplied the gateway. The name matches the one the agent shows in its
+	// own model list, so there is one name for one thing.
+	line := launch.ProviderDisplayName + " configured for " + spec.ID
 	// codex's profile names one default and takes its list from elsewhere, so only claim a count when there is one.
-	if res.ModelCount > 0 {
-		wired = fmt.Sprintf("gateway (%d models)", res.ModelCount)
+	if n := res.ModelCount; n > 0 {
+		unit := "models"
+		if n == 1 {
+			unit = "model"
+		}
+		line += fmt.Sprintf("  (%d %s available)", n, unit)
 	}
+	rep.ok("%s", line)
 
-	rep.ok("%-8s %-24s %s", spec.ID, wired, tilde(res.Provider))
-
-	// Every other agent reads ORQ_API_KEY from the environment. This one cannot,
-	// so the user should know a live credential is now sitting in that file.
-	if spec.providerEmbedsKey {
-		rep.note("         this config holds the key itself, not a reference to ORQ_API_KEY")
-	}
 	// orq is registered as an option, not the default, so some agents need a step the user would never find.
 	if spec.providerUsage != "" {
-		rep.note("         %s", spec.providerUsage)
+		rep.note("  %s", spec.providerUsage)
 	}
 }
 
