@@ -65,12 +65,16 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 // setup_complete field. verified is one narrow fact — the API answered — so on
 // its own it printed a green "Setup complete" directly above an agent that
 // failed to wire, and told a CI job keying on the field that the run succeeded.
+//
+// Skipped counts with Error: an agent the run declined to wire is one the user
+// asked for and did not get, so claiming completion above it is the same lie in
+// a quieter voice.
 func setupComplete(verified bool, agents []agentResult) bool {
 	if !verified {
 		return false
 	}
 	for _, a := range agents {
-		if a.Error != "" {
+		if a.Error != "" || a.Skipped != "" {
 			return false
 		}
 	}
@@ -82,6 +86,10 @@ type agentResult struct {
 	Provider   string `json:"provider,omitempty"`
 	ModelCount int    `json:"model_count,omitempty"`
 	Error      string `json:"error,omitempty"`
+	// Skipped is the wire that was never attempted, as opposed to Error's wire
+	// that was attempted and failed. Set only when nothing on disk wires the
+	// agent afterwards: an earlier run's provider block surviving is not a skip.
+	Skipped string `json:"skipped,omitempty"`
 }
 
 func NewSetupCommand() *cobra.Command {
@@ -563,8 +571,16 @@ func clearGatewayKeyFields(profile string) {
 // saveGatewayKeyProfile stores the minted key under its own field. Writing it as
 // api_key would make apiKeyConfigured true, and every generated command would
 // then authenticate with a gateway-scoped credential instead of the session.
+//
+// Clears api_key for the mirror reason saveAPIKeyProfile clears the gateway
+// triple. Versions before the split wrote the minted key to api_key with a
+// workspace beside it, so an upgraded machine that switches workspace mints a
+// new key while the old one survives — and apiKeyConfigured reads only api_key,
+// so every command would keep authenticating with a stale key for the workspace
+// the user just left.
 func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
 	profile := auth.ActiveProfile()
+	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
 	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", keyID)
 	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
 	return writeGatewayKeyProfile(profile, key, workspace)
@@ -680,11 +696,14 @@ func clearShellEnvFile() []string {
 	return cleared
 }
 
-// storedAPIKeyProfile reports whether the active profile holds a key; callers must not log it.
+// storedAPIKeyProfile reports whether the active profile holds a key that
+// authenticates commands, so it reads exactly what apiKeyConfigured does.
+// Counting gateway_key here made doctor answer "authenticated: credentials.json"
+// for a key no command authenticates with, on the one screen whose job is to
+// explain why nothing works. Callers must not log the value.
 func storedAPIKeyProfile() bool {
 	prefix := "profiles." + auth.ActiveProfile()
-	return strings.TrimSpace(bartolocli.Creds.GetString(prefix+".api_key")) != "" ||
-		strings.TrimSpace(bartolocli.Creds.GetString(prefix+".gateway_key")) != ""
+	return strings.TrimSpace(bartolocli.Creds.GetString(prefix+".api_key")) != ""
 }
 
 // Bartolo loads these files before any command runs, so a key here outlives 'unset' and logout; the parsing mirrors its loadDotEnvFile.
@@ -1083,8 +1102,9 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 		rep.fail("%-8s provider  no config path for this agent", id)
 		res.Error = "provider config path resolved empty"
 	case !state.durableBearer():
-		// Declining the mint is a choice, not an error.
+		// Declining the mint is a choice, not an error, but it still leaves the agent unwired.
 		rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
+		res.Skipped = "no durable API key"
 	default:
 		models, merr := codingModels(rep, client, state)
 		switch {
@@ -1099,6 +1119,7 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 				rep.warn("%-8s provider  no models to offer; kept the orq provider already in %s", id, tilde(path))
 			} else {
 				rep.warn("%-8s provider  no models to offer; nothing written to %s", id, tilde(path))
+				res.Skipped = "no models to offer"
 			}
 		default:
 			// Must match the [models."<key>"] form the writer emits: the full provider/model ref.

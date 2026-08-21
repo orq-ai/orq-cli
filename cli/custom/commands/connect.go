@@ -65,6 +65,33 @@ func detectedAgents() []string {
 	return out
 }
 
+// nothingWired keeps the claim as narrow as the question: naming agents asks
+// about those agents, so answering "nothing wired on this machine" overstates
+// what was looked at.
+func nothingWired(named bool, agents []string) string {
+	if !named {
+		return "nothing wired on this machine"
+	}
+	return "nothing wired for " + strings.Join(agents, ", ")
+}
+
+// reportUnwirableAgents drops the named agents that have no provider config and
+// says so, rather than letting them fall through to "detected but not wired".
+// The same message runConnect prints, for the same reason: reporting claude as
+// unwired promises a wire that cannot exist.
+func reportUnwirableAgents(rep *reporter, agents []string) []string {
+	var out []string
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if ok && spec.writeProvider == nil {
+			rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 func NewConnectCommand() *cobra.Command {
 	opts := setupOptions{}
 	dryRun := false
@@ -98,8 +125,8 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	return cmd
 }
 
-// runConnectStatus is the read-only view of on-disk wiring. It never prompts,
-// never authenticates, always exits 0.
+// runConnectStatus is the read-only view of on-disk wiring. It never prompts and
+// never authenticates; it exits non-zero only on an argument it cannot parse.
 func runConnectStatus(opts *setupOptions, args []string) error {
 	if err := resolveScope(opts); err != nil {
 		return err
@@ -109,15 +136,26 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Both filters connect and disconnect apply. Without the first,
+	// `--status tracing` left caps as ["tracing"] and reported "nothing wired"
+	// on a machine that plainly was; without the second, a named claude was
+	// reported unwired when no wire can exist for it.
+	caps = dropUnavailableCaps(rep, caps)
+	if len(caps) == 0 && capsWereOnlyTracing(args) {
+		return nil
+	}
 	if len(caps) == 0 {
 		caps = []string{capGateway}
 	}
-	if len(agents) == 0 {
+	named := len(agents) > 0
+	if !named {
 		agents = detectedAgents()
+	} else if agents = reportUnwirableAgents(rep, agents); len(agents) == 0 {
+		return nil
 	}
 	wired := wiredTargets(agents, caps, opts)
 	if len(wired) == 0 {
-		rep.info("nothing wired on this machine")
+		rep.info(nothingWired(named, agents))
 	}
 	for _, w := range wired {
 		rep.info("%-8s %-9s %s", w.agent, w.capability, tilde(w.path))
@@ -396,13 +434,15 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	namedAgents := len(agents) > 0
 	if !namedAgents {
 		agents = detectedAgents()
+	} else if agents = reportUnwirableAgents(rep, agents); len(agents) == 0 {
+		return nil
 	}
 
 	// Removal is the one destructive verb, so it says what it will remove
 	// before it does. Naming agents is intent; a bare run is not.
 	wired := wiredTargets(agents, caps, opts)
 	if len(wired) == 0 {
-		rep.info("nothing wired on this machine")
+		rep.info(nothingWired(namedAgents, agents))
 		return nil
 	}
 	if dryRun {

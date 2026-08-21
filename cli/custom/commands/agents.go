@@ -49,7 +49,10 @@ type agentSpec struct {
 	removeProvider func(path string) (bool, error)
 	// providerEmbedsKey marks a provider config holding the credential literally rather than referencing ORQ_API_KEY.
 	providerEmbedsKey bool
-	providerUsage     string
+	// providerKey reads back the embedded credential; set whenever providerEmbedsKey is.
+	// A literal copy cannot follow a renewal, so only reading it can tell a wired agent from a dead one.
+	providerKey   func(path string) string
+	providerUsage string
 	// runCommand starts the agent against what setup wrote; empty means the bare ID does.
 	runCommand string
 }
@@ -110,6 +113,7 @@ func agentRegistry() []agentSpec {
 			removeProvider:    removeKimiProviderTOML,
 			providerPresent:   tomlTablePresent("providers." + launch.KimiChatProvider),
 			providerEmbedsKey: true,
+			providerKey:       tomlStringAt("providers." + launch.KimiChatProvider + ".api_key"),
 		},
 		{
 			ID:    "kilo",
@@ -581,6 +585,7 @@ func codingAgentChecks() []doctorCheck {
 	detected, fullyWired := 0, 0
 	// Read once, both are per-process: detectShell spells the source line for fish and honours a non-default config directory.
 	keyExported := agentKeyExported()
+	savedKey, _ := savedAPIKey()
 	sourceLine := detectShell(viper.GetString("config-directory")).displayLine()
 	for _, spec := range agentRegistry() {
 		if !spec.detect() {
@@ -606,6 +611,15 @@ func codingAgentChecks() []doctorCheck {
 		case !wired:
 			check.Status = "info"
 			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
+		case wired && staleEmbeddedKey(spec, path, savedKey):
+			// A config holding the key literally cannot follow a renewal. Wiring
+			// one agent renews for all of them, so an agent left out of that run
+			// keeps a key that dies on the old expiry date while every other row
+			// here stays green.
+			details["stale_key"] = true
+			check.Status = "warn"
+			check.Message = spec.Label + " holds an older key than the one saved — it will stop authenticating. " +
+				"Run 'orq connect " + spec.ID + "' to rewire it"
 		// kimi's provider TOML holds the key literally, so an unexported ORQ_API_KEY breaks nothing.
 		case keyExported || spec.providerEmbedsKey:
 			check.Status = "pass"
@@ -621,6 +635,17 @@ func codingAgentChecks() []doctorCheck {
 		checks = append(checks, codingAgentsSummary(detected, fullyWired, wiredIDs))
 	}
 	return checks
+}
+
+// staleEmbeddedKey reports a wired config whose literal credential is not the
+// one this machine has saved. Both sides must be known: no saved key, or a
+// config we cannot read a key out of, is "unknown", never "stale".
+func staleEmbeddedKey(spec agentSpec, path, savedKey string) bool {
+	if spec.providerKey == nil || savedKey == "" {
+		return false
+	}
+	embedded := spec.providerKey(path)
+	return embedded != "" && embedded != savedKey
 }
 
 // codingAgentsSummary is the one row the human view keeps when every per-agent
@@ -674,6 +699,23 @@ func jsonProviderPresentAt(key, provider string) func(path string) bool {
 		}
 		_, present := providers[provider]
 		return present
+	}
+}
+
+// tomlStringAt reads one string out of a TOML file, empty when the file, the
+// path or the type does not hold.
+func tomlStringAt(dotted string) func(path string) string {
+	return func(path string) string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
+		tree, err := toml.LoadBytes(data)
+		if err != nil {
+			return ""
+		}
+		s, _ := tree.GetPath(strings.Split(dotted, ".")).(string)
+		return strings.TrimSpace(s)
 	}
 }
 

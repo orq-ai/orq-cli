@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pelletier/go-toml"
 
@@ -1420,5 +1421,68 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A config holding the credential literally cannot follow a renewal. Wiring one
+// agent renews the key for all of them, so an agent left out of that run keeps a
+// key that dies on the old expiry date — and every other row stayed green,
+// because presence of the provider table was all doctor checked.
+func TestDoctorWarnsWhenAnAgentHoldsAnOlderKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+	credsHarness(t)
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-orq-OLD", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	find := func() doctorCheck {
+		t.Helper()
+		for _, c := range codingAgentChecks() {
+			if c.ID == "coding_agent_kimi" {
+				return c
+			}
+		}
+		t.Fatal("no kimi row")
+		return doctorCheck{}
+	}
+
+	if err := saveGatewayKeyProfile("sk-orq-NEW", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if got := find(); got.Status != "warn" || got.Details["stale_key"] != true {
+		t.Errorf("kimi holds sk-orq-OLD while sk-orq-NEW is saved, got %s: %s", got.Status, got.Message)
+	}
+
+	// Rewiring with the saved key clears it.
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-orq-NEW", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := find(); got.Status != "pass" {
+		t.Errorf("rewired kimi still %s: %s", got.Status, got.Message)
+	}
+}
+
+// Both sides must be known. No saved key, or a config we cannot read a key out
+// of, is "unknown" — warning there would fire on every machine that brought its
+// own credential.
+func TestStaleEmbeddedKeyNeedsBothSides(t *testing.T) {
+	kimi, ok := lookupAgent("kimi")
+	if !ok {
+		t.Fatal("no kimi spec")
+	}
+	if staleEmbeddedKey(kimi, filepath.Join(t.TempDir(), "absent.toml"), "sk-orq-NEW") {
+		t.Error("an unreadable config reported as stale")
+	}
+	codex, _ := lookupAgent("codex")
+	if staleEmbeddedKey(codex, "/dev/null", "sk-orq-NEW") {
+		t.Error("codex references ORQ_API_KEY rather than embedding it, so it can never be stale")
 	}
 }

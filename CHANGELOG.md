@@ -73,6 +73,31 @@ the version and this changelog as the source of truth for breaking changes.
   `orq prompts list` and friends. Commands now use your login session, and only
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
+- **Fixed (security):** minting a gateway key now clears any `api_key` left in
+  the profile. Versions before the split wrote the minted key to `api_key` with
+  a workspace beside it, so an upgraded machine that switched workspace minted a
+  new key while the old one survived — and because a stored `api_key` takes
+  precedence, every `orq <entity>` command kept authenticating with a
+  full-permission key scoped to the workspace you just left.
+- **Fixed:** `orq doctor` no longer reports `authenticated: credentials.json`
+  when the profile holds only a `gateway_key`. No command authenticates with
+  that key, so the row claimed a working login on the one screen whose job is to
+  explain why nothing works.
+- **Added:** `orq doctor` warns when an agent config holds an older key than the
+  one saved. Only kimi stores the credential literally, and a literal copy
+  cannot follow a renewal, so an agent left out of the run that renewed kept a
+  key that would die on the old expiry date while every row stayed green. Rewire
+  with `orq connect kimi`.
+- **Fixed:** `orq setup` no longer reports `Setup complete` when an agent was
+  skipped rather than wired. Declining the mint, or a workspace with no models
+  to offer, left the agent unwired under a green verdict; `setup_complete` is
+  now `false` and the exit code is `1`, with the reason in the new `skipped`
+  field of each agent result.
+- **Fixed:** `orq connect --status` now applies the same two filters as `connect`
+  and `disconnect`. `--status tracing` reported "nothing wired" on a wired
+  machine, and `--status claude` reported claude as unwired when it has no
+  provider config to wire. Both commands now also scope the empty verdict to the
+  agents named: `nothing wired for codex` rather than a claim about the machine.
 - **Changed:** minted keys now expire after 90 days instead of never. `orq setup`
   replaces one with under 30 days left; run `orq connect` afterwards to rewrite
   the agent configs. The superseded key is **not** revoked

@@ -79,7 +79,7 @@ orq connect                        # wire every detected agent through the gatew
 orq connect codex kimi             # specific agents
 orq connect codex gateway          # the capability is optional; gateway is the only one
 orq connect --dry-run              # show the files that would change
-orq disconnect claude              # remove exactly what connect wrote
+orq disconnect codex               # remove exactly what connect wrote
 ```
 
 An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.

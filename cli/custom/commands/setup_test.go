@@ -2298,3 +2298,59 @@ func TestSuppliedKeyDisplacesAMintedOne(t *testing.T) {
 		t.Error("stale expiry survived, so renewal would fire against a key that is not wired")
 	}
 }
+
+// The mirror of TestSuppliedKeyDisplacesAMintedOne. Versions before the
+// credential split wrote the minted key to api_key with a workspace beside it,
+// so an upgraded machine that switches workspace mints a new gateway key while
+// the old one survives. apiKeyConfigured reads only api_key, so leaving it
+// there suppresses session injection and every generated command authenticates
+// with a stale key for the workspace the user just left.
+func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
+	credsHarness(t)
+	if err := saveAPIKeyProfile("sk-orq-LEGACY-for-A", "workspace-A"); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B"); err != nil {
+		t.Fatal(err)
+	}
+	if storedAPIKeyProfile() {
+		t.Error("api_key survived the mint; apiKeyConfigured would suppress session injection and commands would use the stale key")
+	}
+	if key, ws := savedAPIKey(); key != "sk-orq-NEW-for-B" || ws != "workspace-B" {
+		t.Errorf("savedAPIKey = (%q, %q), want the key just minted for workspace-B", key, ws)
+	}
+}
+
+// A gateway key authenticates no `orq <entity>` command, so counting it here
+// made doctor answer "authenticated: credentials.json" on the one screen whose
+// job is to explain why nothing works.
+func TestStoredAPIKeyProfileIgnoresTheGatewayKey(t *testing.T) {
+	credsHarness(t)
+	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if storedAPIKeyProfile() {
+		t.Error("a gateway-key-only profile reported as holding an authenticating key")
+	}
+	if err := saveAPIKeyProfile("sk-orq-REAL", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if !storedAPIKeyProfile() {
+		t.Error("a profile holding api_key reported as holding none")
+	}
+}
+
+// Declining the mint leaves the agent unwired, so the run did not do what it
+// was asked. Reporting it complete printed a green verdict directly above the
+// warning that nothing was written, and told a CI job the run succeeded.
+func TestSetupIsNotCompleteWhenAnAgentWasSkipped(t *testing.T) {
+	if setupComplete(true, []agentResult{{Agent: "kimi", Skipped: "no durable API key"}}) {
+		t.Error("a skipped agent counted as a completed setup")
+	}
+	if setupComplete(true, []agentResult{{Agent: "codex", Provider: "/tmp/x"}, {Agent: "kimi", Skipped: "no models to offer"}}) {
+		t.Error("one skipped agent among wired ones counted as a completed setup")
+	}
+	if !setupComplete(true, []agentResult{{Agent: "claude"}, {Agent: "codex", Provider: "/tmp/x"}}) {
+		t.Error("claude has no provider config to write, so an empty result for it is not a skip")
+	}
+}

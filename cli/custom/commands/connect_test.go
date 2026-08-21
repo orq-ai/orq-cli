@@ -588,3 +588,61 @@ func TestDisconnectPayloadNamesCodingAgentsAndTheRetainedKey(t *testing.T) {
 		t.Errorf("api_key = %+v, want the surviving key named", payload.APIKey)
 	}
 }
+
+// The two filters connect and disconnect already applied, missed on --status:
+// a tracing-only run left caps as ["tracing"] and found no gateway target, and
+// a named claude fell through to "detected but not wired" for a wire that
+// cannot exist.
+func TestConnectStatusAppliesTheSameFiltersAsConnect(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetSetupMemos(t)
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	run := func(args ...string) string {
+		out.Reset()
+		cmd := NewConnectCommand()
+		cmd.SetArgs(append([]string{"--status"}, args...))
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("status %v: %v", args, err)
+		}
+		return out.String()
+	}
+
+	if got := run("tracing"); strings.Contains(got, "nothing wired") {
+		t.Errorf("--status tracing reported nothing wired on a wired machine:\n%s", got)
+	}
+	got := run("claude")
+	if strings.Contains(got, "not wired") {
+		t.Errorf("claude reported unwired, promising a wire that cannot exist:\n%s", got)
+	}
+	if !strings.Contains(got, "nothing to configure") {
+		t.Errorf("claude's lack of a provider config went unsaid:\n%s", got)
+	}
+}
+
+// Naming an agent asks about that agent, so a machine-wide verdict overstates
+// what was looked at.
+func TestNothingWiredIsScopedToTheAgentsNamed(t *testing.T) {
+	if got := nothingWired(false, []string{"kimi"}); got != "nothing wired on this machine" {
+		t.Errorf("bare run: %q", got)
+	}
+	if got := nothingWired(true, []string{"codex"}); got != "nothing wired for codex" {
+		t.Errorf("named run: %q", got)
+	}
+}
