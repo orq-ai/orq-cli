@@ -6006,13 +6006,9 @@ func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[stri
 	if paramLocation != "" {
 		req = req.AddQuery("location", fmt.Sprintf("%v", paramLocation))
 	}
-	paramType := params.GetString("type")
-	if paramType != "" {
-		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
-	}
-	paramStatus := params.GetString("status")
-	if paramStatus != "" {
-		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	paramFeature := params.GetString("feature")
+	if paramFeature != "" {
+		req = req.AddQuery("feature", fmt.Sprintf("%v", paramFeature))
 	}
 	paramSupportedParameter := params.GetString("supported-parameter")
 	if paramSupportedParameter != "" {
@@ -6025,10 +6021,6 @@ func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[stri
 	paramOfferingOf := params.GetString("offering-of")
 	if paramOfferingOf != "" {
 		req = req.AddQuery("offering_of", fmt.Sprintf("%v", paramOfferingOf))
-	}
-	paramDeprecated := params.GetBool("deprecated")
-	if paramDeprecated != false {
-		req = req.AddQuery("deprecated", fmt.Sprintf("%v", paramDeprecated))
 	}
 	paramSearch := params.GetString("search")
 	if paramSearch != "" {
@@ -6069,14 +6061,15 @@ func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[stri
 }
 
 // OpenapiModelCatalogListOfferings List model catalog offerings
-func OpenapiModelCatalogListOfferings(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "model-catalog list-offerings"
+func OpenapiModelCatalogListOfferings(paramModel string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "model-catalog list-offerings model"
 	server := viper.GetString("server")
 	if server == "" {
 		server = servers()[viper.GetInt("server-index")]["url"]
 	}
 
-	url := server + "/v2/model-catalog/offerings"
+	url := server + "/v2/model-catalog/{model}/offerings"
+	url = strings.Replace(url, "{model}", paramModel, 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6112,13 +6105,9 @@ func OpenapiModelCatalogListOfferings(params *viper.Viper) (*gentleman.Response,
 	if paramLocation != "" {
 		req = req.AddQuery("location", fmt.Sprintf("%v", paramLocation))
 	}
-	paramType := params.GetString("type")
-	if paramType != "" {
-		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
-	}
-	paramStatus := params.GetString("status")
-	if paramStatus != "" {
-		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
+	paramFeature := params.GetString("feature")
+	if paramFeature != "" {
+		req = req.AddQuery("feature", fmt.Sprintf("%v", paramFeature))
 	}
 	paramSupportedParameter := params.GetString("supported-parameter")
 	if paramSupportedParameter != "" {
@@ -6127,14 +6116,6 @@ func OpenapiModelCatalogListOfferings(params *viper.Viper) (*gentleman.Response,
 	paramTier := params.GetString("tier")
 	if paramTier != "" {
 		req = req.AddQuery("tier", fmt.Sprintf("%v", paramTier))
-	}
-	paramOfferingOf := params.GetString("offering-of")
-	if paramOfferingOf != "" {
-		req = req.AddQuery("offering_of", fmt.Sprintf("%v", paramOfferingOf))
-	}
-	paramDeprecated := params.GetBool("deprecated")
-	if paramDeprecated != false {
-		req = req.AddQuery("deprecated", fmt.Sprintf("%v", paramDeprecated))
 	}
 	paramSearch := params.GetString("search")
 	if paramSearch != "" {
@@ -6147,10 +6128,6 @@ func OpenapiModelCatalogListOfferings(params *viper.Viper) (*gentleman.Response,
 	paramOrder := params.GetString("order")
 	if paramOrder != "" {
 		req = req.AddQuery("order", fmt.Sprintf("%v", paramOrder))
-	}
-	paramModel := params.GetString("model")
-	if paramModel != "" {
-		req = req.AddQuery("model", fmt.Sprintf("%v", paramModel))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)

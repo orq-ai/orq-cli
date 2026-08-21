@@ -14,7 +14,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	modelCatalogCmd := &cobra.Command{
 		Use:   "model-catalog",
 		Short: "Model Catalog",
-		Long:  bartolocli.Markdown("Browse the orq.ai model catalog: every model orq offers, across every provider, with pricing, capabilities and benchmark data. This API is public, requires no authentication, and is rate limited to 120 requests per minute per IP. Responses carry a 5-minute cache-control max-age."),
+		Long:  bartolocli.Markdown("Browse the orq.ai model catalog: every model orq offers, across every provider, with pricing, capabilities and benchmark data. List endpoints only return models that are not deprecated. This API is public, requires no authentication, and is rate limited to 120 requests per minute per IP. Responses carry a 5-minute cache-control max-age."),
 	}
 	root.AddCommand(modelCatalogCmd)
 
@@ -26,7 +26,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve a model catalog entry",
-			Long:    bartolocli.Markdown("Retrieves a single catalog entry by its id, `<provider>/<model>` (for example `openai/gpt-4o`)."),
+			Long:    bartolocli.Markdown("Retrieves a single catalog entry by its id, `<provider>/<model>` (for example `openai/gpt-4o`). Unlike the list endpoints this also resolves deprecated models; check `deprecated` and `deprecation` on the response."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -60,7 +60,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List the model catalog",
-			Long:    bartolocli.Markdown("Returns every model orq offers, optionally filtered, searched and sorted. Use `starting_after` or `ending_before` to page through the collection."),
+			Long:    bartolocli.Markdown("Returns every model orq offers, optionally filtered, searched and sorted. Deprecated models are never listed; fetch one directly by id to inspect it. Unset `limit` returns the whole catalog. Use `starting_after` or `ending_before` to page through the collection."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -78,7 +78,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		}
 		modelCatalogCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (50).")
+		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item\n from the previous page.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several\n providers.")
@@ -86,12 +86,10 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("output-modality", "", "Filter by output modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("location", "", "Filter by region. Repeat to match any of several regions.")
-		cmd.Flags().String("type", "", "Filter by task type. Repeat to match any of several types.")
-		cmd.Flags().String("status", "", "Filter by catalog lifecycle status. Repeat to match any of several\n statuses.")
+		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several\n features.")
 		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several\n parameters.")
 		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several\n tiers.")
 		cmd.Flags().String("offering-of", "", "Filter to offerings of one base model reference, `<developer>/<stem>`.")
-		cmd.Flags().String("deprecated", "", "Filter by deprecation: true returns only offerings with an announced\n sunset date, false returns only offerings without one. Unset returns\n both.")
 		cmd.Flags().String("search", "", "Case-insensitive substring search over `id`, `name` and `description`.")
 		cmd.Flags().String("sort-by", "", "Field to sort by.")
 		cmd.Flags().String("order", "", "Sort order. Defaults to ascending.")
@@ -110,14 +108,14 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
-			Use:     "list-offerings",
+			Use:     "list-offerings model",
 			Short:   "List model catalog offerings",
-			Long:    bartolocli.Markdown("Returns catalog entries as a flat list of offerings. Pass `model` to narrow the list to every provider offering of one base model reference (for example `anthropic/claude-opus`)."),
+			Long:    bartolocli.Markdown("Returns every provider offering of one base model, identified by `<developer>/<stem>` (for example `anthropic/claude-opus-4-7`). Deprecated models are never listed."),
 			Example: examples,
-			Args:    cobra.MinimumNArgs(0),
+			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 
-				_, decoded, err := OpenapiModelCatalogListOfferings(params)
+				_, decoded, err := OpenapiModelCatalogListOfferings(args[0], params)
 				if err != nil {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
@@ -130,7 +128,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		}
 		modelCatalogCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (50).")
+		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item\n from the previous page.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several\n providers.")
@@ -138,16 +136,12 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("output-modality", "", "Filter by output modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("location", "", "Filter by region. Repeat to match any of several regions.")
-		cmd.Flags().String("type", "", "Filter by task type. Repeat to match any of several types.")
-		cmd.Flags().String("status", "", "Filter by catalog lifecycle status. Repeat to match any of several\n statuses.")
+		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several\n features.")
 		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several\n parameters.")
 		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several\n tiers.")
-		cmd.Flags().String("offering-of", "", "Filter to offerings of one base model reference, `<developer>/<stem>`.")
-		cmd.Flags().String("deprecated", "", "Filter by deprecation: true returns only offerings with an announced\n sunset date, false returns only offerings without one. Unset returns\n both.")
 		cmd.Flags().String("search", "", "Case-insensitive substring search over `id`, `name` and `description`.")
 		cmd.Flags().String("sort-by", "", "Field to sort by.")
 		cmd.Flags().String("order", "", "Sort order. Defaults to ascending.")
-		cmd.Flags().String("model", "", "Base model reference, `<developer>/<stem>` (for example\n `anthropic/claude-opus`). Narrows the result to every provider\n offering of that base model. Omit to return every offering.")
 
 		bartolocli.SetCustomFlags(cmd)
 
