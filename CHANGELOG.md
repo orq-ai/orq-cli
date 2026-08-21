@@ -48,23 +48,55 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Changed (security):** the key `orq setup` and `orq connect` mint is now
+  restricted to gateway permissions instead of every permission in the
+  workspace. Keys minted by v4.13.10 carry `permission_mode: "all"`, which
+  resolves to the whole capability catalog — including `member`, `billing`,
+  `sso`, `group` and `workspace` — and is written in cleartext into coding-agent
+  config files. The new key can route model calls and read the model list, and
+  nothing else. The permission set is read from the live capability catalog at
+  mint time, so it tracks the API rather than a hardcoded list; if that endpoint
+  cannot be reached the CLI says so and falls back to the old behaviour rather
+  than failing onboarding. **Existing keys are not changed** — re-run
+  `orq setup` to mint a narrower one, and revoke the old key in the dashboard.
+- **Changed:** the minted key is stored as `gateway_key` in `credentials.json`,
+  not `api_key`. A stored `api_key` takes precedence over your login for every
+  generated command, so a gateway-scoped key there would have started refusing
+  `orq prompts list` and friends. Commands now use your login session, and only
+  agent configs get the gateway key. Keys you bring yourself via
+  `orq login`/`--api-key` still go to `api_key` and still take precedence.
+- Added: `orq doctor` warns when `ORQ_API_KEY` in your shell is the
+  gateway-scoped key, which would make platform commands fail in a shell where
+  your login would have worked.
+- **Removed (breaking):** MCP and skills support in `orq setup`, `orq connect`
+  and `orq disconnect`. The `mcp` capability is no longer accepted, the skills
+  option is gone from the capability prompt, and `disconnect` no longer removes
+  MCP entries. An entry written by v4.13.10 stays until you delete it by hand —
+  remove the `orq` key under `mcpServers` (or `mcp`) in `~/.claude.json`,
+  `./.mcp.json`, `~/.kimi-code/mcp.json`, `~/.config/opencode/opencode.json`,
+  `~/.config/kilo/kilo.json`, and the `[mcp_servers.orq]` table in codex's
+  `config.toml`. `orq launch --mcp` is unaffected: it wires MCP for a single
+  session using your login, and writes nothing to disk.
+- **Removed (breaking):** `--global` and `--local` on `orq connect` and
+  `orq disconnect`. No provider config is project-scoped — every agent reads its
+  gateway configuration from one absolute path — so both flags had no effect
+  once MCP was removed.
 - Added: `orq connect --status` — the read-only answer to "what is wired?":
   one line per wired capability with its file, one naming detected-but-unwired
   agents. No prompt, no auth, no writes, exit 0.
 - Changed: `orq doctor` no longer warns about agents you simply have not
   connected. Healthy per-agent rows collapse into one `coding_agents` summary
-  (`2 of 6 wired: claude, kimi`); the states that break something — wired
-  without `ORQ_API_KEY` in the shell, partially wired — still get their own
-  warning row. `--json` keeps every per-agent row plus the summary.
+  (`2 of 6 wired: claude, kimi`); the state that breaks something — wired
+  without `ORQ_API_KEY` in the shell — still gets its own warning row.
+  `--json` keeps every per-agent row plus the summary.
 - Changed: interactive `orq connect` with no saved key offers to log in (or
   mint a key when you are already signed in) and continues, instead of erroring
   after you finished selecting. Declining exits 0 with a hint; non-interactive
-  and `--yes` runs keep the error and never create credentials. Selecting
-  skills now actually runs the installer, and needs no API key on its own.
+  and `--yes` runs keep the error and never create credentials.
 - Added: `orq connect [agent...] [capability...]` and `orq disconnect` — wire
   coding agents to orq permanently, and remove exactly what was written.
-  Capabilities are positional (`gateway`, `mcp`); none named means both, no
-  agents named means every detected agent, which both verbs ask about before
+  Capabilities are positional (`gateway`); no agents named means every
+  detected agent, which both verbs ask about before
   acting: naming agents is intent, a bare run is not. Without a TTY they refuse
   rather than guess — name the agents or pass `--yes`. `disconnect` lists the
   files it would touch before asking (default no), takes `--dry-run`, and names
@@ -72,11 +104,11 @@ the version and this changelog as the source of truth for breaking changes.
   so when selected.
 - Changed: `orq setup` owns the machine, not the agents. It authenticates,
   mints or reuses the key, and ends by offering to connect detected agents
-  (a consent gate, then agent and capability selection). Non-interactive runs
+  (a consent gate, then agent selection). Non-interactive runs
   wire nothing and print `Next: orq connect`. The unreleased
   `setup coding-agents` subcommand and the agent flags (`--coding-agent`,
-  `--no-coding-agents`, `--no-mcp`, `--no-gateway`, `--global`, `--local`)
-  moved to `connect`; none of them ever shipped.
+  `--no-coding-agents`, `--no-mcp`, `--no-gateway`) moved to `connect` or were
+  dropped; none of them ever shipped.
 - Changed: `orq auth logout` warns when wired agents remain, naming
   `orq disconnect`.
 - **Removed (breaking):** `orq setup --agent` and `orq setup --no-agent`, the

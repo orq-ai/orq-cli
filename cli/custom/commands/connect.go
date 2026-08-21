@@ -4,24 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
 
-	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
 
 const (
 	capGateway = "gateway"
-	capMCP     = "mcp"
 	capTracing = "tracing"
 )
 
-var connectCapabilities = []string{capGateway, capMCP, capTracing}
+var connectCapabilities = []string{capGateway, capTracing}
 
 // partitionConnectArgs splits positional args into agent IDs and capability
 // names. The registry owns the agent namespace, so the two sets cannot collide.
@@ -72,10 +69,8 @@ func NewConnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect [agent...] [capability...]",
 		Short: "Wire coding agents to orq permanently",
-		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine. Capabilities: ` +
-			"`gateway`" + ` (route the agent's model calls through orq), ` + "`mcp`" + ` (workspace ` +
-			`read/write tools). No agents named means every detected agent; no capabilities ` +
-			`means both.
+		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine, routing the ` +
+			`agent's model calls through the orq gateway. No agents named means every detected agent.
 
 Reuses the credential from ` + "`orq setup`" + ` — it never creates keys or edits your shell. ` +
 			`Undo with ` + "`orq disconnect`" + `. For a single throwaway session, use ` + "`orq launch`" + `.
@@ -92,8 +87,6 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 
 	f := cmd.Flags()
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key for this run instead of the saved one")
-	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
-	f.BoolVar(&opts.local, "local", false, "Write agent config into this project even when inference would pick $HOME")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
 	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
@@ -112,7 +105,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		return err
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway, capMCP}
+		caps = []string{capGateway}
 	}
 	if len(agents) == 0 {
 		agents = detectedAgents()
@@ -150,15 +143,13 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if err != nil {
 		return err
 	}
-	rawCaps := caps
 	caps = dropUnavailableCaps(rep, caps)
 	if len(caps) == 0 && capsWereOnlyTracing(args) {
 		return nil
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway, capMCP}
+		caps = []string{capGateway}
 	}
-	skills := false
 	// Naming an agent is the intent; leaving it bare is not, so ask rather than
 	// act on every agent the machine happens to have.
 	if len(agents) == 0 {
@@ -186,37 +177,19 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 				rep.info("nothing selected")
 				return nil
 			}
-			if len(rawCaps) == 0 {
-				chosen, wantsSkills, err := promptForCapabilities(rep, opts)
-				if err != nil {
-					return fmt.Errorf("cancelled at the capability selection: %w", err)
-				}
-				if len(chosen) == 0 && !wantsSkills {
-					rep.info("no capabilities selected")
-					return nil
-				}
-				caps, skills = chosen, wantsSkills
-			}
 		}
 	}
-	return connectSelected(cmd, rep, opts, agents, caps, skills, dryRun)
+	return connectSelected(cmd, rep, opts, agents, caps, dryRun)
 }
 
-// connectSelected acts on a settled selection. The credential check lives here,
-// after selection, because whether a key is needed depends on what was
-// selected: skills is npx against a public repo and needs no orq credential.
-func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents, caps []string, skills bool, dryRun bool) error {
+func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents, caps []string, dryRun bool) error {
 	opts.agents = agents
-	opts.noMCP = !hasCap(caps, capMCP)
 	opts.noGateway = !hasCap(caps, capGateway)
 
 	if dryRun {
 		return dryRunConnect(rep, opts, agents, caps)
 	}
 	if len(caps) == 0 {
-		if skills {
-			runSkillsInstall(rep)
-		}
 		return nil
 	}
 
@@ -231,9 +204,6 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	agentResults, err := instrumentAgents(rep, client, state, opts)
 	if err != nil {
 		return err
-	}
-	if skills {
-		runSkillsInstall(rep)
 	}
 	if !wantsHumanView(cmd) {
 		if err := emit(map[string]any{"agents": agentResults}); err != nil {
@@ -277,7 +247,7 @@ func capsWereOnlyTracing(args []string) bool {
 		switch strings.ToLower(strings.TrimSpace(a)) {
 		case capTracing:
 			sawTracing = true
-		case capGateway, capMCP:
+		case capGateway:
 			return false
 		}
 	}
@@ -293,22 +263,12 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 		if !ok {
 			continue
 		}
-		if hasCap(caps, capMCP) {
-			switch {
-			case spec.writeMCP == nil:
-				rep.info("%-8s mcp       no MCP support in this agent", id)
-			default:
-				if path, err := spec.mcpConfig(opts.global); err == nil && path != "" {
-					rep.info("%-8s mcp       %s", id, tilde(path))
-				}
-			}
-		}
 		if hasCap(caps, capGateway) {
 			switch {
 			case spec.writeProvider == nil:
 				rep.info("%-8s gateway   no gateway provider config for this agent", id)
 			default:
-				if path, err := spec.providerConfig(opts.global); err == nil && path != "" {
+				if path, err := spec.providerConfig(false); err == nil && path != "" {
 					rep.info("%-8s gateway   %s", id, tilde(path))
 				}
 			}
@@ -401,8 +361,6 @@ Naming agents removes from those. A bare ` + "`orq disconnect`" + ` targets ever
 		},
 	}
 	f := cmd.Flags()
-	f.BoolVar(&opts.global, "global", false, "Remove from the home-directory config instead of this project")
-	f.BoolVar(&opts.local, "local", false, "Remove from this project's config even when inference would pick $HOME")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Remove without confirming")
 	f.BoolVar(&dryRun, "dry-run", false, "Show what would be removed, remove nothing")
 	return cmd
@@ -419,7 +377,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		return err
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway, capMCP}
+		caps = []string{capGateway}
 	}
 	namedAgents := len(agents) > 0
 	if !namedAgents {
@@ -485,9 +443,6 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 				}
 			}
 		}
-		if hasCap(caps, capMCP) {
-			remove(capMCP, spec.mcpConfig, spec.removeMCP)
-		}
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
 		}
@@ -519,11 +474,6 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		spec, ok := lookupAgent(id)
 		if !ok {
 			continue
-		}
-		if hasCap(caps, capMCP) {
-			if path, ok := wiredPath(spec.mcpConfig, mcpEntryPresent); ok {
-				out = append(out, wiredTarget{id, capMCP, path})
-			}
 		}
 		if hasCap(caps, capGateway) {
 			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
@@ -577,8 +527,7 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		rep.info("Next: orq connect — wires the coding agents on this machine")
 		return nil, nil
 	}
-	rep.note("Connecting gives an agent: model calls routed through the orq gateway,")
-	rep.note("and workspace read/write tools via MCP.")
+	rep.note("Connecting routes an agent's model calls through the orq gateway.")
 	if !opts.confirm("Connect your coding agents now?", true) {
 		rep.info("Next: orq connect — anytime, same credential")
 		return nil, nil
@@ -591,66 +540,7 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		rep.info("nothing selected — orq connect wires an agent anytime")
 		return nil, nil
 	}
-	caps, skills, err := promptForCapabilities(rep, opts)
-	if err != nil {
-		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
-	}
 	opts.agents = agents
-	opts.noMCP = !hasCap(caps, capMCP)
-	opts.noGateway = !hasCap(caps, capGateway)
-	results, err := instrumentAgents(rep, client, state, opts)
-	if err != nil {
-		return nil, err
-	}
-	if skills {
-		runSkillsInstall(rep)
-	}
-	return results, nil
-}
-
-// promptForCapabilities returns the selected capabilities and whether the
-// skills install was requested. Skills is a consented command run, not a
-// capability: it never enters connect's vocabulary or disconnect's.
-func promptForCapabilities(rep *reporter, opts *setupOptions) (caps []string, skills bool, err error) {
-	const (
-		optGateway = "gateway   route model calls through orq"
-		optMCP     = "mcp       workspace read/write tools"
-		optTracing = "tracing   send sessions to orq Traces (not available yet)"
-		optSkills  = "skills    install the orq skills pack (runs npx skills add " + skillsRepo + ")"
-	)
-	if opts.yes {
-		return []string{capGateway, capMCP}, false, nil
-	}
-	chosen := []string{optGateway, optMCP}
-	if err := survey.AskOne(&survey.MultiSelect{
-		Message: "Which capabilities?",
-		Options: []string{optGateway, optMCP, optTracing, optSkills},
-		Default: []string{optGateway, optMCP},
-	}, &chosen, promptStdio()); err != nil {
-		return nil, false, err
-	}
-	for _, c := range chosen {
-		switch c {
-		case optGateway:
-			caps = append(caps, capGateway)
-		case optMCP:
-			caps = append(caps, capMCP)
-		case optTracing:
-			rep.info("tracing is not available yet — see RES-1407")
-		case optSkills:
-			skills = true
-		}
-	}
-	return caps, skills, nil
-}
-
-// runSkillsInstall runs the installer the user just consented to. Failure is a
-// warning: skills are an extra, not part of the wire.
-func runSkillsInstall(rep *reporter) {
-	rep.info("running: npx skills add %s", skillsRepo)
-	cmd := exec.Command("npx", "skills", "add", skillsRepo)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
-	if err := cmd.Run(); err != nil {
-		rep.warn("skills install failed: %v — run 'npx skills add %s' yourself anytime", err, skillsRepo)
-	}
+	opts.noGateway = false
+	return instrumentAgents(rep, client, state, opts)
 }

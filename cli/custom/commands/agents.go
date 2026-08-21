@@ -36,20 +36,16 @@ func launchCatalog(models []auth.RouterModel) ([]string, []launch.ModelInfo) {
 }
 
 type agentSpec struct {
-	ID            string
-	Label         string
-	mcpConfig     func(global bool) (string, error)
-	writeMCP      func(path, url string) error
-	manualSnippet func(url string) string
-	detect        func() bool
+	ID     string
+	Label  string
+	detect func() bool
 	// providerConfig returns the file registering orq as an LLM provider; empty when we configure none.
 	providerConfig func(global bool) (string, error)
 	// writeProvider registers the provider and its models, returning how many models it listed.
 	writeProvider func(path, routerURL, apiKey string, models []auth.RouterModel, defaultModel string) (int, error)
 	// providerPresent is the read-side pair of writeProvider, in that agent's own format; required whenever writeProvider is set.
 	providerPresent func(path string) bool
-	// removeMCP and removeProvider are the writers' inverses; required whenever the writer is set.
-	removeMCP      func(path string) (bool, error)
+	// removeProvider is writeProvider's inverse; required whenever the writer is set.
 	removeProvider func(path string) (bool, error)
 	// providerEmbedsKey marks a provider config holding the credential literally rather than referencing ORQ_API_KEY.
 	providerEmbedsKey bool
@@ -76,22 +72,14 @@ var preferredCodingModels = []string{
 func agentRegistry() []agentSpec {
 	return []agentSpec{
 		{
-			ID:            "claude",
-			Label:         "Claude Code",
-			mcpConfig:     pathFor(".mcp.json", ".claude.json"),
-			writeMCP:      writeMCPServersJSON,
-			removeMCP:     func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", mcpServerName) },
-			manualSnippet: snippetMCPServersJSON,
-			detect:        detectAny(".claude", ".claude.json"),
+			ID:     "claude",
+			Label:  "Claude Code",
+			detect: detectAny(".claude", ".claude.json"),
 		},
 		{
 			ID:    "codex",
 			Label: "Codex",
 			// Codex reads MCP servers only from its config directory, so both scopes resolve there.
-			mcpConfig:     codexPath("config.toml"),
-			writeMCP:      writeMCPCodexTOML,
-			removeMCP:     removeMCPCodexTOML,
-			manualSnippet: snippetMCPCodexTOML,
 			// Same resolution the writers use, or a CODEX_HOME machine is never offered codex.
 			detect:          detectPath(codexPath("")),
 			providerConfig:  codexPath(codexProfileName + ".config.toml"),
@@ -105,10 +93,6 @@ func agentRegistry() []agentSpec {
 			ID:    "opencode",
 			Label: "opencode",
 			// Global only: opencode and kilo reject {env:...} references in a project config.
-			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
-			writeMCP:        writeMCPRemoteJSON,
-			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", mcpServerName) },
-			manualSnippet:   snippetMCPRemoteJSON,
 			detect:          detectAny(".config/opencode"),
 			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
@@ -117,13 +101,9 @@ func agentRegistry() []agentSpec {
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
-			ID:            "kimi",
-			Label:         "Kimi Code",
-			mcpConfig:     pathFor(".kimi-code/mcp.json", ".kimi-code/mcp.json"),
-			writeMCP:      writeMCPKimiJSON,
-			removeMCP:     func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", mcpServerName) },
-			manualSnippet: snippetMCPKimiJSON,
-			detect:        detectAny(".kimi-code", ".kimi"),
+			ID:     "kimi",
+			Label:  "Kimi Code",
+			detect: detectAny(".kimi-code", ".kimi"),
 			// Kimi reads config.toml only from the home directory.
 			providerConfig:    alwaysGlobalPath(".kimi-code/config.toml"),
 			writeProvider:     writeKimiProviderTOML,
@@ -135,10 +115,6 @@ func agentRegistry() []agentSpec {
 			ID:    "kilo",
 			Label: "Kilo Code",
 			// Global only — same env-reference restriction as opencode above.
-			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
-			writeMCP:        writeMCPRemoteJSON,
-			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", mcpServerName) },
-			manualSnippet:   snippetMCPRemoteJSON,
 			detect:          detectAny(".config/kilo"),
 			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
@@ -180,19 +156,6 @@ func agentIDs() []string {
 		ids = append(ids, a.ID)
 	}
 	return ids
-}
-
-func pathFor(project, global string) func(bool) (string, error) {
-	return func(useGlobal bool) (string, error) {
-		if useGlobal {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			return filepath.Join(home, global), nil
-		}
-		return project, nil
-	}
 }
 
 func alwaysGlobalPath(rel string) func(bool) (string, error) {
@@ -283,7 +246,7 @@ func detectAny(relPaths ...string) func() bool {
 }
 
 // ============================================================================
-// MCP config writers
+// Agent config readers and writers
 // ============================================================================
 
 func readJSONConfig(path string) (map[string]any, error) {
@@ -362,82 +325,6 @@ func nestedMap(cfg map[string]any, key string) (map[string]any, error) {
 	created := map[string]any{}
 	cfg[key] = created
 	return created, nil
-}
-
-func writeMCPServersJSON(path, url string) error {
-	cfg, err := readJSONConfig(path)
-	if err != nil {
-		return err
-	}
-	servers, err := nestedMap(cfg, "mcpServers")
-	if err != nil {
-		return err
-	}
-	servers[mcpServerName] = map[string]any{
-		"type":    "http",
-		"url":     url,
-		"headers": map[string]any{"Authorization": "Bearer ${ORQ_API_KEY}"},
-	}
-	return writeJSONConfig(path, cfg)
-}
-
-func writeMCPRemoteJSON(path, url string) error {
-	cfg, err := readJSONConfig(path)
-	if err != nil {
-		return err
-	}
-	servers, err := nestedMap(cfg, "mcp")
-	if err != nil {
-		return err
-	}
-	servers[mcpServerName] = map[string]any{
-		"type":    "remote",
-		"url":     url,
-		"enabled": true,
-		"headers": map[string]any{"Authorization": "Bearer {env:ORQ_API_KEY}"},
-	}
-	return writeJSONConfig(path, cfg)
-}
-
-func writeMCPKimiJSON(path, url string) error {
-	cfg, err := readJSONConfig(path)
-	if err != nil {
-		return err
-	}
-	servers, err := nestedMap(cfg, "mcpServers")
-	if err != nil {
-		return err
-	}
-	servers[mcpServerName] = map[string]any{
-		"url":               url,
-		"bearerTokenEnvVar": "ORQ_API_KEY",
-	}
-	return writeJSONConfig(path, cfg)
-}
-
-// writeMCPCodexTOML appends rather than parses, so unrelated TOML is never rewritten.
-func writeMCPCodexTOML(path, url string) error {
-	existing, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if strings.Contains(string(existing), "[mcp_servers."+mcpServerName+"]") {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	block := snippetMCPCodexTOML(url)
-	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-		block = "\n" + block
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = f.WriteString("\n" + block)
-	return err
 }
 
 // writeOpenCodeProviderJSON never writes the top-level "model" key: that is the user's default, and there is no profile to scope a change to.
@@ -679,52 +566,15 @@ func orqOwnedKimiTable(header, body string) bool {
 	return false
 }
 
-func snippetMCPServersJSON(url string) string {
-	return fmt.Sprintf(`"mcpServers": {
-  "%s": {
-    "type": "http",
-    "url": "%s",
-    "headers": { "Authorization": "Bearer ${ORQ_API_KEY}" }
-  }
-}`, mcpServerName, url)
-}
-
-func snippetMCPRemoteJSON(url string) string {
-	return fmt.Sprintf(`"mcp": {
-  "%s": {
-    "type": "remote",
-    "url": "%s",
-    "enabled": true,
-    "headers": { "Authorization": "Bearer {env:ORQ_API_KEY}" }
-  }
-}`, mcpServerName, url)
-}
-
-func snippetMCPKimiJSON(url string) string {
-	return fmt.Sprintf(`"mcpServers": {
-  "%s": {
-    "url": "%s",
-    "bearerTokenEnvVar": "ORQ_API_KEY"
-  }
-}`, mcpServerName, url)
-}
-
-func snippetMCPCodexTOML(url string) string {
-	return fmt.Sprintf(`[mcp_servers.%s]
-url = "%s"
-bearer_token_env_var = "ORQ_API_KEY"
-`, mcpServerName, url)
-}
-
 // ============================================================================
 // Doctor checks
 // ============================================================================
 
 // codingAgentChecks reports, per detected agent, whether MCP and the provider
 // are wired, plus one coding_agents summary row. Detected-but-unwired is info,
-// not warn: leaving an agent unconnected is a choice, and only the two states
-// that actually break something (wired without ORQ_API_KEY, partially wired)
-// warn. Statuses never drive doctor's exit code.
+// not warn: leaving an agent unconnected is a choice, and only the state that
+// actually breaks something (wired without ORQ_API_KEY) warns. Statuses never
+// drive doctor's exit code.
 func codingAgentChecks() []doctorCheck {
 	var checks []doctorCheck
 	var wiredIDs []string
@@ -736,57 +586,34 @@ func codingAgentChecks() []doctorCheck {
 		if !spec.detect() {
 			continue // nothing to say about an agent that is not installed
 		}
-		details := map[string]any{}
-		wired := 0
-		offered := 0
-
-		if spec.writeMCP != nil {
-			offered++
-			if path, ok := wiredPath(spec.mcpConfig, mcpEntryPresent); ok {
-				wired++
-				details["mcp"] = path
-			}
-		}
-		if spec.writeProvider != nil {
-			offered++
-			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
-				wired++
-				details["provider"] = path
-			}
-		}
-
-		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
-		details["api_key_in_env"] = keyExported
-
-		if offered == 0 {
+		if spec.writeProvider == nil {
 			continue
 		}
+		details := map[string]any{}
+		path, wired := wiredPath(spec.providerConfig, spec.providerPresent)
+		if wired {
+			details["provider"] = path
+		}
+		details["api_key_in_env"] = keyExported
+		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
+
 		detected++
-		if wired == offered {
+		if wired {
 			fullyWired++
 			wiredIDs = append(wiredIDs, spec.ID)
 		}
 		switch {
-		case wired == offered && !keyExported:
-			// Name the half that breaks: kimi's provider TOML holds the key literally, so its
-			// model calls keep working and only the MCP tools fail. Saying "will fail to
-			// authenticate" there sends the user hunting for a gateway fault that is not there.
-			breaks := "agents started from here will fail to authenticate"
-			if spec.providerEmbedsKey && details["mcp"] != nil {
-				breaks = "its MCP tools will fail to authenticate (model calls keep working — the key is in its provider config)"
-			}
-			check.Status = "warn"
-			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
-				breaks + ". Run '" + sourceLine + "', or start them from a new shell"
-		case wired == offered:
-			check.Status = "pass"
-			check.Message = spec.Label + " is wired to orq"
-		case wired == 0:
+		case !wired:
 			check.Status = "info"
 			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
+		// kimi's provider TOML holds the key literally, so an unexported ORQ_API_KEY breaks nothing.
+		case keyExported || spec.providerEmbedsKey:
+			check.Status = "pass"
+			check.Message = spec.Label + " is wired to orq"
 		default:
 			check.Status = "warn"
-			check.Message = spec.Label + " is partially wired — run 'orq connect " + spec.ID + "'"
+			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
+				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell"
 		}
 		checks = append(checks, check)
 	}
@@ -830,22 +657,6 @@ func wiredPath(resolve func(bool) (string, error), present func(string) bool) (s
 		}
 	}
 	return "", false
-}
-
-func mcpEntryPresent(path string) bool {
-	cfg, err := readJSONConfig(path)
-	if err != nil {
-		// Codex keeps MCP servers in TOML, not JSON.
-		return tomlTablePresent("mcp_servers." + mcpServerName)(path)
-	}
-	for _, key := range []string{"mcpServers", "mcp"} {
-		if servers, ok := cfg[key].(map[string]any); ok {
-			if _, present := servers[mcpServerName]; present {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // jsonProviderPresentAt reads a JSON provider map: opencode and kilo keep theirs
@@ -980,13 +791,6 @@ func removeTOMLTables(path string, owned func(header string) bool) (bool, error)
 
 func removeOpenCodeProviders(path string) (bool, error) {
 	return removeJSONKeys(path, "provider", launch.OpenCodeChatProvider, launch.OpenCodeResponsesProvider)
-}
-
-func removeMCPCodexTOML(path string) (bool, error) {
-	return removeTOMLTables(path, func(h string) bool {
-		return h == "[mcp_servers."+mcpServerName+"]" ||
-			strings.HasPrefix(h, "[mcp_servers."+mcpServerName+".")
-	})
 }
 
 // The codex profile file is entirely ours; removal is deletion.

@@ -18,8 +18,6 @@ import (
 	"orq/cli/custom/launch"
 )
 
-const testMCPURL = "https://api.orq.ai/v2/mcp"
-
 func readBack(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -33,136 +31,6 @@ func readBack(t *testing.T, path string) map[string]any {
 	return out
 }
 
-// The whole point of merging rather than overwriting: an agent config is the
-// user's, and it usually already has content we must not lose.
-func TestWriteMCPPreservesExistingConfig(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".mcp.json")
-	original := `{
-  "mcpServers": {"other-server": {"type": "http", "url": "https://example.com"}},
-  "unrelatedTopLevelKey": {"deeply": {"nested": true}}
-}`
-	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := writeMCPServersJSON(path, testMCPURL); err != nil {
-		t.Fatalf("writeMCPServersJSON: %v", err)
-	}
-
-	cfg := readBack(t, path)
-	servers, ok := cfg["mcpServers"].(map[string]any)
-	if !ok {
-		t.Fatal("mcpServers missing after write")
-	}
-	if _, ok := servers["other-server"]; !ok {
-		t.Error("existing MCP server was dropped")
-	}
-	if _, ok := cfg["unrelatedTopLevelKey"]; !ok {
-		t.Error("unrelated top-level key was dropped")
-	}
-	orq, ok := servers[mcpServerName].(map[string]any)
-	if !ok {
-		t.Fatal("orq-workspace was not registered")
-	}
-	if orq["url"] != testMCPURL {
-		t.Errorf("url = %v, want %v", orq["url"], testMCPURL)
-	}
-}
-
-// A config we cannot parse must be left alone: rewriting it would destroy data.
-func TestWriteMCPRefusesUnparseableConfig(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".mcp.json")
-	broken := `{"mcpServers": {`
-	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := writeMCPServersJSON(path, testMCPURL); err == nil {
-		t.Fatal("expected an error for unparseable JSON")
-	}
-
-	data, _ := os.ReadFile(path)
-	if string(data) != broken {
-		t.Error("unparseable config was modified")
-	}
-}
-
-// Re-running setup must not accumulate duplicates or drift.
-func TestWriteMCPIsIdempotent(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "opencode.json")
-
-	for i := 0; i < 3; i++ {
-		if err := writeMCPRemoteJSON(path, testMCPURL); err != nil {
-			t.Fatalf("run %d: %v", i, err)
-		}
-	}
-	cfg := readBack(t, path)
-	servers := cfg["mcp"].(map[string]any)
-	if len(servers) != 1 {
-		t.Errorf("got %d servers after 3 runs, want 1", len(servers))
-	}
-}
-
-// The credential must never be baked into a file the user might commit.
-func TestWriteMCPNeverEmbedsRawSecret(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("ORQ_API_KEY", "sk-orq-super-secret-value")
-
-	cases := map[string]func(string, string) error{
-		"claude.json":   writeMCPServersJSON,
-		"opencode.json": writeMCPRemoteJSON,
-		"kimi.json":     writeMCPKimiJSON,
-		"config.toml":   writeMCPCodexTOML,
-	}
-	for name, write := range cases {
-		path := filepath.Join(dir, name)
-		if err := write(path, testMCPURL); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(data), "super-secret-value") {
-			t.Errorf("%s embedded the raw API key", name)
-		}
-		if !strings.Contains(string(data), "ORQ_API_KEY") {
-			t.Errorf("%s does not reference the ORQ_API_KEY env var", name)
-		}
-	}
-}
-
-// Codex config.toml is appended to, never parsed, so re-runs must detect the
-// existing section instead of stacking duplicate blocks.
-func TestWriteMCPCodexTOMLAppendsOnce(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	preexisting := "model = \"o3\"\n\n[mcp_servers.other]\nurl = \"https://example.com\"\n"
-	if err := os.WriteFile(path, []byte(preexisting), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	for i := 0; i < 3; i++ {
-		if err := writeMCPCodexTOML(path, testMCPURL); err != nil {
-			t.Fatalf("run %d: %v", i, err)
-		}
-	}
-
-	data, _ := os.ReadFile(path)
-	got := string(data)
-	if n := strings.Count(got, "[mcp_servers."+mcpServerName+"]"); n != 1 {
-		t.Errorf("orq section appears %d times, want 1", n)
-	}
-	if !strings.Contains(got, "[mcp_servers.other]") || !strings.Contains(got, `model = "o3"`) {
-		t.Error("pre-existing TOML content was lost")
-	}
-}
-
-// enabled, not active: is_active is true for every catalogue entry, so the
-// fixtures set the workspace's enabled flag, which is what the code filters on.
 func model(provider, id string, ctx int, enabled, fns bool, kind string) auth.RouterModel {
 	m := auth.RouterModel{ModelID: id, Provider: provider, Type: kind, Active: true, Enabled: enabled, Functions: fns}
 	m.Metadata.ContextWindow = ctx
@@ -435,15 +303,6 @@ func TestWritersRefuseANonObjectSection(t *testing.T) {
 			_, err := writeOpenCodeProviderJSON(p, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), "anthropic/claude-sonnet-4-6")
 			return err
 		}},
-		"claude/mcpServers": {"mcpServers", func(p string) error {
-			return writeMCPServersJSON(p, "https://api.orq.ai/v2/mcp")
-		}},
-		"opencode-mcp/mcp": {"mcp", func(p string) error {
-			return writeMCPRemoteJSON(p, "https://api.orq.ai/v2/mcp")
-		}},
-		"kimi-mcp/mcpServers": {"mcpServers", func(p string) error {
-			return writeMCPKimiJSON(p, "https://api.orq.ai/v2/mcp")
-		}},
 	}
 	for name, w := range writers {
 		for shape, body := range map[string]string{
@@ -676,7 +535,7 @@ func TestCodexProfileNeverEmbedsTheKey(t *testing.T) {
 func TestCodexProviderWriteLeavesBaseConfigAlone(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "config.toml")
-	if err := writeMCPCodexTOML(base, testMCPURL); err != nil {
+	if err := os.WriteFile(base, []byte("model = \"o3\"\n\n[profiles.mine]\nmodel = \"gpt-5\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := mustRead(t, base)
@@ -1306,14 +1165,8 @@ func TestWritersPairWithDetectorsAndRemovers(t *testing.T) {
 		if spec.writeProvider != nil && spec.removeProvider == nil {
 			t.Errorf("%s has writeProvider but no removeProvider", spec.ID)
 		}
-		if spec.writeMCP != nil && spec.removeMCP == nil {
-			t.Errorf("%s has writeMCP but no removeMCP", spec.ID)
-		}
 		if spec.writeProvider != nil && spec.providerConfig == nil {
 			t.Errorf("%s has writeProvider but no providerConfig path", spec.ID)
-		}
-		if spec.mcpConfig != nil && spec.writeMCP == nil {
-			t.Errorf("%s has an mcpConfig path but no writeMCP", spec.ID)
 		}
 		if spec.detect == nil {
 			t.Errorf("%s has no detect — doctor would panic on it", spec.ID)
@@ -1376,11 +1229,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 		t.Fatalf("summary should be info counting zero wired, got %+v", checks[1])
 	}
 
-	// Wire both halves the way setup does, then agent and summary must pass.
-	mcpPath := filepath.Join(home, ".kimi-code", "mcp.json")
-	if err := writeMCPKimiJSON(mcpPath, "https://api.orq.ai/v2/mcp"); err != nil {
-		t.Fatal(err)
-	}
+	// Wire it the way setup does, then agent and summary must pass.
 	providerPath := filepath.Join(home, ".kimi-code", "config.toml")
 	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
 	if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
@@ -1394,72 +1243,20 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 		t.Fatalf("all-wired summary should pass naming the agent, got %+v", checks[1])
 	}
 
-	// opencode registers MCP under "mcp", not "mcpServers" — the check must
-	// read each agent's own format, which is the bug a kimi-only test missed.
+	// Each agent's provider config has its own format; the check must read the
+	// agent's own, which is the bug a kimi-only test missed.
 	ocDir := filepath.Join(home, ".config", "opencode")
 	if err := os.MkdirAll(ocDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ocPath := filepath.Join(ocDir, "opencode.json")
-	if err := writeMCPRemoteJSON(ocPath, "https://api.orq.ai/v2/mcp"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := writeOpenCodeProviderJSON(ocPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range codingAgentChecks() {
 		if c.ID == "coding_agent_opencode" && c.Status != "pass" {
-			t.Fatalf("opencode wired via its own 'mcp' key should pass, got %+v", c)
+			t.Fatalf("wired opencode should pass, got %+v", c)
 		}
-	}
-}
-
-// Doctor cannot know which scope setup used — resolveScope picks the project
-// directory when one looks like a project, $HOME otherwise, and --local /
-// --global override both ways. Checking only the global path reported a
-// correctly wired project-scoped agent as "detected but not wired", which is
-// the one thing the check exists to get right.
-func TestCodingAgentChecksFindProjectScopedWiring(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex"))
-	// Pinned for the same reason as in TestCodingAgentChecksReadWiring: the
-	// scope question this test asks must not be answered by the runner's shell.
-	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	// A project directory, wired the way `orq setup` does inside one: the
-	// relative ./.mcp.json, never ~/.claude.json.
-	t.Chdir(t.TempDir())
-	claude, _ := lookupAgent("claude")
-	projectPath, err := claude.mcpConfig(false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.IsAbs(projectPath) {
-		t.Fatalf("expected a project-relative path, got %q", projectPath)
-	}
-	if err := writeMCPServersJSON(projectPath, "https://api.orq.ai/v2/mcp"); err != nil {
-		t.Fatal(err)
-	}
-
-	var claudeCheck *doctorCheck
-	checks := codingAgentChecks()
-	for i := range checks {
-		if checks[i].ID == "coding_agent_claude" {
-			claudeCheck = &checks[i]
-		}
-	}
-	if claudeCheck == nil {
-		t.Fatal("claude is installed and wired but produced no check")
-	}
-	if claudeCheck.Status != "pass" {
-		t.Errorf("project-scoped wiring reported as %q: %s", claudeCheck.Status, claudeCheck.Message)
-	}
-	if got := claudeCheck.Details["mcp"]; got != projectPath {
-		t.Errorf("check names %v, want the project path %q", got, projectPath)
 	}
 }
 
@@ -1474,14 +1271,13 @@ func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
 	t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex")) // keep codex undetected
 	chdir(t, t.TempDir())
 
-	// kimi, installed and fully wired.
-	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+	// opencode, installed and wired. Not kimi: its provider config holds the key
+	// literally, so an unexported ORQ_API_KEY breaks nothing there.
+	ocDir := filepath.Join(home, ".config", "opencode")
+	if err := os.MkdirAll(ocDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMCPKimiJSON(filepath.Join(home, ".kimi-code", "mcp.json"), "https://api.orq.ai/v2/mcp"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+	if _, err := writeOpenCodeProviderJSON(filepath.Join(ocDir, "opencode.json"),
 		"https://api.orq.ai/v3/router", "sk-key", openCodeModels(), ""); err != nil {
 		t.Fatal(err)
 	}
@@ -1489,11 +1285,11 @@ func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
 	find := func() doctorCheck {
 		t.Helper()
 		for _, c := range codingAgentChecks() {
-			if c.ID == "coding_agent_kimi" {
+			if c.ID == "coding_agent_opencode" {
 				return c
 			}
 		}
-		t.Fatal("no kimi check")
+		t.Fatal("no opencode check")
 		return doctorCheck{}
 	}
 
@@ -1558,11 +1354,9 @@ func TestKimiProfileOmitsBlankDefaultModel(t *testing.T) {
 // file (removed entirely). JSON is compared semantically — writeJSONConfig
 // re-marshals, so byte identity is only promised where we append or own the file.
 func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
-	const url = "https://api.orq.ai/v2/mcp"
 	const router = "https://api.orq.ai/v3/router"
 	models := openCodeModels()
 
-	mcpSection := map[string]string{"claude": "mcpServers", "codex": "", "opencode": "mcp", "kimi": "mcpServers", "kilo": "mcp"}
 	provSection := map[string]string{"opencode": "provider", "kilo": "provider", "pi": "providers"}
 
 	jsonEqual := func(t *testing.T, a, b []byte) {
@@ -1575,54 +1369,6 @@ func TestConnectDisconnectRoundTripsEveryWriter(t *testing.T) {
 
 	for _, spec := range agentRegistry() {
 		spec := spec
-		if spec.writeMCP != nil {
-			t.Run(spec.ID+"/mcp", func(t *testing.T) {
-				dir := t.TempDir()
-				ext := ".json"
-				var user []byte
-				if spec.ID == "codex" {
-					ext = ".toml"
-					user = []byte("model = \"user-choice\"\n\n[profiles.mine]\nfoo = \"bar\"\n")
-				} else {
-					user = []byte(`{"other":{"keep":true},"` + mcpSection[spec.ID] + `":{"user-entry":{"url":"http://mine"}}}`)
-				}
-				path := filepath.Join(dir, "config"+ext)
-
-				// fresh: our write creates the file, removal deletes it
-				if err := spec.writeMCP(path, url); err != nil {
-					t.Fatal(err)
-				}
-				if removed, err := spec.removeMCP(path); err != nil || !removed {
-					t.Fatalf("remove on fresh file: removed=%v err=%v", removed, err)
-				}
-				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-					t.Errorf("fresh file survives removal")
-				}
-
-				// user content survives the round trip
-				if err := os.WriteFile(path, user, 0o644); err != nil {
-					t.Fatal(err)
-				}
-				if err := spec.writeMCP(path, url); err != nil {
-					t.Fatal(err)
-				}
-				if removed, err := spec.removeMCP(path); err != nil || !removed {
-					t.Fatalf("remove: removed=%v err=%v", removed, err)
-				}
-				after := mustRead(t, path)
-				if spec.ID == "codex" {
-					if string(after) != string(user) {
-						t.Errorf("codex config not byte-identical:\nbefore: %q\nafter:  %q", user, after)
-					}
-				} else {
-					jsonEqual(t, user, after)
-				}
-				// second removal is a no-op, not an error
-				if removed, err := spec.removeMCP(path); err != nil || removed {
-					t.Errorf("second removal: removed=%v err=%v", removed, err)
-				}
-			})
-		}
 		if spec.writeProvider != nil {
 			t.Run(spec.ID+"/provider", func(t *testing.T) {
 				dir := t.TempDir()

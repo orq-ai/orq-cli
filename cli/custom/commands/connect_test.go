@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"orq/cli/custom/launch"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
 )
@@ -23,7 +25,7 @@ func TestPartitionConnectArgs(t *testing.T) {
 	}{
 		"empty":          {args: nil},
 		"agents only":    {args: []string{"claude", "kimi"}, agents: []string{"claude", "kimi"}},
-		"caps only":      {args: []string{"gateway", "mcp"}, caps: []string{"gateway", "mcp"}},
+		"caps only":      {args: []string{"gateway", "tracing"}, caps: []string{"gateway", "tracing"}},
 		"mixed":          {args: []string{"claude", "gateway"}, agents: []string{"claude"}, caps: []string{"gateway"}},
 		"tracing parses": {args: []string{"tracing"}, caps: []string{"tracing"}},
 		"case folded":    {args: []string{"Claude", "GATEWAY"}, agents: []string{"claude"}, caps: []string{"gateway"}},
@@ -106,9 +108,6 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
 		t.Error("provider config survives disconnect")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "mcp.json")); !os.IsNotExist(err) {
-		t.Error("mcp config survives disconnect")
-	}
 }
 
 // tracing is vocabulary, not behaviour, until RES-1407 lands: it parses, says
@@ -130,7 +129,7 @@ func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
 	if !capsWereOnlyTracing([]string{"claude", "tracing"}) {
 		t.Error("tracing-only detection missed the only-tracing case")
 	}
-	if capsWereOnlyTracing([]string{"claude", "tracing", "mcp"}) {
+	if capsWereOnlyTracing([]string{"claude", "tracing", "gateway"}) {
 		t.Error("tracing-only detection swallowed a real capability")
 	}
 }
@@ -153,9 +152,6 @@ func TestConnectDryRunWritesNothing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
 		t.Error("dry run wrote the provider config")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "mcp.json")); !os.IsNotExist(err) {
-		t.Error("dry run wrote the mcp config")
-	}
 }
 
 // Naming agents is intent; a bare invocation is not. Without a TTY to ask,
@@ -171,9 +167,9 @@ func TestBareInvocationsRefuseToActWithoutConsent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// claude wired, so disconnect has something to find.
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"),
-		[]byte(`{"mcpServers":{"`+mcpServerName+`":{"url":"x"}}}`), 0o644); err != nil {
+	// kimi wired, so disconnect has something to find.
+	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+		"https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
 		t.Fatal(err)
 	}
 	resetSetupMemos(t)
@@ -192,8 +188,8 @@ func TestBareInvocationsRefuseToActWithoutConsent(t *testing.T) {
 		t.Errorf("bare disconnect without a TTY: err = %v, want a refusal", err)
 	}
 	// It refused, so the config survives.
-	data, readErr := os.ReadFile(filepath.Join(home, ".claude.json"))
-	if readErr != nil || !strings.Contains(string(data), mcpServerName) {
+	data, readErr := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
+	if readErr != nil || !strings.Contains(string(data), launch.KimiChatProvider) {
 		t.Error("a refused disconnect still removed the entry")
 	}
 }
@@ -203,13 +199,14 @@ func TestDisconnectDryRunRemovesNothing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Chdir(t.TempDir())
-	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	before := `{"mcpServers":{"` + mcpServerName + `":{"url":"x"}}}`
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(before), 0o644); err != nil {
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
 		t.Fatal(err)
 	}
+	before := string(mustRead(t, path))
 	resetSetupMemos(t)
 
 	cmd := NewDisconnectCommand()
@@ -217,7 +214,7 @@ func TestDisconnectDryRunRemovesNothing(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
-	if got := string(mustRead(t, filepath.Join(home, ".claude.json"))); got != before {
+	if got := string(mustRead(t, path)); got != before {
 		t.Errorf("dry run changed the file:\n%s", got)
 	}
 }
@@ -272,7 +269,7 @@ func TestConnectLoginDeclinedIsACleanExit(t *testing.T) {
 	}
 
 	// The caller maps the decline to success with nothing written.
-	if err := connectSelected(NewConnectCommand(), rep, opts, []string{"kimi"}, []string{capGateway, capMCP}, false, false); err != nil {
+	if err := connectSelected(NewConnectCommand(), rep, opts, []string{"kimi"}, []string{capGateway}, false); err != nil {
 		t.Fatalf("declined login should exit clean, got %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
@@ -287,92 +284,6 @@ func ensureCreds(t *testing.T) {
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
 		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-}
-
-// fakeNpx puts an npx shim on PATH that records its arguments.
-func fakeNpx(t *testing.T) (marker string) {
-	t.Helper()
-	bin := t.TempDir()
-	marker = filepath.Join(bin, "npx-args")
-	script := "#!/bin/sh\necho \"$@\" > " + marker + "\n"
-	if err := os.WriteFile(filepath.Join(bin, "npx"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-	return marker
-}
-
-// Skills is npx against a public repo: selecting only skills must run the
-// installer and never demand an orq credential.
-func TestSkillsOnlyConnectNeedsNoCredential(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Chdir(t.TempDir())
-	viper.Set("config-directory", t.TempDir())
-	t.Cleanup(func() { viper.Set("config-directory", "") })
-	ensureCreds(t)
-	resetSetupMemos(t)
-	marker := fakeNpx(t)
-
-	rep := newReporter(true)
-	if err := connectSelected(NewConnectCommand(), rep, &setupOptions{}, []string{"claude"}, nil, true, false); err != nil {
-		t.Fatalf("skills-only connect: %v", err)
-	}
-	args, err := os.ReadFile(marker)
-	if err != nil {
-		t.Fatal("skills installer never ran")
-	}
-	if !strings.Contains(string(args), "skills add "+skillsRepo) {
-		t.Errorf("installer args = %q", args)
-	}
-}
-
-// The skills answer survives past wiring: a keyed run that also selected
-// skills runs the installer after the agents are wired.
-func TestSkillsSelectionRunsInstallerAfterWiring(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{}`)
-	}))
-	defer srv.Close()
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
-	t.Chdir(t.TempDir())
-	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", ""); err != nil {
-		t.Fatal(err)
-	}
-	resetSetupMemos(t)
-	marker := fakeNpx(t)
-
-	rep := newReporter(true)
-	if err := connectSelected(NewConnectCommand(), rep, &setupOptions{}, []string{"kimi"}, []string{capMCP}, true, false); err != nil {
-		t.Fatalf("connect with skills: %v", err)
-	}
-	// Scope was not resolved here, so the writer picked the project-relative path.
-	if _, err := os.Stat(filepath.Join(".kimi-code", "mcp.json")); err != nil {
-		t.Error("mcp not wired")
-	}
-	if _, err := os.ReadFile(marker); err != nil {
-		t.Error("skills selection was dropped after wiring")
 	}
 }
 
@@ -408,20 +319,21 @@ func TestConnectStatusIsReadOnly(t *testing.T) {
 		t.Errorf("detected agents not named:\n%s", out.String())
 	}
 
-	before := `{"mcpServers":{"` + mcpServerName + `":{"url":"x"}}}`
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(before), 0o644); err != nil {
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
 		t.Fatal(err)
 	}
+	before := string(mustRead(t, path))
 	out.Reset()
 	cmd = NewConnectCommand()
 	cmd.SetArgs([]string{"--status"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("status on a wired machine: %v", err)
 	}
-	if !strings.Contains(out.String(), "claude") || !strings.Contains(out.String(), ".claude.json") {
+	if !strings.Contains(out.String(), "kimi") || !strings.Contains(out.String(), "config.toml") {
 		t.Errorf("wired path not shown:\n%s", out.String())
 	}
-	if got := string(mustRead(t, filepath.Join(home, ".claude.json"))); got != before {
+	if got := string(mustRead(t, path)); got != before {
 		t.Errorf("--status changed a config file:\n%s", got)
 	}
 }
@@ -450,5 +362,51 @@ func TestDisconnectOnAnUnwiredMachineIsQuiet(t *testing.T) {
 	}
 	if n := strings.Count(out.String(), "nothing"); n > 1 {
 		t.Errorf("one line expected, got %d:\n%s", n, out.String())
+	}
+}
+
+// MCP support was removed, including its removal path, so an entry wired by
+// v4.13.10 stays until the user deletes it. What the CLI must not do is corrupt
+// it: connect and disconnect share config files with those entries.
+func TestStaleMCPEntriesAreLeftUntouched(t *testing.T) {
+	srv := emptyCatalogueServer(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-EXPORTED")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ensureCreds(t)
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	stale := map[string]string{
+		filepath.Join(home, ".claude.json"):           `{"mcpServers":{"orq":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`,
+		filepath.Join(home, ".kimi-code", "mcp.json"): `{"mcpServers":{"orq":{"url":"https://api.orq.ai/v2/mcp","bearerTokenEnvVar":"ORQ_API_KEY"}}}`,
+	}
+	for path, body := range stale {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, args := range [][]string{{"kimi"}, {"kimi"}} {
+		cmd := NewConnectCommand()
+		cmd.SetArgs(args)
+		_ = cmd.Execute() // no catalogue server here; the wire may fail, the files must not change
+	}
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"kimi"})
+	_ = d.Execute()
+
+	for path, body := range stale {
+		if got := string(mustRead(t, path)); got != body {
+			t.Errorf("%s changed:\n got: %s\nwant: %s", path, got, body)
+		}
 	}
 }

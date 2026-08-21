@@ -86,6 +86,9 @@ func NewDoctorCommand() *cobra.Command {
 			// subcommand: a user with a broken setup should not need to know
 			// which doctor to run. All local stat + parse, so unconditional.
 			checks = append(checks, codingAgentChecks()...)
+			if shadow, ok := gatewayKeyShadowsSessionCheck(inspect); ok {
+				checks = append(checks, shadow)
+			}
 			if funding, ok := gatewayFundingCheck(client, inspect); ok {
 				checks = append(checks, funding)
 			}
@@ -382,6 +385,26 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 // install from the terminal, and this is the one check that tells them apart.
 //
 // Present only for a login session, and deliberately so: reading the balance
+// gatewayKeyShadowsSessionCheck names the one state the credential split can
+// still land a user in: the minted key is gateway-scoped, so exporting it makes
+// every `orq <entity>` command authenticate with a key that cannot reach the
+// platform, in a shell where the login would have worked.
+func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorCheck, bool) {
+	if inspect.Status != auth.StatusOK {
+		return doctorCheck{}, false
+	}
+	gatewayKey := strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".gateway_key"))
+	exported := strings.TrimSpace(UserEnvAPIKey())
+	if gatewayKey == "" || exported != gatewayKey {
+		return doctorCheck{}, false
+	}
+	return doctorCheck{
+		ID:      "gateway_key_exported",
+		Status:  "warn",
+		Message: "ORQ_API_KEY in this shell is the gateway-scoped key, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead",
+	}, true
+}
+
 // needs credits.view, which the API-key capability catalogue cannot express, so
 // an API-key run would get a 403 that means nothing about the workspace. Rather
 // than render a row that says "unknown" on every non-session run, the row is

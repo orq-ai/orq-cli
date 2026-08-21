@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -83,9 +85,78 @@ func ProjectScopable(projectID string) bool {
 	return ulidPattern.MatchString(strings.TrimPrefix(projectID, "proj_"))
 }
 
+// mcpGatewayDomain executes calls against workspace MCP gateways. It sits in
+// the gateway group but is not part of gateway wiring.
+const mcpGatewayDomain = "mcp_gateway"
+
+// domainGroup accepts both encodings the capability endpoint has been seen to
+// return: the enum name and its integer value.
+type domainGroup string
+
+func (g *domainGroup) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		*g = domainGroup(name)
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	*g = domainGroup(strconv.Itoa(n))
+	return nil
+}
+
+// isGateway fails closed: an encoding we do not recognise is not the gateway
+// group, so an unknown domain is never granted.
+func (g domainGroup) isGateway() bool {
+	return g == "DOMAIN_GROUP_GATEWAY" || g == "3"
+}
+
+type Domain struct {
+	ID       string      `json:"id"`
+	Group    domainGroup `json:"group"`
+	Readable bool        `json:"readable"`
+	Writable bool        `json:"writable"`
+}
+
+// ListCapabilities reads the live permission catalog. It needs the login
+// session: the `api-key` domain is deliberately absent from the API-key catalog
+// (ENG-2346), so a minted key gets 403 here.
+func (c *Client) ListCapabilities(bearer string) ([]Domain, error) {
+	var resp struct {
+		Domains []Domain `json:"domains"`
+	}
+	if err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/api-keys/capabilities", bearer, nil, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Domains) == 0 {
+		return nil, errors.New("capability catalog is empty")
+	}
+	return resp.Domains, nil
+}
+
+// GatewayAccess is the access map for a key that only routes model calls.
+// Write subsumes read server-side, so one level per domain is enough.
+func GatewayAccess(domains []Domain) map[string]string {
+	access := map[string]string{}
+	for _, d := range domains {
+		if !d.Group.isGateway() || d.ID == mcpGatewayDomain {
+			continue
+		}
+		switch {
+		case d.Writable:
+			access[d.ID] = "write"
+		case d.Readable:
+			access[d.ID] = "read"
+		}
+	}
+	return access
+}
+
 // createAPIKeyBody builds the request the live API validates against, split out
 // from CreateAPIKey so the owner and scope decisions are testable without a
-// network call.
+// network call. An empty access map mints the legacy all-permissions key.
 //
 // Owner choice is the important part. A service-account key is workspace-owned
 // and outlives its creator, but only workspace admins may create one — so
@@ -104,7 +175,7 @@ func ProjectScopable(projectID string) bool {
 // values, while the committed spec documents wrapper objects and
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
 // actually validates against (verified against /v2/api-keys, both owner types).
-func createAPIKeyBody(name, projectID, userID string) (body map[string]any, scopedToProject bool) {
+func createAPIKeyBody(name, projectID, userID string, access map[string]string) (body map[string]any, scopedToProject bool) {
 	scope := map[string]any{"mode": "all"}
 	if ProjectScopable(projectID) {
 		scope = map[string]any{
@@ -117,39 +188,60 @@ func createAPIKeyBody(name, projectID, userID string) (body map[string]any, scop
 	if id := strings.TrimSpace(userID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
 	}
-	return map[string]any{
+	out := map[string]any{
 		"name":            name,
 		"owner":           owner,
 		"project_scope":   scope,
 		"permission_mode": "all",
-	}, scopedToProject
+	}
+	if len(access) > 0 {
+		out["permission_mode"] = "restricted"
+		out["access"] = access
+	}
+	return out, scopedToProject
 }
 
 // CreateAPIKey mints a key and returns the raw token, which the API returns
-// exactly once — callers must persist it before doing anything else.
+// exactly once — callers must persist it before doing anything else, along with
+// keyID, which is equally unrecoverable afterwards.
 //
 // The key is scoped to projectID when that ID is in the format this endpoint
 // accepts, and to the whole workspace otherwise. scopedToProject reports which
 // happened so the caller can tell the user. userID attributes the key to a
 // person; see createAPIKeyBody for why that is the default.
-func (c *Client) CreateAPIKey(bearer, name, projectID, userID string) (token string, scopedToProject bool, err error) {
-	body, scopedToProject := createAPIKeyBody(name, projectID, userID)
+func (c *Client) CreateAPIKey(bearer, name, projectID, userID string, access map[string]string) (token, keyID string, scopedToProject bool, err error) {
+	body, scopedToProject := createAPIKeyBody(name, projectID, userID, access)
 	var resp struct {
-		Token string `json:"token"`
+		Token  string `json:"token"`
+		APIKey struct {
+			ID string `json:"id"`
+		} `json:"api_key"`
 	}
 	if err := c.jsonRequest(http.MethodPost, c.URLs.APIBaseURL+"/v2/api-keys", bearer, body, &resp); err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
 	if strings.TrimSpace(resp.Token) == "" {
-		return "", false, errors.New("api key create returned no token")
+		return "", "", false, errors.New("api key create returned no token")
 	}
-	return resp.Token, scopedToProject, nil
+	keyID = strings.TrimSpace(resp.APIKey.ID)
+	if keyID == "" {
+		keyID = keyIDFromToken(resp.Token)
+	}
+	return resp.Token, keyID, scopedToProject, nil
 }
 
-// MCPServerURL is the workspace MCP endpoint for the host this session
-// authenticated against, so self-hosted installs get their own URL.
-func (c *Client) MCPServerURL() string {
-	return c.URLs.APIBaseURL + "/v2/mcp"
+// keyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`. Returns ""
+// on any other shape rather than guessing.
+func keyIDFromToken(token string) string {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "sk-orq-")
+	if !ok {
+		return ""
+	}
+	id, _, ok := strings.Cut(rest, "-")
+	if !ok {
+		return ""
+	}
+	return id
 }
 
 // RouterBaseURL is the OpenAI-compatible gateway base. Coding agents that speak

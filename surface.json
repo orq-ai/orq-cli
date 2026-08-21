@@ -1938,14 +1938,6 @@
           "type": "bool"
         },
         {
-          "name": "global",
-          "type": "bool"
-        },
-        {
-          "name": "local",
-          "type": "bool"
-        },
-        {
           "name": "status",
           "type": "bool"
         },
@@ -2374,14 +2366,6 @@
       "flags": [
         {
           "name": "dry-run",
-          "type": "bool"
-        },
-        {
-          "name": "global",
-          "type": "bool"
-        },
-        {
-          "name": "local",
           "type": "bool"
         },
         {

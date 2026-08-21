@@ -20,8 +20,6 @@ import (
 )
 
 const (
-	// Redirects from orq-ai/orq-skills; this is the name the plugin repo documents.
-	skillsRepo        = "orq-ai/assistant-plugins"
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
 	setupSteps        = 3
@@ -32,9 +30,6 @@ type setupOptions struct {
 	workspace   string
 	apiKey      string
 	agents      []string
-	global      bool
-	local       bool
-	noMCP       bool
 	noGateway   bool
 	noInput     bool
 	yes         bool
@@ -77,7 +72,6 @@ func setupComplete(verified bool, agents []agentResult) bool {
 
 type agentResult struct {
 	Agent      string `json:"agent"`
-	MCP        string `json:"mcp,omitempty"`
 	Provider   string `json:"provider,omitempty"`
 	ModelCount int    `json:"model_count,omitempty"`
 	Error      string `json:"error,omitempty"`
@@ -90,8 +84,7 @@ func NewSetupCommand() *cobra.Command {
 		Use:   "setup",
 		Short: "Authenticate and wire up your coding agents",
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
-			`workspace API key, and wires your coding agents to orq — the AI Gateway as a ` +
-			`model provider, and the orq.ai MCP server for workspace tools.
+			`workspace API key, and wires your coding agents to route model calls through the orq AI Gateway.
 
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
 			`flagged with ` + "`--no-input`" + ` for CI.
@@ -129,12 +122,6 @@ func resolveScope(opts *setupOptions) error {
 	}
 	if opts.noInput {
 		opts.interactive = false
-	}
-	if opts.global && opts.local {
-		return errors.New("--global and --local are mutually exclusive")
-	}
-	if !opts.global && !opts.local && !looksLikeProject() {
-		opts.global = true
 	}
 	return nil
 }
@@ -215,16 +202,6 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 }
 
 var errAgentFailed = errors.New("one or more coding agents could not be configured")
-
-// looksLikeProject reports whether to write the project-scoped MCP configs (.mcp.json, .kimi-code/mcp.json) here rather than $HOME.
-func looksLikeProject() bool {
-	for _, marker := range []string{".git", "package.json", "pyproject.toml", "go.mod", "Cargo.toml"} {
-		if _, err := os.Stat(marker); err == nil {
-			return true
-		}
-	}
-	return false
-}
 
 // ============================================================================
 // Step 1 — authentication
@@ -517,7 +494,7 @@ func tilde(path string) string {
 	return "~" + path[len(home):]
 }
 
-// Agent configs reference ORQ_API_KEY instead of inlining it (kimi's rule for an mcp.json on disk), and nothing else exported it: agents came up with an empty bearer and every MCP call failed.
+// Agent configs reference ORQ_API_KEY rather than inlining it, and nothing else exported it: agents came up with an empty bearer.
 func writeShellEnvFile(token string) (string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
@@ -587,18 +564,41 @@ func saveAPIKeyProfile(key, workspace string) error {
 	return writeAPIKeyProfile(auth.ActiveProfile(), key, workspace)
 }
 
-// clearAPIKeyProfile removes the stored key; without it logout leaves a live key in credentials.json.
+// saveGatewayKeyProfile stores the minted key under its own field. Writing it as
+// api_key would make apiKeyConfigured true, and every generated command would
+// then authenticate with a gateway-scoped credential instead of the session.
+func saveGatewayKeyProfile(key, keyID, workspace string) error {
+	profile := auth.ActiveProfile()
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", keyID)
+	return writeGatewayKeyProfile(profile, key, workspace)
+}
+
+// clearAPIKeyProfile removes the stored keys; without it logout leaves a live key in credentials.json.
 func clearAPIKeyProfile() (bool, error) {
 	profile := auth.ActiveProfile()
-	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
+	held := strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" ||
+		strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".gateway_key")) != ""
+	if !held {
 		return false, nil
 	}
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", "")
 	return true, writeAPIKeyProfile(profile, "", "")
 }
 
+// savedAPIKey returns the credential agent configs are wired with. api_key is
+// the fallback for keys minted before the split and for keys the user brought.
 func savedAPIKey() (key, workspace string) {
 	profile := bartolocli.GetProfile()
-	return strings.TrimSpace(profile["api_key"]), strings.TrimSpace(profile["workspace"])
+	workspace = strings.TrimSpace(profile["workspace"])
+	if key = strings.TrimSpace(profile["gateway_key"]); key != "" {
+		return key, workspace
+	}
+	return strings.TrimSpace(profile["api_key"]), workspace
+}
+
+func savedGatewayKeyID() string {
+	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
 }
 
 func activeWorkspaceKey(session *auth.Session) string {
@@ -627,8 +627,17 @@ func BartoloAuthType() string {
 }
 
 func writeAPIKeyProfile(profile, key, workspace string) error {
-	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
+	return writeCredsProfile(profile, workspace)
+}
+
+func writeGatewayKeyProfile(profile, key, workspace string) error {
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key", key)
+	return writeCredsProfile(profile, workspace)
+}
+
+func writeCredsProfile(profile, workspace string) error {
+	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
 	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
 	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
@@ -639,7 +648,9 @@ func writeAPIKeyProfile(profile, key, workspace string) error {
 
 // storedAPIKeyProfile reports whether the active profile holds a key; callers must not log it.
 func storedAPIKeyProfile() bool {
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles."+auth.ActiveProfile()+".api_key")) != ""
+	prefix := "profiles." + auth.ActiveProfile()
+	return strings.TrimSpace(bartolocli.Creds.GetString(prefix+".api_key")) != "" ||
+		strings.TrimSpace(bartolocli.Creds.GetString(prefix+".gateway_key")) != ""
 }
 
 // Bartolo loads these files before any command runs, so a key here outlives 'unset' and logout; the parsing mirrors its loadDotEnvFile.
@@ -684,9 +695,7 @@ func warnLingeringAPIKeys() {
 		Warn("ORQ_API_KEY is still exported in this shell — logout cannot unset it; run: unset ORQ_API_KEY")
 	}
 	for _, spec := range agentRegistry() {
-		_, mcp := wiredPath(spec.mcpConfig, mcpEntryPresent)
-		_, prov := wiredPath(spec.providerConfig, spec.providerPresent)
-		if mcp || prov {
+		if _, prov := wiredPath(spec.providerConfig, spec.providerPresent); prov {
 			Warn("coding agents keep their orq config after logout — 'orq disconnect' removes it")
 			return
 		}
@@ -775,16 +784,34 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if state.session != nil && state.session.User != nil {
 		userID = state.session.User.ID
 	}
-	minted, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID)
+	minted, keyID, _, err := client.CreateAPIKey(state.bearer, keyName, "", userID, gatewayAccess(rep, client, state))
 	if err != nil {
 		return "", false, err
 	}
-	// The API returns the raw token once: persist before anything else can fail.
-	if err := saveAPIKeyProfile(minted, active); err != nil {
+	// The API returns the raw token and its id once: persist before anything else can fail.
+	if err := saveGatewayKeyProfile(minted, keyID, active); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
-	rep.ok("key saved   %s  (workspace-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
+	rep.ok("key saved   %s  (gateway-scoped)", tilde(filepath.Join(viper.GetString("config-directory"), "credentials.json")))
 	return minted, true, nil
+}
+
+// gatewayAccess resolves the permission map for a minted key from the live
+// capability catalog. An empty map means the mint falls back to the legacy
+// all-permissions key: onboarding must not hard-fail on a diagnostic endpoint,
+// and the warning is what stops that being silent.
+func gatewayAccess(rep *reporter, client *auth.Client, state *authState) map[string]string {
+	domains, err := client.ListCapabilities(state.bearer)
+	if err != nil {
+		rep.warn("could not read the permission catalog (%v) — creating a key with full permissions", err)
+		return nil
+	}
+	access := auth.GatewayAccess(domains)
+	if len(access) == 0 {
+		rep.warn("the permission catalog listed no gateway domains — creating a key with full permissions")
+		return nil
+	}
+	return access
 }
 
 func sanitizeKeyName(name string) string {
@@ -823,7 +850,7 @@ func maskToken(token string) string {
 // Gateway readiness helpers
 // ============================================================================
 
-// BYOK (providersPath) or credits, either one, lets the gateway serve a call; neither is needed for MCP.
+// BYOK (providersPath) or credits, either one, lets the gateway serve a call.
 const (
 	modelsPath    = "/router/models"
 	providersPath = "/router/providers"
@@ -1010,9 +1037,8 @@ func workspaceLink(state *authState, path string) string {
 // ============================================================================
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
-	mcpURL := client.MCPServerURL()
 	selected := opts.agents
-	if len(selected) == 0 || (opts.noMCP && opts.noGateway) {
+	if len(selected) == 0 || opts.noGateway {
 		return nil, nil
 	}
 
@@ -1037,44 +1063,12 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 		res := agentResult{Agent: id}
 
-		// A gateway-only agent leaves mcpConfig nil (pi has no native MCP) and
-		// falls through to the "nothing to configure" branch below.
-		var configPath string
-		var err error
-		if spec.mcpConfig != nil {
-			configPath, err = spec.mcpConfig(opts.global)
-		}
-		if !opts.noMCP {
-			switch {
-			case err != nil:
-				rep.fail("%-8s %v", id, err)
-				res.Error = err.Error()
-			case configPath == "":
-				rep.info("%-8s no MCP support in this agent — nothing to configure", id)
-			default:
-				if err := spec.writeMCP(configPath, mcpURL); err != nil {
-					rep.fail("%-8s %v", id, err)
-					rep.blank()
-					rep.note("Add this manually to %s:", tilde(configPath))
-					for _, line := range strings.Split(spec.manualSnippet(mcpURL), "\n") {
-						rep.note("    %s", line)
-					}
-					res.Error = err.Error()
-				} else {
-					res.MCP = configPath
-				}
-			}
-		}
-
-		if !opts.noGateway {
-			if spec.writeProvider == nil {
-				// Mirrors the MCP arm's "nothing to configure": claude routes through
-				// env only, so asking for its gateway half must say so rather than
-				// print nothing and exit 0 as though the wire happened.
-				rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
-			} else {
-				writeAgentProvider(rep, client, state, opts, spec, &res)
-			}
+		if spec.writeProvider == nil {
+			// claude routes through env only, so saying nothing would read as a
+			// successful wire that never happened.
+			rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
+		} else {
+			writeAgentProvider(rep, client, state, opts, spec, &res)
 		}
 
 		reportAgent(rep, spec, res, opts)
@@ -1088,14 +1082,14 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 // then failed, so the exit code and the JSON agree with the terminal.
 func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, spec agentSpec, res *agentResult) {
 	id := spec.ID
-	path, perr := spec.providerConfig(opts.global)
+	path, perr := spec.providerConfig(false)
 	switch {
 	case perr != nil:
 		rep.fail("%-8s provider  %v", id, perr)
 		res.Error = perr.Error()
 	case path == "":
 		// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
-		rep.fail("%-8s provider  no config path for this scope", id)
+		rep.fail("%-8s provider  no config path for this agent", id)
 		res.Error = "provider config path resolved empty"
 	case !state.durableBearer():
 		// Declining the mint is a choice, not an error.
@@ -1136,33 +1130,16 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 }
 
 func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOptions) {
-	wired := []string{}
-	if res.MCP != "" {
-		wired = append(wired, "MCP")
-	}
-	if res.Provider != "" {
-		gateway := "gateway"
-		// codex's profile names one default and takes its list from elsewhere, so only claim a count when there is one.
-		if res.ModelCount > 0 {
-			gateway = fmt.Sprintf("gateway (%d models)", res.ModelCount)
-		}
-		wired = append(wired, gateway)
-	}
-	if len(wired) == 0 {
+	if res.Provider == "" {
 		return
 	}
-
-	where := tilde(res.MCP)
-	switch {
-	case res.MCP == "":
-		where = tilde(res.Provider)
-	case res.Provider != "" && filepath.Dir(res.MCP) == filepath.Dir(res.Provider):
-		where = tilde(filepath.Dir(res.MCP)) + string(filepath.Separator)
-	case res.Provider != "":
-		where = tilde(res.MCP) + " · " + tilde(res.Provider)
+	wired := "gateway"
+	// codex's profile names one default and takes its list from elsewhere, so only claim a count when there is one.
+	if res.ModelCount > 0 {
+		wired = fmt.Sprintf("gateway (%d models)", res.ModelCount)
 	}
 
-	rep.ok("%-8s %-24s %s", spec.ID, strings.Join(wired, " + "), where)
+	rep.ok("%-8s %-24s %s", spec.ID, wired, tilde(res.Provider))
 
 	// orq is registered as an option, not the default, so some agents need a step the user would never find.
 	if res.Provider != "" && spec.providerUsage != "" {
@@ -1308,9 +1285,7 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 
-	// Classified per agent: only MCP-wired agents may be told they can read and write the workspace.
-	mcpWired := []string{}
-	gatewayOnly := []string{}
+	gatewayWired := []string{}
 	// starts are the wired agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
 	starts := []string{}
 	for _, a := range agents {
@@ -1321,25 +1296,16 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		if !ok {
 			continue
 		}
-		switch {
-		case a.MCP != "":
-			mcpWired = append(mcpWired, spec.Label)
-		case a.Provider != "":
-			gatewayOnly = append(gatewayOnly, spec.Label)
-		default:
+		if a.Provider == "" {
 			continue
 		}
+		gatewayWired = append(gatewayWired, spec.Label)
 		starts = append(starts, spec.startCommand())
 	}
 	switch {
-	case len(mcpWired)+len(gatewayOnly) > 0:
-		if len(mcpWired) > 0 {
-			fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(mcpWired, " and "))
-		}
-		if len(gatewayOnly) > 0 {
-			fmt.Fprintf(w, "  %s %s model calls through orq.\n",
-				strings.Join(gatewayOnly, " and "), pluralize(len(gatewayOnly), "routes its", "route their"))
-		}
+	case len(gatewayWired) > 0:
+		fmt.Fprintf(w, "  %s %s model calls through orq.\n",
+			strings.Join(gatewayWired, " and "), pluralize(len(gatewayWired), "routes its", "route their"))
 	default:
 		// 'orq launch' only belongs here: nothing durable was written for it to shadow.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
@@ -1350,10 +1316,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		fmt.Fprintf(w, "  %s orq launch %s\n", padLabel("Launch"), detectedAgentID())
 		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
 	}
-	// MCP entries reference ORQ_API_KEY too; checking only Provider left kimi with a dead MCP server and no warning.
 	keyReferenced := false
 	for _, a := range agents {
-		if a.Error == "" && (a.Provider != "" || a.MCP != "") {
+		if a.Error == "" && a.Provider != "" {
 			keyReferenced = true
 		}
 	}
@@ -1386,12 +1351,6 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 				label = ""
 			}
 			fmt.Fprintf(w, "  %s %s\n", padLabel(label), cmd)
-		}
-		if len(mcpWired) > 0 {
-			fmt.Fprintf(w, "  %s %s\n", padLabel("Try"), `"list my orq.ai agents"`)
-			// Suggested, not run: the installer detects the agent and writes
-			// into the user's own config, which is their call to make.
-			fmt.Fprintf(w, "  %s %s\n", padLabel("Skills"), "npx skills add "+skillsRepo)
 		}
 	}
 	fmt.Fprintln(w)
