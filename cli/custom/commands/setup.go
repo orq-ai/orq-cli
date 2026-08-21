@@ -813,7 +813,11 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	if hostname == "" {
 		hostname = "unknown-host"
 	}
-	keyName := sanitizeKeyName("orq-cli " + hostname)
+	// Purpose before hostname: the dashboard lists every restricted key as
+	// "Restricted" without saying restricted to what, and sanitizeKeyName
+	// truncates from the right, so a trailing purpose is what a long corporate
+	// hostname would eat.
+	keyName := sanitizeKeyName("orq-cli " + capGateway + " " + hostname)
 
 	// Without a user id the API mints against a service account, which only admins may create.
 	userID := ""

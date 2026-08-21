@@ -2482,3 +2482,39 @@ func TestMintSuggestsABudgetWithoutCreatingOne(t *testing.T) {
 		t.Errorf("no runnable budget suggestion naming the key:\n%s", got)
 	}
 }
+
+// The dashboard lists every restricted key as "Restricted" without saying
+// restricted to what, so the name is the only place a gateway key is
+// distinguishable from the MCP key that will sit beside it. sanitizeKeyName
+// truncates from the right, so the purpose has to survive a long hostname.
+func TestMintedKeyNameCarriesItsPurpose(t *testing.T) {
+	credsHarness(t)
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/api-keys/capabilities" {
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		fmt.Fprint(w, `{"token":"sk-orq-KEYID-secret","api_key":{"id":"KEYID"}}`)
+	}))
+	defer srv.Close()
+
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "t",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	if _, _, err := ensureDurableKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	name, _ := body["name"].(string)
+	if !strings.HasPrefix(name, "orq-cli gateway ") {
+		t.Errorf("key name = %q, want it to lead with its purpose", name)
+	}
+
+	// A hostname long enough to hit the 64-char cap still leaves the purpose
+	// readable — it is the hostname that gets cut, not the discriminator.
+	long := sanitizeKeyName("orq-cli gateway " + strings.Repeat("prod-euw1-build-agent-pool-a", 4))
+	if len(long) != 64 || !strings.HasPrefix(long, "orq-cli gateway ") {
+		t.Errorf("truncated name = %q (%d chars), want the purpose preserved", long, len(long))
+	}
+}

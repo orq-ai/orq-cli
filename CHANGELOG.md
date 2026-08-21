@@ -59,6 +59,11 @@ the version and this changelog as the source of truth for breaking changes.
   cannot be reached the CLI says so and falls back to the old behaviour rather
   than failing onboarding. **Existing keys are not changed** — re-run
   `orq setup` to mint a narrower one, and revoke the old key in the dashboard.
+- **Changed:** minted keys are now named `orq-cli gateway <hostname>` rather than
+  `orq-cli <hostname>`. The dashboard lists every restricted key as `Restricted`
+  without saying restricted to what, so the name is the only place the purpose
+  shows — and it leaves room for the MCP key that will sit beside it. Existing
+  keys keep their old name until they are renewed.
 - **Changed:** the minted key is stored as `gateway_key` in `credentials.json`,
   not `api_key`. A stored `api_key` takes precedence over your login for every
   generated command, so a gateway-scoped key there would have started refusing
