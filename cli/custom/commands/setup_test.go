@@ -2354,3 +2354,46 @@ func TestSetupIsNotCompleteWhenAnAgentWasSkipped(t *testing.T) {
 		t.Error("claude has no provider config to write, so an empty result for it is not a skip")
 	}
 }
+
+// A skip is only a skip when nothing on disk wires the agent afterwards.
+// Declining the mint on a machine an earlier run already wired leaves that wire
+// working, so failing the run would report a break that did not happen.
+func TestDecliningTheMintIsNotASkipWhenAnEarlierWireSurvives(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	resetSetupMemos(t)
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	spec, ok := lookupAgent("kimi")
+	if !ok {
+		t.Fatal("no kimi spec")
+	}
+	state := &authState{}
+
+	var res agentResult
+	writeAgentProvider(&reporter{w: io.Discard}, nil, state, &setupOptions{}, spec, &res)
+	if res.Skipped == "" {
+		t.Error("no durable key and no provider config on disk: the agent is unwired, so this is a skip")
+	}
+
+	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-old", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	res = agentResult{}
+	writeAgentProvider(&reporter{w: io.Discard}, nil, state, &setupOptions{}, spec, &res)
+	if res.Skipped != "" {
+		t.Errorf("an earlier run's provider block still wires kimi, got Skipped=%q", res.Skipped)
+	}
+}
+
+// --no-input stops after the key and reports no agents at all. It promised
+// none, so it is complete; only a run that named agents and did not deliver
+// them is not.
+func TestARunThatNeverReachedTheAgentStepIsComplete(t *testing.T) {
+	if !setupComplete(true, nil) {
+		t.Error("a run reporting no agents was marked incomplete")
+	}
+}

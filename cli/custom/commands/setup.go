@@ -68,7 +68,9 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 //
 // Skipped counts with Error: an agent the run declined to wire is one the user
 // asked for and did not get, so claiming completion above it is the same lie in
-// a quieter voice.
+// a quieter voice. A run that never reached the agent step is a different thing
+// and stays complete: --no-input stops after the key and reports no agents at
+// all, having promised none.
 func setupComplete(verified bool, agents []agentResult) bool {
 	if !verified {
 		return false
@@ -575,9 +577,9 @@ func clearGatewayKeyFields(profile string) {
 // Clears api_key for the mirror reason saveAPIKeyProfile clears the gateway
 // triple. Versions before the split wrote the minted key to api_key with a
 // workspace beside it, so an upgraded machine that switches workspace mints a
-// new key while the old one survives — and apiKeyConfigured reads only api_key,
-// so every command would keep authenticating with a stale key for the workspace
-// the user just left.
+// new key while the old one survives — and api_key is the profile field
+// apiKeyConfigured accepts, so every command would keep authenticating with a
+// stale key for the workspace the user just left.
 func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
 	profile := auth.ActiveProfile()
 	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
@@ -697,7 +699,8 @@ func clearShellEnvFile() []string {
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that
-// authenticates commands, so it reads exactly what apiKeyConfigured does.
+// authenticates commands, so it reads the one profile field apiKeyConfigured
+// accepts. Doctor asks about the environment separately, hence no env check here.
 // Counting gateway_key here made doctor answer "authenticated: credentials.json"
 // for a key no command authenticates with, on the one screen whose job is to
 // explain why nothing works. Callers must not log the value.
@@ -1102,9 +1105,13 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 		rep.fail("%-8s provider  no config path for this agent", id)
 		res.Error = "provider config path resolved empty"
 	case !state.durableBearer():
-		// Declining the mint is a choice, not an error, but it still leaves the agent unwired.
+		// Declining the mint is a choice, not an error. Same two states as the
+		// empty-catalogue arm below: an earlier run's block still wires the
+		// agent, an absent one leaves it unwired.
 		rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
-		res.Skipped = "no durable API key"
+		if spec.providerPresent == nil || !spec.providerPresent(path) {
+			res.Skipped = "no durable API key"
+		}
 	default:
 		models, merr := codingModels(rep, client, state)
 		switch {
