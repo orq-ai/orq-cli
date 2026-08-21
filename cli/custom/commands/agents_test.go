@@ -1211,7 +1211,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	// Pinned, not inherited: a wired agent also warns when the shell exports no
 	// ORQ_API_KEY, so leaving this to the environment made the test pass on a
 	// developer's machine and fail on a clean one. The warning itself is
-	// TestCodingAgentChecksWarnWhenTheShellHasNoKey's subject.
+	// TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment's subject.
 	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
 
 	// Nothing installed: no checks at all.

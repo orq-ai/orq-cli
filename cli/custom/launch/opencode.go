@@ -24,7 +24,6 @@ type openCodeFamily struct {
 	label        string
 	configEnvVar string
 	installHint  string
-	npmPackage   string
 }
 
 func opencodeAgent() AgentDef {
@@ -34,7 +33,6 @@ func opencodeAgent() AgentDef {
 		label:        "OpenCode",
 		configEnvVar: "OPENCODE_CONFIG_CONTENT",
 		installHint:  "https://opencode.ai/docs",
-		npmPackage:   "opencode-ai",
 	})
 }
 
@@ -45,7 +43,6 @@ func kiloAgent() AgentDef {
 		label:        "Kilo CLI",
 		configEnvVar: "KILO_CONFIG_CONTENT",
 		installHint:  "npm install -g @kilocode/cli (https://kilo.ai/docs/cli)",
-		npmPackage:   "@kilocode/cli",
 	})
 }
 

@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	// Last resort: used only when the catalogue lacks this ref.
+	// Preferred pick when the catalogue offers it; gateway.go falls back to the
+	// first enabled model otherwise, and to this literal when the catalogue is empty.
 	DefaultKimiModel = "moonshotai/kimi-k2.7-code"
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode

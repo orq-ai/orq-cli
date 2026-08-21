@@ -400,7 +400,7 @@ func TestStaleMCPEntriesAreLeftUntouched(t *testing.T) {
 	for _, args := range [][]string{{"kimi"}, {"kimi"}} {
 		cmd := NewConnectCommand()
 		cmd.SetArgs(args)
-		_ = cmd.Execute() // no catalogue server here; the wire may fail, the files must not change
+		_ = cmd.Execute() // the catalogue is empty, so the wire may fail; the files must not change
 	}
 	d := NewDisconnectCommand()
 	d.SetArgs([]string{"kimi"})

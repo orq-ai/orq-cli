@@ -15,8 +15,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const mcpServerName = launch.MCPServerName
-
 // Writers clear their own keys before emitting, so writing an empty catalogue would delete a working config.
 var errNoModelsToOffer = errors.New("no models to offer")
 
@@ -49,8 +47,8 @@ type agentSpec struct {
 	removeProvider func(path string) (bool, error)
 	// providerEmbedsKey marks a provider config holding the credential literally rather than referencing ORQ_API_KEY.
 	providerEmbedsKey bool
-	// providerKey reads back the embedded credential; set whenever providerEmbedsKey is.
-	// A literal copy cannot follow a renewal, so only reading it can tell a wired agent from a dead one.
+	// providerKey reads back the embedded credential. A literal copy cannot follow
+	// a renewal, so only reading it can tell a wired agent from a dead one.
 	providerKey   func(path string) string
 	providerUsage string
 	// runCommand starts the agent against what setup wrote; empty means the bare ID does.
@@ -82,7 +80,6 @@ func agentRegistry() []agentSpec {
 		{
 			ID:    "codex",
 			Label: "Codex",
-			// Codex reads MCP servers only from its config directory, so both scopes resolve there.
 			// Same resolution the writers use, or a CODEX_HOME machine is never offered codex.
 			detect:          detectPath(codexPath("")),
 			providerConfig:  codexPath(codexProfileName + ".config.toml"),
@@ -127,9 +124,8 @@ func agentRegistry() []agentSpec {
 			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
-			ID:    "pi",
-			Label: "Pi Coding Agent",
-			// Gateway only: pi has no native MCP, extensions only.
+			ID:     "pi",
+			Label:  "Pi Coding Agent",
 			detect: piDetect,
 			// pi reads models.json from its agent dir ($PI_CODING_AGENT_DIR, ~/.pi/agent) only.
 			providerConfig:  piPath("models.json"),
@@ -574,11 +570,13 @@ func orqOwnedKimiTable(header, body string) bool {
 // Doctor checks
 // ============================================================================
 
-// codingAgentChecks reports, per detected agent, whether MCP and the provider
-// are wired, plus one coding_agents summary row. Detected-but-unwired is info,
-// not warn: leaving an agent unconnected is a choice, and only the state that
-// actually breaks something (wired without ORQ_API_KEY) warns. Statuses never
-// drive doctor's exit code.
+// codingAgentChecks reports one row per detected agent — whether a provider
+// config is on disk, whether the credential in it is current, and whether
+// ORQ_API_KEY is exported — plus one coding_agents summary row.
+// Detected-but-unwired is info, not warn: leaving an agent unconnected is a
+// choice, and only the states that actually break something (wired without
+// ORQ_API_KEY, or wired with a superseded key) warn. Statuses never drive
+// doctor's exit code.
 func codingAgentChecks() []doctorCheck {
 	var checks []doctorCheck
 	var wiredIDs []string

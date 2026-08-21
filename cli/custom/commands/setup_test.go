@@ -975,8 +975,8 @@ func TestTildeShortensHomePaths(t *testing.T) {
 // The flag help promises "use this API key instead of the one a previous
 // setup saved" — so the key that lands in the agent configs must be the
 // supplied one. It used to be split-brain: resolveAuth persisted the new key
-// to credentials.json, then runCodingAgents put the stale saved key back into
-// the bearer, and every agent was wired to the old credential.
+// to credentials.json, then the agent-wiring step put the stale saved key back
+// into the bearer, and every agent was wired to the old credential.
 func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1097,7 +1097,7 @@ func TestDurableBearerNeedsBothABearerAndItsProvenance(t *testing.T) {
 	}
 }
 
-// runCodingAgents admits a run when ORQ_API_KEY is exported, so the wiring must
+// Setup admits a run when ORQ_API_KEY is exported, so the wiring must
 // accept the same credential. resolveAuth ranks the session above the env key,
 // which left the run admitted and then skipping every provider write — the
 // failure the skip message itself tells the user to fix by re-running setup.
@@ -1284,16 +1284,17 @@ func gatewayFixture(t *testing.T, balance string, catalogue string) (*httptest.S
 
 const oneChatModel = `[{"provider":"openai","model_id":"gpt-5.4","model_type":"chat","enabled":true,"has_functions":true}]`
 
-// wiringHarness isolates the filesystem writes instrumentAgents performs. kimi's
-// MCP path is project-scoped, so without this the config lands in the package
-// source tree, which is how a test-server URL got committed once.
+// wiringHarness isolates the filesystem writes instrumentAgents performs.
+// Every agent resolves its provider config under $HOME, so without this the
+// config lands in the package source tree, which is how a test-server URL got
+// committed once.
 func wiringHarness(t *testing.T) {
 	t.Helper()
 	resetSetupMemos(t)
 	t.Setenv("HOME", t.TempDir())
 	chdir(t, t.TempDir())
-	// Names a dashboard for the test server, which is also what makes the credit
-	// advice reachable: canAdviseOnCredits stays quiet without one.
+	// Names a dashboard for the test server: workspaceLink builds no URL without
+	// one, so the "Enable models" remedy would never render.
 	t.Setenv("ORQ_WEB_BASE_URL", "https://my.orq.ai")
 }
 
@@ -1442,9 +1443,10 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	}
 }
 
-// The final screen makes claims about what was wired, and the suggested next
-// step is the bare agent command, never `orq launch`, which builds a throwaway
-// config home and ignores what setup just wrote.
+// The final screen makes claims about what was wired. For a wired agent the
+// suggested next step is that agent's own command, never `orq launch`, which
+// builds a throwaway config home and ignores what setup just wrote. With
+// nothing wired there is no such command, and launch is the honest answer.
 func TestFinalScreenHasTwoStates(t *testing.T) {
 	cases := map[string]struct {
 		agents     []agentResult

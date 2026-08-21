@@ -36,8 +36,9 @@ func claudeAgent() AgentDef {
 }
 
 // resolveClaude wires claude through env vars (gateway base URL, auth token,
-// models — no /v2/models fetch) plus two PreArgs: --mcp-config pointing at a
-// temp file and --plugin-url for the pinned skills plugin.
+// models — no /v2/models fetch). Under --mcp it also adds a --mcp-config PreArg
+// pointing at a temp file, and unless --no-skills, a --plugin-url for the pinned
+// skills plugin. A default launch has neither.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	getenv := ctx.Getenv
 

@@ -309,27 +309,27 @@ func (c *Client) ListModels(bearer string) ([]RouterModel, error) {
 	return models, nil
 }
 
-// CandidateCodingModels groups the catalogue by preferred prefix, best-first
-// within each group, so a caller can try candidates in order. Only tool-capable
-// active chat models are eligible — a coding agent is useless without function
-// calling.
-//
-// "Best" is the lexically greatest model_id, which tracks version suffixes
-// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but stronger editions
-// are ranked above cut-down ones first, see SizeVariantRank.
-// UsableForCodingAgent is the one definition of a model a coding agent can be
-// wired to: in the workspace's enabled set, a chat model, and able to call
-// tools. Every path that counts, ranks or writes models reads it from here —
-// four copies drifted before, and the count a user saw could exceed the set the
-// writers would accept.
+// UsableForCodingAgent reports whether a model can be wired into a coding
+// agent: in the workspace's enabled set, a chat model, and able to call tools.
+// A coding agent edits files and runs commands through tools, so a model
+// without function calling fails on the first real turn.
 //
 // Enabled, not Active: is_active is true for the whole catalogue, so filtering
 // on it offered models the workspace had disabled, which a workspace with
 // enforce_enabled_models on rejects outright.
+//
+// launch/gateway.go applies the same rule inline against its own response shape
+// (ModelType rather than Type); the two have to change together.
 func UsableForCodingAgent(m RouterModel) bool {
 	return m.Enabled && m.Type == "chat" && m.Functions
 }
 
+// CandidateCodingModels groups the usable models by preferred prefix,
+// best-first within each group, so a caller can try candidates in order.
+//
+// "Best" is the lexically greatest model_id, which tracks version suffixes
+// (claude-sonnet-4-6 over -4-5, kimi-k2.6 over k2.5) — but stronger editions
+// are ranked above cut-down ones first, see SizeVariantRank.
 func CandidateCodingModels(models []RouterModel, preferred []string) [][]RouterModel {
 	groups := make([][]RouterModel, 0, len(preferred))
 	for _, prefix := range preferred {

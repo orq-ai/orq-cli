@@ -128,8 +128,10 @@ wins over a key left exported in your shell.`),
 	return cmd
 }
 
-// resolveScope settles the global/local decision once for every entry point, defaulting to $HOME outside a project.
-func resolveScope(opts *setupOptions) error {
+// applyGlobalFlags folds the viper-bound global flags (--no-input, --workspace)
+// into opts once for every entry point, and forces --no-input without a TTY so
+// an interactive prompt can never block a pipeline.
+func applyGlobalFlags(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
@@ -144,8 +146,8 @@ func resolveScope(opts *setupOptions) error {
 }
 
 func runSetup(cmd *cobra.Command, opts *setupOptions) error {
-	// --no-input and --workspace are global flags (registerGlobalFlags), read from viper in resolveScope.
-	if err := resolveScope(opts); err != nil {
+	// --no-input and --workspace are global flags (registerGlobalFlags), read from viper in applyGlobalFlags.
+	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
 
@@ -257,7 +259,6 @@ func (s *authState) durableBearer() bool {
 	return s.suppliedKey != "" || s.durableKey || s.session == nil
 }
 
-// Three-valued on purpose: the question is often never asked, and that is not "cannot pay".
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
 	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
 	// persistKey is false on connect: saving there replaces a credential the user
@@ -1021,7 +1022,7 @@ func workspaceURL(state *authState, path string) string {
 	return dashboardURL(apiBase, "", path)
 }
 
-// dashboardURL is the one place a settings link is built; doctor builds the same links through it.
+// dashboardURL is the one place a settings link is built.
 func dashboardURL(apiBase, workspaceKey, path string) string {
 	base := webBaseFor(apiBase)
 	if base == "" || workspaceKey == "" {

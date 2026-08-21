@@ -128,7 +128,7 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 // runConnectStatus is the read-only view of on-disk wiring. It never prompts and
 // never authenticates; it exits non-zero only on an argument it cannot parse.
 func runConnectStatus(opts *setupOptions, args []string) error {
-	if err := resolveScope(opts); err != nil {
+	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
 	rep := newReporter(opts.noInput)
@@ -179,7 +179,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 }
 
 func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {
-	if err := resolveScope(opts); err != nil {
+	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
 	rep := newReporter(opts.noInput)
@@ -412,7 +412,7 @@ Naming agents removes from those. A bare ` + "`orq disconnect`" + ` targets ever
 }
 
 func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {
-	if err := resolveScope(opts); err != nil {
+	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
 	rep := newReporter(opts.noInput)
@@ -466,8 +466,8 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
-	// Removed is a list, not a joined string: "gateway+mcp" forced a caller to
-	// split on a separator we invented.
+	// Removed is a list, not a joined string: joining forces a caller to split on
+	// a separator we invented.
 	type row struct {
 		Agent   string   `json:"agent"`
 		Removed []string `json:"removed,omitempty"`
