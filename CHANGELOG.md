@@ -101,12 +101,17 @@ the version and this changelog as the source of truth for breaking changes.
   `orq disconnect`. No provider config is project-scoped — every agent reads its
   gateway configuration from one absolute path — so both flags had no effect
   once MCP was removed.
+- **Changed:** `orq connect` no longer offers Claude Code, and `--status` no
+  longer reports it as unwired. Claude reads its endpoint from the environment
+  and has no gateway provider config, so with MCP gone there is nothing to
+  write for it — `orq launch claude` is still the way to route it through orq.
+  Naming it explicitly still works and explains itself.
 - Added: `orq connect --status` — the read-only answer to "what is wired?":
   one line per wired capability with its file, one naming detected-but-unwired
   agents. No prompt, no auth, no writes, exit 0.
 - Changed: `orq doctor` no longer warns about agents you simply have not
   connected. Healthy per-agent rows collapse into one `coding_agents` summary
-  (`2 of 6 wired: claude, kimi`); the state that breaks something — wired
+  (`2 of 5 wired: kimi, opencode`); the state that breaks something — wired
   without `ORQ_API_KEY` in the shell — still gets its own warning row.
   `--json` keeps every per-agent row plus the summary.
 - Changed: interactive `orq connect` with no saved key offers to log in (or
