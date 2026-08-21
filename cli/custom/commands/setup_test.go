@@ -2193,3 +2193,42 @@ func TestMintedKeyNameCarriesItsPurpose(t *testing.T) {
 		t.Errorf("truncated name = %q (%d chars), want the purpose preserved", long, len(long))
 	}
 }
+
+// The env file is the one artefact that survived logout: a shell profile that
+// sources it kept exporting a live key into every new shell, so "signed out"
+// left the machine authenticated. It is emptied rather than deleted, because a
+// profile carrying `. ~/.orq/env` would then error on every new shell.
+func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+
+	posix := filepath.Join(dir, "env")
+	fish := filepath.Join(dir, "env.fish")
+	if err := os.WriteFile(posix, []byte("export ORQ_API_KEY=sk-orq-LIVE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A user who changed shells since setup has the other spelling lying around.
+	if err := os.WriteFile(fish, []byte("set -gx ORQ_API_KEY sk-orq-LIVE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cleared := clearShellEnvFile()
+	if len(cleared) != 2 {
+		t.Fatalf("cleared %v, want both spellings", cleared)
+	}
+	for _, path := range []string{posix, fish} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("%s was deleted; a profile sourcing it would now error: %v", path, err)
+		}
+		body := string(mustRead(t, path))
+		if strings.Contains(body, "sk-orq-LIVE") || strings.Contains(body, "ORQ_API_KEY") {
+			t.Errorf("%s still exports the key:\n%s", path, body)
+		}
+	}
+
+	// Nothing to clear is not an error, and reports nothing.
+	if got := clearShellEnvFile(); len(got) != 0 {
+		t.Errorf("second run reported %v, want nothing", got)
+	}
+}

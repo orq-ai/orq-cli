@@ -455,6 +455,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	}
 
 	reportBackups(rep, wired)
+	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
 		if err := emit(map[string]any{"agents": rows}); err != nil {
@@ -486,6 +487,20 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	return out
+}
+
+// reportCredentialSurvives corrects the mental model disconnect otherwise
+// leaves. Removing the config removes the wire, not the credential: the key is
+// still valid, still on the machine, and still exported to anything that reads
+// the environment. Saying nothing here reads as "orq is off this machine".
+func reportCredentialSurvives(rep *reporter) {
+	if saved, _ := savedAPIKey(); saved == "" {
+		return
+	}
+	rep.info("the API key is untouched — still valid, and still saved for the next 'orq connect'")
+	if id := savedGatewayKeyID(); id != "" {
+		rep.info("  to revoke it as well: orq api-keys delete %s", id)
+	}
 }
 
 // reportBackups names the copies writeJSONConfig took, once. A safety net the

@@ -124,6 +124,7 @@ func NewLogoutCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				envCleared := clearShellEnvFile()
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
 					if keyCleared {
@@ -131,12 +132,14 @@ func NewLogoutCommand() *cobra.Command {
 					} else {
 						info("Not logged in - nothing to clear.")
 					}
+					reportClearedEnvFiles(envCleared)
 					return nil
 				}
 				return emit(map[string]any{
 					"authenticated":           false,
 					"cleared":                 keyCleared,
 					"api_key_profile_cleared": keyCleared,
+					"env_files_cleared":       envCleared,
 					"session_file":            auth.SessionFilePath(),
 				})
 			}
@@ -195,6 +198,7 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			envCleared := clearShellEnvFile()
 			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
@@ -207,6 +211,7 @@ func NewLogoutCommand() *cobra.Command {
 				} else {
 					Warn("local credentials cleared, but the server-side token was not revoked")
 				}
+				reportClearedEnvFiles(envCleared)
 				return nil
 			}
 			return emit(map[string]any{
@@ -214,6 +219,7 @@ func NewLogoutCommand() *cobra.Command {
 				"cleared":                 true,
 				"revoked":                 revokeErr == nil,
 				"api_key_profile_cleared": keyCleared,
+				"env_files_cleared":       envCleared,
 				"session_file":            auth.SessionFilePath(),
 			})
 		},
@@ -289,4 +295,14 @@ func printIdentity(report IdentityReport, verb string) {
 		kv(w, "access", "%d workspaces", len(report.Workspaces))
 	}
 	kv(w, "session", "%s", report.SessionFile)
+}
+
+// reportClearedEnvFiles names the files logout emptied. A credential leaving
+// the machine is a state change the user has to be able to model: without this
+// line, "Signed out" is printed while the shell profile still sources a file
+// that exported a live key a moment ago.
+func reportClearedEnvFiles(paths []string) {
+	for _, path := range paths {
+		info("Removed the exported key from %s", tilde(path))
+	}
 }

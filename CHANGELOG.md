@@ -77,6 +77,16 @@ the version and this changelog as the source of truth for breaking changes.
   config that has not been rewritten yet keeps working. Keys minted before this
   release record no expiry and are never renewed automatically; re-run
   `orq setup` to move to a key that does.
+- **Fixed:** `orq auth logout` now clears the exported key from `~/.orq/env`
+  (and `env.fish`). That file is written by `orq setup`, and a shell profile
+  that sources it kept exporting a live key into every new shell after logout —
+  so you were signed out while still authenticated everywhere. The file is
+  emptied rather than deleted, because a profile carrying `. ~/.orq/env` would
+  then error on every new shell. `--json` gains `env_files_cleared`.
+- Added: `orq disconnect` now says that the API key survives — it removes the
+  wiring, not the credential — and prints the `orq api-keys delete <id>` command
+  that would revoke it. Removing the config used to read as "orq is off this
+  machine" while the key stayed valid, saved, and exported.
 - **Removed:** the gateway credit check, in `orq doctor` and in `orq setup`. It
   reported a zero balance as a problem, but a zero balance blocks nothing on its
   own: the gateway still serves calls when a provider key (BYOK) is connected,

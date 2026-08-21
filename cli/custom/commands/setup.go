@@ -654,6 +654,31 @@ func writeCredsProfile(profile, workspace string) error {
 	return os.Chmod(filename, 0o600)
 }
 
+// clearShellEnvFile removes the exported key from the file `orq setup` wrote,
+// leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
+// and deleting the target would make every new shell report a missing file.
+// Both spellings are cleared — a user who changed shells since setup has the
+// other one still sitting there.
+func clearShellEnvFile() []string {
+	dir := viper.GetString("config-directory")
+	if dir == "" {
+		return nil
+	}
+	var cleared []string
+	for _, name := range []string{"env", "env.fish"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
+			continue
+		}
+		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
+		if os.WriteFile(path, []byte(body), 0o600) == nil {
+			cleared = append(cleared, path)
+		}
+	}
+	return cleared
+}
+
 // storedAPIKeyProfile reports whether the active profile holds a key; callers must not log it.
 func storedAPIKeyProfile() bool {
 	prefix := "profiles." + auth.ActiveProfile()

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"orq/cli/custom/launch"
 
@@ -433,5 +434,90 @@ func TestUnconnectableAgentsAreNotOffered(t *testing.T) {
 	// instead of failing at parse time with "not an agent".
 	if _, _, err := partitionConnectArgs([]string{"claude"}); err != nil {
 		t.Errorf("claude stopped parsing as an agent: %v", err)
+	}
+}
+
+// Removing the config removes the wire, not the credential. Saying only
+// "removed" leaves the user modelling a machine with no orq credential on it,
+// while the key stays valid and saved.
+func TestDisconnectSaysTheKeySurvives(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+		"https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	credsHarness(t)
+	ensureFormatter(t)
+	if err := saveGatewayKeyProfile("sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	cmd := NewDisconnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "API key is untouched") {
+		t.Errorf("disconnect implied the credential went with the config:\n%s", got)
+	}
+	// The remedy names the key it would remove, so it can be acted on.
+	if !strings.Contains(got, "orq api-keys delete 01HZXW2K7Y8Q9M0N1P2R3S4T5V") {
+		t.Errorf("no actionable way to revoke the surviving key:\n%s", got)
+	}
+}
+
+// With no key saved there is nothing surviving to warn about, and a note about
+// a credential the machine does not have is noise.
+func TestDisconnectStaysQuietWithNoSavedKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+		"https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	credsHarness(t)
+	ensureFormatter(t)
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	cmd := NewDisconnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if strings.Contains(out.String(), "API key is untouched") {
+		t.Errorf("warned about a key that does not exist:\n%s", out.String())
+	}
+}
+
+// ensureFormatter gives bartolocli an output formatter when the test process
+// has none, so emit does not nil-panic.
+func ensureFormatter(t *testing.T) {
+	t.Helper()
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 }
