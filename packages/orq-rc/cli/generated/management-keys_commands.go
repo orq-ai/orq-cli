@@ -40,7 +40,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Per-domain access map. Required when `permission_mode` =\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`. See `ManagementKey.access`\n for the catalog of valid keys (Domain.id) and AccessLevel string\n values, or fetch the live catalog via the capability catalog\n endpoint.",
 						},
 						{
@@ -92,7 +92,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Per-domain access map. Required when `permission_mode` =\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`. See `ManagementKey.access`\n for the catalog of valid keys (Domain.id) and AccessLevel string\n values, or fetch the live catalog via the capability catalog\n endpoint.",
 				},
 				{
@@ -295,7 +295,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Replacement access map. Required when changing to\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide\n an empty map to clear.",
 						},
 						{
@@ -365,7 +365,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Replacement access map. Required when changing to\n `MANAGEMENT_PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide\n an empty map to clear.",
 				},
 				{

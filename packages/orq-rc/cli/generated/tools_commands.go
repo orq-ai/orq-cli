@@ -28,11 +28,11 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create tool",
-			Long:    bartolocli.Markdown("Creates a new tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string, required)\n- `discovery_variables` (object)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string, required)\n- ... and 4 more fields\n\nRequired fields: `description`, `key`, `path`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string, required)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string, required)\n- `path` (string, required)\n- ... and 2 more fields\n\nRequired fields: `description`, `key`, `path`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"function\": {\n    \"name\": \"name\"\n  },\n  \"key\": \"key\",\n  \"path\": \"Default\",\n  \"status\": \"live\",\n  \"type\": \"function\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"function\": {\n    \"name\": \"name\"\n  },\n  \"key\": \"key\",\n  \"path\": \"Default Project\",\n  \"status\": \"live\",\n  \"type\": \"function\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -48,12 +48,6 @@ func registertoolsCommands(root *cobra.Command) {
 							FlagName:    "description",
 							Type:        "string",
 							Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
-						},
-						{
-							Name:        "discovery_variables",
-							FlagName:    "discovery-variables",
-							Type:        "string-map",
-							Description: "",
 						},
 						{
 							Name:        "display_name",
@@ -86,16 +80,10 @@ func registertoolsCommands(root *cobra.Command) {
 							Description: "Unique key of the tool as it will be displayed in the UI",
 						},
 						{
-							Name:        "mcp",
-							FlagName:    "mcp",
-							Type:        "json",
-							Description: "",
-						},
-						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "status",
@@ -118,7 +106,6 @@ func registertoolsCommands(root *cobra.Command) {
 								"function",
 								"json_schema",
 								"http",
-								"mcp",
 								"code",
 							},
 						},
@@ -157,12 +144,6 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
 				},
 				{
-					Name:        "discovery_variables",
-					FlagName:    "discovery-variables",
-					Type:        "string-map",
-					Description: "",
-				},
-				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
@@ -193,16 +174,10 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "Unique key of the tool as it will be displayed in the UI",
 				},
 				{
-					Name:        "mcp",
-					FlagName:    "mcp",
-					Type:        "json",
-					Description: "",
-				},
-				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "status",
@@ -225,7 +200,6 @@ func registertoolsCommands(root *cobra.Command) {
 						"function",
 						"json_schema",
 						"http",
-						"mcp",
 						"code",
 					},
 				},
@@ -316,7 +290,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List tools",
-			Long:    bartolocli.Markdown("Lists all workspace tools. By default, returns all tools in a single response. Set `limit` to enable cursor-based pagination with `starting_after` and `ending_before`."),
+			Long:    bartolocli.Markdown("List all workspace tools. By default returns all tools in one response. Set `limit` for cursor-based pagination."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -428,11 +402,11 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update tool-id",
 			Short:   "Update tool",
-			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string)\n- `discovery_variables` (object)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string)\n- ... and 6 more fields\n\nRequired fields: `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string)\n- `path` (string)\n- ... and 4 more fields\n\nRequired fields: `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default\",\n  \"status\": \"live\",\n  \"type\": \"function\",\n  \"versionIncrement\": \"major\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default Project\",\n  \"status\": \"live\",\n  \"type\": \"function\",\n  \"versionIncrement\": \"major\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -448,12 +422,6 @@ func registertoolsCommands(root *cobra.Command) {
 							FlagName:    "description",
 							Type:        "string",
 							Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
-						},
-						{
-							Name:        "discovery_variables",
-							FlagName:    "discovery-variables",
-							Type:        "string-map",
-							Description: "",
 						},
 						{
 							Name:        "display_name",
@@ -486,16 +454,10 @@ func registertoolsCommands(root *cobra.Command) {
 							Description: "Unique key of the tool as it will be displayed in the UI",
 						},
 						{
-							Name:        "mcp",
-							FlagName:    "mcp",
-							Type:        "json",
-							Description: "",
-						},
-						{
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "status",
@@ -518,7 +480,6 @@ func registertoolsCommands(root *cobra.Command) {
 								"function",
 								"json_schema",
 								"http",
-								"mcp",
 								"code",
 							},
 						},
@@ -574,12 +535,6 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "A description of the tool, used by the model to choose when and how to call the tool. We do recommend using the `description` field as accurate as possible to give enough context to the model to make the right decision.",
 				},
 				{
-					Name:        "discovery_variables",
-					FlagName:    "discovery-variables",
-					Type:        "string-map",
-					Description: "",
-				},
-				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
@@ -610,16 +565,10 @@ func registertoolsCommands(root *cobra.Command) {
 					Description: "Unique key of the tool as it will be displayed in the UI",
 				},
 				{
-					Name:        "mcp",
-					FlagName:    "mcp",
-					Type:        "json",
-					Description: "",
-				},
-				{
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "status",
@@ -642,7 +591,6 @@ func registertoolsCommands(root *cobra.Command) {
 						"function",
 						"json_schema",
 						"http",
-						"mcp",
 						"code",
 					},
 				},

@@ -28,7 +28,7 @@ func registercompletionsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create completion",
-			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (number | null)\n- `model` (string, required)\n- `n` (number | null)\n- ... and 14 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (integer | null)\n- `model` (string, required)\n- `n` (integer | null)\n- ... and 14 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -70,7 +70,7 @@ func registercompletionsCommands(root *cobra.Command) {
 						{
 							Name:        "max_tokens",
 							FlagName:    "max-tokens",
-							Type:        "float64-nullable",
+							Type:        "int64-nullable",
 							Description: "The maximum number of tokens that can be generated in the completion.",
 						},
 						{
@@ -82,7 +82,7 @@ func registercompletionsCommands(root *cobra.Command) {
 						{
 							Name:        "n",
 							FlagName:    "n",
-							Type:        "float64-nullable",
+							Type:        "int64-nullable",
 							Description: "How many completions to generate for each prompt. Note: Because this parameter generates many completions, it can quickly consume your token quota.",
 						},
 						{
@@ -124,7 +124,7 @@ func registercompletionsCommands(root *cobra.Command) {
 						{
 							Name:        "seed",
 							FlagName:    "seed",
-							Type:        "float64-nullable",
+							Type:        "int64-nullable",
 							Description: "If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result.",
 						},
 						{
@@ -224,7 +224,7 @@ func registercompletionsCommands(root *cobra.Command) {
 				{
 					Name:        "max_tokens",
 					FlagName:    "max-tokens",
-					Type:        "float64-nullable",
+					Type:        "int64-nullable",
 					Description: "The maximum number of tokens that can be generated in the completion.",
 				},
 				{
@@ -236,7 +236,7 @@ func registercompletionsCommands(root *cobra.Command) {
 				{
 					Name:        "n",
 					FlagName:    "n",
-					Type:        "float64-nullable",
+					Type:        "int64-nullable",
 					Description: "How many completions to generate for each prompt. Note: Because this parameter generates many completions, it can quickly consume your token quota.",
 				},
 				{
@@ -278,7 +278,7 @@ func registercompletionsCommands(root *cobra.Command) {
 				{
 					Name:        "seed",
 					FlagName:    "seed",
-					Type:        "float64-nullable",
+					Type:        "int64-nullable",
 					Description: "If specified, our system will make a best effort to sample deterministically, such that repeated requests with the same seed and parameters should return the same result.",
 				},
 				{

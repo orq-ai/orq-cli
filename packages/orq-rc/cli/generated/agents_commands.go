@@ -28,11 +28,11 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create agent",
-			Long:    bartolocli.Markdown("Creates a new agent with the specified configuration, including model selection, instructions, tools, and knowledge bases. Agents are intelligent assistants that can execute tasks, interact with tools, and maintain context through memory stores. The agent can be configured with a primary model and optional fallback models for automatic failover, custom instructions for behavior control, and various settings to control execution limits and tool usage.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 9 more fields\n\nRequired fields: `description`, `instructions`, `key`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create a new agent with the specified model, instructions, tools, and knowledge bases. Supports fallback models and configurable execution settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 9 more fields\n\nRequired fields: `description`, `instructions`, `key`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"model\": \"model\",\n  \"path\": \"Default\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"respect_tool\",\n    \"tools\": []\n  },\n  \"source\": \"internal\",\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"respect_tool\",\n    \"tools\": []\n  },\n  \"source\": \"internal\",\n  \"team_of_agents\": []\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -302,7 +302,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete agent-key",
 			Short:   "Delete agent",
-			Long:    bartolocli.Markdown("Permanently removes an agent from the workspace. This operation is irreversible and will delete all associated configuration including model assignments, tools, knowledge bases, memory stores, and cached data. Active agent sessions will be terminated, and the agent key will become available for reuse."),
+			Long:    bartolocli.Markdown("Permanently remove an agent and all associated configuration from the workspace. Terminate active sessions and the key becomes reusable."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -336,7 +336,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-response agent-key task-id",
 			Short:   "Get response",
-			Long:    bartolocli.Markdown("Retrieves the current state of an agent response by task ID. Returns the response output, model information, token usage, and execution status. When the agent is still processing, the output array will be empty and status will be `in_progress`. Once completed, the response includes the full output, usage statistics, and finish reason."),
+			Long:    bartolocli.Markdown("Retrieve an agent response by task ID, including output, model info, token usage, and execution status."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -372,7 +372,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke key",
 			Short:   "Execute an agent task",
-			Long:    bartolocli.Markdown("Invokes an agent to perform a task with the provided input message. The agent will process the request using its configured model and tools, maintaining context through memory stores if configured. Supports automatic model fallback on primary model failure, tool execution, knowledge base retrieval, and continuation of previous conversations. Returns a task response that can be used to track execution status and retrieve results.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Invoke an agent to perform a task with input messages. Supports tool execution, knowledge retrieval, memory context, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -552,7 +552,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List agents",
-			Long:    bartolocli.Markdown("Retrieves a comprehensive list of agents configured in your workspace. Supports pagination for large datasets and returns agents sorted by creation date (newest first). Each agent in the response includes its complete configuration: model settings with fallback options, instructions, tools, knowledge bases, memory stores, and execution parameters. Use pagination parameters to efficiently navigate through large collections of agents."),
+			Long:    bartolocli.Markdown("List all agents in the workspace with full configuration details. Supports pagination and sorts agents newest first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -591,7 +591,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve agent-key",
 			Short:   "Retrieve agent",
-			Long:    bartolocli.Markdown("Retrieves detailed information about a specific agent identified by its unique key or identifier. Returns the complete agent manifest including configuration settings, model assignments (primary and fallback), tools, knowledge bases, memory stores, instructions, and execution parameters. Use this endpoint to fetch the current state and configuration of an individual agent."),
+			Long:    bartolocli.Markdown("Retrieve the complete agent manifest by key, including model assignments, tools, knowledge bases, memory stores, and execution parameters."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -627,11 +627,11 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "run",
 			Short:   "Run an agent with configuration",
-			Long:    bartolocli.Markdown("Executes an agent using inline configuration or references an existing agent. Supports dynamic agent creation where the system automatically manages agent versioning - reusing existing agents with matching configurations or creating new versions when configurations differ. Ideal for programmatic agent execution with flexible configuration management. The agent processes messages in A2A format with support for memory context, tool execution, and automatic model fallback on failure.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Run an agent with inline configuration or existing agent reference. Supports A2A messages, memory context, tool execution, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -723,7 +723,7 @@ func registeragentsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "role",
@@ -876,7 +876,7 @@ func registeragentsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "role",
@@ -941,7 +941,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stream key",
 			Short:   "Stream agent execution in real-time",
-			Long:    bartolocli.Markdown("Executes an agent and streams the interaction in real-time using Server-Sent Events (SSE). Provides live updates as the agent processes the request, including message chunks, tool calls, and execution status. Perfect for building responsive chat interfaces and monitoring agent progress. The stream continues until the agent completes its task, encounters an error, or reaches the configured timeout (default 30 minutes, configurable 1-3600 seconds).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Stream an existing agent execution in real-time via SSE, providing live message chunks, tool calls, and status updates until completion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -1135,11 +1135,11 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stream-run",
 			Short:   "Run agent with streaming response",
-			Long:    bartolocli.Markdown("Dynamically configures and executes an agent while streaming the interaction in real-time via Server-Sent Events (SSE). Intelligently manages agent versioning by reusing existing agents with matching configurations or creating new versions when configurations differ. Combines the flexibility of inline configuration with real-time streaming, making it ideal for dynamic agent interactions with live feedback. The stream provides continuous updates including message chunks, tool executions, and status changes until completion or timeout.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Run an agent with streaming via SSE, combining inline configuration with real-time updates including messages, tool executions, and status.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -1231,7 +1231,7 @@ func registeragentsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "role",
@@ -1390,7 +1390,7 @@ func registeragentsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "role",
@@ -1461,11 +1461,11 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
 			Short:   "Update agent",
-			Long:    bartolocli.Markdown("Modifies an existing agent's configuration with partial updates. Supports updating any aspect of the agent including model assignments (primary and fallback), instructions, tools, knowledge bases, memory stores, and execution parameters. Only the fields provided in the request body will be updated; all other fields remain unchanged. Changes take effect immediately for new agent invocations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"path\": \"Default\",\n  \"versionIncrement\": \"major\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"path\": \"Default Project\",\n  \"versionIncrement\": \"major\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1533,7 +1533,7 @@ func registeragentsCommands(root *cobra.Command) {
 							Name:        "path",
 							FlagName:    "path",
 							Type:        "string",
-							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+							Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 						},
 						{
 							Name:        "project_id",
@@ -1679,7 +1679,7 @@ func registeragentsCommands(root *cobra.Command) {
 					Name:        "path",
 					FlagName:    "path",
 					Type:        "string",
-					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element identifies the project, followed by nested folders (auto-created as needed). Example: `Default/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
+					Description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project.",
 				},
 				{
 					Name:        "project_id",
