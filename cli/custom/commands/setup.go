@@ -851,12 +851,11 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 		userID = state.session.User.ID
 	}
 	expiresAt := time.Now().Add(gatewayKeyLifetime)
-	minted, keyID, _, err := client.CreateAPIKey(state.bearer, auth.APIKeyRequest{
-		Name:      keyName,
-		UserID:    userID,
-		Access:    auth.GatewayAccess(),
-		ExpiresAt: expiresAt,
-	})
+	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID))
+	if err != nil {
+		return "", false, err
+	}
+	minted, keyID, _, err := client.CreateAPIKey(state.bearer, req)
 	if err != nil {
 		return "", false, err
 	}

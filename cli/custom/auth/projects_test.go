@@ -12,7 +12,7 @@ import (
 // one unconditionally locks every non-admin member out of `orq setup`. When the
 // caller knows who is logged in, the key must be attributed to them.
 func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
-	body, scoped := createAPIKeyBody(APIKeyRequest{Name: "orq-cli laptop", UserID: "user_123"})
+	body, scoped := createAPIKeyBody(APIKeyRequest{name: "orq-cli laptop", userID: "user_123", access: GatewayAccess()})
 	if scoped {
 		t.Error("no project id given, key should not claim project scope")
 	}
@@ -26,7 +26,7 @@ func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
 
 	// No session, no user to attribute to: the service account is the only
 	// remaining option, and this path never mints anyway.
-	body, _ = createAPIKeyBody(APIKeyRequest{Name: "orq-cli laptop", UserID: "  "})
+	body, _ = createAPIKeyBody(APIKeyRequest{name: "orq-cli laptop", userID: "  ", access: GatewayAccess()})
 	if owner := body["owner"].(map[string]any); owner["type"] != "service_account" {
 		t.Errorf("owner without a user id = %v, want service_account", owner)
 	}
@@ -44,7 +44,7 @@ func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
 		{"019def44-a743-7000-a442-c0db96b06699", false},
 		{"", false},
 	} {
-		body, scoped := createAPIKeyBody(APIKeyRequest{Name: "k", ProjectID: tc.projectID, UserID: "user_1"})
+		body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: tc.projectID, userID: "user_1", access: GatewayAccess()})
 		if scoped != tc.wantScope {
 			t.Errorf("%q: scopedToProject = %v, want %v", tc.projectID, scoped, tc.wantScope)
 		}
@@ -63,7 +63,7 @@ func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
 // it must hold gateway verbs and nothing else. Under permission_mode "all" the
 // server resolves the whole catalog, including member, billing and sso.
 func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
-	body, _ := createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "user_1", Access: map[string]string{"chat_completions": "write", "model": "read"}})
+	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", userID: "user_1", access: map[string]string{"chat_completions": "write", "model": "read"}})
 	if body["permission_mode"] != "restricted" {
 		t.Errorf("permission_mode = %v, want restricted", body["permission_mode"])
 	}
@@ -75,14 +75,10 @@ func TestCreateAPIKeyBodyRestrictsWhenGivenAnAccessMap(t *testing.T) {
 		t.Errorf("access = %v, want lowercase levels per domain", access)
 	}
 
-	// No map means the caller could not read the catalog; the legacy shape is
-	// the deliberate fallback, and it must not carry an empty access map.
-	body, _ = createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "user_1"})
-	if body["permission_mode"] != "all" {
-		t.Errorf("permission_mode = %v, want all", body["permission_mode"])
-	}
-	if _, present := body["access"]; present {
-		t.Error("an all-permissions key must not carry an access map")
+	// source is the field the server acts on; permission_mode and access are
+	// sent for platform-api's proto service, which may answer instead.
+	if body["source"] != "router" {
+		t.Errorf("source = %v, want router, which is what restricts the key", body["source"])
 	}
 }
 
@@ -150,12 +146,12 @@ func TestKeyIDFromToken(t *testing.T) {
 	}
 }
 
-// A key with no expiry is one nobody ever revisits. Absent ExpiresAt still has
-// to mean "never expires", though, because that is the only safe shape when the
-// caller has no lifetime policy to apply.
+// A key with no expiry is one nobody ever revisits, so there is no longer a
+// request shape that omits one: NewAPIKeyRequest refuses a zero expiry, and the
+// body always carries the field.
 func TestCreateAPIKeyBodyCarriesExpiry(t *testing.T) {
 	at := time.Date(2026, 11, 19, 8, 30, 0, 0, time.FixedZone("CET", 3600))
-	body, _ := createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u", ExpiresAt: at})
+	body, _ := createAPIKeyBody(APIKeyRequest{name: "k", userID: "u", access: GatewayAccess(), expiresAt: at})
 	// "expiration": the live endpoint rejects the spec's "expires_at" outright
 	// with `unknown field`, which fails the whole mint.
 	if got := body["expiration"]; got != "2026-11-19T07:30:00Z" {
@@ -165,9 +161,42 @@ func TestCreateAPIKeyBodyCarriesExpiry(t *testing.T) {
 		t.Error("sent expires_at, which the live API rejects")
 	}
 
-	body, _ = createAPIKeyBody(APIKeyRequest{Name: "k", UserID: "u"})
-	if _, present := body["expiration"]; present {
-		t.Error("a zero ExpiresAt must not send an expiry")
+}
+
+// The reason the fields are unexported. As a plain struct, APIKeyRequest{Name:
+// "x"} asked for a workspace-wide, never-expiring, all-permissions key owned by
+// a service account — the widest key this API issues, from the shortest literal
+// anyone would write. The constructor makes the two dangerous omissions
+// unrepresentable rather than documented.
+func TestNewAPIKeyRequestRefusesTheDangerousOmissions(t *testing.T) {
+	at := time.Now().Add(time.Hour)
+	for name, tc := range map[string]struct {
+		keyName   string
+		access    map[string]string
+		expiresAt time.Time
+	}{
+		"no access map": {"k", nil, at},
+		"empty access":  {"k", map[string]string{}, at},
+		"no expiry":     {"k", GatewayAccess(), time.Time{}},
+		"no name":       {"  ", GatewayAccess(), at},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := NewAPIKeyRequest(tc.keyName, tc.access, tc.expiresAt); err == nil {
+				t.Error("accepted, so the permissive default is still one field away")
+			}
+		})
+	}
+
+	req, err := NewAPIKeyRequest("orq-cli gateway laptop", GatewayAccess(), at, WithUser("user_1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := createAPIKeyBody(req)
+	if body["source"] != "router" || body["permission_mode"] != "restricted" {
+		t.Errorf("a constructed request must still restrict: %v", body)
+	}
+	if owner := body["owner"].(map[string]any); owner["user_id"] != "user_1" {
+		t.Errorf("WithUser did not reach the body: %v", owner)
 	}
 }
 
@@ -188,7 +217,7 @@ func TestCreateAPIKeyReadsTheKeyIDFromEitherShape(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			defer srv.Close()
-			_, keyID, _, err := NewClient(srv.URL).CreateAPIKey("t", APIKeyRequest{Name: "k", UserID: "u"})
+			_, keyID, _, err := NewClient(srv.URL).CreateAPIKey("t", APIKeyRequest{name: "k", userID: "u", access: GatewayAccess(), expiresAt: time.Now().Add(time.Hour)})
 			if err != nil {
 				t.Fatal(err)
 			}

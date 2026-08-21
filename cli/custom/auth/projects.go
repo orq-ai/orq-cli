@@ -147,49 +147,83 @@ func GatewayAccess() map[string]string {
 // actually validates against (verified against /v2/api-keys, both owner types).
 func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject bool) {
 	scope := map[string]any{"mode": "all"}
-	if ProjectScopable(req.ProjectID) {
+	if ProjectScopable(req.projectID) {
 		scope = map[string]any{
 			"mode":       "single",
-			"project_id": strings.TrimPrefix(req.ProjectID, "proj_"),
+			"project_id": strings.TrimPrefix(req.projectID, "proj_"),
 		}
 		scopedToProject = true
 	}
 	owner := map[string]any{"type": "service_account"}
-	if id := strings.TrimSpace(req.UserID); id != "" {
+	if id := strings.TrimSpace(req.userID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
 	}
+	// source is what actually restricts the key. identity-api, which serves this
+	// route in production, never reads permission_mode or access — it discards
+	// both and applies the catalog's router preset when, and only when, source is
+	// "router". The two fields are still sent because platform-api's proto service
+	// does honour them, and either may answer.
 	out := map[string]any{
-		"name":            req.Name,
+		"name":            req.name,
 		"owner":           owner,
 		"project_scope":   scope,
-		"permission_mode": "all",
-	}
-	if len(req.Access) > 0 {
-		// source is what actually restricts the key. identity-api, which serves
-		// this route in production, never reads permission_mode or access — it
-		// discards both and applies the catalog's router preset when, and only
-		// when, source is "router". The two fields are still sent because
-		// platform-api's proto service does honour them, and either may answer.
-		out["source"] = "router"
-		out["permission_mode"] = "restricted"
-		out["access"] = req.Access
+		"source":          "router",
+		"permission_mode": "restricted",
+		"access":          req.access,
 	}
 	// "expiration", not "expires_at": the live endpoint is identity-api's strict
 	// decoder, which rejects the field name the committed spec documents.
-	if !req.ExpiresAt.IsZero() {
-		out["expiration"] = req.ExpiresAt.UTC().Format(time.RFC3339)
-	}
+	out["expiration"] = req.expiresAt.UTC().Format(time.RFC3339)
 	return out, scopedToProject
 }
 
-// APIKeyRequest is what a mint decides. Zero ExpiresAt means the key never
-// expires; an empty Access map means every permission in the catalog.
+// APIKeyRequest is what a mint decided. Construct it only through
+// NewAPIKeyRequest: the two fields carrying blast radius have no safe default,
+// and as a plain struct its zero value asked for a workspace-wide,
+// never-expiring, all-permissions key owned by a service account — the widest
+// key this API can issue, from the literal APIKeyRequest{Name: "x"}.
 type APIKeyRequest struct {
-	Name      string
-	ProjectID string
-	UserID    string
-	Access    map[string]string
-	ExpiresAt time.Time
+	name      string
+	projectID string
+	userID    string
+	access    map[string]string
+	expiresAt time.Time
+}
+
+// APIKeyOption sets a field that does have a safe default.
+type APIKeyOption func(*APIKeyRequest)
+
+// WithUser attributes the key to a person. Without it the API mints against a
+// service account, which only workspace admins may create; see createAPIKeyBody.
+func WithUser(id string) APIKeyOption { return func(r *APIKeyRequest) { r.userID = id } }
+
+// WithProject narrows the key to one project when the id is in the format this
+// endpoint accepts.
+func WithProject(id string) APIKeyOption { return func(r *APIKeyRequest) { r.projectID = id } }
+
+// NewAPIKeyRequest refuses an empty access map and a zero expiry rather than
+// reading either as "unrestricted" and "forever". Pass GatewayAccess() for the
+// only kind of key the CLI mints today.
+//
+// There is deliberately no way to ask for an unrestricted or permanent key. The
+// body always sends source: "router", which is what the server acts on, so an
+// unrestricted variant would need a different request shape rather than a
+// different argument. Add one when something needs it.
+func NewAPIKeyRequest(name string, access map[string]string, expiresAt time.Time, opts ...APIKeyOption) (APIKeyRequest, error) {
+	if strings.TrimSpace(name) == "" {
+		return APIKeyRequest{}, errors.New("api key request needs a name")
+	}
+	if len(access) == 0 {
+		return APIKeyRequest{}, errors.New("api key request needs an access map: auth.GatewayAccess()")
+	}
+	if expiresAt.IsZero() {
+		return APIKeyRequest{}, errors.New("api key request needs an expiry")
+	}
+	req := APIKeyRequest{name: name, access: access, expiresAt: expiresAt}
+	for _, opt := range opts {
+		opt(&req)
+	}
+	return req, nil
 }
 
 // CreateAPIKey mints a key and returns the raw token, which the API returns
