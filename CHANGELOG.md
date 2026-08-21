@@ -86,6 +86,11 @@ the version and this changelog as the source of truth for breaking changes.
   `ORQ_API_KEY` was being compared against the saved key as though the user had
   exported it. The credential lookup now lives in one place (`auth.SavedAgentKey`)
   that `launch`, `setup` and `doctor` share.
+- **Fixed:** `orq launch --mcp` warns again when your login predates MCP scopes.
+  The CLI injects the session's own workspace token into `ORQ_API_KEY`, and
+  `launch` was treating that as a key you had exported — which left it marked as
+  "not from a session", so the scope check could never fire and the MCP server
+  rejected the call instead with an unexplained `insufficient_scope`.
 - **Fixed:** `orq setup --api-key <key>` is no longer silently overridden. A
   previously minted `gateway_key` outranks `api_key`, so the supplied key was
   used for that run and then ignored by the next `orq connect`. Saving an

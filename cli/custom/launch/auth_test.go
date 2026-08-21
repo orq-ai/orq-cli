@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -145,4 +146,74 @@ func TestResolveCredentialsOrLogin(t *testing.T) {
 			t.Fatal("expected not-logged-in error")
 		}
 	})
+}
+
+// The gateway_key split made "no api_key configured" the ordinary state, so the
+// PreRun now injects the session's own workspace token into ORQ_API_KEY on
+// nearly every run. Treating that as a user-supplied key left FromSession false,
+// and SupportsMCP is `!FromSession || MCPScoped` — so the guard that warns about
+// a login predating MCP scopes could never fire again.
+func TestInjectedSessionTokenIsRecognisedAsTheSession(t *testing.T) {
+	const active = "acme"
+	// A JWT payload with no mcp:* scope — what a pre-scopes login produces.
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"scope":["openid"]}`))
+	stale := "header." + payload + ".sig"
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	writeSessionFile(t, home, map[string]any{
+		"version": 1, "activeWorkspaceKey": active,
+		"apiBaseUrl": "https://api.orq.ai", "v1BaseUrl": "https://api.orq.ai",
+		"authBaseUrl": "https://api.orq.ai", "profileBaseUrl": "https://api.orq.ai/me",
+		"refreshToken":    "rt",
+		"bootstrapToken":  map[string]any{"token": "bt", "expiresAt": future},
+		"workspaceTokens": map[string]any{active: map[string]any{"token": stale, "expiresAt": future}},
+	})
+
+	creds, err := ResolveCredentials(func(k string) string {
+		if k == "ORQ_API_KEY" {
+			return stale // as installSessionPreRun leaves it
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !creds.FromSession {
+		t.Error("our own injected session token was treated as a user-supplied key")
+	}
+	if creds.SupportsMCP() {
+		t.Error("a session with no mcp scope reported as MCP-capable; the warning cannot fire")
+	}
+
+	// A key the user really did export still counts as a real key.
+	creds, err = ResolveCredentials(func(k string) string {
+		if k == "ORQ_API_KEY" {
+			return "sk-orq-REAL"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.FromSession || !creds.SupportsMCP() {
+		t.Errorf("a real API key must skip the session MCP check: %+v", creds)
+	}
+}
+
+// writeSessionFile drops a session at the path auth.ReadSession looks in.
+func writeSessionFile(t *testing.T, home string, session map[string]any) {
+	t.Helper()
+	dir := filepath.Join(home, ".orq", "sessions")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "default.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

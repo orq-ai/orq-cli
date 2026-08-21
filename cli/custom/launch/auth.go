@@ -38,6 +38,17 @@ func (c *Credentials) SupportsMCP() bool {
 	return !c.FromSession || c.MCPScoped
 }
 
+// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
+// session's own cached workspace tokens rather than a key the user exported.
+func isSessionWorkspaceToken(key string, session *auth.Session) bool {
+	for _, tok := range session.WorkspaceTokens {
+		if strings.TrimSpace(tok.Token) == key {
+			return true
+		}
+	}
+	return false
+}
+
 // tokenHasMCPScope decodes the JWT payload (unverified — this is a local
 // capability hint, not authentication) and looks for an mcp:* scope entry.
 func tokenHasMCPScope(token string) bool {
@@ -99,7 +110,17 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		session, _ := auth.ReadSession()
-		return &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: shadowsSession(key, session)}, nil
+		creds := &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: shadowsSession(key, session)}
+		// installSessionPreRun injects the session's own workspace token into
+		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
+		// split made the ordinary state. Treating it as a user-supplied key left
+		// FromSession false, and SupportsMCP is `!FromSession || MCPScoped` — so
+		// the pre-MCP-scopes warning could never fire again.
+		if session != nil && isSessionWorkspaceToken(key, session) {
+			creds.FromSession = true
+			creds.MCPScoped = tokenHasMCPScope(key)
+		}
+		return creds, nil
 	}
 
 	session, err := auth.ReadSession()
