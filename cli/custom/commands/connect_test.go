@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -519,5 +520,71 @@ func ensureFormatter(t *testing.T) {
 	if bartolocli.Formatter == nil {
 		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+}
+
+// "agents" is orq's own entity — the platform Agents you build and invoke.
+// Using it for coding agents made `orq disconnect --json` read like a listing of
+// those. The payload also has to carry the surviving key, or a script sees a
+// clean removal where the terminal was told a live credential remains.
+func TestDisconnectPayloadNamesCodingAgentsAndTheRetainedKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeKimiProviderTOML(filepath.Join(home, ".kimi-code", "config.toml"),
+		"https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	credsHarness(t)
+	ensureFormatter(t)
+	if err := saveGatewayKeyProfile("sk-orq-SAVED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = prev })
+
+	// --json is a root flag; a subcommand run standalone has no TTY, so emit
+	// produces the structured payload anyway.
+	cmd := NewDisconnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+
+	var payload struct {
+		CodingAgents []struct {
+			Agent   string   `json:"agent"`
+			Removed []string `json:"removed"`
+		} `json:"coding_agents"`
+		Agents any `json:"agents"`
+		APIKey struct {
+			Retained bool   `json:"retained"`
+			KeyID    string `json:"key_id"`
+		} `json:"api_key"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &payload); err != nil {
+		t.Fatalf("payload is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Agents != nil {
+		t.Error("payload still uses 'agents', which is the orq Agents entity")
+	}
+	if len(payload.CodingAgents) != 1 || payload.CodingAgents[0].Agent != "kimi" {
+		t.Fatalf("coding_agents = %+v", payload.CodingAgents)
+	}
+	// A list, not "gateway+mcp": a caller should not have to split on a
+	// separator we invented.
+	if len(payload.CodingAgents[0].Removed) != 1 || payload.CodingAgents[0].Removed[0] != "gateway" {
+		t.Errorf("removed = %v, want a list of capability names", payload.CodingAgents[0].Removed)
+	}
+	if !payload.APIKey.Retained || payload.APIKey.KeyID != "01HZXW2K7Y8Q9M0N1P2R3S4T5V" {
+		t.Errorf("api_key = %+v, want the surviving key named", payload.APIKey)
 	}
 }

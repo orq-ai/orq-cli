@@ -83,6 +83,13 @@ the version and this changelog as the source of truth for breaking changes.
   so you were signed out while still authenticated everywhere. The file is
   emptied rather than deleted, because a profile carrying `. ~/.orq/env` would
   then error on every new shell. `--json` gains `env_files_cleared`.
+- **Changed:** `orq connect --json` and `orq disconnect --json` name their list
+  `coding_agents`, not `agents`. `agents` is orq's own entity — the Agents you
+  build and invoke — so the old key made the output read like a listing of
+  those. `disconnect`'s `removed` is now a list of capability names rather than
+  a `+`-joined string, and the payload carries an `api_key` object naming the
+  key that survived. Neither command has shipped, so nothing depends on the old
+  shape.
 - Added: `orq disconnect` now says that the API key survives — it removes the
   wiring, not the credential — and prints the `orq api-keys delete <id>` command
   that would revoke it. Removing the config used to read as "orq is off this

@@ -210,7 +210,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		return err
 	}
 	if !wantsHumanView(cmd) {
-		if err := emit(map[string]any{"agents": agentResults}); err != nil {
+		if err := emit(map[string]any{"coding_agents": agentResults}); err != nil {
 			return err
 		}
 	}
@@ -416,10 +416,12 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
+	// Removed is a list, not a joined string: "gateway+mcp" forced a caller to
+	// split on a separator we invented.
 	type row struct {
-		Agent   string `json:"agent"`
-		Removed string `json:"removed,omitempty"`
-		Error   string `json:"error,omitempty"`
+		Agent   string   `json:"agent"`
+		Removed []string `json:"removed,omitempty"`
+		Error   string   `json:"error,omitempty"`
 	}
 	var rows []row
 	failed := false
@@ -450,7 +452,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
 		}
-		r.Removed = strings.Join(removedFrom, "+")
+		r.Removed = removedFrom
 		rows = append(rows, r)
 	}
 
@@ -458,7 +460,17 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
-		if err := emit(map[string]any{"agents": rows}); err != nil {
+		payload := map[string]any{"coding_agents": rows}
+		// The terminal gets this as an advisory line; a script needs it too, or
+		// --json reads as a clean removal.
+		if saved, _ := savedAPIKey(); saved != "" {
+			retained := map[string]any{"retained": true}
+			if id := savedGatewayKeyID(); id != "" {
+				retained["key_id"] = id
+			}
+			payload["api_key"] = retained
+		}
+		if err := emit(payload); err != nil {
 			return err
 		}
 	}
