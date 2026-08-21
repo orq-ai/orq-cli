@@ -609,6 +609,12 @@ func gatewayKeyDueForRenewal(now time.Time) bool {
 }
 
 // clearAPIKeyProfile removes the stored keys; without it logout leaves a live key in credentials.json.
+//
+// Deliberately keeps gateway_key_id and gateway_key_expires_at. Neither can
+// authenticate anything — a key id is not a secret, it is on the dashboard —
+// and logout does not revoke the key server-side, so discarding them destroys
+// the only record of what is still out there. They are what lets logout print
+// the revoke command, and doctor keep counting down to the expiry.
 func clearAPIKeyProfile() (bool, error) {
 	profile := auth.ActiveProfile()
 	held := strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" ||
@@ -616,7 +622,7 @@ func clearAPIKeyProfile() (bool, error) {
 	if !held {
 		return false, nil
 	}
-	clearGatewayKeyFields(profile)
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
 	return true, writeAPIKeyProfile(profile, "", "")
 }
 

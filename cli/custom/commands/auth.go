@@ -108,6 +108,7 @@ func NewLogoutCommand() *cobra.Command {
 	var apiBase string
 	var yes bool
 	var force bool
+	var disconnect bool
 
 	cmd := &cobra.Command{
 		Use:   "logout",
@@ -125,6 +126,7 @@ func NewLogoutCommand() *cobra.Command {
 					return err
 				}
 				envCleared := clearShellEnvFile()
+				removed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
 					if keyCleared {
@@ -133,6 +135,7 @@ func NewLogoutCommand() *cobra.Command {
 						info("Not logged in - nothing to clear.")
 					}
 					reportClearedEnvFiles(envCleared)
+					reportSurvivingGatewayKey()
 					return nil
 				}
 				return emit(map[string]any{
@@ -140,6 +143,8 @@ func NewLogoutCommand() *cobra.Command {
 					"cleared":                 keyCleared,
 					"api_key_profile_cleared": keyCleared,
 					"env_files_cleared":       envCleared,
+					"coding_agents_removed":   removed,
+					"gateway_key_id":          savedGatewayKeyID(),
 					"session_file":            auth.SessionFilePath(),
 				})
 			}
@@ -199,6 +204,7 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 			envCleared := clearShellEnvFile()
+			removed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
@@ -212,6 +218,7 @@ func NewLogoutCommand() *cobra.Command {
 					Warn("local credentials cleared, but the server-side token was not revoked")
 				}
 				reportClearedEnvFiles(envCleared)
+				reportSurvivingGatewayKey()
 				return nil
 			}
 			return emit(map[string]any{
@@ -220,6 +227,8 @@ func NewLogoutCommand() *cobra.Command {
 				"revoked":                 revokeErr == nil,
 				"api_key_profile_cleared": keyCleared,
 				"env_files_cleared":       envCleared,
+				"coding_agents_removed":   removed,
+				"gateway_key_id":          savedGatewayKeyID(),
 				"session_file":            auth.SessionFilePath(),
 			})
 		},
@@ -227,7 +236,17 @@ func NewLogoutCommand() *cobra.Command {
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
+	cmd.Flags().BoolVar(&disconnect, "disconnect", false, "Also remove orq from this machine's coding agents, without asking")
 	return cmd
+}
+
+// reportSurvivingGatewayKey names the one thing logout cannot undo. The key is
+// still Active in the workspace until its own expiry, and the id is the only
+// handle for killing it, so saying nothing here strands a live credential.
+func reportSurvivingGatewayKey() {
+	if id := savedGatewayKeyID(); id != "" {
+		info("the gateway key is still active — revoke it with: orq api-keys delete %s", id)
+	}
 }
 
 func NewWhoAmICommand() *cobra.Command {

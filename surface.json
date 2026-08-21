@@ -1322,6 +1322,10 @@
           "type": "string"
         },
         {
+          "name": "disconnect",
+          "type": "bool"
+        },
+        {
           "name": "force",
           "type": "bool"
         },
@@ -4267,6 +4271,10 @@
         {
           "name": "api-base-url",
           "type": "string"
+        },
+        {
+          "name": "disconnect",
+          "type": "bool"
         },
         {
           "name": "force",

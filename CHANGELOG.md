@@ -73,6 +73,22 @@ the version and this changelog as the source of truth for breaking changes.
   `orq prompts list` and friends. Commands now use your login session, and only
   agent configs get the gateway key. Keys you bring yourself via
   `orq login`/`--api-key` still go to `api_key` and still take precedence.
+- **Added:** `orq auth logout` offers to remove orq from this machine's coding
+  agents. Logout clears the credentials but never touched the copies already
+  written into agent configs, and kimi's holds the key literally, so signing out
+  left a working credential in a file and only printed a line telling you to run
+  `orq disconnect` yourself. The offer defaults to **no**, is skipped without a
+  TTY, and is suppressed (not auto-accepted) by `--yes`. Pass `--disconnect` to
+  opt in from a script.
+- **Changed:** logout no longer discards `gateway_key_id` and
+  `gateway_key_expires_at`. Neither can authenticate anything, logout does not
+  revoke the key server-side, and throwing them away destroyed the only record
+  of the live key — so logout could not tell you what to revoke and `orq doctor`
+  could not keep counting down to its expiry. The credentials themselves
+  (`api_key`, `gateway_key`) are still cleared.
+- **Added:** logout now prints `the gateway key is still active — revoke it
+  with: orq api-keys delete <id>`, the line `orq disconnect` already showed. The
+  more destructive command was the silent one.
 - **Changed:** onboarding output is quieter. `orq setup` and `orq connect` no
   longer report the files they wrote (`credentials.json`, `~/.orq/env`, each
   agent's config path), the minted key's id, or the mechanics of which

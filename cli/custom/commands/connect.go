@@ -466,45 +466,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
-	// Removed is a list, not a joined string: joining forces a caller to split on
-	// a separator we invented.
-	type row struct {
-		Agent   string   `json:"agent"`
-		Removed []string `json:"removed,omitempty"`
-		Error   string   `json:"error,omitempty"`
-	}
-	var rows []row
-	failed := false
-	for _, id := range agents {
-		spec, ok := lookupAgent(id)
-		if !ok {
-			continue
-		}
-		r := row{Agent: id}
-		var removedFrom []string
-		remove := func(cap string, resolve func(bool) (string, error), remover func(string) (bool, error)) {
-			if resolve == nil || remover == nil {
-				return
-			}
-			for _, path := range bothScopePaths(resolve) {
-				removed, err := remover(path)
-				switch {
-				case err != nil:
-					rep.fail("%-8s %-9s %v", id, cap, err)
-					r.Error = err.Error()
-					failed = true
-				case removed:
-					rep.ok("%-8s %-9s removed from %s", id, cap, tilde(path))
-					removedFrom = append(removedFrom, cap)
-				}
-			}
-		}
-		if hasCap(caps, capGateway) {
-			remove(capGateway, spec.providerConfig, spec.removeProvider)
-		}
-		r.Removed = removedFrom
-		rows = append(rows, r)
-	}
+	rows, failed := removeWiring(rep, agents, caps)
 
 	reportBackups(rep, wired)
 	reportCredentialSurvives(rep)
@@ -549,6 +511,94 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	return out
+}
+
+// disconnectRow is one agent's removal outcome. Removed is a list, not a joined
+// string: joining forces a caller to split on a separator we invented.
+type disconnectRow struct {
+	Agent   string   `json:"agent"`
+	Removed []string `json:"removed,omitempty"`
+	Error   string   `json:"error,omitempty"`
+}
+
+// removeWiring is the removal itself, with no prompting, reporting of the
+// surviving credential, or payload emission around it. Split out so `orq auth
+// logout` can offer the same removal without inheriting disconnect's own
+// confirmation or its --json body.
+func removeWiring(rep *reporter, agents, caps []string) (rows []disconnectRow, failed bool) {
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			continue
+		}
+		r := disconnectRow{Agent: id}
+		var removedFrom []string
+		remove := func(cap string, resolve func(bool) (string, error), remover func(string) (bool, error)) {
+			if resolve == nil || remover == nil {
+				return
+			}
+			for _, path := range bothScopePaths(resolve) {
+				removed, err := remover(path)
+				switch {
+				case err != nil:
+					rep.fail("%-8s %-9s %v", id, cap, err)
+					r.Error = err.Error()
+					failed = true
+				case removed:
+					rep.ok("%-8s %-9s removed from %s", id, cap, tilde(path))
+					removedFrom = append(removedFrom, cap)
+				}
+			}
+		}
+		if hasCap(caps, capGateway) {
+			remove(capGateway, spec.providerConfig, spec.removeProvider)
+		}
+		r.Removed = removedFrom
+		rows = append(rows, r)
+	}
+	return rows, failed
+}
+
+// disconnectOnLogout offers to remove orq from the agents this machine wired.
+// Logout otherwise leaves kimi's config holding the key literally, and today
+// only prints a line telling the user to run disconnect themselves.
+//
+// Defaults to no, and is skipped without a TTY: signing out is routine, and
+// rewriting another program's config on the way past is not. Runs after the
+// credentials are cleared, which is safe because removal is pure filesystem.
+//
+// --yes suppresses the question rather than answering it. That flag means "do
+// not ask me about signing out"; taking it as consent to rewrite another
+// program's config would be a much larger yes than the one given, and asking
+// anyway would hang the scripts that pass it. --disconnect is how a script
+// opts in.
+func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
+	wired := detectedAgents()
+	caps := []string{capGateway}
+	targets := wiredTargets(wired, caps, opts)
+	if len(targets) == 0 {
+		return nil
+	}
+	rep := newReporter(false)
+	if !assumeYes {
+		if opts.noInput || opts.yes {
+			return nil
+		}
+		names := make([]string, 0, len(targets))
+		seen := map[string]bool{}
+		for _, t := range targets {
+			if !seen[t.agent] {
+				seen[t.agent] = true
+				names = append(names, t.agent)
+			}
+		}
+		if !opts.confirm(fmt.Sprintf("Also remove orq from your coding agents (%s)?", strings.Join(names, ", ")), false) {
+			return nil
+		}
+	}
+	rows, _ := removeWiring(rep, wired, caps)
+	reportBackups(rep, targets)
+	return rows
 }
 
 // reportCredentialSurvives corrects the mental model disconnect otherwise

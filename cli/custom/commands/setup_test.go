@@ -2248,13 +2248,21 @@ func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 			t.Fatalf("held=%v err=%v, want a cleared gateway key", held, err)
 		}
 		profile := bartolocli.GetProfile()
-		for _, field := range []string{"api_key", "gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+		for _, field := range []string{"api_key", "gateway_key"} {
 			if profile[field] != "" {
 				t.Errorf("%s survived logout: %q", field, profile[field])
 			}
 		}
 		if key, _ := savedAPIKey(); key != "" {
 			t.Errorf("savedAPIKey still returns %q after logout", key)
+		}
+		// The key outlives the session: logout does not revoke it server-side.
+		// The id and the expiry authenticate nothing, and they are the only
+		// record of what is still live, so they are kept on purpose.
+		for _, field := range []string{"gateway_key_id", "gateway_key_expires_at"} {
+			if profile[field] == "" {
+				t.Errorf("%s was discarded, leaving no handle to revoke the surviving key", field)
+			}
 		}
 	})
 

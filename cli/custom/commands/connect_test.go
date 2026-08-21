@@ -646,3 +646,70 @@ func TestNothingWiredIsScopedToTheAgentsNamed(t *testing.T) {
 		t.Errorf("named run: %q", got)
 	}
 }
+
+// Logout leaves kimi's config holding the key literally, and until now only
+// printed a line telling the user to run disconnect themselves. The offer is
+// default-no and skipped without a TTY: signing out is routine, rewriting
+// another program's config on the way past is not.
+func TestDisconnectOnLogoutNeedsConsent(t *testing.T) {
+	wire := func(t *testing.T) (home, path string) {
+		t.Helper()
+		home = t.TempDir()
+		t.Setenv("HOME", home)
+		t.Chdir(t.TempDir())
+		resetSetupMemos(t)
+		path = filepath.Join(home, ".kimi-code", "config.toml")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+			t.Fatal(err)
+		}
+		return home, path
+	}
+
+	t.Run("no TTY leaves the config alone", func(t *testing.T) {
+		_, path := wire(t)
+		if rows := disconnectOnLogout(&setupOptions{noInput: true}, false); rows != nil {
+			t.Errorf("removed without consent: %+v", rows)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("config removed in a non-interactive logout: %v", err)
+		}
+	})
+
+	t.Run("--disconnect removes without asking", func(t *testing.T) {
+		_, path := wire(t)
+		rows := disconnectOnLogout(&setupOptions{noInput: true}, true)
+		if len(rows) == 0 {
+			t.Fatal("--disconnect removed nothing")
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("config survived --disconnect: %v", err)
+		}
+	})
+
+	// --yes means "do not ask me about signing out". Reading it as consent to
+	// rewrite another program's config would be a far larger yes than the one
+	// given; asking anyway hung every script that passes it.
+	t.Run("--yes suppresses the question rather than answering it", func(t *testing.T) {
+		_, path := wire(t)
+		if rows := disconnectOnLogout(&setupOptions{yes: true}, false); rows != nil {
+			t.Errorf("--yes was taken as consent to remove: %+v", rows)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("config removed under --yes: %v", err)
+		}
+	})
+
+	t.Run("nothing wired asks nothing", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Chdir(t.TempDir())
+		resetSetupMemos(t)
+		// noInput false and no TTY in tests: reaching the prompt at all would hang
+		// or return the default, so a nil here proves the wired check ran first.
+		if rows := disconnectOnLogout(&setupOptions{}, false); rows != nil {
+			t.Errorf("offered a removal with nothing wired: %+v", rows)
+		}
+	})
+}
