@@ -3,7 +3,6 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -467,8 +466,6 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	}
 
 	rows, failed := removeWiring(rep, agents, caps)
-
-	reportBackups(rep, wired)
 	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
@@ -597,7 +594,6 @@ func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
 		}
 	}
 	rows, _ := removeWiring(rep, wired, caps)
-	reportBackups(rep, targets)
 	return rows
 }
 
@@ -612,26 +608,6 @@ func reportCredentialSurvives(rep *reporter) {
 	rep.info("the API key is untouched — still valid, and still saved for the next 'orq connect'")
 	if id := savedGatewayKeyID(); id != "" {
 		rep.info("  to revoke it as well: orq api-keys delete %s", id)
-	}
-}
-
-// reportBackups names the copies writeJSONConfig took, once. A safety net the
-// user cannot see is not one.
-func reportBackups(rep *reporter, wired []wiredTarget) {
-	seen := map[string]bool{}
-	var backups []string
-	for _, w := range wired {
-		backup := w.path + ".orq-bak"
-		if seen[backup] {
-			continue
-		}
-		seen[backup] = true
-		if _, err := os.Stat(backup); err == nil {
-			backups = append(backups, tilde(backup))
-		}
-	}
-	if len(backups) > 0 {
-		rep.info("a copy from before orq first wrote is at: %s", strings.Join(backups, ", "))
 	}
 }
 
