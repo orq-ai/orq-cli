@@ -42,6 +42,62 @@ jobs:
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
 
+  installer:
+    name: install.sh runs under dash
+    # ubuntu-latest: dash is preinstalled there; the macOS release runner has none.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: parse under dash
+        run: dash -n install.sh
+      - name: install with no controlling terminal
+        # setsid = no controlling terminal (the CI/Docker/ssh case), which fails only at runtime.
+        # A full install, not --help: --help returns before the first have_tty call.
+        # SHELL makes the PATH branch resolve a profile; HOME keeps the runner's own dotfiles out of it.
+        run: |
+          export HOME="$RUNNER_TEMP/installer-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh \
+            --no-setup --install-dir "$HOME/orq" < /dev/null
+          test -x "$HOME/orq/orq"
+      - name: upgrade over an existing install
+        # The first job installs into a fresh dir, so `previous` stays empty and
+        # the whole upgrade/rollback block never runs. This one exercises it.
+        run: |
+          export HOME="$RUNNER_TEMP/upgrade-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh --no-setup --install-dir "$HOME/orq" < /dev/null
+          SHELL=/bin/bash setsid dash install.sh --no-setup --install-dir "$HOME/orq" < /dev/null
+          test -x "$HOME/orq/orq"
+          test ! -e "$HOME/orq/orq.previous"   # cleaned up once the new binary proved it runs
+      - name: a failed download leaves the existing install alone
+        # Fails at the download, before the upgrade block, so this covers the
+        # early-exit path only. The rollback block itself (probe fails, previous
+        # restored) still has no CI fixture — it needs a release that downloads
+        # and does not run.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/rollback-home"
+          mkdir -p "$HOME/orq"
+          printf '#!/bin/sh\necho "orq version 0.0.0-sentinel"\n' > "$HOME/orq/orq"
+          chmod +x "$HOME/orq/orq"
+          if SHELL=/bin/bash setsid dash install.sh --no-setup \
+               --install-dir "$HOME/orq" --version v0.0.0-does-not-exist < /dev/null; then
+            echo "installer exited 0 on a release that does not exist" >&2
+            exit 1
+          fi
+          "$HOME/orq/orq" --version | grep -q 0.0.0-sentinel
+      - name: reject non-ASCII in output
+        # Covers only the static --help text; an ungated glyph in the install flow itself would still pass.
+        run: |
+          set -eu
+          out=$(LC_ALL=C LANG=C dash install.sh --help)
+          if printf '%s' "$out" | LC_ALL=C grep -qP '[^\x00-\x7F]'; then
+            echo "--help emits non-ASCII under a C locale:" >&2
+            printf '%s' "$out" | LC_ALL=C grep -nP '[^\x00-\x7F]' >&2
+            exit 1
+          fi
+
   rc:
     name: build, vet (orq-rc module)
     runs-on: ubuntu-latest

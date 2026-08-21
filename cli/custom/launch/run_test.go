@@ -24,29 +24,13 @@ func TestRunDryRun(t *testing.T) {
 	}
 }
 
-// Sandbox dry-run must be side-effect free: no docker required at all
-// (this test env may not have a daemon), no image build, no container.
-func TestRunSandboxDryRun(t *testing.T) {
-	t.Setenv("ORQ_API_KEY", "test-key")
-	t.Setenv("ORQ_LAUNCH_NON_INTERACTIVE", "1")
-	t.Setenv("PATH", "") // any docker invocation would fail loudly
-
-	for _, name := range []string{"claude", "opencode", "kimi", "pi"} {
-		def := FindAgent(name)
-		code, err := Run(def, []string{"--sandbox", "--dry-run", "--no-fetch-models"})
-		if err != nil || code != 0 {
-			t.Fatalf("%s sandbox dry-run: code=%d err=%v", name, code, err)
-		}
-	}
-}
-
 func TestCompletionFlags(t *testing.T) {
 	def := FindAgent("opencode") // has AllowModels + a prompt mapping
 	if got := CompletionFlags(def, "exec"); got != nil {
 		t.Fatalf("non-flag input must complete nothing: %v", got)
 	}
 	got := CompletionFlags(def, "--mo")
-	want := []string{"--model", "--mount-cwd", "--models"}
+	want := []string{"--model", "--models"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}

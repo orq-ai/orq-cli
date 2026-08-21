@@ -7,7 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
 )
 
@@ -224,4 +226,41 @@ func ClearSession() error {
 		return err
 	}
 	return nil
+}
+
+// SavedAgentKey returns the credential agent configs are wired with, and the
+// workspace it was minted for. gateway_key is what `orq setup` writes now;
+// api_key is the fallback for keys minted before the split and for keys the
+// user brought themselves.
+//
+// It lives here rather than in commands because launch needs it too, and
+// launch cannot import commands. Three copies of this lookup drifted apart
+// once already: the split moved the key and one caller kept reading api_key,
+// which made every `orq launch` warn about a workspace mismatch that was not
+// there.
+func SavedAgentKey() (key, workspace string) {
+	if bartolocli.Creds == nil {
+		return "", ""
+	}
+	profile := bartolocli.GetProfile()
+	workspace = strings.TrimSpace(profile["workspace"])
+	if key = strings.TrimSpace(profile["gateway_key"]); key != "" {
+		return key, workspace
+	}
+	return strings.TrimSpace(profile["api_key"]), workspace
+}
+
+// EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts
+// with the login": a key we did not mint has an unknowable workspace and
+// always conflicts; the minted key conflicts only on a recorded mismatch.
+// Either side unknown means no mismatch, so an unrecorded workspace never
+// invalidates a working credential.
+func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
+	if envKey == "" || activeWS == "" {
+		return false
+	}
+	if envKey != savedKey {
+		return true
+	}
+	return savedWS != "" && savedWS != activeWS
 }

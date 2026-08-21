@@ -8,10 +8,21 @@ import (
 	"testing"
 )
 
-func TestMCPURLDefaultAndOverrides(t *testing.T) {
+func TestMCPIsOptIn(t *testing.T) {
 	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{}}
+	if mcpURL(ctx) != "" {
+		t.Fatalf("MCP wired without --mcp: %s", mcpURL(ctx))
+	}
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("skills loaded without MCP; the plugins assume the MCP tools exist")
+	}
+
+	ctx.Flags.MCP = true
 	if mcpURL(ctx) != DefaultMCPURL {
-		t.Fatalf("default: %s", mcpURL(ctx))
+		t.Fatalf("--mcp: %s", mcpURL(ctx))
+	}
+	if skillsPluginURL(ctx) != DefaultSkillsPluginURL {
+		t.Fatal("--mcp should bring skills with it")
 	}
 
 	ctx.Getenv = env(map[string]string{"ORQ_MCP_URL": "https://custom.example/mcp"})
@@ -19,14 +30,14 @@ func TestMCPURLDefaultAndOverrides(t *testing.T) {
 		t.Fatal("env override ignored")
 	}
 
-	ctx.Flags.NoMCP = true
-	if mcpURL(ctx) != "" {
-		t.Fatal("--no-mcp should disable")
+	ctx.Flags.NoSkills = true
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("--no-skills should still opt out under --mcp")
 	}
 }
 
 func TestClaudeMCPWiring(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{MCP: true}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,32 +70,35 @@ func TestClaudeMCPWiring(t *testing.T) {
 	}
 }
 
-func TestClaudeNoMCP(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{NoMCP: true, NoSkills: true}))
+func TestClaudeBareLaunchWiresNothing(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.PreArgs) != 0 || plan.Cleanup != nil {
-		t.Fatalf("opt-outs should skip all wiring: %v", plan.PreArgs)
+		t.Fatalf("bare launch should skip MCP and skills wiring: %v", plan.PreArgs)
 	}
 }
 
 func TestClaudeSkillsOverride(t *testing.T) {
 	plan, err := resolveClaude(&AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(map[string]string{"ORQ_SKILLS_URL": "https://example.com/custom.zip"}),
-		Flags:  GatewayFlags{NoMCP: true},
+		Flags:  GatewayFlags{MCP: true, NoSkills: false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.PreArgs) != 2 || plan.PreArgs[1] != "https://example.com/custom.zip" {
+	if len(plan.PreArgs) != 4 || plan.PreArgs[3] != "https://example.com/custom.zip" {
 		t.Fatalf("skills url override: %v", plan.PreArgs)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
 	}
 }
 
 func TestCodexMCPArgs(t *testing.T) {
-	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{}, okProbe))
+	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{MCP: true}, okProbe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,9 +140,9 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 func TestKimiMCPFile(t *testing.T) {
 	def := kimiAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
-		Flags:  GatewayFlags{},
+		Flags:  GatewayFlags{MCP: true},
 		Fetch:  func(_, _ string) ([]ModelInfo, error) { return kimiInfos, nil },
 	})
 	if err != nil {

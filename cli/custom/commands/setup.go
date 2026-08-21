@@ -8,11 +8,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/launch"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -21,33 +21,33 @@ import (
 )
 
 const (
+	// A key living in cleartext in another program's config is the highest-risk
+	// class PCI DSS 8.6.2 describes; 8.6.3 wants rotation at least annually and
+	// sooner by risk. Renewal starts early enough that the replacement is wired
+	// before the old key lapses.
+	gatewayKeyLifetime    = 90 * 24 * time.Hour
+	gatewayKeyRenewWindow = 30 * 24 * time.Hour
+
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
-	setupSteps        = 5
+	setupSteps        = 3
 )
 
 type setupOptions struct {
 	interactive bool
-	project     string
 	workspace   string
 	apiKey      string
 	agents      []string
-	global      bool
-	noAgent     bool
-	noMCP       bool
-	noEnv       bool
+	noGateway   bool
 	noInput     bool
 	yes         bool
+	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
+	persistKey bool
 }
 
-// confirm asks a yes/no question, honouring the two ways a user can answer it
-// up front. clig.dev: "Confirm before doing anything dangerous … prompt for the
-// user to type y or yes if running interactively", and "if --no-input is
-// passed, don't prompt or do anything interactive".
-//
-// --yes takes the affirmative without asking; --no-input (or no TTY) declines
-// to guess and takes the default, because a prompt that cannot be shown must
-// not block a script.
+// --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
+// A prompt that was drawn and then failed (Ctrl-C, closed terminal) is a decline, never the default: at a true-default
+// prompt the default is "yes", and taking an abort as consent mints keys and edits shell profiles the user backed out of.
 func (o *setupOptions) confirm(message string, def bool) bool {
 	if o.yes {
 		return true
@@ -57,17 +57,42 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 	}
 	answer := def
 	if err := survey.AskOne(&survey.Confirm{Message: message, Default: def}, &answer, promptStdio()); err != nil {
-		return def
+		return false
 	}
 	return answer
 }
 
+// setupComplete is the run's verdict, and drives both the final screen and the
+// setup_complete field. verified is one narrow fact — the API answered — so on
+// its own it printed a green "Setup complete" directly above an agent that
+// failed to wire, and told a CI job keying on the field that the run succeeded.
+//
+// Skipped counts with Error: an agent the run declined to wire is one the user
+// asked for and did not get, so claiming completion above it is the same lie in
+// a quieter voice. A run that never reached the agent step is a different thing
+// and stays complete: --no-input stops after the key and reports no agents at
+// all, having promised none.
+func setupComplete(verified bool, agents []agentResult) bool {
+	if !verified {
+		return false
+	}
+	for _, a := range agents {
+		if a.Error != "" || a.Skipped != "" {
+			return false
+		}
+	}
+	return true
+}
+
 type agentResult struct {
 	Agent      string `json:"agent"`
-	MCP        string `json:"mcp,omitempty"`
 	Provider   string `json:"provider,omitempty"`
 	ModelCount int    `json:"model_count,omitempty"`
 	Error      string `json:"error,omitempty"`
+	// Skipped is the wire that was never attempted, as opposed to Error's wire
+	// that was attempted and failed. Set only when nothing on disk wires the
+	// agent afterwards: an earlier run's provider block surviving is not a skip.
+	Skipped string `json:"skipped,omitempty"`
 }
 
 func NewSetupCommand() *cobra.Command {
@@ -75,10 +100,9 @@ func NewSetupCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Authenticate, pick a project, and wire up your coding agent",
-		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, selects or creates a ` +
-			`project, creates a project-scoped API key, and registers the orq.ai MCP server ` +
-			`with your coding agent.
+		Short: "Authenticate and wire up your coding agents",
+		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
+			`workspace API key, and wires your coding agents to route model calls through the orq AI Gateway.
 
 Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
 			`flagged with ` + "`--no-input`" + ` for CI.
@@ -90,47 +114,42 @@ deliberately not the order ` + "`orq launch`" + ` uses: launch prefers an explic
 ` + "`ORQ_API_KEY`" + ` over the session, because it configures one throwaway process. Setup
 writes persistent configuration, so the workspace you picked in ` + "`orq auth login`" + `
 wins over a key left exported in your shell.`),
-		// A failure here is a runtime problem, not a usage problem; dumping the
-		// flag list on top of the error just buries it.
+		// A failure here is a runtime problem, not a usage problem.
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.persistKey = true
 			return runSetup(cmd, &opts)
 		},
 	}
 
 	f := cmd.Flags()
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
-	f.StringVar(&opts.project, "project", "", "Project name to select or create")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
-	f.StringSliceVar(&opts.agents, "agent", nil, "Coding agent to instrument (repeatable): "+strings.Join(agentIDs(), ", "))
-	f.BoolVar(&opts.global, "global", false, "Write agent config to the home directory instead of this project")
-	f.BoolVar(&opts.noAgent, "no-agent", false, "Skip coding-agent instrumentation")
-	f.BoolVar(&opts.noMCP, "no-mcp", false, "Do not register the orq MCP server in agent configs")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
-	f.BoolVar(&opts.noEnv, "no-env", false, "Do not write ORQ_API_KEY to ./.env")
 	return cmd
 }
 
-func runSetup(cmd *cobra.Command, opts *setupOptions) error {
-	// --no-input and --workspace are global flags (see registerGlobalFlags), so
-	// they are read from viper rather than re-declared here. Declaring local
-	// copies would shadow the globals and split each one in two: the flag would
-	// set ours while ORQ_NO_INPUT / ORQ_WORKSPACE set theirs.
+// applyGlobalFlags folds the viper-bound global flags (--no-input, --workspace)
+// into opts once for every entry point, and forces --no-input without a TTY so
+// an interactive prompt can never block a pipeline.
+func applyGlobalFlags(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
 	}
-	// No TTY means no prompts, whatever the flags say.
 	if !hasInteractiveTTY() {
 		opts.noInput = true
 	}
 	if opts.noInput {
 		opts.interactive = false
 	}
-	// A home-directory run (typically the installer chaining into setup) must
-	// not scatter project files into $HOME.
-	if !opts.global && !looksLikeProject() {
-		opts.global = true
+	return nil
+}
+
+func runSetup(cmd *cobra.Command, opts *setupOptions) error {
+	// --no-input and --workspace are global flags (registerGlobalFlags), read from viper in applyGlobalFlags.
+	if err := applyGlobalFlags(opts); err != nil {
+		return err
 	}
 
 	rep := newReporter(opts.noInput)
@@ -148,80 +167,52 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	client := auth.NewClient(authState.apiBase)
 
-	// --- Step 2: project -----------------------------------------------------
-	rep.step(2, setupSteps, "Project")
-	project, created, err := resolveProject(rep, client, authState, opts)
-	if err != nil {
-		return err
-	}
-	result["project"] = map[string]any{
-		"id":      project.ProjectID,
-		"name":    project.Name,
-		"created": created,
-	}
-	if authState.session != nil {
-		authState.session.ActiveProjectID = project.ProjectID
-		authState.session.ActiveProjectName = project.Name
-		if err := auth.SaveSession(authState.session); err != nil {
-			rep.warn("could not persist the project selection: %v", err)
-		}
-	}
+	// No project step: keys are workspace-scoped, and the key API takes a different id format than /v2/projects returns.
 
-	// --- Step 3: API key -----------------------------------------------------
-	rep.step(3, setupSteps, "API key")
-	keyInfo, mintedToken, err := resolveAPIKey(rep, client, authState, opts, project)
+	// --- Step 2: API key -----------------------------------------------------
+	rep.step(2, setupSteps, "API key")
+	keyInfo, mintedToken, err := resolveAPIKey(rep, client, authState, opts)
 	if err != nil {
 		return err
 	}
 	result["api_key"] = keyInfo
-	// Verify with the credential the agents will actually use, not the session
-	// token that happened to authenticate this run.
+	// Verify with the credential the agents will use, not this run's session token.
 	if mintedToken != "" {
-		authState.bearer = mintedToken
+		authState.useDurableKey(mintedToken)
 	}
 
-	// --- Step 4: providers ---------------------------------------------------
-	// The gateway routes to whatever the workspace has connected (BYOK). With
-	// nothing connected there are no models, and every step after this one
-	// degrades into a confusing "no models" instead of "connect a provider".
-	rep.step(4, setupSteps, "Providers")
-	result["models_enabled"] = resolveProviders(rep, client, authState, opts)
+	rep.step(3, setupSteps, "Coding agents")
+	agentResults, err := setupConnectStep(rep, client, authState, opts)
+	if err != nil {
+		return err
+	}
+	result["coding_agents"] = agentResults
+	if n, counted := authState.enabledModels, authState.enabledModelsCounted; counted {
+		result["models_enabled"] = n
+	}
 
-	// --- Step 5: coding agents ----------------------------------------------
-	rep.step(5, setupSteps, "Coding agent")
-	agentResults := instrumentAgents(rep, client, authState, opts)
-	result["agents"] = agentResults
+	// Reachability only: a model call would spend the user's credits and write a trace into their workspace.
+	rep.blank()
 
-	// --- Verify --------------------------------------------------------------
-	rep.note("")
-	rep.note("Verifying…")
 	verified := verifySetup(rep, client, authState)
 	result["verified"] = verified
-	// A failed gateway call is reported but does not fail setup: everything else
-	// (MCP, API key) still works without a connected provider.
-	result["gateway_verified"] = verifyGateway(rep, client, authState)
 
 	links := buildLinks(authState)
 	if len(links) > 0 {
 		result["links"] = links
 	}
-	result["setup_complete"] = verified
+	complete := setupComplete(verified, agentResults)
+	result["setup_complete"] = complete
 
-	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), verified, opts)
+	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), complete, opts)
 
-	// Same human/machine split as login and whoami: a person at a terminal
-	// gets the final screen only — dumping the structured payload after it
-	// buries the summary they just read. Scripts (non-TTY) and --json/-o
-	// still get the payload.
 	if !wantsHumanView(cmd) {
 		if err := emit(result); err != nil {
 			return err
 		}
 	}
-	for _, a := range agentResults {
-		if a.Error != "" {
-			return errAgentFailed
-		}
+	if !complete && verified {
+		return errAgentFailed
 	}
 	if !verified {
 		return errors.New("setup finished but the verification call failed")
@@ -230,17 +221,6 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 }
 
 var errAgentFailed = errors.New("one or more coding agents could not be configured")
-
-// looksLikeProject reports whether the working directory is somewhere it makes
-// sense to drop .mcp.json, .env and .agents/.
-func looksLikeProject() bool {
-	for _, marker := range []string{".git", "package.json", "pyproject.toml", "go.mod", "Cargo.toml"} {
-		if _, err := os.Stat(marker); err == nil {
-			return true
-		}
-	}
-	return false
-}
 
 // ============================================================================
 // Step 1 — authentication
@@ -251,18 +231,49 @@ type authState struct {
 	session *auth.Session
 	// bearer authenticates the API calls setup makes on the user's behalf.
 	bearer string
-	// suppliedKey is set when the user brought their own key, in which case we
-	// never mint one.
+	// suppliedKey is set when the user brought their own key; we never mint then.
 	suppliedKey string
+	// durableKey is set whenever an API key becomes the bearer — minted this run or reused from a previous one.
+	durableKey           bool
+	enabledModels        int
+	enabledModelsCounted bool
+}
+
+// useDurableKey makes an API key the bearer. Durability and the bearer move
+// together: a second assignment site that sets one without the other is how a
+// valid key ends up reported as "no durable API key".
+func (s *authState) useDurableKey(key string) {
+	s.bearer = key
+	s.durableKey = true
+}
+
+// durableBearer reports whether bearer is an API key rather than the session's
+// expiring access token. Only a key may be wired into agent configs: kimi
+// embeds the literal value, and a session token 401s within the hour.
+func (s *authState) durableBearer() bool {
+	// A bearer must exist before it can be durable: session == nil is a proxy for
+	// "an API key is the bearer", and on its own it makes the zero value report a
+	// credential it does not have, writing api_key = "" into every agent config.
+	if s.bearer == "" {
+		return false
+	}
+	return s.suppliedKey != "" || s.durableKey || s.session == nil
 }
 
 func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authState, error) {
-	// An explicit key wins over everything.
+	// An explicit key wins; it carries no provenance, so it is saved with no workspace.
+	// persistKey is false on connect: saving there replaces a credential the user
+	// did not ask to replace, and blanks its recorded workspace, which disables
+	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if err := saveAPIKeyProfile(key); err != nil {
-			return nil, err
+		if opts.persistKey {
+			if err := saveAPIKeyProfile(key, ""); err != nil {
+				return nil, err
+			}
+			rep.ok("using the key you passed")
+		} else {
+			rep.ok("api key from --api-key (not saved)")
 		}
-		rep.ok("api key (profile: %s)", auth.ActiveProfile())
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
 	}
 
@@ -271,28 +282,24 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return nil, err
 	}
 
-	// An environment key is usable as-is; do not persist or replace it. Name
-	// the real source: bartolo auto-loads ./.env at startup, so "unset it" is
-	// wrong (and provably followed-then-failed) advice when the key comes from
-	// a file that re-injects it on every run.
-	if envKey := strings.TrimSpace(os.Getenv("ORQ_API_KEY")); envKey != "" && session == nil {
+	// Bartolo auto-loads ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
+	if envKey := UserEnvAPIKey(); envKey != "" && session == nil {
 		if file, v := dotEnvAPIKey(); file != "" && v == envKey {
-			rep.ok("api key from ./%s", file)
-			rep.note("orq loads ./%s automatically — remove its ORQ_API_KEY line to sign in instead; unsetting the shell variable is not enough.", file)
+			// Naming the file is the action: unsetting the shell variable will not help.
+			rep.ok("using the API key from ./%s", file)
 		} else {
-			rep.ok("api key from ORQ_API_KEY")
-			rep.note("credential order: login session → ORQ_API_KEY (env). No session found, so the environment key is used.")
+			rep.ok("using the API key from ORQ_API_KEY")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: envKey, suppliedKey: envKey}, nil
 	}
 
-	if session != nil && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != "" {
-		// Deliberately the opposite of `orq launch`, which lets an explicit
-		// ORQ_API_KEY win. Setup persists what it resolves, and it is the
-		// command a user runs right after choosing a workspace in `orq auth
-		// login`; letting a stale exported key silently overwrite that choice
-		// wires the agent to the wrong workspace and leaves it that way.
-		rep.note("credential order: login session → ORQ_API_KEY (env). Using your login session; ORQ_API_KEY is ignored here (orq launch prefers it).")
+	if session != nil {
+		envKey := UserEnvAPIKey()
+		savedKey, savedWS := savedAPIKey()
+		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
+			// Which one won is the fact; why lives in 'orq doctor'.
+			rep.note("following your login, not the exported ORQ_API_KEY")
+		}
 	}
 
 	if session == nil {
@@ -303,16 +310,15 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		email := "current user"
-		if session.User != nil && session.User.Email != "" {
-			email = session.User.Email
-		}
-		rep.ok("already signed in as %s  (use 'orq auth logout' to switch)", email)
+
+	}
+	signedInAs := "current user"
+	if session.User != nil && session.User.Email != "" {
+		signedInAs = session.User.Email
 	}
 
 	client := auth.NewClient(session.APIBaseURL)
-	session, err = resolveWorkspace(rep, client, session, opts)
+	session, err = resolveWorkspace(rep, client, session, opts, signedInAs)
 	if err != nil {
 		return nil, err
 	}
@@ -342,8 +348,7 @@ func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.
 	return result.Session, nil
 }
 
-// deviceLoginResult carries the session plus the activation details a machine
-// consumer may need to relay (auth login emits them in its JSON payload).
+// deviceLoginResult carries the session plus the activation details auth login emits in JSON.
 type deviceLoginResult struct {
 	Session         *auth.Session
 	VerificationURI string
@@ -351,12 +356,9 @@ type deviceLoginResult struct {
 	BrowserOpened   bool
 }
 
-// runDeviceLogin is the one device-login flow behind `orq auth login`,
-// `orq setup`, and launch's inline login offer. Success reporting is left to
-// the callers — each has its own idea of what "signed in" looks like.
+// runDeviceLogin is the shared device-login flow; callers report success their own way.
 func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace string, openBrowser bool) (*deviceLoginResult, error) {
-	// Context-aware so Ctrl-C during the approval poll cancels instead of
-	// waiting out the device-code expiry.
+	// Context-aware so Ctrl-C cancels the poll instead of waiting out the device-code expiry.
 	client := auth.NewClient(apiBase).WithContext(ctx)
 	start, err := client.StartDeviceLogin("orq-cli")
 	if err != nil {
@@ -399,7 +401,7 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}, nil
 }
 
-func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions) (*auth.Session, error) {
+func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session, opts *setupOptions, signedInAs string) (*auth.Session, error) {
 	key := opts.workspace
 	if key == "" && session.ActiveWorkspaceKey != nil {
 		key = *session.ActiveWorkspaceKey
@@ -418,27 +420,27 @@ func resolveWorkspace(rep *reporter, client *auth.Client, session *auth.Session,
 	if err != nil {
 		return nil, err
 	}
-	rep.ok("workspace %s", key)
+	if signedInAs != "" {
+		rep.ok("%s · workspace %s", signedInAs, key)
+	} else {
+		rep.ok("workspace %s", key)
+	}
 	return updated, nil
 }
 
-// shellSetup describes how to give the user's shell the key: which file to
-// source, which profile to source it from, and how that profile is worded.
+// displayLine shortens the env file to ~ so the printed command stays paste-able; the written file keeps the absolute path.
+func (s shellSetup) displayLine() string {
+	return strings.Replace(s.Line, s.EnvFile, tilde(s.EnvFile), 1)
+}
+
+// shellSetup describes how to give the user's shell the key.
 type shellSetup struct {
 	EnvFile string // file orq writes, holding the export
 	Profile string // user's profile file, "" when the shell is unrecognised
 	Line    string // line to add to that profile
 }
 
-// detectShell resolves the above from $SHELL, mirroring install.sh's
-// profile_for_shell so the installer and the CLI agree on where things go.
-//
-// zsh differs from install.sh on purpose: that only needs PATH, which
-// interactive shells set up, so .zshrc is enough. A key read by an agent the
-// user may start from a launcher, an IDE or a login shell has to be in
-// .zshenv — zsh reads .zshrc only for interactive shells.
-//
-// fish gets its own file because it cannot parse `export VAR=value`.
+// Mirrors install.sh's profile_for_shell, except zsh: agents may start from non-interactive shells, which read .zshenv but not .zshrc. fish cannot parse 'export VAR=value'.
 func detectShell(dir string) shellSetup {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -466,23 +468,25 @@ func detectShell(dir string) shellSetup {
 	case "sh", "dash", "ksh":
 		posix.Profile = filepath.Join(home, ".profile")
 	}
-	// Set regardless of whether the shell was recognised: an unknown shell
-	// still needs something to run, it just has no profile file to name.
+	// Set even for an unrecognised shell: there is still a line to run, just no profile to name.
 	posix.Line = ". " + posix.EnvFile
 	return posix
 }
 
-// writeShellEnvFile writes a sourceable snippet exporting ORQ_API_KEY next to
-// credentials.json, in the syntax of the user's shell, and returns its path.
-//
-// Agent configs reference the key by env var rather than inlining it — kimi's
-// own guidance is that an mcp.json is "a plain config file on disk", so http
-// servers should use bearerTokenEnvVar. That only works if something actually
-// puts the key in the environment, which nothing did: agents came up with an
-// empty bearer token and every MCP call failed to authenticate.
-//
-// A file the user sources beats printing the key on screen (it stays out of
-// scrollback and shell history) and beats editing their shell profile for them.
+func fileMissing(path string) bool {
+	_, err := os.Stat(path)
+	return err != nil
+}
+
+func tilde(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || !strings.HasPrefix(path, home+string(os.PathSeparator)) {
+		return path
+	}
+	return "~" + path[len(home):]
+}
+
+// Agent configs reference ORQ_API_KEY rather than inlining it, and nothing else exported it: agents came up with an empty bearer.
 func writeShellEnvFile(token string) (string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
@@ -507,10 +511,6 @@ func writeShellEnvFile(token string) (string, error) {
 	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
 }
 
-// offerProfileSourceLine asks the user whether setup may add the source line
-// for the env file to their shell profile, so agents launched from any future
-// shell see ORQ_API_KEY without manual steps. Editing a profile is the user's
-// call: it only happens on an explicit yes, and never under --no-input.
 func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 	if opts.noInput {
 		return
@@ -522,7 +522,7 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 	if profileSourcesEnvFile(sh) {
 		return
 	}
-	if !opts.confirm(fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.Line, sh.Profile), true) {
+	if !opts.confirm(fmt.Sprintf("Add '%s' to %s so agents always see ORQ_API_KEY?", sh.displayLine(), tilde(sh.Profile)), true) {
 		return
 	}
 	f, err := os.OpenFile(sh.Profile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
@@ -535,14 +535,10 @@ func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
 		rep.warn("could not update %s: %v", sh.Profile, err)
 		return
 	}
-	rep.ok("updated     %s  → sources %s", sh.Profile, sh.EnvFile)
-	rep.note("• takes effect in new shells; run '%s' for this one", sh.Line)
+	rep.ok("updated     %s — new shells only; run '%s' here", tilde(sh.Profile), sh.displayLine())
 }
 
-// profileSourcesEnvFile reports whether the profile already references the env
-// file, however the user phrased it — re-appending would stack duplicates.
-// Matching on the home-relative suffix also catches "$HOME/.orq/env" and
-// "~/.orq/env" spellings, which an absolute-path comparison missed.
+// Matches the home-relative suffix so "$HOME/.orq/env" and "~/.orq/env" count too; re-appending stacks duplicates.
 func profileSourcesEnvFile(sh shellSetup) bool {
 	data, err := os.ReadFile(sh.Profile)
 	if err != nil {
@@ -555,36 +551,100 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 	return strings.Contains(string(data), needle)
 }
 
-// saveAPIKeyProfile mirrors bartolo's own saveAuthProfile, then tightens the
-// permissions: viper writes 0644 and this file holds a live credential.
-func saveAPIKeyProfile(key string) error {
-	return writeAPIKeyProfile(auth.ActiveProfile(), key)
+// Mirrors bartolo's saveAuthProfile, then chmods: viper writes 0644 and this file holds a live credential.
+//
+// Clears the gateway triple: savedAPIKey prefers gateway_key, so leaving a
+// previously minted key in place meant a key the user passed with --api-key was
+// silently ignored by the next command that wired an agent.
+func saveAPIKeyProfile(key, workspace string) error {
+	profile := auth.ActiveProfile()
+	clearGatewayKeyFields(profile)
+	return writeAPIKeyProfile(profile, key, workspace)
 }
 
-// clearAPIKeyProfile removes the stored key so logout actually logs the user
-// out. Without this the session file goes but credentials.json keeps a live
-// key, and every generated command stays authenticated.
+func clearGatewayKeyFields(profile string) {
+	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+		bartolocli.Creds.Set("profiles."+profile+"."+field, "")
+	}
+}
+
+// saveGatewayKeyProfile stores the minted key under its own field. Writing it as
+// api_key would make apiKeyConfigured true, and every generated command would
+// then authenticate with a gateway-scoped credential instead of the session.
+//
+// Clears api_key for the mirror reason saveAPIKeyProfile clears the gateway
+// triple. Versions before the split wrote the minted key to api_key with a
+// workspace beside it, so an upgraded machine that switches workspace mints a
+// new key while the old one survives — and api_key is the profile field
+// apiKeyConfigured accepts, so every command would keep authenticating with a
+// stale key for the workspace the user just left.
+func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
+	profile := auth.ActiveProfile()
+	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", keyID)
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
+	return writeGatewayKeyProfile(profile, key, workspace)
+}
+
+// gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry is
+// recorded — a key minted before expiry existed, or one the user brought — and
+// callers must treat that as "unknown", never as "expired".
+func gatewayKeyExpiry() (time.Time, bool) {
+	raw := strings.TrimSpace(bartolocli.GetProfile()["gateway_key_expires_at"])
+	if raw == "" {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// gatewayKeyDueForRenewal reports whether the saved key is close enough to
+// expiry to replace now, so an agent never meets the 401 itself.
+func gatewayKeyDueForRenewal(now time.Time) bool {
+	at, ok := gatewayKeyExpiry()
+	return ok && at.Sub(now) < gatewayKeyRenewWindow
+}
+
+// clearAPIKeyProfile removes the stored keys; without it logout leaves a live key in credentials.json.
+//
+// Deliberately keeps gateway_key_id and gateway_key_expires_at. Neither can
+// authenticate anything — a key id is not a secret, it is on the dashboard —
+// and logout does not revoke the key server-side, so discarding them destroys
+// the only record of what is still out there. They are what lets logout print
+// the revoke command, and doctor keep counting down to the expiry.
 func clearAPIKeyProfile() (bool, error) {
 	profile := auth.ActiveProfile()
-	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
+	held := strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" ||
+		strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".gateway_key")) != ""
+	if !held {
 		return false, nil
 	}
-	return true, writeAPIKeyProfile(profile, "")
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
+	return true, writeAPIKeyProfile(profile, "", "")
 }
 
-// BartoloAuthType returns the profile "type" that bartolo can resolve back to
-// an auth handler.
-//
-// The generated client registers its bearer handler anonymously
-// (apikey.InitBearer -> cli.UseAuth("", handler)), and resolveAuthHandler looks
-// a profile's type up verbatim, falling back to the sole handler only when the
-// type is empty. Writing a descriptive "apikey" therefore produced a profile no
-// handler could serve, and every generated command — orq agents list, orq
-// deployments, all of them — failed with "no authentication handler
-// configured".
-//
-// The name is read back from the registry rather than hardcoded so that a
-// future bartolo registering its handler under a real type name keeps working.
+func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
+
+func savedGatewayKeyID() string {
+	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
+}
+
+func activeWorkspaceKey(session *auth.Session) string {
+	if session != nil && session.ActiveWorkspaceKey != nil {
+		return strings.TrimSpace(*session.ActiveWorkspaceKey)
+	}
+	return ""
+}
+
+// Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
+func keyWorkspaceMismatch(savedWS, active string) bool {
+	return savedWS != "" && active != "" && savedWS != active
+}
+
+// bartolo's resolveAuthHandler looks a profile type up verbatim and falls back to the sole handler only when empty, so a descriptive type breaks every generated command; the name is read back from the registry.
 func BartoloAuthType() string {
 	if _, ok := bartolocli.AuthHandlers["apikey"]; ok {
 		return "apikey"
@@ -597,9 +657,19 @@ func BartoloAuthType() string {
 	return ""
 }
 
-func writeAPIKeyProfile(profile, key string) error {
-	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
+func writeAPIKeyProfile(profile, key, workspace string) error {
 	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
+	return writeCredsProfile(profile, workspace)
+}
+
+func writeGatewayKeyProfile(profile, key, workspace string) error {
+	bartolocli.Creds.Set("profiles."+profile+".gateway_key", key)
+	return writeCredsProfile(profile, workspace)
+}
+
+func writeCredsProfile(profile, workspace string) error {
+	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
+	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
 	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
 	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
 		return err
@@ -607,17 +677,43 @@ func writeAPIKeyProfile(profile, key string) error {
 	return os.Chmod(filename, 0o600)
 }
 
-// storedAPIKeyProfile reports whether credentials.json holds a key for the
-// active profile. Callers must not log the key itself.
-func storedAPIKeyProfile() bool {
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles."+auth.ActiveProfile()+".api_key")) != ""
+// clearShellEnvFile removes the exported key from the file `orq setup` wrote,
+// leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
+// and deleting the target would make every new shell report a missing file.
+// Both spellings are cleared — a user who changed shells since setup has the
+// other one still sitting there.
+func clearShellEnvFile() []string {
+	dir := viper.GetString("config-directory")
+	if dir == "" {
+		return nil
+	}
+	var cleared []string
+	for _, name := range []string{"env", "env.fish"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
+			continue
+		}
+		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
+		if os.WriteFile(path, []byte(body), 0o600) == nil {
+			cleared = append(cleared, path)
+		}
+	}
+	return cleared
 }
 
-// dotEnvAPIKey returns the first local dotenv file that sets ORQ_API_KEY and
-// the value it carries, or "" when none does. Bartolo loads these files into
-// the environment at startup (before any command runs), so a key here outlives
-// both `unset ORQ_API_KEY` and `orq auth logout` — the parsing mirrors
-// bartolo's loadDotEnvFile so the answer matches what actually got loaded.
+// storedAPIKeyProfile reports whether the active profile holds a key that
+// authenticates commands, so it reads the one profile field apiKeyConfigured
+// accepts. Doctor asks about the environment separately, hence no env check here.
+// Counting gateway_key here made doctor answer "authenticated: credentials.json"
+// for a key no command authenticates with, on the one screen whose job is to
+// explain why nothing works. Callers must not log the value.
+func storedAPIKeyProfile() bool {
+	prefix := "profiles." + auth.ActiveProfile()
+	return strings.TrimSpace(bartolocli.Creds.GetString(prefix+".api_key")) != ""
+}
+
+// Bartolo loads these files before any command runs, so a key here outlives 'unset' and logout; the parsing mirrors its loadDotEnvFile.
 func dotEnvAPIKey() (file, value string) {
 	for _, name := range []string{".env", ".env.local"} {
 		data, err := os.ReadFile(name)
@@ -638,11 +734,7 @@ func dotEnvAPIKey() (file, value string) {
 			if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
 				v = v[1 : len(v)-1]
 			}
-			// A placeholder line (ORQ_API_KEY=) carries no credential: bartolo
-			// loads the empty value, which authenticates nothing and does not
-			// block a later file from supplying the real key. Reporting it
-			// would warn about a key that does not exist and hide the file
-			// that actually holds one.
+			// A placeholder (ORQ_API_KEY=) is no credential and must not hide a later file that holds one.
 			if v == "" {
 				continue
 			}
@@ -652,31 +744,25 @@ func dotEnvAPIKey() (file, value string) {
 	return "", ""
 }
 
-// warnLingeringAPIKeys points out credentials logout cannot clear: a dotenv
-// file the CLI auto-loads on every run, or a key exported by the shell.
-// Without this the user sees "signed out" while the very next command silently
-// authenticates again.
+// warnLingeringAPIKeys names the credentials logout cannot clear, or the next command silently authenticates again.
 func warnLingeringAPIKeys() {
 	file, v := dotEnvAPIKey()
 	if file != "" {
 		Warn("./%s still sets ORQ_API_KEY and orq loads it automatically — remove that line to fully sign out", file)
 	}
-	// The two sources are independent: a shell export survives removing the
-	// .env line (bartolo's loader skips vars the shell already set), so an
-	// early return here would hide the export behind the file warning.
-	//
-	// explicitAPIKey guards against crying wolf on the session token our own
-	// PreRun injects into ORQ_API_KEY; it is snapshotted before the injection.
-	// The value comparison keeps a dotenv-loaded key from also reading as a
-	// shell export — when the shell exports the very value the file carries,
-	// the sources are indistinguishable and the file warning has to do.
+	// Independent sources: explicitAPIKey is snapshotted before our PreRun injects a token, and an export matching the dotenv value is indistinguishable from it.
 	if explicitAPIKey && envAPIKeySet() && (file == "" || v != strings.TrimSpace(os.Getenv("ORQ_API_KEY"))) {
 		Warn("ORQ_API_KEY is still exported in this shell — logout cannot unset it; run: unset ORQ_API_KEY")
 	}
+	for _, spec := range agentRegistry() {
+		if _, prov := wiredPath(spec.providerConfig, spec.providerPresent); prov {
+			Warn("coding agents keep their orq config after logout — 'orq disconnect' removes it")
+			return
+		}
+	}
 }
 
-// envAPIKeySet reports whether an API key is present in the environment. Never
-// report which value — only that one is set.
+// envAPIKeySet reports only that a key is set, never which value.
 func envAPIKeySet() bool {
 	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
 		if strings.TrimSpace(os.Getenv(name)) != "" {
@@ -687,167 +773,100 @@ func envAPIKeySet() bool {
 }
 
 // ============================================================================
-// Step 2 — project
+// Step 2 — API key
 // ============================================================================
 
-func resolveProject(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (*auth.Project, bool, error) {
-	projects, err := client.ListProjects(state.bearer)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if name := strings.TrimSpace(opts.project); name != "" {
-		for i := range projects {
-			if strings.EqualFold(projects[i].Name, name) {
-				rep.ok("project %s (%s)", projects[i].Name, projects[i].ProjectID)
-				return &projects[i], false, nil
-			}
-		}
-		created, err := client.CreateProject(state.bearer, name, "")
-		if err != nil {
-			return nil, false, err
-		}
-		rep.ok("created project %s (%s)", created.Name, created.ProjectID)
-		return created, true, nil
-	}
-
-	// Reuse the session's project unless the user asked to be prompted.
-	if state.session != nil && state.session.ActiveProjectID != "" && !opts.interactive {
-		for i := range projects {
-			if projects[i].ProjectID == state.session.ActiveProjectID {
-				rep.ok("project %s  (from session; --project to change)", projects[i].Name)
-				return &projects[i], false, nil
-			}
-		}
-	}
-
-	if opts.noInput {
-		return nil, false, errors.New("--no-input given but no project selected\n  Pass --project <name>, or run 'orq setup' interactively")
-	}
-	return promptForProject(rep, client, state, projects)
-}
-
-const createProjectOption = "+ Create a new project…"
-
-func promptForProject(rep *reporter, client *auth.Client, state *authState, projects []auth.Project) (*auth.Project, bool, error) {
-	options := make([]string, 0, len(projects)+1)
-	options = append(options, createProjectOption)
-	for _, p := range projects {
-		if p.IsArchived {
-			continue
-		}
-		options = append(options, p.Name)
-	}
-
-	var chosen string
-	if err := survey.AskOne(&survey.Select{
-		Message: "Select a project",
-		Options: options,
-	}, &chosen); err != nil {
-		return nil, false, err
-	}
-
-	if chosen != createProjectOption {
-		for i := range projects {
-			if projects[i].Name == chosen {
-				rep.ok("project %s (%s)", projects[i].Name, projects[i].ProjectID)
-				return &projects[i], false, nil
-			}
-		}
-		return nil, false, errors.New("no project selected")
-	}
-
-	var name string
-	if err := survey.AskOne(&survey.Input{Message: "Project name"}, &name,
-		survey.WithValidator(survey.Required)); err != nil {
-		return nil, false, err
-	}
-	var description string
-	if err := survey.AskOne(&survey.Input{Message: "Description (optional)"}, &description); err != nil {
-		return nil, false, err
-	}
-	created, err := client.CreateProject(state.bearer, strings.TrimSpace(name), strings.TrimSpace(description))
-	if err != nil {
-		return nil, false, err
-	}
-	rep.ok("created project %s (%s)", created.Name, created.ProjectID)
-	return created, true, nil
-}
-
-// ============================================================================
-// Step 3 — API key
-// ============================================================================
-
-// resolveAPIKey returns the summary for the emitted payload and, when it minted
-// one, the raw token so the caller can verify with it.
-func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, project *auth.Project) (map[string]any, string, error) {
+// resolveAPIKey returns the payload summary and, when it minted one, the raw token.
+func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, error) {
 	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
 
 	if state.suppliedKey != "" {
-		rep.ok("key already configured (profile: %s) — skipping key creation", auth.ActiveProfile())
+		rep.ok("using the API key you passed")
 		return info, "", nil
 	}
 
-	if opts.interactive && !opts.confirm("Create a project-scoped API key now?", true) {
+	token, created, err := ensureDurableKey(rep, client, state, opts)
+	if err != nil {
+		return nil, "", err
+	}
+	info["created"] = created
+	if token == "" {
+		return info, "", nil
+	}
+	if _, err := writeShellEnvFile(token); err != nil {
+		// Not fatal: the key is saved, and the final screen still shows how to export it.
+		rep.warn("could not write the shell env file: %v", err)
+	} else {
+		// The prompt is the point; naming the file we wrote is not.
+		offerProfileSourceLine(rep, opts)
+	}
+
+	return info, token, nil
+}
+
+// ensureDurableKey reuses the saved workspace key or mints and persists a new
+// one. Reuse is workspace-scoped: keys are minted per workspace, and minting
+// per run orphaned every copy of the old one. An interactive setup may decline
+// the mint, which returns an empty token.
+func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (token string, created bool, err error) {
+	token, tokenWS := savedAPIKey()
+	active := activeWorkspaceKey(state.session)
+	switch {
+	case token == "":
+		// nothing saved — fall through to mint
+	case keyWorkspaceMismatch(tokenWS, active):
+		rep.note("creating a key for workspace %s", active)
+		token = ""
+	case gatewayKeyDueForRenewal(time.Now()):
+		// The superseded key is left alive until its own expiry: that overlap is
+		// what keeps an agent config working until this run rewrites it.
+		rep.note("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
+		token = ""
+	default:
+		rep.ok("using your saved key")
+	}
+	if token != "" {
+		return token, false, nil
+	}
+	if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
 		rep.ok("skipped creating an API key")
-		return info, "", nil
+		return "", false, nil
 	}
 
-	// Plain ASCII and no punctuation beyond spaces and hyphens: the name is
-	// echoed back by the dashboard and we do not know its validation rules.
+	// Plain ASCII: the dashboard echoes the name back and we do not know its validation rules.
 	hostname, _ := os.Hostname()
 	hostname = strings.TrimSuffix(hostname, ".local")
 	if hostname == "" {
 		hostname = "unknown-host"
 	}
-	keyName := sanitizeKeyName(fmt.Sprintf("orq-cli %s %s", hostname, project.Name))
+	// Purpose before hostname: the dashboard lists every restricted key as
+	// "Restricted" without saying restricted to what, and sanitizeKeyName
+	// truncates from the right, so a trailing purpose is what a long corporate
+	// hostname would eat.
+	keyName := sanitizeKeyName("orq-cli " + capGateway + " " + hostname)
 
-	token, scopedToProject, err := client.CreateAPIKey(state.bearer, keyName, project.ProjectID)
+	// Without a user id the API mints against a service account, which only admins may create.
+	userID := ""
+	if state.session != nil && state.session.User != nil {
+		userID = state.session.User.ID
+	}
+	expiresAt := time.Now().Add(gatewayKeyLifetime)
+	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID))
 	if err != nil {
-		return nil, "", err
+		return "", false, err
 	}
-	// The raw token is returned once. Persist before doing anything else so a
-	// later failure cannot leave a live key with no local record of it.
-	if err := saveAPIKeyProfile(token); err != nil {
-		return nil, "", fmt.Errorf("created a key but could not save it: %w", err)
+	minted, keyID, _, err := client.CreateAPIKey(state.bearer, req)
+	if err != nil {
+		return "", false, err
 	}
-	info["created"] = true
-	info["project_scoped"] = scopedToProject
-	if scopedToProject {
-		rep.ok("created key  %s  (scoped to %s)", maskToken(token), project.Name)
-	} else {
-		// Do not let a broader-than-requested credential pass silently.
-		rep.ok("created key  %s", maskToken(token))
-		rep.warn("this key covers the whole workspace, not just %s", project.Name)
-		rep.note("  the API cannot scope a key to this project yet — see 'orq doctor'")
+	// The API returns the raw token and its id once: persist before anything else can fail.
+	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active); err != nil {
+		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
 	}
-	rep.ok("saved       %s", filepath.Join(viper.GetString("config-directory"), "credentials.json"))
-	if path, err := writeShellEnvFile(token); err != nil {
-		// Not fatal: the key is already saved, and the final screen still tells
-		// the user how to export it.
-		rep.warn("could not write the shell env file: %v", err)
-	} else {
-		rep.ok("saved       %s  → source it to export ORQ_API_KEY", path)
-		offerProfileSourceLine(rep, opts)
-	}
-
-	if opts.noEnv || opts.global {
-		return info, token, nil
-	}
-	if opts.interactive && !opts.confirm("Write ORQ_API_KEY to ./.env?", true) {
-		return info, token, nil
-	}
-	if err := appendEnvKey(rep, token); err != nil {
-		rep.warn("could not write ./.env: %v", err)
-		return info, token, nil
-	}
-	info["env_file"] = "./.env"
-	return info, token, nil
+	rep.ok("gateway key created — expires in %d days", int(gatewayKeyLifetime.Hours()/24))
+	return minted, true, nil
 }
 
-// sanitizeKeyName keeps letters, digits, spaces and hyphens, collapses runs of
-// whitespace, and caps the length. Project names are user-supplied and can
-// contain anything.
 func sanitizeKeyName(name string) string {
 	var b strings.Builder
 	lastSpace := false
@@ -880,159 +899,73 @@ func maskToken(token string) string {
 	return token[:12] + "…"
 }
 
-// appendEnvKey adds ORQ_API_KEY to ./.env, leaving an existing entry alone, and
-// warns when the file is not ignored by git.
-func appendEnvKey(rep *reporter, token string) error {
-	const envFile = ".env"
-	existing, err := os.ReadFile(envFile)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for _, line := range strings.Split(string(existing), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "ORQ_API_KEY=") {
-			continue
-		}
-		rep.ok("./.env already sets ORQ_API_KEY — left as is")
-		// The key there may be one we minted on an earlier run and have since
-		// replaced; anything reading .env would then authenticate with a dead
-		// credential. We do not overwrite it — it may equally be the user's own.
-		if strings.TrimSpace(line) != "ORQ_API_KEY="+token {
-			rep.warn("  it differs from the key just created — update it by hand if agents get 401s")
-		}
-		return nil
-	}
-	prefix := ""
-	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-		prefix = "\n"
-	}
-	f, err := os.OpenFile(envFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.WriteString(prefix + "ORQ_API_KEY=" + token + "\n"); err != nil {
-		return err
-	}
-	rep.ok("wrote       ./.env  → ORQ_API_KEY")
-	// The write has a side effect worth stating: orq itself auto-loads ./.env,
-	// and that key takes precedence over a login session in this directory.
-	rep.note("• orq loads ./.env automatically — commands run here authenticate with this key, even after 'orq auth logout'")
-	if envIsGitIgnored() {
-		rep.note("• .env is covered by .gitignore")
-	} else {
-		rep.warn("./.env is NOT covered by .gitignore — do not commit it")
-	}
-	return nil
-}
-
-func envIsGitIgnored() bool {
-	data, err := os.ReadFile(".gitignore")
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		switch strings.TrimSpace(line) {
-		case ".env", "/.env", "*.env", ".env*":
-			return true
-		}
-	}
-	return false
-}
-
 // ============================================================================
-// Step 4 — providers
+// Gateway readiness helpers
 // ============================================================================
 
-// modelsSettingsPath is where a workspace connects providers (BYOK).
-const modelsSettingsPath = "/settings/models"
+const (
+	modelsPath    = "/router/models"
+	providersPath = "/router/providers"
+	creditsPath   = "/admin/credits"
+	// gatewayIntroPath needs no workspace key, so it doubles as the keyless answer.
+	gatewayIntroPath = "/docs/ai-gateway/get-started/introduction"
+)
 
-// resolveProviders reports how many models the gateway can route to, and walks
-// the user through connecting a provider when the answer is none. Connecting is
-// a browser flow (provider secrets never touch the CLI), so all this can do is
-// detect, deep-link, and re-check.
-func resolveProviders(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) int {
-	count, providers, err := listEnabledModels(client, state)
-	if err != nil {
-		rep.warn("could not list gateway models: %v", err)
-		return 0
+// sessionWorkspaceToken returns a workspace-scoped session token, preferring the one already in memory.
+func sessionWorkspaceToken(client *auth.Client, state *authState) string {
+	// Without this, an --api-key run would refresh whatever session is on disk and read the wrong workspace.
+	if state == nil || state.session == nil {
+		return ""
 	}
+	if token := storedWorkspaceToken(state.session); token != "" {
+		return token
+	}
+	// A refresh persists a new session: fine mid-setup, wrong from doctor, so it lives at the call site.
+	active, err := client.GetActiveWorkspaceAccessToken()
+	if err != nil || active == nil {
+		return ""
+	}
+	return active.AccessToken
+}
+
+// storedWorkspaceToken returns a session's unexpired workspace token. No network, no refresh, no writes.
+func storedWorkspaceToken(session *auth.Session) string {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	tok, ok := session.WorkspaceTokens[*session.ActiveWorkspaceKey]
+	if !ok || tok.Token == "" || isTokenExpired(tok.ExpiresAt) {
+		return ""
+	}
+	return tok.Token
+}
+
+// Warn rather than note: notes are suppressed under --no-input.
+func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions, count int) {
 	if count > 0 {
-		reportProviders(rep, count, providers)
-		return count
+		// The per-agent line already carries the count; saying it twice is noise.
+		return
 	}
+	models := workspaceLink(state, modelsPath)
+	rep.warn("no models enabled for this workspace")
+	if models != "" {
+		rep.warn("    Enable models   %s", models)
+	}
+	rep.warn("    How it works    %s", docsURL+gatewayIntroPath)
 
-	// The link goes in the warning, not a note: notes are suppressed in quiet
-	// mode, which would leave a --no-input user with a problem and no next step.
-	link := modelsSettingsURL(state)
-	rep.warn("no models enabled — connect a provider (BYOK) at %s", link)
-	if opts.noInput {
-		rep.warn("  then re-run 'orq setup'")
-		return 0
+	// Offered for zero models only. That state leaves nothing callable, so the
+	// page is worth the interruption; a zero balance may block nothing at all,
+	// and stopping every run to ask about it was the cost of not knowing.
+	if models == "" || opts.noInput || !opts.confirm("Open the models page now?", true) {
+		return
 	}
-
-	var retry bool
-	prompt := &survey.Confirm{Message: "Connected a provider? Check again", Default: true}
-	if err := survey.AskOne(prompt, &retry); err != nil || !retry {
-		return 0
+	if !auth.OpenBrowser(models) {
+		rep.note("  could not open a browser, the URL above is the one to visit")
 	}
-	count, providers, err = listEnabledModels(client, state)
-	if err != nil {
-		rep.warn("could not list gateway models: %v", err)
-		return 0
-	}
-	if count == 0 {
-		rep.warn("still no models enabled — continuing, but agents will have none to use")
-		return 0
-	}
-	reportProviders(rep, count, providers)
-	return count
 }
 
-// reportProviders says what the step actually verified — that BYOK providers
-// are connected and reachable. The bare catalogue count was a number nobody
-// could act on: it is the whole workspace, while setup goes on to write a
-// handful of models into one agent's config.
-func reportProviders(rep *reporter, count int, providers []string) {
-	const show = 6
-	listed := providers
-	suffix := ""
-	if len(listed) > show {
-		listed, suffix = listed[:show], fmt.Sprintf(" +%d more", len(providers)-show)
-	}
-	rep.ok("providers connected: %s%s", strings.Join(listed, ", "), suffix)
-	rep.note("  %d chat model(s) enabled in this workspace", count)
-}
-
-// connectedProviders summarises which BYOK providers actually have usable
-// models, derived from the catalogue rather than GET /v2/integrations: that
-// endpoint is behind a role permission a workspace API key does not carry (403),
-// and setup may be running on `--api-key` with no session at all. What matters
-// here is "can an agent call something", which enabled models answer directly.
-func connectedProviders(models []auth.RouterModel) []string {
-	counts := map[string]int{}
-	for _, m := range models {
-		if m.Enabled && m.Type == "chat" && m.Provider != "" {
-			counts[m.Provider]++
-		}
-	}
-	out := make([]string, 0, len(counts))
-	for p := range counts {
-		out = append(out, p)
-	}
-	// Busiest first: the head of this list is what gets shown, and an
-	// alphabetical head buries the providers the user actually routes through.
-	sort.Slice(out, func(i, j int) bool {
-		if counts[out[i]] != counts[out[j]] {
-			return counts[out[i]] > counts[out[j]]
-		}
-		return out[i] < out[j]
-	})
-	return out
-}
-
-// listEnabledModels returns the enabled-model count and the providers behind
-// them, retrying because a freshly created key is not always live yet.
-func listEnabledModels(client *auth.Client, state *authState) (int, []string, error) {
+// listEnabledModels returns the enabled-model count, retrying because a freshly created key is not live yet.
+func listEnabledModels(client *auth.Client, state *authState) (int, error) {
 	var models []auth.RouterModel
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
@@ -1044,59 +977,72 @@ func listEnabledModels(client *auth.Client, state *authState) (int, []string, er
 		}
 	}
 	if err != nil {
-		return 0, nil, err
+		return 0, err
 	}
-	// Enabled chat models: is_active covers the entire catalogue, so counting it
-	// reported hundreds of models on a workspace with no provider connected and
-	// the "connect a provider" branch below could never fire.
+	// m.Enabled, not is_active: is_active covers the whole catalogue and reported hundreds of models on a workspace with no provider connected.
 	enabled := 0
 	for _, m := range models {
-		if m.Enabled && m.Type == "chat" {
+		if auth.UsableForCodingAgent(m) {
 			enabled++
 		}
 	}
-	return enabled, connectedProviders(models), nil
+	return enabled, nil
 }
 
-func modelsSettingsURL(state *authState) string {
-	if base := webBaseURL(state); base != "" {
-		return base + modelsSettingsPath
+// Dashboard paths must be prefixed with the workspace key; unprefixed ones 404. Keyless runs get the docs page.
+func workspaceURL(state *authState, path string) string {
+	if u := workspaceLink(state, path); u != "" {
+		return u
 	}
-	return docsURL + "/docs/ai-gateway/get-started/introduction"
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+	}
+	return dashboardURL(apiBase, "", path)
+}
+
+// dashboardURL is the one place a settings link is built.
+func dashboardURL(apiBase, workspaceKey, path string) string {
+	base := webBaseFor(apiBase)
+	if base == "" || workspaceKey == "" {
+		return docsURL + gatewayIntroPath
+	}
+	return base + "/" + workspaceKey + path
+}
+
+// workspaceLink is workspaceURL without the docs fallback: "" when there is no dashboard URL or key, so callers with several links omit what they cannot build.
+func workspaceLink(state *authState, path string) string {
+	key := ""
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+		if state.session != nil && state.session.ActiveWorkspaceKey != nil {
+			key = *state.session.ActiveWorkspaceKey
+		}
+	}
+	if webBaseFor(apiBase) == "" || key == "" {
+		return ""
+	}
+	return dashboardURL(apiBase, key, path)
 }
 
 // ============================================================================
-// Step 5 — coding agents
+// Step 3 — coding agents
 // ============================================================================
 
-func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) []agentResult {
-	if opts.noAgent {
-		rep.ok("skipped coding-agent setup (--no-agent)")
-		return nil
-	}
-	mcpURL := client.MCPServerURL()
-
+func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
 	selected := opts.agents
-	if len(selected) == 0 {
-		if opts.noInput {
-			rep.ok("no agent selected — pass --agent to instrument one")
-			return nil
-		}
-		var err error
-		selected, err = promptForAgents(rep)
-		if err != nil || len(selected) == 0 {
-			return nil
-		}
+	if len(selected) == 0 || opts.noGateway {
+		return nil, nil
 	}
 
-	// Asked on the default path, not just under -i: this writes into config
-	// files the user owns and grants an agent read/write access to their
-	// workspace, which is not something to do silently because a wizard was
-	// convenient. Asked once rather than once per agent — the grant is the same
-	// for all of them, and a question each turns a five-agent machine into five
-	// prompts. --no-mcp and --no-input answer it up front.
-	if !opts.noMCP {
-		opts.noMCP = !opts.confirm("Register the orq MCP server? Agents can then read and write your orq workspace.", true)
+	if !opts.noGateway {
+		if count, err := listEnabledModels(client, state); err != nil {
+			rep.warn("could not list gateway models: %v", err)
+		} else {
+			state.enabledModels, state.enabledModelsCounted = count, true
+			reportGatewayReadiness(rep, state, opts, count)
+		}
 	}
 
 	results := make([]agentResult, 0, len(selected))
@@ -1110,146 +1056,143 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		}
 		res := agentResult{Agent: id}
 
-		// MCP registration. Skipping it still leaves the provider config, which
-		// is the coherent "route my calls through orq, but do not give the
-		// agent workspace read/write" case.
-		configPath, err := spec.mcpConfig(opts.global)
-		switch {
-		case opts.noMCP:
-			rep.note("%-8s MCP       skipped (--no-mcp)", id)
-		case err != nil:
-			rep.fail("%-8s %v", id, err)
-			res.Error = err.Error()
-		case configPath == "":
-			rep.note("%-8s no MCP support in this agent — nothing to configure", id)
-		default:
-			if err := spec.writeMCP(configPath, mcpURL); err != nil {
-				rep.fail("%-8s %v", id, err)
-				rep.note("")
-				rep.note("Add this manually to %s:", configPath)
-				for _, line := range strings.Split(spec.manualSnippet(mcpURL), "\n") {
-					rep.note("    %s", line)
-				}
-				res.Error = err.Error()
-			} else {
-				note := ""
-				if id == "codex" {
-					note = "  (codex is global-only)"
-				}
-				rep.ok("%-8s MCP     %s → %s%s", id, configPath, mcpServerName, note)
-				res.MCP = configPath
-			}
+		if spec.writeProvider == nil {
+			// claude routes through env only, so saying nothing would read as a
+			// successful wire that never happened.
+			rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
+		} else {
+			writeAgentProvider(rep, client, state, opts, spec, &res)
 		}
 
-		// Provider registration, so the agent's own model calls go through orq.
-		if spec.writeProvider != nil {
-			if path, perr := spec.providerConfig(opts.global); perr == nil && path != "" {
-				models := codingModels(rep, client, state)
-				// Must match the [models."<key>"] form the writer emits, which is
-				// the full provider/model ref.
-				defaultModel := ""
-				if best, ok := defaultCodingModel(rep, client, state); ok {
-					defaultModel = best.Ref()
-				}
-				if werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel); werr != nil {
-					rep.warn("%-8s provider  %v", id, werr)
-				} else {
-					rep.ok("%-8s provider  %s → orq gateway (%d models)", id, path, len(models))
-					res.Provider = path
-					res.ModelCount = len(models)
-				}
-			}
-		}
-
+		reportAgent(rep, spec, res, opts)
 		results = append(results, res)
 	}
-	return results
+	return results, nil
 }
 
-// codingModels fetches the gateway catalogue once per run and returns every
-// chat model the workspace has enabled.
-//
-// It used to return four hand-picked families and probe each one. The families
-// were arbitrary — nothing about kimi or the gateway implies four — and the
-// probing existed to compensate for selecting from is_active, which included
-// models the workspace had never enabled and which therefore often failed.
-// With the enabled set as the pool, `orq launch` writes the whole list with no
-// probing at all and works; setup now matches it, so the two produce the same
-// config by the same rule, and the user gets their models rather than our four.
+// writeAgentProvider registers orq as a model provider for one agent, recording
+// the outcome on res: an error only where the user consented to a wire that
+// then failed, so the exit code and the JSON agree with the terminal.
+func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, spec agentSpec, res *agentResult) {
+	id := spec.ID
+	path, perr := spec.providerConfig(false)
+	switch {
+	case perr != nil:
+		rep.fail("%-8s provider  %v", id, perr)
+		res.Error = perr.Error()
+	case path == "":
+		// No resolver returns ("", nil) today; silence here would read as success for a wire that never happened.
+		rep.fail("%-8s provider  no config path for this agent", id)
+		res.Error = "provider config path resolved empty"
+	case !state.durableBearer():
+		// Declining the mint is a choice, not an error. Same two states as the
+		// empty-catalogue arm below: an earlier run's block still wires the
+		// agent, an absent one leaves it unwired.
+		rep.warn("%-8s provider  skipped: no durable API key to wire — re-run 'orq setup' to mint one", id)
+		if spec.providerPresent == nil || !spec.providerPresent(path) {
+			res.Skipped = "no durable API key"
+		}
+	default:
+		models, merr := codingModels(rep, client, state)
+		switch {
+		case merr != nil:
+			// An unreadable catalogue is a failed wire, not an empty workspace.
+			rep.fail("%-8s provider  %v", id, merr)
+			res.Error = merr.Error()
+		case len(models) == 0:
+			// Every writer clears its own keys before emitting, so writing an empty catalogue would delete a working provider block from an earlier run.
+			// Say which of the two states this is: an earlier run's block still wires the agent, an absent one leaves it unwired.
+			if spec.providerPresent != nil && spec.providerPresent(path) {
+				rep.warn("%-8s no models to offer; kept the configuration already on this machine", id)
+			} else {
+				rep.warn("%-8s no models to offer; nothing written", id)
+				res.Skipped = "no models to offer"
+			}
+		default:
+			// Must match the [models."<key>"] form the writer emits: the full provider/model ref.
+			defaultModel := ""
+			if best, ok := defaultCodingModel(rep, client, state); ok {
+				defaultModel = best.Ref()
+			}
+			// An empty defaultModel is fine: codex omits the model key, kimi omits default_model.
+			written, werr := spec.writeProvider(path, client.RouterBaseURL(), state.bearer, models, defaultModel)
+			if werr != nil {
+				// A consented wire that failed must reach the exit code and the JSON.
+				rep.fail("%-8s provider  %v", id, werr)
+				res.Error = werr.Error()
+			} else {
+				res.Provider = path
+				res.ModelCount = written
+			}
+		}
+	}
+}
+
+func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOptions) {
+	if res.Provider == "" {
+		return
+	}
+	// orq is the subject, the agent the object: "kimi  gateway" read as though
+	// kimi supplied the gateway. The name matches the one the agent shows in its
+	// own model list, so there is one name for one thing.
+	line := launch.ProviderDisplayName + " configured for " + spec.ID
+	// codex's profile names one default and takes its list from elsewhere, so only claim a count when there is one.
+	if n := res.ModelCount; n > 0 {
+		unit := "models"
+		if n == 1 {
+			unit = "model"
+		}
+		line += fmt.Sprintf("  (%d %s available)", n, unit)
+	}
+	rep.ok("%s", line)
+
+	// orq is registered as an option, not the default, so some agents need a step the user would never find.
+	if spec.providerUsage != "" {
+		rep.note("  %s", spec.providerUsage)
+	}
+}
+
 var cachedCodingModels []auth.RouterModel
 var codingModelsFetched bool
 
-// provenModel is the model that answered the default-model probe, with how long
-// it took. The verify step reports these instead of paying for a second
-// completion to learn the same thing.
-var provenModel string
-var provenTook time.Duration
-
-func codingModels(rep *reporter, client *auth.Client, state *authState) []auth.RouterModel {
+// codingModels fetches the gateway catalogue once per run: the enabled chat models with function calling, the same pool 'orq launch' writes.
+// The error is returned, not swallowed into an empty slice: a fetch that failed and a workspace with nothing enabled are different facts, and
+// reporting the first as the second told users to go enable models in a workspace that already had them, then exited 0 having wired nothing.
+func codingModels(rep *reporter, client *auth.Client, state *authState) ([]auth.RouterModel, error) {
 	if codingModelsFetched {
-		return cachedCodingModels
+		return cachedCodingModels, nil
 	}
-	codingModelsFetched = true
 
 	all, err := client.ListModels(state.bearer)
 	if err != nil {
-		rep.warn("could not list gateway models: %v", err)
-		return nil
+		// Not memoized: one transient failure would otherwise poison every later agent in the loop.
+		return nil, fmt.Errorf("could not list gateway models: %w", err)
 	}
+	codingModelsFetched = true
 	for _, m := range all {
-		if m.Enabled && m.Type == "chat" && m.Functions {
+		if auth.UsableForCodingAgent(m) {
 			cachedCodingModels = append(cachedCodingModels, m)
 		}
 	}
-	return cachedCodingModels
+	return cachedCodingModels, nil
 }
 
-// defaultCodingModel picks the model an agent should open with and proves it
-// answers. Preference order first (a coding agent wants a coding model), then
-// anything else the workspace enabled.
-//
-// Exactly one billed completion: this is the only model that MUST work, since
-// it is what the agent uses before the user chooses anything. The rest of the
-// list is the user's to pick from, and a bad entry there costs them a switch
-// rather than a broken first prompt.
+// defaultCodingModel picks by preference order, then anything enabled. No probe: it would bill a completion, and a tools-less probe passed models that later failed.
 func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (auth.RouterModel, bool) {
-	models := codingModels(rep, client, state)
-	if len(models) == 0 {
+	models, err := codingModels(rep, client, state)
+	if err != nil || len(models) == 0 {
 		return auth.RouterModel{}, false
 	}
 
-	ordered := []auth.RouterModel{}
 	for _, group := range auth.CandidateCodingModels(models, preferredCodingModels) {
-		ordered = append(ordered, group...)
-	}
-	seen := map[string]bool{}
-	for _, m := range ordered {
-		seen[m.Ref()] = true
-	}
-	for _, m := range models {
-		if !seen[m.Ref()] {
-			ordered = append(ordered, m)
+		if len(group) > 0 {
+			return group[0], true
 		}
 	}
-
-	stopSpin := rep.busy("checking the default model answers…")
-	defer stopSpin()
-	tried := 0
-	for _, candidate := range ordered {
-		took, err := client.TimeModel(state.bearer, candidate.Ref())
-		if err == nil {
-			provenModel, provenTook = candidate.Ref(), took
-			return candidate, true
-		}
-		tried++
-		// Stop walking the whole catalogue on a broken workspace: each attempt
-		// is billed, and after a handful of failures the problem is the gateway
-		// or the credential, not the model.
-		if tried >= 3 {
-			break
-		}
-	}
-	return auth.RouterModel{}, false
+	// No preferred family, but anything callable beats reporting none: on false
+	// the caller leaves defaultModel empty, writers omit the key, and the agent
+	// falls back to a bundled id the gateway cannot address.
+	return models[0], true
 }
 
 func promptForAgents(rep *reporter) ([]string, error) {
@@ -1260,6 +1203,9 @@ func promptForAgents(rep *reporter) ([]string, error) {
 
 	detected := []string{}
 	for _, spec := range registry {
+		if spec.writeProvider == nil {
+			continue
+		}
 		label := fmt.Sprintf("%-9s %s", spec.ID, spec.Label)
 		options = append(options, label)
 		byOption[label] = spec.ID
@@ -1291,28 +1237,15 @@ func promptForAgents(rep *reporter) ([]string, error) {
 // Verification and the final screen
 // ============================================================================
 
-// verifySetup makes one authenticated call with the credentials setup just
-// configured. It deliberately avoids whoami: an API-key-only run has no session
-// and whoami would report "not logged in" even though everything works.
+// verifySetup makes one authenticated call with the new credentials. Not whoami: an --api-key run has no session and whoami would report "not logged in".
 func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
-	if state.session != nil && state.session.User != nil {
-		workspace := ""
-		if state.session.ActiveWorkspaceKey != nil {
-			workspace = *state.session.ActiveWorkspaceKey
-		}
-		rep.ok("whoami          %s / %s", state.session.User.Email, workspace)
-	}
-	// A freshly minted key is not accepted for a second or two, so a single
-	// immediate call would report a working setup as broken.
-	var projects []auth.Project
 	var err error
 	for attempt := 0; attempt < 4; attempt++ {
+		// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
-		projects, err = client.ListProjects(state.bearer)
-		if err == nil {
-			rep.ok("api reachable   %s  (%d projects)", client.URLs.APIBaseURL, len(projects))
+		if _, err = client.ListProjects(state.bearer); err == nil {
 			return true
 		}
 	}
@@ -1320,39 +1253,11 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 	return false
 }
 
-// verifyGateway sends one real request through the AI Gateway with the
-// credentials setup just configured. Reaching the API only proves the key is
-// valid; this proves the thing the user actually came for — that a model
-// answers through the router.
-func verifyGateway(rep *reporter, client *auth.Client, state *authState) bool {
-	models := codingModels(rep, client, state)
-	if len(models) == 0 {
-		rep.warn("gateway        no model answered — connect a provider, then re-run 'orq setup'")
-		return false
-	}
-	// Reuse the probe from model selection rather than repeating it. It already
-	// proved the exact thing this step reports — a real completion through the
-	// router on this credential — and repeating it billed the user twice.
-	if provenModel != "" {
-		rep.ok("gateway        %s answered in %dms via %s", provenModel, provenTook.Milliseconds(), client.RouterBaseURL())
-		return true
-	}
-	ref := models[0].Ref()
-	took, err := client.TimeModel(state.bearer, ref)
-	if err != nil {
-		rep.fail("gateway        %s did not answer: %v", ref, err)
-		return false
-	}
-	rep.ok("gateway        %s answered in %dms via %s", ref, took.Milliseconds(), client.RouterBaseURL())
-	return true
-}
-
-// webBaseURL is the dashboard origin for this install, or "" when it cannot be
-// known (self-hosted without ORQ_WEB_BASE_URL).
-func webBaseURL(state *authState) string {
+// webBaseURL is the dashboard origin, "" when self-hosted without ORQ_WEB_BASE_URL.
+// webBaseFor derives the dashboard host, shared with doctor.
+func webBaseFor(apiBase string) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
-	// Without an explicit override, only the hosted product has a known web URL.
-	if webBase == "" && state.apiBase == auth.DefaultAPIBaseURL {
+	if webBase == "" && apiBase == auth.DefaultAPIBaseURL {
 		webBase = defaultWebBaseURL
 	}
 	return webBase
@@ -1360,13 +1265,18 @@ func webBaseURL(state *authState) string {
 
 func buildLinks(state *authState) map[string]string {
 	links := map[string]string{"docs": docsURL}
-	webBase := webBaseURL(state)
+	apiBase := ""
+	if state != nil {
+		apiBase = state.apiBase
+	}
+	webBase := webBaseFor(apiBase)
 	if webBase != "" && state.session != nil && state.session.ActiveWorkspaceKey != nil {
 		links["workspace"] = webBase + "/" + *state.session.ActiveWorkspaceKey
 	}
-	if webBase != "" {
-		links["models"] = webBase + modelsSettingsPath
-	}
+	// Outside the guard: workspaceURL degrades to the docs page, and keyless runs printed blank URLs when these sat inside it.
+	links["models"] = workspaceURL(state, modelsPath)
+	links["providers"] = workspaceURL(state, providersPath)
+	links["credits"] = workspaceURL(state, creditsPath)
 	return links
 }
 
@@ -1374,80 +1284,111 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if opts.noInput {
 		return
 	}
-	w := bartolocli.Stderr
+	w := rep.w
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, strings.Repeat("─", 64))
-	fmt.Fprintln(w)
-	// Do not claim success the verification step just disproved: the checks
-	// above already printed what failed, so this line is the only thing left
-	// telling the user whether to trust the result.
 	if verified {
-		fmt.Fprintln(w, "  ✓ Setup complete")
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiOK, "✓"), bold("Setup complete"))
 	} else {
-		fmt.Fprintln(w, "  ! Setup finished with failed checks — see above")
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"), bold("Setup finished with failed checks — see above"))
 	}
 	fmt.Fprintln(w)
 
-	wired := []string{}
+	gatewayWired := []string{}
+	// starts are the wired agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
+	starts := []string{}
 	for _, a := range agents {
-		if a.Error == "" && a.MCP != "" {
-			if spec, ok := lookupAgent(a.Agent); ok {
-				wired = append(wired, spec.Label)
-			}
+		if a.Error != "" {
+			continue
 		}
+		spec, ok := lookupAgent(a.Agent)
+		if !ok {
+			continue
+		}
+		if a.Provider == "" {
+			continue
+		}
+		gatewayWired = append(gatewayWired, spec.Label)
+		starts = append(starts, spec.startCommand())
 	}
-	if len(wired) > 0 {
-		fmt.Fprintf(w, "  %s can now read and write your orq.ai workspace.\n", strings.Join(wired, " and "))
-		fmt.Fprintln(w, "  Ask one of them:")
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, `      "list my orq.ai agents"`)
-	} else {
-		// No agent wired — the other way in is the gateway itself: point an
-		// existing OpenAI client at the router and change nothing else.
+	switch {
+	case len(gatewayWired) > 0:
+		fmt.Fprintf(w, "  %s %s model calls through orq.\n",
+			strings.Join(gatewayWired, " and "), pluralize(len(gatewayWired), "routes its", "route their"))
+	default:
+		// 'orq launch' only belongs here: nothing durable was written for it to shadow.
 		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
 			"                      base_url=\"%s\")\n", routerBase)
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  Or start a coding agent:  orq launch claude")
+		fmt.Fprintf(w, "  %s orq launch %s\n", padLabel("Launch"), detectedAgentID())
+		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
 	}
-	// Both the provider block and the MCP entry reference ORQ_API_KEY, so an
-	// MCP-only agent needs the export just as much as a provider-wired one.
-	// Checking only the provider is what let kimi come up with a dead MCP
-	// server and no warning.
 	keyReferenced := false
 	for _, a := range agents {
-		if a.Error == "" && (a.Provider != "" || a.MCP != "") {
+		if a.Error == "" && a.Provider != "" {
 			keyReferenced = true
 		}
 	}
-	if keyReferenced && strings.TrimSpace(os.Getenv("ORQ_API_KEY")) == "" {
+	// The env var is empty in this shell even on a wired machine, so the branches below consult the profile: re-printing the append line stacks duplicates.
+	if keyReferenced && UserEnvAPIKey() == "" {
 		sh := detectShell(viper.GetString("config-directory"))
-		fmt.Fprintln(w, "  ! your agents read ORQ_API_KEY from the environment; it is not set in this shell.")
-		fmt.Fprintln(w, "    Export it once, then restart the agent:")
 		fmt.Fprintln(w)
-		if sh.Profile == "" {
-			// Unrecognised shell: naming a profile file would be a guess, so
-			// give the command that works right now and let the user place it.
-			fmt.Fprintf(w, "      %s\n", sh.Line)
-			fmt.Fprintf(w, "      # add that to your shell profile to make it stick\n")
-		} else {
-			fmt.Fprintf(w, "      echo '%s' >> %s && %s\n", sh.Line, sh.Profile, sh.Line)
-			if strings.HasSuffix(sh.Profile, ".zshenv") {
-				fmt.Fprintln(w)
-				fmt.Fprintln(w, "    (~/.zshenv, not ~/.zshrc — .zshrc applies only to interactive shells.)")
-			}
+		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),
+			"ORQ_API_KEY is not exported here, and agents inherit it from this shell.")
+		switch {
+		// A declined mint leaves no env file; sourcing it would be the remedy that fails.
+		case fileMissing(sh.EnvFile):
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "run 'orq setup' to create an API key and its env file"))
+		case sh.Profile != "" && profileSourcesEnvFile(sh):
+			fmt.Fprintf(w, "    %s\n", sh.displayLine())
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, fmt.Sprintf("new shells already get it from %s", tilde(sh.Profile))))
+		case sh.Profile == "":
+			fmt.Fprintf(w, "    %s\n", sh.displayLine())
+			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "add that line to your shell profile so new shells get it too"))
+		default:
+			fmt.Fprintf(w, "    echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
 		}
+	}
+	// After the env warning on purpose: these commands only authenticate once ORQ_API_KEY is exported.
+	if len(starts) > 0 {
 		fmt.Fprintln(w)
+		for i, cmd := range starts {
+			label := "Start"
+			if i > 0 {
+				label = ""
+			}
+			fmt.Fprintf(w, "  %s %s\n", padLabel(label), cmd)
+		}
 	}
 	fmt.Fprintln(w)
 	if ws := links["workspace"]; ws != "" {
-		fmt.Fprintf(w, "  Workspace   %s\n", ws)
+		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
 	}
-	if m := links["models"]; m != "" {
-		fmt.Fprintf(w, "  Models      %s\n", m)
-	}
-	fmt.Fprintf(w, "  Docs        %s\n", links["docs"])
-	fmt.Fprintln(w, "  Stuck?      orq doctor")
+	fmt.Fprintf(w, "  %s orq doctor  %s  %s\n", padLabel("Stuck?"), paint(ansiDim, "·"), docsURL)
 	fmt.Fprintln(w)
+}
+
+// labelWidth pads every action and link label; wide enough for "Workspace", the longest one printed.
+const labelWidth = 11
+
+func padLabel(s string) string {
+	return paint(ansiDim, pad(s, labelWidth))
+}
+
+func pluralize(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// detectedAgentID names an installed agent so the screen never suggests a binary the user does not have.
+func detectedAgentID() string {
+	for _, spec := range agentRegistry() {
+		if spec.detect != nil && spec.detect() {
+			return spec.ID
+		}
+	}
+	return "claude"
 }

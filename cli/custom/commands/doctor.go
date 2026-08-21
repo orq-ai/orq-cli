@@ -3,11 +3,14 @@ package commands
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 
@@ -80,6 +83,16 @@ func NewDoctorCommand() *cobra.Command {
 			}
 
 			checks := buildSessionChecks(inspect)
+			// Coding-agent wiring rides in the same doctor rather than its own
+			// subcommand: a user with a broken setup should not need to know
+			// which doctor to run. All local stat + parse, so unconditional.
+			checks = append(checks, codingAgentChecks()...)
+			if shadow, ok := gatewayKeyShadowsSessionCheck(inspect); ok {
+				checks = append(checks, shadow)
+			}
+			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
+				checks = append(checks, expiry)
+			}
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
 
@@ -212,11 +225,24 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
 	}
-	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
-	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", 16)), paint(ansiDim, "RESULT"))
-	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", 16), authLine)
+	// Healthy per-agent rows collapse into the coding_agents summary; only
+	// fault rows earn their own line. --json keeps every row.
+	printed := checks[:0:0]
+	width := 16
 	for _, c := range checks {
-		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), pad(c.ID, 16), c.Message)
+		if strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
+			continue
+		}
+		printed = append(printed, c)
+		if n := utf8.RuneCountInString(c.ID); n > width {
+			width = n
+		}
+	}
+	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
+	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", width)), paint(ansiDim, "RESULT"))
+	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", width), authLine)
+	for _, c := range printed {
+		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), pad(c.ID, width), c.Message)
 	}
 	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
 }
@@ -353,4 +379,54 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 		Message: message,
 		Details: map[string]any{"url": url, "http_status": res.StatusCode},
 	}
+}
+
+// gatewayKeyShadowsSessionCheck names the one state the credential split can
+// still land a user in: the minted key is gateway-scoped, so exporting it makes
+// every `orq <entity>` command authenticate with a key that cannot reach the
+// platform, in a shell where the login would have worked.
+func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorCheck, bool) {
+	if inspect.Status != auth.StatusOK {
+		return doctorCheck{}, false
+	}
+	gatewayKey := strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".gateway_key"))
+	exported := strings.TrimSpace(UserEnvAPIKey())
+	if gatewayKey == "" || exported != gatewayKey {
+		return doctorCheck{}, false
+	}
+	return doctorCheck{
+		ID:      "gateway_key_exported",
+		Status:  "warn",
+		Message: "ORQ_API_KEY in this shell is the gateway-scoped key, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead",
+	}, true
+}
+
+// gatewayKeyExpiryCheck counts down to the minted key's expiry. Wired agents
+// hold that key, so the day it lapses every one of them 401s at once; the row
+// exists so that day is never a surprise. Absent when no expiry is recorded,
+// which is a key minted before expiry existed rather than one that never
+// expires.
+func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
+	at, ok := gatewayKeyExpiry()
+	if !ok {
+		return doctorCheck{}, false
+	}
+	// Round up: 23 hours left is "1 day", not "0 days" at warn.
+	days := int(math.Ceil(at.Sub(now).Hours() / 24))
+	check := doctorCheck{
+		ID:      "gateway_key_expiry",
+		Details: map[string]any{"expires_at": at.UTC().Format(time.RFC3339), "days_left": days},
+	}
+	switch {
+	case !at.After(now):
+		check.Status = "fail"
+		check.Message = "The gateway key expired — wired agents are failing to authenticate. Run 'orq setup' to replace it, then 'orq connect' to rewire"
+	case at.Sub(now) < gatewayKeyRenewWindow:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("The gateway key expires in %d days — run 'orq setup' to replace it, then 'orq connect' to rewire", days)
+	default:
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("The gateway key expires in %d days", days)
+	}
+	return check, true
 }

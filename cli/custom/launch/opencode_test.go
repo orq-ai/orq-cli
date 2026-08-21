@@ -81,7 +81,7 @@ func TestOpenCodeConfigOmitsEmptyProvider(t *testing.T) {
 func TestOpenCodeResolvePlan(t *testing.T) {
 	def := opencodeAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
 		Flags:  GatewayFlags{},
 		Fetch:  fetcherOf("openai/gpt-5-mini"),
@@ -101,7 +101,7 @@ func TestOpenCodeResolvePlan(t *testing.T) {
 func TestKiloUsesOwnConfigEnvVar(t *testing.T) {
 	def := kiloAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
 		Flags:  GatewayFlags{},
 		Fetch:  fetcherOf("openai/gpt-5-mini"),

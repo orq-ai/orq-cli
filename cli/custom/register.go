@@ -12,6 +12,7 @@ import (
 	colorable "github.com/mattn/go-colorable"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -72,6 +73,9 @@ func Register(root *cobra.Command) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
+	// Help presentation: runs last so it sees the complete tree.
+	applyCommandGroups(root)
+	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
 }
 
@@ -81,6 +85,13 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+}
+
+// annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
+func annotateGlobalFlagEnvVars(root *cobra.Command) {
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		f.Usage += fmt.Sprintf(" [env: ORQ_%s]", strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_")))
+	})
 }
 
 func appendHelpFooter(root *cobra.Command) {
@@ -118,6 +129,7 @@ func installSessionPreRun() {
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
 		commands.SetExplicitAPIKey(apiKeyConfigured())
+		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
 				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
@@ -266,6 +278,8 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewSetupCommand())
+	root.AddCommand(commands.NewConnectCommand())
+	root.AddCommand(commands.NewDisconnectCommand())
 }
 
 func replaceDoctor(root *cobra.Command) {

@@ -9,12 +9,12 @@ type AgentContext struct {
 	Fetch  ModelFetcher // nil → FetchEnabledModels
 
 	// ExecProbe runs a helper command and returns its stdout (codex model
-	// catalog). In sandbox mode it is docker-exec-aware.
+	// catalog).
 	ExecProbe func(binary string, args ...string) (string, error)
 }
 
-// TempDir is a host directory holding config the agent reads; in sandbox mode
-// it is replicated into the container at the same path (see copyTempDirs).
+// TempDir is a host directory holding config the agent reads. Declaring it lets
+// the dry-run report it and Cleanup remove it.
 type TempDir struct {
 	HostPath string
 }
@@ -34,7 +34,6 @@ type AgentDef struct {
 	Binary      string
 	Label       string
 	InstallHint string
-	NpmPackage  string // sandbox image install target
 	AllowModels bool
 	// FetchesModels reports whether Resolve reads the gateway catalogue, and
 	// therefore whether --no-fetch-models does anything. claude speaks the
