@@ -1430,23 +1430,33 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 
-	// One line per agent per capability, in the same `%-8s %-9s %s` shape the
-	// connect reporter uses, so the screen that ends setup reads like the
-	// output that got there. No per-framework start commands: the question
-	// this screen answers is what is wired, not how to run each agent.
+	// The agent is the heading and its capabilities are indented under it, so
+	// the name is written once however many capabilities it got. No
+	// per-framework start commands: the question this screen answers is what
+	// is wired, not how to run each agent.
 	wiredAny := false
 	for _, a := range agents {
 		if a.Error != "" {
 			continue
 		}
+		wired := [][2]string{}
 		if a.Provider != "" {
-			fmt.Fprintf(w, "  %-8s %-9s %s\n", a.Agent, capGateway, a.Provider)
-			wiredAny = true
+			wired = append(wired, [2]string{capGateway, a.Provider})
 		}
 		if a.Skills != "" {
-			fmt.Fprintf(w, "  %-8s %-9s %s\n", a.Agent, capSkills, tilde(a.Skills))
-			wiredAny = true
+			wired = append(wired, [2]string{capSkills, tilde(a.Skills)})
 		}
+		if len(wired) == 0 {
+			continue
+		}
+		if wiredAny {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "  %s\n", bold(a.Agent))
+		for _, cap := range wired {
+			fmt.Fprintf(w, "      %-9s %s\n", cap[0], cap[1])
+		}
+		wiredAny = true
 	}
 	if !wiredAny {
 		fmt.Fprintln(w, "  Nothing is wired on this machine yet.")

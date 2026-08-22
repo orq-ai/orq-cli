@@ -1456,10 +1456,13 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 		agents     []agentResult
 		want       []string
 		wantAbsent []string
+		// wantOnce pins the point of the heading shape: a name that appears
+		// twice means the per-capability rows regrew their own agent column.
+		wantOnce []string
 	}{
 		"one agent": {
 			agents:     []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
-			want:       []string{"  kimi     gateway   ~/.kimi-code/config.toml\n"},
+			want:       []string{"  kimi\n      gateway   ~/.kimi-code/config.toml\n"},
 			wantAbsent: []string{"Nothing is wired", "orq launch", "Start "},
 		},
 		// One row per agent, so a screen that reports only the first fails here.
@@ -1469,8 +1472,8 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 				{Agent: "kimi", Provider: "~/.kimi-code/config.toml"},
 			},
 			want: []string{
-				"  claude   gateway   .claude-provider\n",
-				"  kimi     gateway   ~/.kimi-code/config.toml\n",
+				"  claude\n      gateway   .claude-provider\n",
+				"  kimi\n      gateway   ~/.kimi-code/config.toml\n",
 			},
 		},
 		// Both capabilities on one agent get a row each: a skills-only run used
@@ -1481,15 +1484,16 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 				Provider: "~/.claude/settings.json",
 				Skills:   "/home/u/.claude/skills",
 			}},
+			// The name is the heading, written once for both rows.
 			want: []string{
-				"  claude   gateway   ~/.claude/settings.json\n",
-				"  claude   skills    ",
+				"  claude\n      gateway   ~/.claude/settings.json\n      skills    ",
 			},
+			wantOnce:   []string{"  claude\n"},
 			wantAbsent: []string{"Nothing is wired"},
 		},
 		"skills only": {
 			agents:     []agentResult{{Agent: "codex", Skills: "/home/u/.codex/skills"}},
-			want:       []string{"  codex    skills    "},
+			want:       []string{"  codex\n      skills    "},
 			wantAbsent: []string{"Nothing is wired", "gateway"},
 		},
 		"nothing wired": {
@@ -1529,6 +1533,11 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 					t.Errorf("unexpected %q:\n%s", absent, got)
 				}
 			}
+			for _, once := range tc.wantOnce {
+				if n := strings.Count(got, once); n != 1 {
+					t.Errorf("%q appeared %d times, want 1:\n%s", once, n, got)
+				}
+			}
 		})
 	}
 }
@@ -1554,7 +1563,7 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 
 	for _, want := range []string{
 		"Setup finished with failed checks",
-		"\n  kimi     gateway   ~/.kimi-code/config.toml\n",
+		"\n  kimi\n      gateway   ~/.kimi-code/config.toml\n",
 		"\n  Workspace   https://my.orq.ai/ws\n",
 		"\n  Stuck?      orq doctor  ·  " + docsURL + "\n",
 	} {
@@ -1599,12 +1608,12 @@ func TestFinalScreenGoldens(t *testing.T) {
 	}{
 		"wired, colour off": {false, wired, true, "" +
 			"\n  ✓ Setup complete\n\n" +
-			"  kimi     gateway   ~/.kimi-code/config.toml\n\n" +
+			"  kimi\n      gateway   ~/.kimi-code/config.toml\n\n" +
 			"  Workspace   https://my.orq.ai/ws\n" +
 			"  Stuck?      orq doctor  ·  https://docs.orq.ai\n\n"},
 		"wired, colour on": {true, wired, true, "" +
 			"\n  \033[92m✓\033[0m \033[1mSetup complete\033[0m\n\n" +
-			"  kimi     gateway   ~/.kimi-code/config.toml\n\n" +
+			"  \033[1mkimi\033[0m\n      gateway   ~/.kimi-code/config.toml\n\n" +
 			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
 		"nothing wired, failed, colour on": {true, nil, false, "" +
