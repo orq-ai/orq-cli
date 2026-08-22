@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,9 +20,13 @@ import (
 // leaves a link nothing claims (a leak the sweep eventually collects) or drops
 // a claim another live session depends on.
 //
-// The lock is advisory, best effort, and deliberately not fatal. It is held
-// for the microseconds of a read-modify-write, and a launch must never fail or
-// hang because of a lock file.
+// The lock is advisory but it is not optional: a writer that gives up waiting
+// and writes anyway loses the other writer's records, and since the manifest
+// is the deletion allow-list, links it forgets can never be removed by
+// anything again — not release, not the sweep, not `orq disconnect skills`.
+// So a writer that cannot take the lock does not write. Callers turn that into
+// a warning (launch) or a failed command (connect), which is recoverable;
+// unrecorded links in the user's home are not.
 const (
 	lockRetryInterval = 20 * time.Millisecond
 	lockTimeout       = 2 * time.Second
@@ -39,21 +45,32 @@ func lockPath() (string, error) {
 	return path + ".lock", nil
 }
 
-// withManifestLock runs fn with the manifest lock held where it can be taken.
-// If it cannot be taken within lockTimeout, fn runs anyway: a stuck lock file
-// must not stop the CLI from working, and the unlocked path is exactly the
-// behaviour every release before this one had.
+// ErrManifestLocked reports that another orq process holds the manifest lock.
+// It is wrapped, not returned bare, so callers can both recognise the case
+// (errors.Is) and print something that says what actually happened.
+var ErrManifestLocked = errors.New("another orq process is using the skills manifest")
+
+// withManifestLock runs fn with the manifest lock held. If the lock cannot be
+// taken, fn does not run and the error says why: writing without it would
+// silently drop whatever the other writer recorded.
 func withManifestLock(fn func() error) error {
 	manifestMu.Lock()
 	defer manifestMu.Unlock()
 
 	release, err := acquireLock()
-	if err == nil && release != nil {
+	if err != nil {
+		return err
+	}
+	if release != nil {
 		defer release()
 	}
 	return fn()
 }
 
+// acquireLock returns a release func, or (nil, nil) when there is no state
+// directory yet and therefore no manifest to race over. Any other failure is
+// an error: a lock file we cannot create next to the manifest means we cannot
+// safely write the manifest either.
 func acquireLock() (func(), error) {
 	path, err := lockPath()
 	if err != nil {
@@ -62,8 +79,11 @@ func acquireLock() (func(), error) {
 	// Never create the state directory just to lock it: a read-only path like
 	// Refresh on a machine that never connected must leave no trace, and
 	// where there is no directory there is no manifest to race over yet.
-	if _, err := os.Stat(filepath.Dir(path)); err != nil {
-		return nil, err
+	if _, statErr := os.Stat(filepath.Dir(path)); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil, nil
+		}
+		return nil, statErr
 	}
 	deadline := time.Now().Add(lockTimeout)
 	for {
@@ -83,7 +103,8 @@ func acquireLock() (func(), error) {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, os.ErrDeadlineExceeded
+			return nil, fmt.Errorf("%w: %s is held by %s. Wait for the other command to finish, or remove that file if no orq process is running",
+				ErrManifestLocked, path, holderDescription(path))
 		}
 		time.Sleep(lockRetryInterval)
 	}
@@ -107,4 +128,17 @@ func holderIsDead(path string) bool {
 		return false
 	}
 	return !processAlive(pid)
+}
+
+// holderDescription names the process in the lock file for the error message.
+func holderDescription(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "another process"
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return "another process"
+	}
+	return fmt.Sprintf("pid %d", pid)
 }

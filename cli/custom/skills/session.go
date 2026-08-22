@@ -97,14 +97,30 @@ func InstallSession(agent string) (func(), error) {
 		return nil, err
 	}
 
-	var once sync.Once
+	// Released only on success. A release that could not take the manifest
+	// lock has NOT given the links back: dropping the claim silently would
+	// leave links on disk that nothing records, so the claim stays put and
+	// either a later call retries it or SweepDeadSessions collects it once
+	// this process is gone. Calling the returned function again after a
+	// successful release is a no-op.
+	var mu sync.Mutex
+	released := false
 	return func() {
-		once.Do(func() { _ = ReleaseSession(id) })
+		mu.Lock()
+		defer mu.Unlock()
+		if released {
+			return
+		}
+		if err := ReleaseSession(id); err == nil {
+			released = true
+		}
 	}, nil
 }
 
 // ReleaseSession drops one session's claim and removes only the links no
-// other session still holds.
+// other session still holds. It reports an error rather than dropping the
+// claim when the manifest cannot be locked; the claim then outlives the
+// process and SweepDeadSessions collects it.
 func ReleaseSession(id string) error {
 	return withManifestLock(func() error {
 		m, err := LoadManifest()
@@ -119,7 +135,9 @@ func ReleaseSession(id string) error {
 }
 
 // SweepDeadSessions releases claims held by processes that are no longer
-// running. A session killed rather than exited leaves its links behind, and
+// running. It is housekeeping: a caller that gets an error (another orq
+// process holds the manifest, most likely mid-launch) should carry on, since
+// the next invocation sweeps again. A session killed rather than exited leaves its links behind, and
 // this is what makes the next `orq` command clean them up.
 func SweepDeadSessions() error {
 	return withManifestLock(func() error {

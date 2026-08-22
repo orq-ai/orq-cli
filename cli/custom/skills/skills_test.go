@@ -1,11 +1,13 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -818,5 +820,99 @@ func TestConcurrentSessionsKeepEveryClaim(t *testing.T) {
 	}
 	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
 		t.Errorf("the last session's exit left %d entries", len(entries))
+	}
+}
+
+// A writer that cannot take the manifest lock must fail instead of writing
+// anyway. Writing unlocked loses the other writer's records, and a link the
+// manifest does not record can never be removed by anything again.
+func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := EnsureGeneration(); err != nil {
+		t.Fatal(err)
+	}
+	lp, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Held by a PID that is definitely alive (this test binary), so the
+	// stale-lock heal cannot break it.
+	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := InstallSession("claude")
+	if err == nil {
+		release()
+		t.Fatal("InstallSession wrote the manifest while another process held the lock")
+	}
+	if !errors.Is(err, ErrManifestLocked) {
+		t.Fatalf("error does not identify the lock holder: %v", err)
+	}
+	if !strings.Contains(err.Error(), "orq") {
+		t.Errorf("error message does not say what happened: %v", err)
+	}
+
+	// Nothing may be left behind: no manifest, and no links the manifest
+	// would not have recorded.
+	if m, loadErr := LoadManifest(); loadErr != nil || m != nil {
+		t.Errorf("a locked-out writer still wrote the manifest: %v %v", m, loadErr)
+	}
+	if entries, readErr := os.ReadDir(filepath.Join(home, ".claude", "skills")); readErr == nil && len(entries) != 0 {
+		t.Errorf("a locked-out writer left %d unrecorded links on disk", len(entries))
+	}
+	// The other manifest writers must refuse for the same reason.
+	if _, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) {
+		t.Errorf("Install under a held lock: %v", err)
+	}
+	if err := SweepDeadSessions(); !errors.Is(err, ErrManifestLocked) {
+		t.Errorf("SweepDeadSessions under a held lock: %v", err)
+	}
+}
+
+// A release that cannot take the lock keeps its claim, so the links stay
+// recorded and the sweep can still collect them later.
+func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	lp, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release() // cannot acquire; must not drop the claim
+
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	if len(m.Sessions) != 1 || len(m.Sessions[0].Paths) == 0 {
+		t.Fatalf("a locked-out release dropped the claim: %+v", m.Sessions)
+	}
+	for _, p := range m.Sessions[0].Paths {
+		if !exists(p) {
+			t.Errorf("claim kept but link %s is gone", p)
+		}
+	}
+
+	// With the lock free again, the same release function retries and works.
+	if err := os.Remove(lp); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	m, err = LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	if len(m.Sessions) != 0 || len(m.Links) != 0 {
+		t.Errorf("retry did not release: %+v %+v", m.Sessions, m.Links)
 	}
 }
