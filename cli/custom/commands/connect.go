@@ -808,6 +808,12 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		return nil, nil
 	}
 	opts.agents = agents
-	opts.noGateway = false
+
+	caps, err := resolveCapabilities(rep, opts)
+	if err != nil {
+		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
+	}
+	opts.caps = caps
+	opts.noGateway = !hasCap(caps, capGateway)
 	return instrumentAgents(rep, client, state, opts)
 }

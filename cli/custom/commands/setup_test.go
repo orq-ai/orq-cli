@@ -2439,3 +2439,64 @@ func TestWiringReportsNoPathsOrIDs(t *testing.T) {
 		t.Errorf("codex claimed a model count it does not have:\n%s", got)
 	}
 }
+
+// ============================================================================
+// Capability picker (Task 11)
+// ============================================================================
+
+func TestSetupDefaultCapabilitiesIncludeSkills(t *testing.T) {
+	caps := defaultCapabilities()
+	if !hasCap(caps, capSkills) {
+		t.Errorf("defaults = %v, want skills included", caps)
+	}
+	if !hasCap(caps, capGateway) {
+		t.Errorf("defaults = %v, want gateway included", caps)
+	}
+	if hasCap(caps, capTracing) {
+		t.Errorf("defaults = %v, want tracing excluded while it is unbuilt", caps)
+	}
+}
+
+func TestSetupNonInteractiveUsesTheDefaultCapabilities(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	resetSetupMemos(t)
+
+	opts := &setupOptions{noInput: true}
+	caps, err := resolveCapabilities(newReporter(true), opts)
+	if err != nil {
+		t.Fatalf("resolveCapabilities: %v", err)
+	}
+	if !hasCap(caps, capSkills) {
+		t.Errorf("caps = %v, want skills", caps)
+	}
+	if !hasCap(caps, capGateway) {
+		t.Errorf("caps = %v, want gateway", caps)
+	}
+}
+
+// An explicit --capability flag (opts.caps already set) wins over both the
+// prompt and the defaults: it is the CI escape hatch, and must not block on a
+// TTY that does not exist.
+func TestSetupExplicitCapabilitiesWinOverDefaults(t *testing.T) {
+	opts := &setupOptions{noInput: true, caps: []string{capTracing}}
+	caps, err := resolveCapabilities(newReporter(true), opts)
+	if err != nil {
+		t.Fatalf("resolveCapabilities: %v", err)
+	}
+	if len(caps) != 1 || caps[0] != capTracing {
+		t.Errorf("caps = %v, want the explicit [tracing] untouched", caps)
+	}
+}
+
+// --yes takes the affirmative default without asking, same as opts.confirm.
+func TestSetupYesUsesTheDefaultCapabilities(t *testing.T) {
+	opts := &setupOptions{yes: true}
+	caps, err := resolveCapabilities(newReporter(true), opts)
+	if err != nil {
+		t.Fatalf("resolveCapabilities: %v", err)
+	}
+	if !hasCap(caps, capSkills) || !hasCap(caps, capGateway) {
+		t.Errorf("caps = %v, want the defaults", caps)
+	}
+}

@@ -128,6 +128,7 @@ wins over a key left exported in your shell.`),
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
+	f.StringSliceVar(&opts.caps, "capability", nil, "Capabilities to connect (gateway, skills); repeatable")
 	return cmd
 }
 
@@ -1260,6 +1261,62 @@ func promptForAgents(rep *reporter) ([]string, error) {
 		ids = append(ids, byOption[label])
 	}
 	return ids, nil
+}
+
+// defaultCapabilities is what a bare `orq setup` connects. Tracing is excluded
+// while dropUnavailableCaps still strips it: offering it in the picker would
+// be offering something that then prints "not available yet".
+func defaultCapabilities() []string {
+	return []string{capGateway, capSkills}
+}
+
+// resolveCapabilities decides what this run connects. An explicit --capability
+// flag wins, a non-interactive run (or --yes) takes the defaults, and an
+// interactive one asks.
+func resolveCapabilities(rep *reporter, opts *setupOptions) ([]string, error) {
+	if len(opts.caps) > 0 {
+		return opts.caps, nil
+	}
+	if opts.noInput || opts.yes {
+		return defaultCapabilities(), nil
+	}
+	return promptForCapabilities(rep)
+}
+
+// promptForCapabilities is the multi-select, modeled on promptForAgents so the
+// two questions in one wizard behave the same way.
+func promptForCapabilities(rep *reporter) ([]string, error) {
+	options := []string{capGateway, capTracing, capSkills}
+	labels := map[string]string{
+		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
+		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
+		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
+	}
+	byOption := map[string]string{}
+	display := make([]string, 0, len(options))
+	for _, c := range options {
+		label := labels[c]
+		display = append(display, label)
+		byOption[label] = c
+	}
+	defaults := make([]string, 0, len(display))
+	for _, c := range defaultCapabilities() {
+		defaults = append(defaults, labels[c])
+	}
+
+	var chosen []string
+	if err := survey.AskOne(&survey.MultiSelect{
+		Message: "What should orq connect?",
+		Options: display,
+		Default: defaults,
+	}, &chosen); err != nil {
+		return nil, err
+	}
+	caps := make([]string, 0, len(chosen))
+	for _, label := range chosen {
+		caps = append(caps, byOption[label])
+	}
+	return dropUnavailableCaps(rep, caps), nil
 }
 
 // ============================================================================
