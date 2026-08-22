@@ -1474,13 +1474,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		fmt.Fprintf(w, "%s\n", bold(paint(ansiBrand, a.Agent)))
 		for _, row := range rows {
-			fmt.Fprintf(w, "    %s %-9s %s\n", row.mark, row.label, paint(ansiDim, row.detail))
+			fmt.Fprintf(w, "  %s %-9s %s\n", row.mark, row.label, paint(ansiDim, row.detail))
 		}
 		wiredAny = true
 	}
 	if !wiredAny {
 		fmt.Fprintln(w, "Nothing is wired on this machine yet.")
-		fmt.Fprintf(w, "%s orq connect\n", padLabel("Wire"))
+		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
 	}
 	keyReferenced := false
 	for _, a := range agents {

@@ -1464,7 +1464,7 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 	}{
 		"one agent": {
 			agents:     []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
-			want:       []string{"kimi\n    ✓ gateway   ~/.kimi-code/config.toml\n"},
+			want:       []string{"kimi\n  ✓ gateway   ~/.kimi-code/config.toml\n"},
 			wantAbsent: []string{"Nothing is wired", "orq launch", "Start "},
 		},
 		// One row per agent, so a screen that reports only the first fails here.
@@ -1474,8 +1474,8 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 				{Agent: "kimi", Provider: "~/.kimi-code/config.toml"},
 			},
 			want: []string{
-				"claude\n    ✓ gateway   .claude-provider\n",
-				"kimi\n    ✓ gateway   ~/.kimi-code/config.toml\n",
+				"claude\n  ✓ gateway   .claude-provider\n",
+				"kimi\n  ✓ gateway   ~/.kimi-code/config.toml\n",
 			},
 		},
 		// Both capabilities on one agent get a row each: a skills-only run used
@@ -1488,14 +1488,14 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 			}},
 			// The name is the heading, written once for both rows.
 			want: []string{
-				"claude\n    ✓ gateway   ~/.claude/settings.json\n    ✓ skills    ",
+				"claude\n  ✓ gateway   ~/.claude/settings.json\n  ✓ skills    ",
 			},
 			wantOnce:   []string{"claude\n"},
 			wantAbsent: []string{"Nothing is wired"},
 		},
 		"skills only": {
 			agents:     []agentResult{{Agent: "codex", Skills: "/home/u/.codex/skills"}},
-			want:       []string{"codex\n    ✓ skills    "},
+			want:       []string{"codex\n  ✓ skills    "},
 			wantAbsent: []string{"Nothing is wired", "gateway"},
 		},
 		"nothing wired": {
@@ -1507,14 +1507,14 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 		// the user asked for and did not get is the one row they most need.
 		"errored agent shows the failure": {
 			agents:     []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml", Error: "boom"}},
-			want:       []string{"kimi\n    ✗ gateway   boom\n"},
+			want:       []string{"kimi\n  ✗ gateway   boom\n"},
 			wantAbsent: []string{"Nothing is wired", "~/.kimi-code/config.toml"},
 		},
 		// Skipped is a wire that was never attempted; it is still a capability
 		// the user asked for and did not get.
 		"skipped wire shows the reason": {
 			agents:     []agentResult{{Agent: "kimi", Skipped: "no models to offer"}},
-			want:       []string{"kimi\n    ✗ gateway   no models to offer\n"},
+			want:       []string{"kimi\n  ✗ gateway   no models to offer\n"},
 			wantAbsent: []string{"Nothing is wired"},
 		},
 	}
@@ -1574,7 +1574,7 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 
 	for _, want := range []string{
 		"Setup finished with failed checks",
-		"\nkimi\n    ✓ gateway   ~/.kimi-code/config.toml\n",
+		"\nkimi\n  ✓ gateway   ~/.kimi-code/config.toml\n",
 		"\nWorkspace   https://my.orq.ai/ws\n",
 		"\nStuck?      orq doctor  ·  " + docsURL + "\n",
 	} {
@@ -1619,19 +1619,19 @@ func TestFinalScreenGoldens(t *testing.T) {
 	}{
 		"wired, colour off": {false, wired, true, "" +
 			"\n✓ Setup complete\n\n" +
-			"kimi\n    ✓ gateway   ~/.kimi-code/config.toml\n\n" +
+			"kimi\n  ✓ gateway   ~/.kimi-code/config.toml\n\n" +
 			"Workspace   https://my.orq.ai/ws\n" +
 			"Stuck?      orq doctor  ·  https://docs.orq.ai\n\n"},
 		"wired, colour on": {true, wired, true, "" +
 			"\n\033[92m✓\033[0m \033[1mSetup complete\033[0m\n\n" +
 			"\033[1m\033[95mkimi\033[0m\033[0m\n" +
-			"    \033[92m✓\033[0m gateway   \033[2m~/.kimi-code/config.toml\033[0m\n\n" +
+			"  \033[92m✓\033[0m gateway   \033[2m~/.kimi-code/config.toml\033[0m\n\n" +
 			"\033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"\033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
 		"nothing wired, failed, colour on": {true, nil, false, "" +
 			"\n\033[93m!\033[0m \033[1mSetup finished with failed checks — see above\033[0m\n\n" +
 			"Nothing is wired on this machine yet.\n" +
-			"\033[2mWire       \033[0m orq connect\n\n" +
+			"  \033[2mWire       \033[0m orq connect\n\n" +
 			"\033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"\033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
 	} {
