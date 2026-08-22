@@ -1,6 +1,8 @@
 package launch
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -44,5 +46,34 @@ func TestPiModelsJSONResponsesOverride(t *testing.T) {
 	// override expected.
 	if strings.Count(config, `"api": "openai-responses"`) != 1 {
 		t.Fatalf("expected exactly one responses override:\n%s", config)
+	}
+}
+
+func TestPiSessionGetsSkillsInItsTempAgentDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := t.TempDir()
+	if err := writeSessionSkills(dir); err != nil {
+		t.Fatalf("writeSessionSkills: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no skills written: %v %d", err, len(entries))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skills", entries[0].Name(), "SKILL.md")); err != nil {
+		t.Errorf("skill not readable: %v", err)
+	}
+}
+
+func TestSessionSkillsAreSuppressedByNoSkills(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+
+	ctx := &AgentContext{Flags: GatewayFlags{NoSkills: true}, Getenv: func(string) string { return "" }}
+	if err := maybeWriteSessionSkills(ctx, dir); err != nil {
+		t.Fatalf("maybeWriteSessionSkills: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
+		t.Error("--no-skills still wrote skills")
 	}
 }

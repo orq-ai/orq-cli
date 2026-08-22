@@ -78,6 +78,8 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 		}
 	}
 
+	skillsErr := maybeWriteSessionSkills(ctx, home)
+
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			// The provider credential lives in config.toml (kimi has no env
@@ -87,6 +89,11 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 		},
 		TempDirs: []TempDir{{HostPath: home}},
 		Cleanup:  cleanup,
+	}
+	if skillsErr != nil {
+		// Skills are an enhancement; refusing to start the agent because a
+		// symlink failed is worse than starting without them.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", skillsErr))
 	}
 	appendModelWarnings(plan, resolved, kimiNormalize, "anthropic/claude-sonnet-4-6")
 	appendCapWarning(plan, resolved)

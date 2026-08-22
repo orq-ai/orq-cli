@@ -55,15 +55,41 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 					}
 				}
 				for _, dir := range plan.TempDirs {
-					err := filepath.Walk(dir.HostPath, func(path string, info os.FileInfo, err error) error {
-						if err != nil || info.IsDir() {
+					var walkFn filepath.WalkFunc
+					walkFn = func(path string, info os.FileInfo, err error) error {
+						if err != nil {
 							return err
+						}
+						// Session skills are symlinked into the temp dir (kimi,
+						// pi): filepath.Walk does not follow symlinks itself, so
+						// resolve one level and walk the real target instead —
+						// otherwise a symlinked skill directory is neither
+						// recursed into (Walk sees a non-directory) nor
+						// readable as a file (it is one).
+						if info.Mode()&os.ModeSymlink != 0 {
+							target, evalErr := filepath.EvalSymlinks(path)
+							if evalErr != nil {
+								return evalErr
+							}
+							targetInfo, statErr := os.Lstat(target)
+							if statErr != nil {
+								return statErr
+							}
+							if targetInfo.IsDir() {
+								return filepath.Walk(target, walkFn)
+							}
+							path, info = target, targetInfo
+						}
+						if info.IsDir() {
+							return nil
 						}
 						// Kimi is the sole sanctioned exception: it resolves
 						// provider credentials from config.toml only (no env
 						// fallback or interpolation), so the key lives in a 0600
-						// file inside a temp dir removed at session end.
-						if def.Name == "kimi" && filepath.Base(path) == "config.toml" {
+						// file inside a temp dir removed at session end. Scoped to
+						// the home root specifically — a shipped skill also ships
+						// its own unrelated config.toml under skills/.
+						if def.Name == "kimi" && path == filepath.Join(dir.HostPath, "config.toml") {
 							if info.Mode().Perm() != 0o600 {
 								t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
 							}
@@ -77,8 +103,8 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 							t.Fatalf("key written to %s", path)
 						}
 						return nil
-					})
-					if err != nil {
+					}
+					if err := filepath.Walk(dir.HostPath, walkFn); err != nil {
 						t.Fatal(err)
 					}
 				}

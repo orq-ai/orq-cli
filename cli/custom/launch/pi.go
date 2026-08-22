@@ -2,6 +2,7 @@ package launch
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -62,6 +63,8 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
+	skillsErr := maybeWriteSessionSkills(ctx, dir)
+
 	// No MCP wiring: pi has no built-in MCP support by design (extensions
 	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
 	// grows a native config surface.
@@ -73,6 +76,11 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		PreArgs:  []string{"--provider", PiProvider, "--model", resolved.GatewayModel},
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
+	}
+	if skillsErr != nil {
+		// Skills are an enhancement; refusing to start the agent because a
+		// symlink failed is worse than starting without them.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", skillsErr))
 	}
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
 	appendCapWarning(plan, resolved)

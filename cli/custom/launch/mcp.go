@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"orq/cli/custom/skills"
 )
 
 // MCPServerName is the key launch registers the orq MCP server under. It is
@@ -110,6 +112,46 @@ func openCodeMCPBlock(url string) map[string]any {
 			"headers": map[string]string{"Authorization": "Bearer {env:ORQ_API_KEY}"},
 		},
 	}
+}
+
+// writeSessionSkills copies the shipped skills into an agent directory the
+// launcher owns for this session. Each name is symlinked into the current
+// generation, which outlives the session (EnsureGeneration only retires a
+// generation when a later call unpacks a different fingerprint, and the
+// current one is always kept). On platforms where os.Symlink fails (Windows
+// without developer mode/elevation), fall back to a real copy so the
+// launcher never depends on symlink support to run.
+func writeSessionSkills(dir string) error {
+	gen, err := skills.EnsureGeneration()
+	if err != nil {
+		return err
+	}
+	names, err := skills.Names()
+	if err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, "skills")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	for _, name := range names {
+		src := filepath.Join(gen, name)
+		dst := filepath.Join(dest, name)
+		if err := os.Symlink(src, dst); err != nil {
+			if copyErr := skills.CopyDir(src, dst); copyErr != nil {
+				return copyErr
+			}
+		}
+	}
+	return nil
+}
+
+// maybeWriteSessionSkills is the flag-aware wrapper every agent calls.
+func maybeWriteSessionSkills(ctx *AgentContext, dir string) error {
+	if ctx.Flags.NoSkills {
+		return nil
+	}
+	return writeSessionSkills(dir)
 }
 
 // kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME; kimi resolves
