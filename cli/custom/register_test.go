@@ -2,9 +2,12 @@ package custom
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -168,5 +171,87 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 	}
 	if strings.Contains(out, "could not clean up stale session skills") {
 		t.Errorf("sweep ran despite the lock already being reported as held, doubling the wait:\n%s", out)
+	}
+}
+
+// The two tests above both execute `man-pages`, a command this package
+// itself adds (registerCommands -> commands.NewManPagesCommand). It carries
+// no PersistentPreRunE of its own, so it says nothing about whether a
+// *generated* command — the kind everyone actually runs (`models list`,
+// `whoami`, ...) — reaches the same hook. Round 2 established they do,
+// through the same root.PersistentPreRunE bartolo installs, but pin it here
+// with an actual generated command so a future regression that only affects
+// generated commands (e.g. one of them somehow acquiring its own
+// PersistentPreRunE and shadowing root's, which cobra allows per-command)
+// would be caught, not just a regression in our own hand-written commands.
+func TestSkillsRefreshHookIsReachableFromAGeneratedCommand(t *testing.T) {
+	// bartolo's generated command bodies call zerolog's Fatal (os.Exit) on any
+	// API error, including a plain connection refusal — confirmed by running
+	// this in-process first: it took the whole `go test` binary down with it,
+	// not just the one subtest. Driving a real generated command therefore
+	// has to happen in a subprocess, which also makes this the closest thing
+	// to reproducing exactly what a user (or a reviewer verifying this fix)
+	// sees on the command line: a real built binary, a real subcommand that
+	// is not `man-pages` and not `whoami`.
+	binDir := t.TempDir()
+	binPath := filepath.Join(binDir, "orq-hook-test")
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller: could not determine this file's path")
+	}
+	moduleRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	build := exec.Command("go", "build", "-o", binPath, "./cmd/orq")
+	build.Dir = moduleRoot
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build orq for subprocess test: %v\n%s", err, out)
+	}
+
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) []byte {
+		cmd := exec.Command(binPath, args...)
+		cmd.Env = append(os.Environ(), "HOME="+home, "ORQ_API_KEY=sk-orq-TEST")
+		out, _ := cmd.CombinedOutput() // exit status is not the point here
+		return out
+	}
+	run("connect", "claude", "skills", "--yes")
+
+	manifestPath := filepath.Join(home, ".orq", "materialized-skills.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest after connect: %v", err)
+	}
+	var m skills.Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	realFingerprint := m.Fingerprint
+	m.Fingerprint = "a-previous-release"
+	stale, err := json.MarshalIndent(&m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, stale, 0o644); err != nil {
+		t.Fatalf("stale manifest: %v", err)
+	}
+
+	// `models list` is generated straight from openapi.yaml, not a command
+	// this package writes by hand, and it is not `whoami` (round 2's positive
+	// case). Point it at a closed local port so it fails fast instead of
+	// reaching the network — the point is only that the hook runs before the
+	// command body, regardless of whether that body succeeds.
+	run("models", "list", "--server", "http://127.0.0.1:1")
+
+	data, err = os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest after command: %v", err)
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("parse manifest after command: %v", err)
+	}
+	if m.Fingerprint != realFingerprint {
+		t.Errorf("fingerprint = %q, want it refreshed to %q; the pre-run hook did not fire for a generated command", m.Fingerprint, realFingerprint)
 	}
 }
