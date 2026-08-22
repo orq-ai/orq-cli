@@ -36,8 +36,9 @@ func claudeAgent() AgentDef {
 }
 
 // resolveClaude wires claude through env vars (gateway base URL, auth token,
-// models — no /v2/models fetch) plus two PreArgs: --mcp-config pointing at a
-// temp file and --plugin-url for the pinned skills plugin.
+// models — no /v2/models fetch) plus a --mcp-config PreArg pointing at a temp
+// file. Skills are linked into ~/.claude/skills for the session rather than
+// fetched as a plugin.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	getenv := ctx.Getenv
 
@@ -86,13 +87,15 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		plan.Env["ORQ_API_KEY"] = ctx.Creds.APIKey
 		plan.PreArgs = []string{"--mcp-config", path}
 		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
-		plan.Cleanup = cleanup
+		plan.AddCleanup(cleanup)
 	}
 	if url := skillsPluginURL(ctx); url != "" {
-		// Session-only plugin load: claude fetches the zip itself, nothing is
-		// installed into the user's ~/.claude config.
+		// Explicit ORQ_SKILLS_URL only: session-only plugin load, where claude
+		// fetches the zip itself and nothing is installed into the user's
+		// ~/.claude config.
 		plan.PreArgs = append(plan.PreArgs, "--plugin-url", url)
 	}
+	maybeInstallSessionSkills(ctx, plan, "claude")
 	return plan, nil
 }
 

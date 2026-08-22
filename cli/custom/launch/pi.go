@@ -66,11 +66,11 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
 	// grows a native config surface.
 	//
-	// No session skills either: pi is a sharedReader whose only skills target
+	// Skills do not go in here: pi is a sharedReader whose only skills target
 	// is ~/.agents/skills (cli/custom/skills/targets.go), not
 	// PI_CODING_AGENT_DIR — that env var only redirects pi's own config dir.
-	// Writing into it would be a silent no-op. pi belongs to Task 10's
-	// refcounted-link group, which writes into the real home, not this one.
+	// Writing into it would be a silent no-op, so pi takes the refcounted
+	// real-home path below instead.
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
@@ -80,6 +80,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
 	}
+	maybeInstallSessionSkills(ctx, plan, "pi")
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
 	appendCapWarning(plan, resolved)
 	return plan, nil

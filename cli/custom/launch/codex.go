@@ -63,13 +63,14 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	} else {
 		catalogPath = path
 		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
-		plan.Cleanup = cleanup
+		plan.AddCleanup(cleanup)
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
 	if url := mcpURL(ctx); url != "" {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
 	}
+	maybeInstallSessionSkills(ctx, plan, "codex")
 	return plan, nil
 }
 

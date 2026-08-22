@@ -107,6 +107,9 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		},
 	}
 	appendModelWarnings(plan, resolved, opencodeNormalize, "openai/gpt-5-mini")
+	// Both members of the family read the shared ~/.agents/skills, which is in
+	// the real home and cannot be redirected by any config env var they take.
+	maybeInstallSessionSkills(ctx, plan, family.name)
 	return plan, nil
 }
 

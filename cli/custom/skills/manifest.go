@@ -27,8 +27,12 @@ type Link struct {
 }
 
 // Session is one live `orq launch` holding session-scoped links. PID is what
-// lets a later invocation tell a running session from a crashed one.
+// lets a later invocation tell a running session from a crashed one; ID is
+// what tells two sessions of the same process apart, so one cannot release
+// the other's links. Both are optional in the schema (a manifest written
+// before sessions existed has neither), so this stays version 1.
 type Session struct {
+	ID    string   `json:"id,omitempty"`
 	PID   int      `json:"pid"`
 	Paths []string `json:"paths"`
 }

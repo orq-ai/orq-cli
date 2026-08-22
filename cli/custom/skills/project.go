@@ -32,7 +32,19 @@ func linkMode() string {
 // Install materializes the current generation and projects it into every
 // directory the given agents read. It is the one entry point that may create
 // directories that did not exist.
+// The lock is what keeps a concurrent `orq launch` from losing this install's
+// records (see lock.go); the work itself is in install.
 func Install(agents []string) (*Result, error) {
+	var res *Result
+	err := withManifestLock(func() error {
+		var err error
+		res, err = install(agents)
+		return err
+	})
+	return res, err
+}
+
+func install(agents []string) (*Result, error) {
 	gen, err := EnsureGeneration()
 	if err != nil {
 		return nil, err
@@ -105,6 +117,16 @@ func Install(agents []string) (*Result, error) {
 // shared readers, the same membership Targets uses to decide whether to
 // write there in the first place.
 func Remove(agents []string) (*Result, error) {
+	var res *Result
+	err := withManifestLock(func() error {
+		var err error
+		res, err = remove(agents)
+		return err
+	})
+	return res, err
+}
+
+func remove(agents []string) (*Result, error) {
 	m, err := LoadManifest()
 	if err != nil || m == nil {
 		return &Result{}, err
@@ -145,6 +167,16 @@ func Remove(agents []string) (*Result, error) {
 // creates nothing new: a machine that never connected has no manifest, and
 // this returns immediately without touching the filesystem.
 func Refresh() (*Result, error) {
+	var res *Result
+	err := withManifestLock(func() error {
+		var err error
+		res, err = refresh()
+		return err
+	})
+	return res, err
+}
+
+func refresh() (*Result, error) {
 	m, err := LoadManifest()
 	if err != nil || m == nil {
 		return &Result{}, err

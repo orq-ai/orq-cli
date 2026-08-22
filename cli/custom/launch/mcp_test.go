@@ -13,26 +13,34 @@ func TestMCPIsOptIn(t *testing.T) {
 	if mcpURL(ctx) != "" {
 		t.Fatalf("MCP wired without --mcp: %s", mcpURL(ctx))
 	}
+	// The shipped skill set is linked in from the binary now, so no plugin is
+	// fetched unless someone pins their own bundle.
 	if skillsPluginURL(ctx) != "" {
-		t.Fatal("skills loaded without MCP; the plugins assume the MCP tools exist")
+		t.Fatal("a plugin was fetched without ORQ_SKILLS_URL")
 	}
 
 	ctx.Flags.MCP = true
 	if mcpURL(ctx) != DefaultMCPURL {
 		t.Fatalf("--mcp: %s", mcpURL(ctx))
 	}
-	if skillsPluginURL(ctx) != DefaultSkillsPluginURL {
-		t.Fatal("--mcp should bring skills with it")
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("--mcp should not pull a skills plugin off the network")
 	}
 
-	ctx.Getenv = env(map[string]string{"ORQ_MCP_URL": "https://custom.example/mcp"})
+	ctx.Getenv = env(map[string]string{
+		"ORQ_MCP_URL":    "https://custom.example/mcp",
+		"ORQ_SKILLS_URL": "https://example.com/custom.zip",
+	})
 	if mcpURL(ctx) != "https://custom.example/mcp" {
 		t.Fatal("env override ignored")
+	}
+	if skillsPluginURL(ctx) != "https://example.com/custom.zip" {
+		t.Fatal("ORQ_SKILLS_URL is the opt-in and must still be honoured")
 	}
 
 	ctx.Flags.NoSkills = true
 	if skillsPluginURL(ctx) != "" {
-		t.Fatal("--no-skills should still opt out under --mcp")
+		t.Fatal("--no-skills should still opt out of an explicit ORQ_SKILLS_URL")
 	}
 }
 
@@ -43,11 +51,8 @@ func TestClaudeMCPWiring(t *testing.T) {
 	}
 	defer plan.Cleanup()
 
-	if len(plan.PreArgs) != 4 || plan.PreArgs[0] != "--mcp-config" {
+	if len(plan.PreArgs) != 2 || plan.PreArgs[0] != "--mcp-config" {
 		t.Fatalf("preargs: %v", plan.PreArgs)
-	}
-	if plan.PreArgs[2] != "--plugin-url" || plan.PreArgs[3] != DefaultSkillsPluginURL {
-		t.Fatalf("skills plugin args: %v", plan.PreArgs)
 	}
 	data, err := os.ReadFile(plan.PreArgs[1])
 	if err != nil {
@@ -70,13 +75,19 @@ func TestClaudeMCPWiring(t *testing.T) {
 	}
 }
 
-func TestClaudeBareLaunchWiresNothing(t *testing.T) {
+func TestClaudeBareLaunchWiresNoArgs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.PreArgs) != 0 || plan.Cleanup != nil {
-		t.Fatalf("bare launch should skip MCP and skills wiring: %v", plan.PreArgs)
+	// Session skills still install (they are local files, not an MCP-dependent
+	// plugin), so a cleanup is expected; nothing reaches the argv.
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if len(plan.PreArgs) != 0 {
+		t.Fatalf("bare launch should put nothing on the argv: %v", plan.PreArgs)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -602,5 +603,220 @@ func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
 	entries, err := os.ReadDir(sharedDir)
 	if err == nil && len(entries) != 0 {
 		t.Errorf("shared directory still has %d entries after removing its only reader", len(entries))
+	}
+}
+
+func TestSessionLinksAreReferenceCounted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+
+	releaseA, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("first session: %v", err)
+	}
+	releaseB, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("second session: %v", err)
+	}
+
+	releaseA()
+	if entries, readErr := os.ReadDir(dir); readErr != nil || len(entries) == 0 {
+		t.Fatalf("first session's exit removed links the second still needs: %v %d", readErr, len(entries))
+	}
+	releaseB()
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("last session's exit left %d entries", len(entries))
+	}
+}
+
+// Two agents that read the same shared directory (opencode and pi both resolve
+// to ~/.agents/skills) must refcount that directory between them: whichever
+// session exits first may not take the links the other is still using.
+func TestSessionsForSharedReadersRefcountTheSharedDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".agents", "skills")
+
+	releaseOpencode, err := InstallSession("opencode")
+	if err != nil {
+		t.Fatalf("opencode session: %v", err)
+	}
+	releasePi, err := InstallSession("pi")
+	if err != nil {
+		t.Fatalf("pi session: %v", err)
+	}
+	names, err := Names()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("Names: %v %d", err, len(names))
+	}
+
+	releaseOpencode()
+	for _, n := range names {
+		if _, statErr := os.Lstat(filepath.Join(dir, n)); statErr != nil {
+			t.Fatalf("opencode's exit removed %q while the pi session still needs it: %v", n, statErr)
+		}
+	}
+	releasePi()
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("last shared-reader session's exit left %d entries", len(entries))
+	}
+}
+
+func TestSessionLinksSurviveAPermanentInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	release()
+
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Errorf("a session exit removed the permanent install: %v %d", err, len(entries))
+	}
+}
+
+func TestSweepRemovesLinksOwnedByDeadProcesses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+
+	if _, err := InstallSession("claude"); err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	// A PID that cannot be running: claim the links for a dead process.
+	for i := range m.Sessions {
+		m.Sessions[i].PID = 999999
+	}
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SweepDeadSessions(); err != nil {
+		t.Fatalf("SweepDeadSessions: %v", err)
+	}
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("sweep left %d entries from a dead session", len(entries))
+	}
+}
+
+// A sweep must not touch a session whose process is still running, and must
+// leave the permanent install alone whatever it finds.
+func TestSweepLeavesLiveSessionsAndPermanentLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"codex"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	defer release()
+
+	if err := SweepDeadSessions(); err != nil {
+		t.Fatalf("SweepDeadSessions: %v", err)
+	}
+	names, _ := Names()
+	for _, n := range names {
+		if _, statErr := os.Lstat(filepath.Join(home, ".claude", "skills", n)); statErr != nil {
+			t.Errorf("sweep removed live session link %q: %v", n, statErr)
+		}
+		if _, statErr := os.Lstat(filepath.Join(home, ".codex", "skills", n)); statErr != nil {
+			t.Errorf("sweep removed permanent link %q: %v", n, statErr)
+		}
+	}
+}
+
+// A session that finds somebody else's file at one of its paths uses what is
+// there and never removes it: only paths the CLI created are ever deleted.
+func TestSessionLeavesForeignSkillsAlone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	names, err := Names()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("Names: %v %d", err, len(names))
+	}
+	if err := os.MkdirAll(filepath.Join(dir, names[0]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, names[0], "THEIRS")
+	if err := os.WriteFile(marker, []byte("theirs"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	release()
+
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Errorf("session removed a directory it did not create: %v", statErr)
+	}
+}
+
+// Sessions that start at the same time must not lose one another's records:
+// load → mutate → save is not atomic, and this is the case that made the
+// manifest's lost-update race real rather than theoretical.
+func TestConcurrentSessionsKeepEveryClaim(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Unpack up front: the point of the test is the manifest write, not the
+	// generation race, which EnsureGeneration already handles.
+	if _, err := EnsureGeneration(); err != nil {
+		t.Fatal(err)
+	}
+
+	const sessions = 8
+	releases := make([]func(), sessions)
+	errs := make([]error, sessions)
+	var wg sync.WaitGroup
+	for i := 0; i < sessions; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			releases[i], errs[i] = InstallSession("claude")
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("session %d: %v", i, err)
+		}
+	}
+
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	if len(m.Sessions) != sessions {
+		t.Fatalf("manifest records %d sessions, want %d: a concurrent write was lost", len(m.Sessions), sessions)
+	}
+
+	dir := filepath.Join(home, ".claude", "skills")
+	for i, release := range releases {
+		release()
+		if i == sessions-1 {
+			break
+		}
+		if entries, readErr := os.ReadDir(dir); readErr != nil || len(entries) == 0 {
+			t.Fatalf("session %d's exit emptied the directory while %d sessions were still live", i, sessions-i-1)
+		}
+	}
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("the last session's exit left %d entries", len(entries))
 	}
 }

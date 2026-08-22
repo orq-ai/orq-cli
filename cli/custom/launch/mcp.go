@@ -2,8 +2,11 @@ package launch
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"orq/cli/custom/skills"
 )
@@ -22,20 +25,45 @@ const MCPServerName = "orq-workspace"
 // my.orq.ai answers the same route but is the dashboard.
 const DefaultMCPURL = "https://api.orq.ai/v2/mcp"
 
-// DefaultSkillsPluginURL is the orq skills plugin (github.com/orq-ai/
-// assistant-plugins) as a zip; claude loads it session-only via --plugin-url.
-// Pinned to a commit SHA so a compromised or bad upstream push can't reach
-// users unreviewed — bump the SHA in CLI releases to ship plugin updates
-// (override ad hoc with ORQ_SKILLS_URL).
-const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/415edd51ddba3b10d4e3091c6d91b0cbca57566b.zip"
-
-// skillsPluginURL returns the plugin zip URL, or "" when skills are off.
-// Skills follow MCP: the plugins assume the orq MCP tools exist.
+// skillsPluginURL returns a plugin zip for claude to fetch, and normally
+// returns nothing: the default skill set ships inside this binary and is
+// linked into the agent's own skills directory for the session, so no network
+// fetch happens on launch. ORQ_SKILLS_URL is the explicit opt-in for anyone
+// pinning their own bundle, and only then is --plugin-url passed.
 func skillsPluginURL(ctx *AgentContext) string {
-	if !ctx.Flags.MCP || ctx.Flags.NoSkills {
+	if ctx.Flags.NoSkills {
 		return ""
 	}
-	return firstNonEmpty(ctx.Getenv("ORQ_SKILLS_URL"), DefaultSkillsPluginURL)
+	return strings.TrimSpace(ctx.Getenv("ORQ_SKILLS_URL"))
+}
+
+// maybeInstallSessionSkills materializes the shipped skills into the real
+// directory the agent reads, for the length of one launch, and chains the
+// release onto the plan's cleanup. It is for the agents whose skills
+// directory cannot be redirected (claude, codex, and the shared-directory
+// readers); kimi instead gets a launcher-owned KIMI_CODE_HOME and uses
+// maybeWriteSessionSkills.
+//
+// Failure is loud but never fatal: an agent that starts without skills is far
+// better than an agent that refuses to start.
+func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string) {
+	if ctx.Flags.NoSkills {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		// No symlinks to rely on, so a session install would mean copying the
+		// whole set in and out of the user's home on every launch. Point at
+		// the one-off install instead.
+		plan.Warnings = append(plan.Warnings,
+			"skills are not installed for a single session on Windows — run 'orq connect skills' once to install them")
+		return
+	}
+	release, err := skills.InstallSession(agent)
+	if err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+		return
+	}
+	plan.AddCleanup(release)
 }
 
 // mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.

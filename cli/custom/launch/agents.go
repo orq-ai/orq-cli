@@ -28,6 +28,22 @@ type LaunchPlan struct {
 	Cleanup  func()
 }
 
+// AddCleanup chains a cleanup onto whatever the plan already has. Assigning
+// Cleanup directly drops the previous one, which is how a temp directory gets
+// left behind.
+func (p *LaunchPlan) AddCleanup(fn func()) {
+	if fn == nil {
+		return
+	}
+	prev := p.Cleanup
+	p.Cleanup = func() {
+		fn()
+		if prev != nil {
+			prev()
+		}
+	}
+}
+
 // AgentDef describes one launchable coding agent.
 type AgentDef struct {
 	Name        string
