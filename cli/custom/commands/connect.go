@@ -1040,5 +1040,9 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 	}
 	opts.caps = caps
 	opts.noGateway = !hasCap(caps, capGateway)
+	// setup ends on the final screen, which lists every wire per agent. The
+	// per-agent progress lines say the same thing, so setup takes the screen
+	// and connect — which has no screen — keeps the lines.
+	opts.finalScreen = true
 	return instrumentAgents(rep, client, state, opts)
 }

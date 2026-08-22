@@ -45,6 +45,10 @@ type setupOptions struct {
 	yes         bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
+	// finalScreen marks a run that ends in printFinalScreen, which reports every
+	// wire per agent. The per-agent progress lines are that same report, so the
+	// two together printed each wire twice; only 'orq setup' sets it.
+	finalScreen bool
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
@@ -1069,8 +1073,10 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			// failed, so it is fatal here. launch degrades instead.
 			return nil, fmt.Errorf("installing skills: %w", err)
 		}
-		for _, target := range skillTargetsFor(selected) {
-			rep.ok("%-8s %-9s %s", target.Agent, capSkills, tilde(target.Dir))
+		if !opts.finalScreen {
+			for _, target := range skillTargetsFor(selected) {
+				rep.ok("%-8s %-9s %s", target.Agent, capSkills, tilde(target.Dir))
+			}
 		}
 		for _, path := range res.Skipped {
 			rep.warn("%-8s %-9s %s already exists and is not ours — left alone", "", capSkills, tilde(path))
@@ -1200,8 +1206,15 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 	}
 }
 
+func pluralModels(n int) string {
+	if n == 1 {
+		return "model"
+	}
+	return "models"
+}
+
 func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOptions) {
-	if res.Provider == "" {
+	if res.Provider == "" || opts.finalScreen {
 		return
 	}
 	// orq is the subject, the agent the object: "kimi  gateway" read as though
@@ -1210,11 +1223,7 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 	line := launch.ProviderDisplayName + " configured for " + spec.ID
 	// codex's profile names one default and takes its list from elsewhere, so only claim a count when there is one.
 	if n := res.ModelCount; n > 0 {
-		unit := "models"
-		if n == 1 {
-			unit = "model"
-		}
-		line += fmt.Sprintf("  (%d %s available)", n, unit)
+		line += fmt.Sprintf("  (%d %s available)", n, pluralModels(n))
 	}
 	rep.ok("%s", line)
 }
@@ -1444,7 +1453,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		case a.Error != "":
 			rows = append(rows, capRow{paint(ansiRed, "✗"), capGateway, a.Error})
 		case a.Provider != "":
-			rows = append(rows, capRow{paint(ansiOK, "✓"), capGateway, tilde(a.Provider)})
+			detail := tilde(a.Provider)
+			// codex takes its list from elsewhere and reports no count, so only
+			// claim one when there is one.
+			if n := a.ModelCount; n > 0 {
+				detail += fmt.Sprintf("  (%d %s)", n, pluralModels(n))
+			}
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capGateway, detail})
 		case a.Skipped != "":
 			rows = append(rows, capRow{paint(ansiRed, "✗"), capGateway, a.Skipped})
 		}

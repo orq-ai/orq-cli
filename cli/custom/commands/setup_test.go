@@ -2541,3 +2541,33 @@ func TestSetupYesUsesTheDefaultCapabilities(t *testing.T) {
 		t.Errorf("caps = %v, want the defaults", caps)
 	}
 }
+
+// setup's step 3 printed a line per wire and then the final screen printed the
+// same wires again, so every agent was reported twice on one screenful. The
+// progress lines belong to connect, which has no final screen; setup keeps the
+// screen and the model count moves onto it.
+func TestSetupDoesNotReportEachWireTwice(t *testing.T) {
+	kimi, _ := lookupAgent("kimi")
+	res := agentResult{Agent: "kimi", Provider: "/home/u/.kimi-code/config.toml", ModelCount: 137}
+
+	var quiet strings.Builder
+	reportAgent(&reporter{w: &quiet}, kimi, res, &setupOptions{finalScreen: true})
+	if quiet.String() != "" {
+		t.Errorf("a run that ends on the final screen still printed the wire:\n%s", quiet.String())
+	}
+
+	// connect has no final screen, so there the line is the only report.
+	var loud strings.Builder
+	reportAgent(&reporter{w: &loud}, kimi, res, &setupOptions{})
+	if !strings.Contains(loud.String(), "137 models available") {
+		t.Errorf("connect lost its only report of the wire:\n%s", loud.String())
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+	var screen strings.Builder
+	printFinalScreen(&reporter{w: &screen}, []agentResult{res}, map[string]string{}, true, &setupOptions{})
+	if !strings.Contains(screen.String(), "(137 models)") {
+		t.Errorf("the count has nowhere left to appear:\n%s", screen.String())
+	}
+}
