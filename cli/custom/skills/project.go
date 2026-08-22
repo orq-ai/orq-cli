@@ -15,6 +15,11 @@ type Result struct {
 	Added   []string
 	Removed []string
 	Skipped []string
+	// Failed holds paths a refresh could not reproject. One agent's broken
+	// directory must not abandon every other agent's links, so refresh records
+	// the failure and carries on; the caller summarises it once rather than
+	// repeating a raw Go error on every command forever.
+	Failed []string
 }
 
 // symlinkSupported is false where an unprivileged symlink cannot be relied on.
@@ -229,11 +234,18 @@ func refresh() (*Result, error) {
 			res.Skipped = append(res.Skipped, l.Path)
 			continue
 		}
+		// Per-link tolerance from here down. A link that cannot be reprojected
+		// — a directory the user replaced with a file, a permission change —
+		// is one broken link, not a reason to leave every other agent on a
+		// stale skill set. The manifest keeps the record either way, so the
+		// missing-link warning still points the user at the repair.
 		if err := removePath(l.Path); err != nil {
-			return &Result{}, err
+			res.Failed = append(res.Failed, l.Path)
+			continue
 		}
 		if err := project(filepath.Join(gen, l.Skill), l.Path); err != nil {
-			return &Result{}, err
+			res.Failed = append(res.Failed, l.Path)
+			continue
 		}
 		res.Added = append(res.Added, l.Path)
 	}
@@ -251,13 +263,19 @@ func refresh() (*Result, error) {
 // directory and renames into place, the same way EnsureGeneration does, so a
 // mid-copy failure never leaves a partial directory at dest for a later run
 // to misclassify as foreign.
+//
+// Both branches create the parent directory first. The symlink branch used to
+// assume it existed, which held for install (it calls MkdirAll per target) but
+// not for refresh: a user who deleted their skills directory — which the spec
+// promises is safe — left every later `orq` command failing on the same raw
+// symlink error, with nothing that could ever converge.
 func project(src, dest string) error {
-	if symlinkSupported() {
-		return os.Symlink(src, dest)
-	}
 	parent := filepath.Dir(dest)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
+	}
+	if symlinkSupported() {
+		return os.Symlink(src, dest)
 	}
 	staging, err := os.MkdirTemp(parent, ".staging-")
 	if err != nil {

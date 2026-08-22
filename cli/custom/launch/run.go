@@ -92,9 +92,11 @@ Flags:
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent
-  --no-skills           Skip orq skills for this session (claude: the --mcp-gated
-                        skills plugin; kimi: the session skills/ directory,
-                        independent of --mcp)
+  --no-skills           Do not make the orq skills available for this session.
+                        Every agent gets them: they are linked into the skills
+                        directory the agent reads when it starts and removed
+                        again when it exits, leaving nothing behind. Not gated
+                        on --mcp. For a permanent install, orq connect skills
 `)
 	if def.Prompt != nil {
 		fmt.Println("  -p, --prompt <text>   One-shot prompt (mapped to the agent's own syntax)")

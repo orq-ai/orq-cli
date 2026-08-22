@@ -26,6 +26,19 @@ var sharedReaders = map[string]bool{"opencode": true, "kilo": true, "pi": true}
 // is a shared reader.
 func SharedReader(agent string) bool { return sharedReaders[agent] }
 
+// Receives reports whether agent has anywhere to put skills at all — its own
+// directory or the shared one. It is what lets a caller ask "which agents can
+// take this capability?" without asking the unrelated question "which agents
+// have a gateway provider config?": claude answers no to the second and yes to
+// this one, and it is the most common machine there is.
+func Receives(agent string) bool {
+	if sharedReaders[agent] {
+		return true
+	}
+	_, ok := ownDir[agent]
+	return ok
+}
+
 // ownDir resolves the skills directory for an agent that does not read the
 // shared one. Each honors the same home variable the rest of the CLI honors
 // for that agent, so a configured home is not silently written past.

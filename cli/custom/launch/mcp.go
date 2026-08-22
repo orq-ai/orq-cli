@@ -195,12 +195,35 @@ func writeSessionSkills(dir string) error {
 	return nil
 }
 
-// maybeWriteSessionSkills is the flag-aware wrapper every agent calls.
-func maybeWriteSessionSkills(ctx *AgentContext, dir string) error {
+// maybeWriteSessionSkills is the flag-aware wrapper for the launcher-owned
+// directory path (kimi). It carries the same two guarantees
+// maybeInstallSessionSkills does: --no-skills writes nothing, --dry-run writes
+// nothing and reports what a real run would do instead, and a failure is a
+// warning on the plan rather than a refusal to start the agent.
+func maybeWriteSessionSkills(ctx *AgentContext, plan *LaunchPlan, dir string) {
 	if ctx.Flags.NoSkills {
-		return nil
+		return
 	}
-	return writeSessionSkills(dir)
+	if ctx.Flags.DryRun {
+		// Same reasoning as maybeInstallSessionSkills: a dry run resolves
+		// everything and starts nothing, so it must not unpack a generation
+		// into the user's home on the way. Report the destination instead of
+		// writing to it — losing the side effect, not the information.
+		names, err := skills.Names()
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		plan.Notes = append(plan.Notes, fmt.Sprintf(
+			"a real run links %d skills into %s for the session and removes them with it on exit",
+			len(names), filepath.Join(dir, "skills")))
+		return
+	}
+	if err := writeSessionSkills(dir); err != nil {
+		// Skills are an enhancement; refusing to start the agent because a
+		// symlink failed is worse than starting without them.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+	}
 }
 
 // kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME; kimi resolves

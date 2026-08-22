@@ -1052,3 +1052,113 @@ func TestProcessAliveTreatsAnotherUsersProcessAsAlive(t *testing.T) {
 		t.Error("pid 1 reported dead; a live process owned by another user would lose its links")
 	}
 }
+
+// I1. The spec promises the installed skills are safe to delete. Deleting the
+// whole directory used to wedge refresh permanently: project() only created
+// the parent on the copy branch, so every later `orq` command repeated a raw
+// symlink error and never advanced the fingerprint.
+func TestRefreshRecreatesADeletedSkillsDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "next-release-deleted-dir")
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh after the directory was deleted: %v", err)
+	}
+	names, _ := Names()
+	if len(res.Added) != len(names) {
+		t.Errorf("re-linked %d of %d skills", len(res.Added), len(names))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != len(names) {
+		t.Fatalf("directory not restored: %v (%d entries)", err, len(entries))
+	}
+	// Converged: a second refresh at the same fingerprint has nothing to do.
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if m.Fingerprint != Fingerprint() {
+		t.Errorf("fingerprint not advanced: %q", m.Fingerprint)
+	}
+}
+
+// One agent's broken directory must not abandon every other agent's links. The
+// abort was global: a single failure returned from the loop, so a stale skill
+// set persisted silently everywhere else.
+func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude", "codex"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	if len(names) == 0 {
+		t.Fatal("no skills embedded")
+	}
+	// codex's skills directory replaced by a regular file: nothing can be
+	// created under it, and no amount of MkdirAll will fix it.
+	codexDir := filepath.Join(home, ".codex", "skills")
+	if err := os.RemoveAll(codexDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codexDir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "next-release-partial")
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if len(res.Failed) != len(names) {
+		t.Errorf("Failed = %d, want codex's %d links recorded as failures", len(res.Failed), len(names))
+	}
+	claudeDir := filepath.Join(home, ".claude", "skills")
+	entries, err := os.ReadDir(claudeDir)
+	if err != nil || len(entries) != len(names) {
+		t.Fatalf("claude's links were abandoned by codex's failure: %v (%d entries)", err, len(entries))
+	}
+	for _, name := range names {
+		target, err := os.Readlink(filepath.Join(claudeDir, name))
+		if err != nil {
+			t.Fatalf("Readlink %s: %v", name, err)
+		}
+		if !strings.Contains(target, "next-release-partial") {
+			t.Errorf("%s still points at the old generation: %s", name, target)
+		}
+	}
+}
+
+// M5. The generation directory inherited os.MkdirTemp's 0700 while everything
+// inside it, and the snapshot root above it, are 0755. Whichever is right, the
+// chain should not disagree with itself by accident.
+func TestGenerationPermissionsMatchItsContents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	gen, err := EnsureGeneration()
+	if err != nil {
+		t.Fatalf("EnsureGeneration: %v", err)
+	}
+	info, err := os.Stat(gen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Errorf("generation directory is %o, want 0755 to match its contents and ~/.orq/snapshot", got)
+	}
+}

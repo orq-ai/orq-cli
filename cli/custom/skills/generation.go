@@ -57,6 +57,14 @@ func EnsureGeneration() (string, error) {
 	if err := copyTree(Assets(), staging); err != nil {
 		return "", err
 	}
+	// os.MkdirTemp creates 0700. Everything inside this tree is world-readable
+	// by construction (copyTree writes 0755 directories and 0644 files), and
+	// the snapshot root above it is 0755, so leaving the generation itself at
+	// the temp directory's default made one link in the chain accidentally
+	// stricter than the rest. Stated rather than inherited.
+	if err := os.Chmod(staging, 0o755); err != nil {
+		return "", err
+	}
 	if err := os.Rename(staging, dir); err != nil {
 		// A concurrent process winning the same race is success, not failure:
 		// the directory it created holds the same content-addressed bytes.

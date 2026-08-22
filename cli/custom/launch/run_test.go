@@ -1,7 +1,10 @@
 package launch
 
 import (
+	"io"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -66,4 +69,42 @@ func TestFindAgentRegistry(t *testing.T) {
 	if FindAgent("nope") != nil {
 		t.Fatal("unknown agent should be nil")
 	}
+}
+
+// I4. The flag's help described the pre-branch world: a claude plugin gated on
+// --mcp and a kimi-only session directory. It now governs session links for
+// every agent uniformly, and it is the one place a launch user reads about
+// skills at all.
+func TestNoSkillsHelpDescribesWhatTheFlagNowDoes(t *testing.T) {
+	out := captureStdout(t, func() { printAgentHelp(FindAgent("kimi")) })
+	for _, stale := range []string{"plugin", "--mcp-gated", "independent of --mcp"} {
+		if strings.Contains(out, stale) {
+			t.Errorf("--no-skills help still describes the pre-branch world (%q):\n%s", stale, out)
+		}
+	}
+	for _, want := range []string{"--no-skills", "removed", "orq connect skills"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--no-skills help never says %q:\n%s", want, out)
+		}
+	}
+}
+
+// captureStdout collects what fn prints, so a help string can be asserted on.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+	fn()
+	w.Close()
+	os.Stdout = prev
+	return <-done
 }

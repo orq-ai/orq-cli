@@ -329,9 +329,20 @@ func installSkillsRefreshPreRun() {
 			if errors.Is(err, skills.ErrManifestLocked) {
 				return nil
 			}
-		} else if len(res.Added) > 0 || len(res.Removed) > 0 {
-			fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
-				len(res.Added), len(res.Removed))
+		} else {
+			if len(res.Added) > 0 || len(res.Removed) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
+					len(res.Added), len(res.Removed))
+			}
+			// One line naming the remedy, not one raw Go error per broken
+			// link on every command for the rest of time. Refresh already
+			// advanced past them, so this stops as soon as the user repairs
+			// the directory — or on the next `orq connect skills`, which
+			// creates what is missing.
+			if len(res.Failed) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "Warning: %d orq skill link(s) could not be updated — run 'orq connect skills' to repair them\n",
+					len(res.Failed))
+			}
 		}
 		if err := skills.SweepDeadSessions(); err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)

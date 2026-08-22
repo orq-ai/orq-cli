@@ -155,3 +155,42 @@ func TestDryRunReportsSessionSkillsWithoutInstallingThem(t *testing.T) {
 		})
 	}
 }
+
+// I2. kimi is the one agent that takes the other entry point
+// (maybeWriteSessionSkills), and the dry-run guard was only ever added to
+// maybeInstallSessionSkills. A dry run unpacked a whole generation into
+// ~/.orq/snapshot and said nothing about the skills it would have linked.
+func TestKimiDryRunUnpacksNothingAndSaysWhatItWouldDo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	plan, err := FindAgent("kimi").Resolve(sessionSkillsCtx(GatewayFlags{MCP: true, DryRun: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".orq", "snapshot")); !os.IsNotExist(statErr) {
+		t.Errorf("--dry-run unpacked a generation into the real home: %v", statErr)
+	}
+	if len(plan.TempDirs) == 0 {
+		t.Fatal("no TempDirs on the plan")
+	}
+	if _, statErr := os.Stat(filepath.Join(plan.TempDirs[0].HostPath, "skills")); !os.IsNotExist(statErr) {
+		t.Error("--dry-run wrote the session skills directory")
+	}
+	names, err := skills.Names()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, note := range plan.Notes {
+		if strings.Contains(note, "skills") && strings.Contains(note, plan.TempDirs[0].HostPath) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("--dry-run said nothing about the %d skills it would link: %v", len(names), plan.Notes)
+	}
+}

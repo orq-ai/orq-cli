@@ -200,8 +200,10 @@ func TestMaybeWriteSessionSkillsSuppressedByNoSkills(t *testing.T) {
 	dir := t.TempDir()
 
 	ctx := &AgentContext{Flags: GatewayFlags{NoSkills: true}, Getenv: func(string) string { return "" }}
-	if err := maybeWriteSessionSkills(ctx, dir); err != nil {
-		t.Fatalf("maybeWriteSessionSkills: %v", err)
+	plan := &LaunchPlan{}
+	maybeWriteSessionSkills(ctx, plan, dir)
+	if len(plan.Warnings) != 0 || len(plan.Notes) != 0 {
+		t.Errorf("--no-skills reported something: %v %v", plan.Warnings, plan.Notes)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
 		t.Error("--no-skills still wrote skills")
