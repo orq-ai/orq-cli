@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -174,8 +175,35 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	if len(wired) == 0 {
 		rep.info(nothingWired(named, agents))
 	}
+	byAgent := map[string][]wiredTarget{}
+	var order []string
 	for _, w := range wired {
-		rep.info("%-8s %-9s %s", w.agent, w.capability, tilde(w.path))
+		// The shared agents-spec directory has no single owner, so it is
+		// reported under its own heading rather than attributed to one agent.
+		key := w.agent
+		if key == "" {
+			key = "shared"
+		}
+		if _, seen := byAgent[key]; !seen {
+			order = append(order, key)
+		}
+		byAgent[key] = append(byAgent[key], w)
+	}
+	for _, agent := range order {
+		rep.info("%s", agent)
+		for _, w := range byAgent[agent] {
+			rep.info("  %-9s %s", w.capability, tilde(w.path))
+		}
+	}
+	if m, mErr := skills.LoadManifest(); mErr == nil && m != nil {
+		for _, l := range m.Links {
+			if l.Session {
+				continue
+			}
+			if _, statErr := os.Lstat(l.Path); statErr != nil {
+				rep.warn("skills   %s is recorded but missing — run 'orq connect skills' to restore it", tilde(l.Path))
+			}
+		}
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {

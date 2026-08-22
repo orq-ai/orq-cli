@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"orq/cli/custom/launch"
+	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
@@ -876,5 +877,141 @@ func TestConnectSkillsDryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills")); !os.IsNotExist(err) {
 		t.Error("dry run created the skills directory")
+	}
+}
+
+// captureOutput collects what a command's reporter writes, so a test can
+// assert on the report rather than on the filesystem. The reporter writes to
+// bartolocli.Stderr (see splash.go's newReporter), not os.Stdout, so this
+// redirects that stream rather than piping the process's real stdout.
+func captureOutput(t *testing.T, fn func()) string {
+	t.Helper()
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+	fn()
+	return out.String()
+}
+
+func TestConnectStatusGroupsByAgent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Connecting skills, unlike --status, needs a resolvable credential (see
+	// resolveConnectAuth): the other "claude skills" connect fixtures in this
+	// file all set a fake key rather than leaving ORQ_API_KEY empty.
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		// caps defaults to gateway alone when none are named (see
+		// runConnectStatus), so skills must be named explicitly to show up —
+		// same as TestConnectStatusReportsSkillsAlongsideAnUnwirableGateway.
+		s.SetArgs([]string{"claude", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "claude") || !strings.Contains(out, "skills") {
+		t.Errorf("status did not report claude's skills:\n%s", out)
+	}
+}
+
+// A manifest entry whose path no longer exists is a broken link: the skill
+// stopped working silently until something happens to look. --status must
+// surface it as a warning instead of staying quiet.
+func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil || len(m.Links) == 0 {
+		t.Fatalf("expected a populated manifest, got %+v, err=%v", m, err)
+	}
+	broken := m.Links[0]
+	if err := os.RemoveAll(broken.Path); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "recorded but missing") {
+		t.Errorf("status did not warn about the missing link:\n%s", out)
+	}
+	if !strings.Contains(out, "orq connect skills") {
+		t.Errorf("status did not point at the fix:\n%s", out)
+	}
+}
+
+// Session-scoped links belong to a live `orq launch` and are created and torn
+// down by that process; --status must not treat their absence between
+// sessions as breakage.
+func TestConnectStatusIgnoresMissingSessionLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	m := &skills.Manifest{Fingerprint: "test", Generation: "test"}
+	m.AddLink(skills.Link{
+		Path:    filepath.Join(home, ".claude", "skills", "gone-session-link"),
+		Agent:   "claude",
+		Skill:   "example",
+		Mode:    skills.ModeSymlink,
+		Session: true,
+	})
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "recorded but missing") {
+		t.Errorf("status warned about a session-scoped link:\n%s", out)
 	}
 }
