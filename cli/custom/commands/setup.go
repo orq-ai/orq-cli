@@ -128,7 +128,8 @@ wins over a key left exported in your shell.`),
 	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
-	f.StringSliceVar(&opts.caps, "capability", nil, "Capabilities to connect (gateway, skills); repeatable")
+	f.StringSliceVar(&opts.caps, "capability", nil,
+		"Capabilities to connect ("+strings.Join(availableCapabilities(), ", ")+"); repeatable")
 	return cmd
 }
 
@@ -153,6 +154,16 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// --no-input and --workspace are global flags (registerGlobalFlags), read from viper in applyGlobalFlags.
 	if err := applyGlobalFlags(opts); err != nil {
 		return err
+	}
+	// Before anything else: a mistyped capability must not cost a full
+	// authentication round trip before it is noticed, and it must not be
+	// noticed only as a wizard that quietly connects nothing.
+	if len(opts.caps) > 0 {
+		caps, err := validateCapabilities(opts.caps)
+		if err != nil {
+			return err
+		}
+		opts.caps = caps
 	}
 
 	rep := newReporter(opts.noInput)
@@ -1263,11 +1274,13 @@ func promptForAgents(rep *reporter) ([]string, error) {
 	return ids, nil
 }
 
-// defaultCapabilities is what a bare `orq setup` connects. Tracing is excluded
-// while dropUnavailableCaps still strips it: offering it in the picker would
-// be offering something that then prints "not available yet".
+// defaultCapabilities is what a bare `orq setup` connects: everything that is
+// built. Tracing is excluded while dropUnavailableCaps still strips it —
+// offering it in the picker would be offering something that then prints "not
+// available yet" — which is exactly what availableCapabilities means, so the
+// two are one list rather than two that can drift.
 func defaultCapabilities() []string {
-	return []string{capGateway, capSkills}
+	return availableCapabilities()
 }
 
 // resolveCapabilities decides what this run connects. An explicit --capability
@@ -1275,7 +1288,11 @@ func defaultCapabilities() []string {
 // interactive one asks.
 func resolveCapabilities(rep *reporter, opts *setupOptions) ([]string, error) {
 	if len(opts.caps) > 0 {
-		return opts.caps, nil
+		// Validated at the entry point (runSetup); this is the availability
+		// filter every other path already applies, so `--capability tracing`
+		// says "not available yet" here exactly as `orq connect tracing` does
+		// instead of completing a setup that connected nothing.
+		return dropUnavailableCaps(rep, opts.caps), nil
 	}
 	if opts.noInput || opts.yes {
 		return defaultCapabilities(), nil
@@ -1286,7 +1303,10 @@ func resolveCapabilities(rep *reporter, opts *setupOptions) ([]string, error) {
 // promptForCapabilities is the multi-select, modeled on promptForAgents so the
 // two questions in one wizard behave the same way.
 func promptForCapabilities(rep *reporter) ([]string, error) {
-	options := []string{capGateway, capTracing, capSkills}
+	// Only what is built. The picker used to list tracing, which
+	// dropUnavailableCaps then stripped with "not available yet" — offering a
+	// choice and refusing it one keystroke later.
+	options := availableCapabilities()
 	labels := map[string]string{
 		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
 		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),

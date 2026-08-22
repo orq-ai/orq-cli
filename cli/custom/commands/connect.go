@@ -54,10 +54,22 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 	return agents, caps, nil
 }
 
-// detectedAgents lists the agents on this machine that connect can act on.
-// claude is installed on plenty of machines and has no gateway provider config
-// — it reads the endpoint from its environment — so offering it, or reporting
-// it as "not wired", promises a wire that cannot exist.
+// availableCapabilities is what a bare `orq connect`, `--status` or
+// `orq disconnect` covers: every capability that is actually built. Naming no
+// capability asks about the machine, not about the gateway — a bare
+// `--status` that reports only the gateway makes a false statement about a
+// machine carrying installed skills, and a bare `disconnect` that removes only
+// the gateway cannot undo what a bare `connect` wrote.
+//
+// Tracing is excluded for the same reason defaultCapabilities excludes it:
+// dropUnavailableCaps would strip it and print "not available yet" on every
+// bare invocation.
+func availableCapabilities() []string { return []string{capGateway, capSkills} }
+
+// detectedAgents lists the agents on this machine that connect can act on for
+// the gateway. claude is installed on plenty of machines and has no gateway
+// provider config — it reads the endpoint from its environment — so offering
+// it, or reporting it as "not wired", promises a wire that cannot exist.
 func detectedAgents() []string {
 	var out []string
 	for _, spec := range agentRegistry() {
@@ -66,6 +78,125 @@ func detectedAgents() []string {
 		}
 	}
 	return out
+}
+
+// agentsToConnect is the agent set a bare command writes to. "Which agents can
+// receive this?" is a different question per capability: the gateway needs a
+// provider config to write, skills need a directory the agent reads. Filtering
+// both on writeProvider left claude — the one agent that receives skills and
+// has no provider config, and the most common machine there is — out of every
+// bare skills run.
+func agentsToConnect(caps []string) []string {
+	wantSkills := hasCap(caps, capSkills)
+	var out []string
+	for _, spec := range agentRegistry() {
+		if !spec.detect() {
+			continue
+		}
+		if spec.writeProvider != nil || (wantSkills && skills.Receives(spec.ID)) {
+			out = append(out, spec.ID)
+		}
+	}
+	return out
+}
+
+// agentsToInspect is the agent set a bare `--status` or `disconnect` acts on:
+// what agentsToConnect would write to, plus what the manifest says was already
+// written. Detection answers "what can I add to"; only the manifest answers
+// "what have I got", and an agent that received skills and was then
+// uninstalled must stay removable rather than becoming permanently orphaned.
+//
+// The union is deliberately one-directional: the manifest never widens the set
+// connect writes to, so a recorded-but-uninstalled agent can be inspected and
+// removed without a bare `orq connect` reviving config for a tool the user no
+// longer has.
+func agentsToInspect(caps []string) []string {
+	out := agentsToConnect(caps)
+	if !hasCap(caps, capSkills) {
+		return out
+	}
+	seen := map[string]bool{}
+	for _, id := range out {
+		seen[id] = true
+	}
+	for _, id := range manifestSkillAgents() {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// manifestSkillAgents lists the agents the manifest records non-session skill
+// links for. A link with an empty Agent is the shared agents-spec directory,
+// which no single agent owns; it is attributed to every shared reader, since
+// naming any one of them is what reaches it (the same membership rule Remove
+// and reportMissingSkillLinks apply).
+func manifestSkillAgents() []string {
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for _, l := range m.Links {
+		if l.Session {
+			continue
+		}
+		if l.Agent != "" {
+			add(l.Agent)
+			continue
+		}
+		for _, id := range agentIDs() {
+			if skills.SharedReader(id) {
+				add(id)
+			}
+		}
+	}
+	return out
+}
+
+// capsNeedCredential reports whether any requested capability talks to orq.
+// Skills are embedded in this binary and unpack onto the local filesystem, so
+// asking for a credential before installing them stands a network prompt in
+// front of an operation that is pure file I/O — and makes the offline install
+// the spec promises impossible.
+func capsNeedCredential(caps []string) bool {
+	for _, c := range caps {
+		if c != capSkills {
+			return true
+		}
+	}
+	return false
+}
+
+// validateCapabilities checks `orq setup --capability` values against the same
+// grammar `orq connect` enforces on its positional arguments. It reuses
+// partitionConnectArgs rather than repeating the capability list, so the two
+// entry points cannot drift: `orq connect claude bogus` errored while
+// `orq setup --capability bogus` accepted the value and then silently wired
+// nothing at all.
+//
+// An agent name is rejected too: the flag names capabilities, and `--capability
+// claude` would otherwise parse into an empty capability set and connect
+// nothing, which is the same silent no-op by another route.
+func validateCapabilities(caps []string) ([]string, error) {
+	agents, out, err := partitionConnectArgs(caps)
+	if err != nil {
+		return nil, err
+	}
+	if len(agents) > 0 {
+		return nil, fmt.Errorf("--capability takes a capability (%s), not an agent: %s",
+			strings.Join(connectCapabilities, ", "), strings.Join(agents, ", "))
+	}
+	return out, nil
 }
 
 // nothingWired keeps the claim as narrow as the question: naming agents asks
@@ -118,8 +249,22 @@ func NewConnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect [agent...] [capability...]",
 		Short: "Wire coding agents to orq permanently",
-		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine, routing the ` +
-			`agent's model calls through the orq gateway. No agents named means every detected agent.
+		Long: bartolocli.Markdown(`Registers orq with the coding agents on this machine. No agents ` +
+			`named means every detected agent; no capability named means every capability below.
+
+Capabilities:
+
+  gateway   Routes the agent's model calls through the orq AI Gateway, by writing a
+            provider entry into the agent's own config file. Needs a credential.
+  skills    Installs the orq skills — the instructions that teach an agent how to
+            use orq — into the skills directory that agent reads (~/.claude/skills
+            and the equivalents). They ship inside this binary, so this needs no
+            credential and works offline.
+  tracing   Parses, but is not available yet.
+
+` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
+orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
+directories.
 
 Reuses the credential from ` + "`orq setup`" + ` when there is one. With no credential at all, an ` +
 			`interactive run offers to log in and mint one. Undo with ` + "`orq disconnect`" + `. ` +
@@ -163,11 +308,11 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		return nil
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway}
+		caps = availableCapabilities()
 	}
 	named := len(agents) > 0
 	if !named {
-		agents = detectedAgents()
+		agents = agentsToInspect(caps)
 	} else if agents = reportUnwirableAgents(rep, agents, caps); len(agents) == 0 {
 		return nil
 	}
@@ -234,12 +379,12 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 		return nil
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway}
+		caps = availableCapabilities()
 	}
 	// Naming an agent is the intent; leaving it bare is not, so ask rather than
 	// act on every agent the machine happens to have.
 	if len(agents) == 0 {
-		detected := detectedAgents()
+		detected := agentsToConnect(caps)
 		if len(detected) == 0 {
 			rep.info("no coding agents detected — name one: orq connect <%s>", strings.Join(agentIDs(), "|"))
 			return nil
@@ -251,8 +396,11 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			return fmt.Errorf("name the agents to connect (%s), or pass --yes to connect all detected",
 				strings.Join(detected, ", "))
 		default:
-			// The ask must not surprise anyone after two selections.
-			if saved, _ := savedAPIKey(); saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
+			// The ask must not surprise anyone after two selections. Only
+			// when something in this run actually needs a credential:
+			// warning a skills-only run about a key it will never ask for
+			// is the same false network dependency, stated in advance.
+			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
 			agents, err = promptForAgents(rep)
@@ -280,20 +428,37 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		return nil
 	}
 
-	state, client, err := resolveConnectAuth(cmd, rep, opts)
-	if errors.Is(err, errLoginDeclined) {
-		rep.info("nothing wired — run 'orq setup' when ready, or pass --api-key")
-		return nil
-	}
-	if err != nil {
-		return err
+	// The credential gate belongs to the capabilities that need one. Skills
+	// unpack from this binary onto the local filesystem, so a skills-only run
+	// must never demand a key, prompt for a login, or fail without one.
+	var state *authState
+	var client *auth.Client
+	if capsNeedCredential(caps) {
+		var err error
+		state, client, err = resolveConnectAuth(cmd, rep, opts)
+		if errors.Is(err, errLoginDeclined) {
+			rep.info("nothing wired — run 'orq setup' when ready, or pass --api-key")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 	agentResults, err := instrumentAgents(rep, client, state, opts)
 	if err != nil {
 		return err
 	}
 	if !wantsHumanView(cmd) {
-		if err := emit(map[string]any{"coding_agents": agentResults}); err != nil {
+		payload := map[string]any{"coding_agents": agentResults}
+		// The skills leg reports itself through rep.ok, which quiet mode (and
+		// therefore every non-TTY run) suppresses. Without this a script that
+		// just installed fourteen skills into the user's home read
+		// `coding_agents: null` and had no way to observe the capability at
+		// all.
+		if hasCap(caps, capSkills) {
+			payload[capSkills] = skillsPayload(agents)
+		}
+		if err := emit(payload); err != nil {
 			return err
 		}
 	}
@@ -303,6 +468,25 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		}
 	}
 	return nil
+}
+
+// skillsPayload is the machine-readable view of an install: the directories
+// that received the set, and how many skills the set holds.
+func skillsPayload(agents []string) map[string]any {
+	targets := skillTargetsFor(agents)
+	dirs := make([]map[string]any, 0, len(targets))
+	for _, t := range targets {
+		entry := map[string]any{"path": t.Dir}
+		if t.Agent != "" {
+			entry["agent"] = t.Agent
+		}
+		dirs = append(dirs, entry)
+	}
+	payload := map[string]any{"directories": dirs}
+	if names, err := skills.Names(); err == nil {
+		payload["count"] = len(names)
+	}
+	return payload
 }
 
 func hasCap(caps []string, c string) bool {
@@ -442,11 +626,18 @@ func NewDisconnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "disconnect [agent...] [capability...]",
 		Short: "Remove what orq connect wrote",
-		Long: bartolocli.Markdown(`Edits your agents' config files: it removes the keys and tables ` +
-			"`orq connect`" + ` (or ` + "`orq setup`" + `) wrote, and nothing else.
+		Long: bartolocli.Markdown(`Removes what ` + "`orq connect`" + ` (or ` + "`orq setup`" + `) ` +
+			`wrote, and nothing else: the ` + "`gateway`" + ` provider entries in your agents' own ` +
+			`config files, and the ` + "`skills`" + ` this CLI installed into your agents' skills ` +
+			`directories. Only paths this CLI recorded are ever touched — a skill you installed ` +
+			`yourself, or one of ours you have since replaced, is reported and left alone.
 
-Naming agents removes from those. A bare ` + "`orq disconnect`" + ` targets every detected agent ` +
-			`and lists what it would remove before asking. ` + "`--dry-run`" + ` shows the list and stops.`),
+` + "`orq skills`" + `, the platform skill entities, is a different noun and is not affected.
+
+Naming agents removes from those; naming a capability (` + strings.Join(availableCapabilities(), ", ") +
+			`) removes only that one. A bare ` + "`orq disconnect`" + ` targets every detected agent ` +
+			`and every capability, and lists what it would remove before asking. ` + "`--dry-run`" +
+			` shows the list and stops.`),
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDisconnect(cmd, &opts, args, dryRun)
@@ -476,11 +667,11 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		return nil
 	}
 	if len(caps) == 0 {
-		caps = []string{capGateway}
+		caps = availableCapabilities()
 	}
 	namedAgents := len(agents) > 0
 	if !namedAgents {
-		agents = detectedAgents()
+		agents = agentsToInspect(caps)
 	} else if agents = reportUnwirableAgents(rep, agents, caps); len(agents) == 0 {
 		return nil
 	}
@@ -515,11 +706,16 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
-	rows, failed := removeWiring(rep, agents, caps, previewed)
+	rows, skillsRemoved, failed := removeWiring(rep, agents, caps, previewed)
 	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
 		payload := map[string]any{"coding_agents": rows}
+		// Same reason as connect's: without this the removal of a whole skill
+		// set is invisible to anything reading the output.
+		if hasCap(caps, capSkills) {
+			payload[capSkills] = map[string]any{"removed": len(skillsRemoved)}
+		}
 		// The terminal gets this as an advisory line; a script needs it too, or
 		// --json reads as a clean removal.
 		if saved, _ := savedAPIKey(); saved != "" {
@@ -659,7 +855,7 @@ type disconnectRow struct {
 //
 // pathShown says a preview already listed the files, so the result names the
 // agent instead of repeating the path the user just read and approved.
-func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []disconnectRow, failed bool) {
+func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []disconnectRow, skillsRemoved []string, failed bool) {
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
@@ -705,11 +901,12 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 		case len(res.Removed) > 0:
 			rep.ok("orq skills removed (%d entries)", len(res.Removed))
 		}
+		skillsRemoved = res.Removed
 		for _, path := range res.Skipped {
 			rep.warn("%s is no longer ours — left alone", tilde(path))
 		}
 	}
-	return rows, failed
+	return rows, skillsRemoved, failed
 }
 
 // disconnectOnLogout offers to remove orq from the agents this machine wired.
@@ -749,7 +946,7 @@ func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
 			return nil
 		}
 	}
-	rows, _ := removeWiring(rep, wired, caps, false)
+	rows, _, _ := removeWiring(rep, wired, caps, false)
 	return rows
 }
 

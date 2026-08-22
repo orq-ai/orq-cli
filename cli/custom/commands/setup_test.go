@@ -822,7 +822,10 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 	resetSetupMemos(t)
 
 	cmd := NewConnectCommand()
-	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-x"})
+	// gateway named explicitly: a bare run now covers every built capability,
+	// and ~/.kimi-code being a regular file fails the skills leg first, which
+	// is a different (also fatal) error than the provider write under test.
+	cmd.SetArgs([]string{"kimi", "gateway", "--api-key", "sk-orq-x"})
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("a failed provider write exited 0")
@@ -2479,13 +2482,27 @@ func TestSetupNonInteractiveUsesTheDefaultCapabilities(t *testing.T) {
 // prompt and the defaults: it is the CI escape hatch, and must not block on a
 // TTY that does not exist.
 func TestSetupExplicitCapabilitiesWinOverDefaults(t *testing.T) {
+	opts := &setupOptions{noInput: true, caps: []string{capSkills}}
+	caps, err := resolveCapabilities(newReporter(true), opts)
+	if err != nil {
+		t.Fatalf("resolveCapabilities: %v", err)
+	}
+	if len(caps) != 1 || caps[0] != capSkills {
+		t.Errorf("caps = %v, want the explicit [skills] untouched", caps)
+	}
+}
+
+// The explicit flag wins over the defaults, but not over availability: it used
+// to pass `tracing` straight through, leaving setup to complete "successfully"
+// having connected nothing and never having said why.
+func TestSetupExplicitCapabilitiesStillDropTheUnavailable(t *testing.T) {
 	opts := &setupOptions{noInput: true, caps: []string{capTracing}}
 	caps, err := resolveCapabilities(newReporter(true), opts)
 	if err != nil {
 		t.Fatalf("resolveCapabilities: %v", err)
 	}
-	if len(caps) != 1 || caps[0] != capTracing {
-		t.Errorf("caps = %v, want the explicit [tracing] untouched", caps)
+	if len(caps) != 0 {
+		t.Errorf("caps = %v, want tracing dropped as unavailable", caps)
 	}
 }
 

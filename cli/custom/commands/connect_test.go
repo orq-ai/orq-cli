@@ -16,6 +16,7 @@ import (
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -628,10 +629,10 @@ func TestConnectStatusAppliesTheSameFiltersAsConnect(t *testing.T) {
 	if got := run("tracing"); strings.Contains(got, "nothing wired") {
 		t.Errorf("--status tracing reported nothing wired on a wired machine:\n%s", got)
 	}
-	got := run("claude")
-	if strings.Contains(got, "not wired") {
-		t.Errorf("claude reported unwired, promising a wire that cannot exist:\n%s", got)
+	if got := run("claude", "gateway"); strings.Contains(got, "not wired") {
+		t.Errorf("claude reported unwired for the gateway, promising a wire that cannot exist:\n%s", got)
 	}
+	got := run("claude")
 	if !strings.Contains(got, "nothing to configure") {
 		t.Errorf("claude's lack of a provider config went unsaid:\n%s", got)
 	}
@@ -1056,11 +1057,14 @@ func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
 		t.Errorf("status kimi reported claude's missing link, which was never asked about:\n%s", out)
 	}
 
-	// Naming kimi for gateway only (no skills capability requested) must not
-	// mention skills breakage at all, kimi's or anyone else's.
+	// Naming kimi for gateway only must not mention skills breakage at all,
+	// kimi's or anyone else's. The capability is named explicitly: a bare
+	// `--status` now asks about every built capability, because a status that
+	// silently omits installed skills makes a false statement about the
+	// machine (see availableCapabilities).
 	out = captureOutput(t, func() {
 		s := NewConnectCommand()
-		s.SetArgs([]string{"kimi", "--status"})
+		s.SetArgs([]string{"kimi", "gateway", "--status"})
 		if err := s.Execute(); err != nil {
 			t.Fatalf("status kimi: %v", err)
 		}
@@ -1160,5 +1164,278 @@ func TestAnUpdatedBinaryRelinksOnTheNextCommand(t *testing.T) {
 		if _, statErr := os.Stat(p); statErr != nil {
 			t.Errorf("%s unreadable after refresh: %v", n, statErr)
 		}
+	}
+}
+
+// C1. A claude-only machine is the single most common configuration this
+// feature ships into, and claude has no gateway provider config. Selecting the
+// agent set on `writeProvider != nil` therefore made a skills installation
+// invisible to a bare `--status` and unreachable from a bare `disconnect`: the
+// user could install fourteen skills and then neither see nor remove them.
+func TestBareStatusAndDisconnectSeeSkillsOnAClaudeOnlyMachine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect claude skills: %v", err)
+	}
+	installed := filepath.Join(home, ".claude", "skills")
+	if entries, err := os.ReadDir(installed); err != nil || len(entries) == 0 {
+		t.Fatalf("no skills installed: %v", err)
+	}
+
+	got := captureOutput(t, func() {
+		status := NewConnectCommand()
+		status.SetArgs([]string{"--status"})
+		if err := status.Execute(); err != nil {
+			t.Fatalf("bare --status: %v", err)
+		}
+	})
+	if strings.Contains(got, "nothing wired on this machine") {
+		t.Errorf("bare --status called a machine with 14 installed skills empty:\n%s", got)
+	}
+	if !strings.Contains(got, "skills") {
+		t.Errorf("bare --status never mentioned the skills it can see:\n%s", got)
+	}
+
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"--yes"})
+	if err := d.Execute(); err != nil {
+		t.Fatalf("bare disconnect: %v", err)
+	}
+	if entries, err := os.ReadDir(installed); err == nil && len(entries) != 0 {
+		t.Errorf("bare disconnect left %d skills installed", len(entries))
+	}
+}
+
+// The same category error one step further out: an agent that received skills
+// and was then uninstalled goes undetected, and its skills become unreachable
+// from every bare command. The manifest, not the machine, is the authority on
+// what was installed.
+func TestBareDisconnectReachesSkillsForAnUndetectedAgent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"codex", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect codex skills: %v", err)
+	}
+	installed := filepath.Join(home, ".codex", "skills")
+	if entries, err := os.ReadDir(installed); err != nil || len(entries) == 0 {
+		t.Fatalf("no skills installed: %v", err)
+	}
+	// codex is now "uninstalled": detect() looks at ~/.codex, and the skills
+	// directory is all that is left of it.
+	for _, name := range []string{"config.toml", "auth.json"} {
+		os.Remove(filepath.Join(home, ".codex", name))
+	}
+	resetSetupMemos(t)
+
+	agents := agentsToInspect([]string{capSkills})
+	found := false
+	for _, id := range agents {
+		if id == "codex" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("codex's recorded skills are unreachable from a bare command: %v", agents)
+	}
+}
+
+// C2. The skills ship inside the binary. Requiring a network credential to
+// unpack an embedded tree onto the local filesystem defeats the whole premise,
+// and the spec asks for it to work on a plane.
+func TestConnectSkillsNeedsNoCredential(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect claude skills with no credential: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("offline skills install wrote nothing: %v", err)
+	}
+}
+
+// ...and the credential gate stays exactly where it was for the capability
+// that actually talks to orq.
+func TestConnectGatewayStillNeedsACredential(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"kimi", "gateway", "skills", "--yes"})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no saved API key") {
+		t.Fatalf("gateway without a credential: err = %v, want the saved-key error", err)
+	}
+}
+
+// I5. `orq connect claude bogus` errors; `orq setup --capability bogus` used to
+// accept it and silently wire nothing. One grammar, one validator.
+func TestSetupCapabilityFlagIsValidated(t *testing.T) {
+	if _, err := validateCapabilities([]string{"bogus"}); err == nil {
+		t.Error("--capability bogus was accepted")
+	}
+	if _, err := validateCapabilities([]string{"claude"}); err == nil {
+		t.Error("--capability claude (an agent) was accepted")
+	}
+	caps, err := validateCapabilities([]string{"Skills", " gateway "})
+	if err != nil {
+		t.Fatalf("valid capabilities rejected: %v", err)
+	}
+	if strings.Join(caps, ",") != "skills,gateway" {
+		t.Errorf("caps = %v, want the partitioner's normalized values in order", caps)
+	}
+}
+
+// The validation has to sit in front of the wizard, not inside it, or a
+// mistyped capability costs a full authentication round trip first.
+func TestSetupRejectsAnUnknownCapabilityBeforeDoingAnything(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	resetSetupMemos(t)
+
+	cmd := NewSetupCommand()
+	cmd.SetArgs([]string{"--capability", "bogus", "--yes"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "bogus") {
+		t.Fatalf("setup --capability bogus: err = %v, want a refusal naming bogus", err)
+	}
+}
+
+// `--capability tracing` parses but is not implemented. Accepting it silently
+// left setup reporting success having connected nothing at all.
+func TestSetupSaysTracingIsNotAvailable(t *testing.T) {
+	got := captureOutput(t, func() {
+		rep := newReporter(true)
+		caps, err := validateCapabilities([]string{"tracing"})
+		if err != nil {
+			t.Fatalf("tracing rejected outright: %v", err)
+		}
+		if left := dropUnavailableCaps(rep, caps); len(left) != 0 {
+			t.Errorf("tracing survived the availability filter: %v", left)
+		}
+	})
+	if !strings.Contains(got, "not available yet") {
+		t.Errorf("tracing was dropped silently:\n%s", got)
+	}
+}
+
+// I3. The help is the only place a user learns the capability vocabulary, and
+// `orq skills` is a different noun that happens to share the word.
+func TestConnectHelpExplainsCapabilitiesAndDisambiguatesOrqSkills(t *testing.T) {
+	for _, cmd := range []*cobra.Command{NewConnectCommand(), NewDisconnectCommand()} {
+		long := cmd.Long
+		for _, want := range []string{"capabilit", capGateway, capSkills, "orq skills"} {
+			if !strings.Contains(long, want) {
+				t.Errorf("%s help never mentions %q:\n%s", cmd.Name(), want, long)
+			}
+		}
+	}
+}
+
+// M1. rep.ok is suppressed without a TTY, and the emitted payload had no
+// skills key, so a non-interactive `orq connect claude skills` created
+// fourteen symlinks in the user's home and reported `coding_agents: null`.
+// Anything scripting the CLI could not observe the capability at all.
+func TestSkillsAreVisibleInTheMachineReadableOutput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	payload := map[string]any{}
+	emitted := func(t *testing.T, run func()) map[string]any {
+		t.Helper()
+		var buf strings.Builder
+		prev := bartolocli.Stdout
+		bartolocli.Stdout = &buf
+		defer func() { bartolocli.Stdout = prev }()
+		run()
+		out := buf.String()
+		got := map[string]any{}
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("output is not JSON (%v):\n%s", err, out)
+		}
+		return got
+	}
+
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	payload = emitted(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "skills", "--yes"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect claude skills: %v", err)
+		}
+	})
+	if payload["skills"] == nil {
+		t.Fatalf("connect's payload never mentions the skills it installed: %v", payload)
+	}
+
+	payload = emitted(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--yes"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect claude skills: %v", err)
+		}
+	})
+	removed, _ := payload["skills"].(map[string]any)
+	if removed == nil || removed["removed"] == nil {
+		t.Fatalf("disconnect's payload never mentions the skills it removed: %v", payload)
 	}
 }
