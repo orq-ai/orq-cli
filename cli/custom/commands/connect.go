@@ -195,15 +195,11 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 			rep.info("  %-9s %s", w.capability, tilde(w.path))
 		}
 	}
-	if m, mErr := skills.LoadManifest(); mErr == nil && m != nil {
-		for _, l := range m.Links {
-			if l.Session {
-				continue
-			}
-			if _, statErr := os.Lstat(l.Path); statErr != nil {
-				rep.warn("skills   %s is recorded but missing — run 'orq connect skills' to restore it", tilde(l.Path))
-			}
-		}
+	// Scoped like the rest of this function: `--status kimi` naming only
+	// kimi, or a run that never asked about skills at all, must not surface
+	// another agent's or another capability's broken links.
+	if hasCap(caps, capSkills) {
+		reportMissingSkillLinks(rep, agents)
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
@@ -588,6 +584,64 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	return out
+}
+
+// reportMissingSkillLinks warns about manifest entries whose path is gone,
+// scoped to the agents actually asked about — the same membership rule
+// skills.Remove applies to links whose Agent is empty (the shared
+// agents-spec directory): they belong to the request whenever any named
+// agent is a shared reader.
+//
+// Session-scoped links are excluded: they are created and destroyed by a
+// live `orq launch` and their absence between sessions is not breakage.
+//
+// Missing entries are collapsed per directory rather than printed one per
+// file: deleting a whole skills directory recorded a dozen links, and a
+// dozen identical warnings each pointing at the same remedy tell the user
+// nothing a single line with a count would not. A directory with exactly one
+// missing entry keeps the original, more specific phrasing — a count of one
+// reads worse than naming the thing that is actually missing.
+func reportMissingSkillLinks(rep *reporter, agents []string) {
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		return
+	}
+	wanted := map[string]bool{}
+	sharedWanted := false
+	for _, id := range agents {
+		wanted[id] = true
+		sharedWanted = sharedWanted || skills.SharedReader(id)
+	}
+	missingByDir := map[string][]string{}
+	var dirOrder []string
+	for _, l := range m.Links {
+		if l.Session {
+			continue
+		}
+		if l.Agent == "" {
+			if !sharedWanted {
+				continue
+			}
+		} else if !wanted[l.Agent] {
+			continue
+		}
+		if _, statErr := os.Lstat(l.Path); statErr == nil {
+			continue
+		}
+		dir := filepath.Dir(l.Path)
+		if _, seen := missingByDir[dir]; !seen {
+			dirOrder = append(dirOrder, dir)
+		}
+		missingByDir[dir] = append(missingByDir[dir], l.Path)
+	}
+	for _, dir := range dirOrder {
+		missing := missingByDir[dir]
+		if len(missing) == 1 {
+			rep.warn("skills   %s is recorded but missing — run 'orq connect skills' to restore it", tilde(missing[0]))
+			continue
+		}
+		rep.warn("skills   %s: %d recorded skills are missing — run 'orq connect skills' to restore them", tilde(dir), len(missing))
+	}
 }
 
 // disconnectRow is one agent's removal outcome. Removed is a list, not a joined

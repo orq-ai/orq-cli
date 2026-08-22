@@ -19,6 +19,13 @@ type Target struct {
 // their own. Writing both would put the same skill in one agent's index twice.
 var sharedReaders = map[string]bool{"opencode": true, "kilo": true, "pi": true}
 
+// SharedReader reports whether agent reads the shared agents-spec directory,
+// so a caller outside the package (connect --status's missing-link warning,
+// at the moment) can apply the same membership rule Remove uses for links
+// whose Agent is empty: they belong to the request whenever any named agent
+// is a shared reader.
+func SharedReader(agent string) bool { return sharedReaders[agent] }
+
 // ownDir resolves the skills directory for an agent that does not read the
 // shared one. Each honors the same home variable the rest of the CLI honors
 // for that agent, so a configured home is not silently written past.

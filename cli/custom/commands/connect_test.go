@@ -1015,3 +1015,97 @@ func TestConnectStatusIgnoresMissingSessionLinks(t *testing.T) {
 		t.Errorf("status warned about a session-scoped link:\n%s", out)
 	}
 }
+
+// `--status kimi` naming only kimi must not surface claude's broken links,
+// and a run that never asked about the skills capability at all must not
+// surface skills breakage regardless of which agent is named — the same
+// scoping the rest of runConnectStatus already applies to gateway targets.
+func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resetSetupMemos(t)
+
+	claudePath := filepath.Join(home, ".claude", "skills", "gone-claude-skill")
+	kimiPath := filepath.Join(home, ".kimi-code", "skills", "gone-kimi-skill")
+	m := &skills.Manifest{Fingerprint: "test", Generation: "test"}
+	m.AddLink(skills.Link{Path: claudePath, Agent: "claude", Skill: "a", Mode: skills.ModeSymlink})
+	m.AddLink(skills.Link{Path: kimiPath, Agent: "kimi", Skill: "b", Mode: skills.ModeSymlink})
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	// Naming only kimi, for skills, must report kimi's break and not claude's.
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"kimi", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status kimi skills: %v", err)
+		}
+	})
+	if !strings.Contains(out, "gone-kimi-skill") {
+		t.Errorf("kimi's own missing link went unreported:\n%s", out)
+	}
+	if strings.Contains(out, "gone-claude-skill") {
+		t.Errorf("status kimi reported claude's missing link, which was never asked about:\n%s", out)
+	}
+
+	// Naming kimi for gateway only (no skills capability requested) must not
+	// mention skills breakage at all, kimi's or anyone else's.
+	out = captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"kimi", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status kimi: %v", err)
+		}
+	})
+	if strings.Contains(out, "recorded but missing") || strings.Contains(out, "recorded skills are missing") {
+		t.Errorf("status kimi (gateway only) reported skills breakage that was never asked about:\n%s", out)
+	}
+}
+
+// Deleting a whole skills directory records a dozen missing links pointing
+// at the same remedy. One line naming the directory and a count is the right
+// shape; a dozen identical lines would tell the user nothing more.
+func TestConnectStatusCollapsesMissingLinksPerDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	dir := filepath.Join(home, ".claude", "skills")
+	m := &skills.Manifest{Fingerprint: "test", Generation: "test"}
+	for _, name := range []string{"one", "two", "three"} {
+		m.AddLink(skills.Link{Path: filepath.Join(dir, name), Agent: "claude", Skill: name, Mode: skills.ModeSymlink})
+	}
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if n := strings.Count(out, "recorded but missing"); n != 0 {
+		t.Errorf("expected the per-file phrasing to be collapsed, got %d occurrences:\n%s", n, out)
+	}
+	if !strings.Contains(out, "3 recorded skills are missing") {
+		t.Errorf("expected a single proportionate line naming the directory and a count of 3:\n%s", out)
+	}
+	if !strings.Contains(out, "orq connect skills") {
+		t.Errorf("status did not point at the fix:\n%s", out)
+	}
+}
