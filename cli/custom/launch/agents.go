@@ -25,7 +25,10 @@ type LaunchPlan struct {
 	Env      map[string]string // exact env; empty-string values are preserved
 	TempDirs []TempDir
 	Warnings []string
-	Cleanup  func()
+	// Notes describe what a real run would do that this one did not. Only
+	// --dry-run fills them in, and only printDryRun prints them.
+	Notes   []string
+	Cleanup func()
 }
 
 // AddCleanup chains a cleanup onto whatever the plan already has. Assigning

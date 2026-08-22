@@ -58,6 +58,27 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 			"skills are not installed for a single session on Windows — run 'orq connect skills' once to install them")
 		return
 	}
+	if ctx.Flags.DryRun {
+		// A dry run resolves everything and starts nothing, so it must not
+		// rearrange the agent's real skills directory on the way. Report the
+		// destination instead of writing to it: the point is to lose the side
+		// effect, not the information.
+		targets, err := skills.Targets([]string{agent})
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		names, err := skills.Names()
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		for _, target := range targets {
+			plan.Notes = append(plan.Notes, fmt.Sprintf(
+				"a real run links %d skills into %s for the session and removes them on exit", len(names), target.Dir))
+		}
+		return
+	}
 	release, err := skills.InstallSession(agent)
 	if err != nil {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))

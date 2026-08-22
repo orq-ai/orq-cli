@@ -916,3 +916,139 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 		t.Errorf("retry did not release: %+v %+v", m.Sessions, m.Links)
 	}
 }
+
+// An interrupted run leaves links on disk with no manifest to record them.
+// They are demonstrably ours — symlinks into our own snapshot — so the next
+// install adopts them instead of mistaking them for somebody else's skills.
+// Misreading them as foreign leaves links nothing can ever remove, which the
+// user only discovers when generation pruning turns them into dangling
+// symlinks in their real home.
+func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	// Crash equivalent: the links are in place, the manifest never landed.
+	path, err := manifestPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	names, _ := Names()
+	orphans, _ := os.ReadDir(dir)
+	if len(orphans) != len(names) {
+		t.Fatalf("setup: %d orphans, want %d", len(orphans), len(names))
+	}
+	if err := SweepDeadSessions(); err != nil {
+		t.Fatalf("SweepDeadSessions: %v", err)
+	}
+
+	res, err := Install([]string{"claude"})
+	if err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+	if len(res.Skipped) != 0 {
+		t.Errorf("install treated %d of its own orphans as foreign: %v", len(res.Skipped), res.Skipped)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != len(m.Links) {
+		t.Fatalf("%d links on disk but %d recorded: the difference can never be removed", len(entries), len(m.Links))
+	}
+	// And the whole lot is now reclaimable.
+	if _, err := Remove([]string{"claude"}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("%d unreclaimable orphans left after remove", len(entries))
+	}
+}
+
+// An adopted orphan must point at the current generation, not at whatever
+// snapshot the crashed run happened to be using.
+func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+
+	SetFingerprintForTest(t, "aaaaaaaaaaaaaaaa")
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	path, _ := manifestPath()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "bbbbbbbbbbbbbbbb")
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("second Install: %v", err)
+	}
+	names, _ := Names()
+	for _, n := range names {
+		target, err := os.Readlink(filepath.Join(dir, n))
+		if err != nil {
+			t.Fatalf("readlink %s: %v", n, err)
+		}
+		if !strings.Contains(target, "gen-bbbbbbbbbbbbbbbb") {
+			t.Errorf("adopted orphan still points at the old generation: %s", target)
+		}
+	}
+}
+
+// A session that finds an orphan of ours takes ownership of it, so it is
+// recorded while the session runs and released with everything else. Free
+// riding on it instead would leave it behind forever.
+func TestSessionAdoptsAnOrphanOfOurs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	_ = release
+	path, _ := manifestPath()
+	if err := os.Remove(path); err != nil { // crash: links stay, manifest goes
+		t.Fatal(err)
+	}
+
+	release2, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("second InstallSession: %v", err)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("manifest: %v %v", m, err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != len(m.Links) {
+		t.Fatalf("%d links on disk but %d recorded", len(entries), len(m.Links))
+	}
+	release2()
+	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
+		t.Errorf("the session left %d adopted orphans behind", len(entries))
+	}
+}
+
+// kill(pid, 0) answers EPERM for a live process owned by another user, and
+// reading that as "dead" is the direction that pulls skills out from under a
+// running agent. PID 1 is always alive and (unless the test runs as root)
+// always somebody else's.
+func TestProcessAliveTreatsAnotherUsersProcessAsAlive(t *testing.T) {
+	if !processAlive(1) {
+		t.Error("pid 1 reported dead; a live process owned by another user would lose its links")
+	}
+}

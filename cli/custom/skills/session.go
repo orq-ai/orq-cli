@@ -64,6 +64,20 @@ func InstallSession(agent string) (func(), error) {
 					// claim instead of reprojecting: the link stays until the
 					// last of us is gone.
 					held = append(held, path)
+				case existing == nil && exists(path) && ourOrphan(path):
+					// Our own link from a run that died before writing the
+					// manifest. Free-riding on it would leave it recorded
+					// nowhere and therefore unremovable by anything, so take
+					// ownership: reproject onto the current generation and
+					// hold it like any other session link.
+					if err := removePath(path); err != nil {
+						return err
+					}
+					if err := project(filepath.Join(gen, name), path); err != nil {
+						return fmt.Errorf("adopt %s in %s: %w", name, target.Dir, err)
+					}
+					m.AddLink(Link{Path: path, Agent: target.Agent, Skill: name, Mode: linkMode(), Session: true})
+					held = append(held, path)
 				case exists(path):
 					// Either a permanent install of ours or somebody else's
 					// skill. Both cases mean: use what is there, own nothing,

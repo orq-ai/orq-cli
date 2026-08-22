@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"orq/cli/custom/skills"
@@ -119,5 +120,38 @@ func TestAddCleanupRunsEveryCleanup(t *testing.T) {
 	plan.Cleanup()
 	if len(order) != 2 {
 		t.Fatalf("chained cleanups ran %v, want both", order)
+	}
+}
+
+// --dry-run must not touch the user's real home. Its pre-existing side
+// effects were temp dirs under /tmp; linking into ~/.claude/skills is a
+// different promise, and a command that says it will not start the agent
+// should not be rearranging the agent's config either.
+func TestDryRunReportsSessionSkillsWithoutInstallingThem(t *testing.T) {
+	for agent, rel := range realHomeSkillAgents() {
+		t.Run(agent, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			plan, err := FindAgent(agent).Resolve(sessionSkillsCtx(GatewayFlags{MCP: true, DryRun: true}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Cleanup != nil {
+				defer plan.Cleanup()
+			}
+			if _, statErr := os.Stat(filepath.Join(home, rel)); !os.IsNotExist(statErr) {
+				t.Errorf("--dry-run wrote into the real home at %s: %v", rel, statErr)
+			}
+			// The information must survive even though the side effect does.
+			found := false
+			for _, note := range plan.Notes {
+				if strings.Contains(note, filepath.Join(home, rel)) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("--dry-run said nothing about the skills it would link: %v", plan.Notes)
+			}
+		})
 	}
 }

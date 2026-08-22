@@ -127,6 +127,9 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	for _, dir := range plan.TempDirs {
 		fmt.Printf("tempdir: %s\n", dir.HostPath)
 	}
+	for _, note := range plan.Notes {
+		fmt.Printf("note:   %s\n", note)
+	}
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.

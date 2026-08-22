@@ -74,10 +74,22 @@ func install(agents []string) (*Result, error) {
 			existing := findLink(m, path)
 			switch {
 			case existing == nil && exists(path):
-				// Somebody else's skill by the same name. Theirs wins; ours is
-				// not installed, and the caller says so.
-				res.Skipped = append(res.Skipped, path)
-				continue
+				if !ourOrphan(path) {
+					// Somebody else's skill by the same name. Theirs wins;
+					// ours is not installed, and the caller says so.
+					res.Skipped = append(res.Skipped, path)
+					continue
+				}
+				// Our own link from a run that died before it could write the
+				// manifest. Reporting it as foreign would leave it recorded
+				// nowhere, so nothing could ever remove it — and once
+				// generation collection retires the snapshot underneath it,
+				// the user is left with a dangling symlink in their real home.
+				// Adopt it: drop it and reproject onto the current generation,
+				// which is what the manifest is about to claim.
+				if err := removePath(path); err != nil {
+					return nil, err
+				}
 			case existing != nil:
 				// The manifest claims this path, but it may have been taken
 				// over by the user since: a recorded symlink that is no
@@ -294,6 +306,14 @@ func CopyDir(src, dest string) error {
 		}
 	})
 }
+
+// ourOrphan reports whether an unrecorded path is one this CLI created: a
+// symlink into our own snapshot tree and nothing else. It is deliberately
+// narrower than isOurs, which trusts a recorded link's Mode — there is no
+// record here, so the evidence has to come from the path itself. A ModeCopy
+// (Windows) view carries no such evidence and is never adopted; treating a
+// real directory as ours on a hunch is how a user's own work gets deleted.
+func ourOrphan(path string) bool { return symlinkPointsIntoSnapshot(path) }
 
 func findLink(m *Manifest, path string) *Link {
 	for i := range m.Links {
