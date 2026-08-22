@@ -1518,3 +1518,32 @@ func TestDecliningTheLoginStillInstallsSkills(t *testing.T) {
 		t.Errorf("the gateway leg was dropped without saying so:\n%s", out)
 	}
 }
+
+// Skills unpack out of this binary onto the local filesystem, so a skills-only
+// run has nothing to authenticate. `orq setup --capability skills` still walked
+// through step 1 and died at "no TTY available for browser login" on a machine
+// with no saved credential.
+func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	resetSetupMemos(t)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+
+	cmd := NewSetupCommand()
+	cmd.SetArgs([]string{"--capability", "skills", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("setup --capability skills: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no skills installed: %d entries, err = %v", len(entries), err)
+	}
+}

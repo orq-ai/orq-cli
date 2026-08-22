@@ -613,7 +613,10 @@ func TestGatewayWiringBranch(t *testing.T) {
 				t.Fatalf("instrumentAgents: %v", err)
 			}
 			if !tc.wantGateway {
-				if results != nil {
+				// Length, not nil: the no-gateway path still returns one result
+				// per agent whose skills landed, and returns an empty slice when
+				// none did.
+				if len(results) != 0 {
 					t.Fatalf("nothing-to-wire returned %d results, want none", len(results))
 				}
 				return
@@ -779,7 +782,7 @@ func TestSetupCompleteRequiresBothHalves(t *testing.T) {
 	t.Setenv("ORQ_API_KEY", "sk-orq-set")
 	var out strings.Builder
 	printFinalScreen(&reporter{w: &out}, []agentResult{failed}, map[string]string{},
-		"https://api.orq.ai/v3/router", setupComplete(true, []agentResult{failed}), &setupOptions{})
+		setupComplete(true, []agentResult{failed}), &setupOptions{})
 	if strings.Contains(out.String(), "Setup complete") {
 		t.Errorf("a run with a failed agent claimed completion:\n%s", out.String())
 	}
@@ -932,7 +935,7 @@ func TestFinalScreenNeverReAppendsAWiredProfile(t *testing.T) {
 	agents := []agentResult{{Agent: "kimi", Provider: filepath.Join(home, ".kimi-code", "config.toml")}}
 	render := func() string {
 		var out strings.Builder
-		printFinalScreen(&reporter{w: &out}, agents, map[string]string{"docs": "https://docs.orq.ai"}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+		printFinalScreen(&reporter{w: &out}, agents, map[string]string{"docs": "https://docs.orq.ai"}, true, &setupOptions{})
 		return out.String()
 	}
 
@@ -1444,10 +1447,10 @@ func TestGatewayReadinessStatesEachSayTheirPiece(t *testing.T) {
 	}
 }
 
-// The final screen makes claims about what was wired. For a wired agent the
-// suggested next step is that agent's own command, never `orq launch`, which
-// builds a throwaway config home and ignores what setup just wrote. With
-// nothing wired there is no such command, and launch is the honest answer.
+// The final screen's job is to say what is wired for which agent, one row per
+// agent per capability. It carries no per-framework start commands: those told
+// the user how to run each agent, which is not the question this screen
+// answers. With nothing wired the screen says so and points at `orq connect`.
 func TestFinalScreenHasTwoStates(t *testing.T) {
 	cases := map[string]struct {
 		agents     []agentResult
@@ -1456,43 +1459,48 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 	}{
 		"one agent": {
 			agents:     []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
-			want:       []string{"Kimi Code routes its model calls through orq", "kimi"},
-			wantAbsent: []string{"read and write", "orq launch"},
+			want:       []string{"  kimi     gateway   ~/.kimi-code/config.toml\n"},
+			wantAbsent: []string{"Nothing is wired", "orq launch", "Start "},
 		},
-		// The Start label stays constant while the agent lines scale with
-		// the count — two agents means two start rows under one label.
+		// One row per agent, so a screen that reports only the first fails here.
 		"two agents": {
 			agents: []agentResult{
 				{Agent: "claude", Provider: ".claude-provider"},
 				{Agent: "kimi", Provider: "~/.kimi-code/config.toml"},
 			},
 			want: []string{
-				"Claude Code and Kimi Code route their model calls through orq",
-				// Anchored rows, not bare names: a regression that drops the
-				// start block still prints both agents in the claim above it.
-				"\n  Start       claude\n",
-				"\n              kimi\n",
+				"  claude   gateway   .claude-provider\n",
+				"  kimi     gateway   ~/.kimi-code/config.toml\n",
 			},
 		},
-		// Codex's gateway lives in a named profile, so plain `codex` routes
-		// nowhere near orq. Suggesting it contradicted the providerUsage note
-		// printed one screen earlier.
-		"codex names its profile": {
-			agents:     []agentResult{{Agent: "codex", Provider: "~/.codex/orq.config.toml"}},
-			want:       []string{"Codex routes its model calls through orq", "codex --profile orq"},
-			wantAbsent: []string{"\n  Start       codex\n"},
+		// Both capabilities on one agent get a row each: a skills-only run used
+		// to fall through to the nothing-wired branch, which was the bug.
+		"gateway and skills": {
+			agents: []agentResult{{
+				Agent:    "claude",
+				Provider: "~/.claude/settings.json",
+				Skills:   "/home/u/.claude/skills",
+			}},
+			want: []string{
+				"  claude   gateway   ~/.claude/settings.json\n",
+				"  claude   skills    ",
+			},
+			wantAbsent: []string{"Nothing is wired"},
+		},
+		"skills only": {
+			agents:     []agentResult{{Agent: "codex", Skills: "/home/u/.codex/skills"}},
+			want:       []string{"  codex    skills    "},
+			wantAbsent: []string{"Nothing is wired", "gateway"},
 		},
 		"nothing wired": {
-			agents: nil,
-			// Ephemeral launch is legitimately the answer here, for a detected
-			// agent (the harness installs kimi), never a hardcoded claude.
-			want:       []string{"Route an existing OpenAI client", "orq launch kimi", "orq connect"},
-			wantAbsent: []string{"orq launch claude", "Start "},
+			agents:     nil,
+			want:       []string{"Nothing is wired on this machine yet.", "orq connect"},
+			wantAbsent: []string{"gateway", "Start "},
 		},
 		"errored agent does not count as wired": {
 			agents:     []agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml", Error: "boom"}},
-			want:       []string{"Route an existing OpenAI client"},
-			wantAbsent: []string{"routes its model calls", "Start "},
+			want:       []string{"Nothing is wired on this machine yet."},
+			wantAbsent: []string{"~/.kimi-code/config.toml", "Start "},
 		},
 	}
 	for name, tc := range cases {
@@ -1509,7 +1517,7 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 			t.Setenv("ORQ_API_KEY", "sk-orq-set")
 
 			var out strings.Builder
-			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+			printFinalScreen(&reporter{w: &out}, tc.agents, map[string]string{}, true, &setupOptions{})
 			got := out.String()
 			for _, want := range tc.want {
 				if !strings.Contains(got, want) {
@@ -1541,12 +1549,12 @@ func TestFinalScreenFailedVerdictAndFooter(t *testing.T) {
 	printFinalScreen(&reporter{w: &out},
 		[]agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
 		map[string]string{"workspace": "https://my.orq.ai/ws"},
-		"https://api.orq.ai/v3/router", false, &setupOptions{})
+		false, &setupOptions{})
 	got := out.String()
 
 	for _, want := range []string{
 		"Setup finished with failed checks",
-		"\n  Start       kimi\n",
+		"\n  kimi     gateway   ~/.kimi-code/config.toml\n",
 		"\n  Workspace   https://my.orq.ai/ws\n",
 		"\n  Stuck?      orq doctor  ·  " + docsURL + "\n",
 	} {
@@ -1591,22 +1599,17 @@ func TestFinalScreenGoldens(t *testing.T) {
 	}{
 		"wired, colour off": {false, wired, true, "" +
 			"\n  ✓ Setup complete\n\n" +
-			"  Kimi Code routes its model calls through orq.\n\n" +
-			"  Start       kimi\n\n" +
+			"  kimi     gateway   ~/.kimi-code/config.toml\n\n" +
 			"  Workspace   https://my.orq.ai/ws\n" +
 			"  Stuck?      orq doctor  ·  https://docs.orq.ai\n\n"},
 		"wired, colour on": {true, wired, true, "" +
 			"\n  \033[92m✓\033[0m \033[1mSetup complete\033[0m\n\n" +
-			"  Kimi Code routes its model calls through orq.\n\n" +
-			"  \033[2mStart      \033[0m kimi\n\n" +
+			"  kimi     gateway   ~/.kimi-code/config.toml\n\n" +
 			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
 		"nothing wired, failed, colour on": {true, nil, false, "" +
 			"\n  \033[93m!\033[0m \033[1mSetup finished with failed checks — see above\033[0m\n\n" +
-			"  Route an existing OpenAI client through the gateway:\n\n" +
-			"      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n" +
-			"                      base_url=\"https://api.orq.ai/v3/router\")\n\n" +
-			"  \033[2mLaunch     \033[0m orq launch kimi\n" +
+			"  Nothing is wired on this machine yet.\n" +
 			"  \033[2mWire       \033[0m orq connect\n\n" +
 			"  \033[2mWorkspace  \033[0m https://my.orq.ai/ws\n" +
 			"  \033[2mStuck?     \033[0m orq doctor  \033[2m·\033[0m  https://docs.orq.ai\n\n"},
@@ -1614,7 +1617,7 @@ func TestFinalScreenGoldens(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			humanOutput = func() bool { return tc.colour }
 			var out strings.Builder
-			printFinalScreen(&reporter{w: &out}, tc.agents, links, "https://api.orq.ai/v3/router", tc.verified, &setupOptions{})
+			printFinalScreen(&reporter{w: &out}, tc.agents, links, tc.verified, &setupOptions{})
 			if got := out.String(); got != tc.want {
 				t.Errorf("golden mismatch:\ngot:  %q\nwant: %q", got, tc.want)
 			}
@@ -1622,10 +1625,10 @@ func TestFinalScreenGoldens(t *testing.T) {
 	}
 }
 
-// The bare command only authenticates once ORQ_API_KEY is exported, so the
-// suggestion must sit below the warning that says the shell lacks it — or the
-// screen walks the user into the exact failure it just predicted.
-func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
+// A gateway wire is only live once ORQ_API_KEY is exported, so the screen that
+// reports one must also say when this shell lacks it — and say it below the
+// wire it qualifies, not above a list the user has not read yet.
+func TestFinalScreenEnvWarningFollowsTheWiredList(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1633,16 +1636,16 @@ func TestFinalScreenSuggestionComesAfterEnvWarning(t *testing.T) {
 	var out strings.Builder
 	printFinalScreen(&reporter{w: &out},
 		[]agentResult{{Agent: "kimi", Provider: "~/.kimi-code/config.toml"}},
-		map[string]string{}, "https://api.orq.ai/v3/router", true, &setupOptions{})
+		map[string]string{}, true, &setupOptions{})
 	got := out.String()
 
 	warn := strings.Index(got, "agents inherit it from this shell")
-	start := strings.Index(got, "Start")
-	if warn == -1 || start == -1 {
-		t.Fatalf("expected both the env warning and the suggestion:\n%s", got)
+	wire := strings.Index(got, "~/.kimi-code/config.toml")
+	if warn == -1 || wire == -1 {
+		t.Fatalf("expected both the wired row and the env warning:\n%s", got)
 	}
-	if start < warn {
-		t.Errorf("suggestion printed above the env warning:\n%s", got)
+	if warn < wire {
+		t.Errorf("env warning printed above the wire it qualifies:\n%s", got)
 	}
 }
 

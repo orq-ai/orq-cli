@@ -90,7 +90,11 @@ type agentResult struct {
 	Agent      string `json:"agent"`
 	Provider   string `json:"provider,omitempty"`
 	ModelCount int    `json:"model_count,omitempty"`
-	Error      string `json:"error,omitempty"`
+	// Skills is the directory this agent's skills landed in, empty when the
+	// capability was not requested. The final screen reports per agent, so a
+	// skills-only run has something to show even with no gateway wire.
+	Skills string `json:"skills,omitempty"`
+	Error  string `json:"error,omitempty"`
 	// Skipped is the wire that was never attempted, as opposed to Error's wire
 	// that was attempted and failed. Set only when nothing on disk wires the
 	// agent afterwards: an earlier run's provider block surviving is not a skip.
@@ -166,6 +170,16 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		opts.caps = caps
 	}
 
+	// A skills-only run unpacks files out of this binary and touches nothing
+	// else: no key to mint, no workspace to pick, nothing to verify against the
+	// API. Sending it through steps 1 and 2 made `orq setup --capability skills`
+	// die at "no TTY available for browser login". connect already is that run,
+	// credential gate and all, so hand it over rather than growing a second
+	// credential-free path here.
+	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
+		return runConnect(cmd, opts, opts.caps, false)
+	}
+
 	rep := newReporter(opts.noInput)
 	printSplash(bartolocli.Stderr, cmd.Root().Version)
 
@@ -218,7 +232,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	complete := setupComplete(verified, agentResults)
 	result["setup_complete"] = complete
 
-	printFinalScreen(rep, agentResults, links, client.RouterBaseURL(), complete, opts)
+	printFinalScreen(rep, agentResults, links, complete, opts)
 
 	if !wantsHumanView(cmd) {
 		if err := emit(result); err != nil {
@@ -1046,6 +1060,7 @@ func workspaceLink(state *authState, path string) string {
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
 	selected := opts.agents
+	skillDirs := map[string]string{}
 
 	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
 		res, err := skills.Install(selected)
@@ -1060,10 +1075,26 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		for _, path := range res.Skipped {
 			rep.warn("%-8s %-9s %s already exists and is not ours — left alone", "", capSkills, tilde(path))
 		}
+		// Resolved one agent at a time on purpose: a shared-directory reader
+		// has no Target.Agent of its own, so the combined list cannot say
+		// which agent a shared directory belongs to.
+		for _, id := range selected {
+			for _, t := range skillTargetsFor([]string{id}) {
+				skillDirs[id] = t.Dir
+			}
+		}
 	}
 
 	if len(selected) == 0 || opts.noGateway {
-		return nil, nil
+		// A skills-only run still wired something. Returning nil here is what
+		// left the final screen with nothing to report but a gateway snippet.
+		results := make([]agentResult, 0, len(skillDirs))
+		for _, id := range selected {
+			if dir, ok := skillDirs[id]; ok {
+				results = append(results, agentResult{Agent: id, Skills: dir})
+			}
+		}
+		return results, nil
 	}
 
 	if !opts.noGateway {
@@ -1084,7 +1115,7 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 			results = append(results, agentResult{Agent: id, Error: "unsupported agent"})
 			continue
 		}
-		res := agentResult{Agent: id}
+		res := agentResult{Agent: id, Skills: skillDirs[id]}
 
 		if spec.writeProvider == nil {
 			// claude routes through env only, so saying nothing would read as a
@@ -1386,7 +1417,7 @@ func buildLinks(state *authState) map[string]string {
 	return links
 }
 
-func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, routerBase string, verified bool, opts *setupOptions) {
+func printFinalScreen(rep *reporter, agents []agentResult, links map[string]string, verified bool, opts *setupOptions) {
 	if opts.noInput {
 		return
 	}
@@ -1399,35 +1430,26 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 
-	gatewayWired := []string{}
-	// starts are the wired agents' own commands, never 'orq launch': launch builds a throwaway home and would not exercise what setup wrote.
-	starts := []string{}
+	// One line per agent per capability, in the same `%-8s %-9s %s` shape the
+	// connect reporter uses, so the screen that ends setup reads like the
+	// output that got there. No per-framework start commands: the question
+	// this screen answers is what is wired, not how to run each agent.
+	wiredAny := false
 	for _, a := range agents {
 		if a.Error != "" {
 			continue
 		}
-		spec, ok := lookupAgent(a.Agent)
-		if !ok {
-			continue
+		if a.Provider != "" {
+			fmt.Fprintf(w, "  %-8s %-9s %s\n", a.Agent, capGateway, a.Provider)
+			wiredAny = true
 		}
-		if a.Provider == "" {
-			continue
+		if a.Skills != "" {
+			fmt.Fprintf(w, "  %-8s %-9s %s\n", a.Agent, capSkills, tilde(a.Skills))
+			wiredAny = true
 		}
-		gatewayWired = append(gatewayWired, spec.Label)
-		starts = append(starts, spec.startCommand())
 	}
-	switch {
-	case len(gatewayWired) > 0:
-		fmt.Fprintf(w, "  %s %s model calls through orq.\n",
-			strings.Join(gatewayWired, " and "), pluralize(len(gatewayWired), "routes its", "route their"))
-	default:
-		// 'orq launch' only belongs here: nothing durable was written for it to shadow.
-		fmt.Fprintln(w, "  Route an existing OpenAI client through the gateway:")
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "      client = OpenAI(api_key=os.environ[\"ORQ_API_KEY\"],\n"+
-			"                      base_url=\"%s\")\n", routerBase)
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  %s orq launch %s\n", padLabel("Launch"), detectedAgentID())
+	if !wiredAny {
+		fmt.Fprintln(w, "  Nothing is wired on this machine yet.")
 		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
 	}
 	keyReferenced := false
@@ -1456,17 +1478,6 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			fmt.Fprintf(w, "    echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
 		}
 	}
-	// After the env warning on purpose: these commands only authenticate once ORQ_API_KEY is exported.
-	if len(starts) > 0 {
-		fmt.Fprintln(w)
-		for i, cmd := range starts {
-			label := "Start"
-			if i > 0 {
-				label = ""
-			}
-			fmt.Fprintf(w, "  %s %s\n", padLabel(label), cmd)
-		}
-	}
 	fmt.Fprintln(w)
 	if ws := links["workspace"]; ws != "" {
 		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
@@ -1480,21 +1491,4 @@ const labelWidth = 11
 
 func padLabel(s string) string {
 	return paint(ansiDim, pad(s, labelWidth))
-}
-
-func pluralize(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
-}
-
-// detectedAgentID names an installed agent so the screen never suggests a binary the user does not have.
-func detectedAgentID() string {
-	for _, spec := range agentRegistry() {
-		if spec.detect != nil && spec.detect() {
-			return spec.ID
-		}
-	}
-	return "claude"
 }

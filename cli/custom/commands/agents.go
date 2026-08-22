@@ -51,15 +51,6 @@ type agentSpec struct {
 	// a renewal, so only reading it can tell a wired agent from a dead one.
 	providerKey   func(path string) string
 	providerUsage string
-	// runCommand starts the agent against what setup wrote; empty means the bare ID does.
-	runCommand string
-}
-
-func (s agentSpec) startCommand() string {
-	if s.runCommand != "" {
-		return s.runCommand
-	}
-	return s.ID
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in order.
@@ -87,7 +78,6 @@ func agentRegistry() []agentSpec {
 			removeProvider:  removeCodexProfile,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
 			providerUsage:   "run 'codex --profile " + codexProfileName + "'",
-			runCommand:      "codex --profile " + codexProfileName,
 		},
 		{
 			ID:    "opencode",
