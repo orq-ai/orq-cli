@@ -399,3 +399,173 @@ func TestRefreshOnANeverConnectedMachineTouchesNothing(t *testing.T) {
 		t.Error("refresh created orq state on a machine that never connected")
 	}
 }
+
+func TestInstallSkipsAPathTakenOverByTheUser(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	if len(names) == 0 {
+		t.Fatal("no skills embedded")
+	}
+	target := filepath.Join(home, ".claude", "skills", names[0])
+
+	// The user deleted our link and put real, precious work in its place.
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	precious := filepath.Join(target, "my-precious-work.txt")
+	if err := os.WriteFile(precious, []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install([]string{"claude"})
+	if err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	data, err := os.ReadFile(precious)
+	if err != nil || string(data) != "mine" {
+		t.Fatalf("install destroyed user data: %v %q", err, data)
+	}
+	found := false
+	for _, p := range res.Skipped {
+		if p == target {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("taken-over path not reported as skipped: %v", res.Skipped)
+	}
+}
+
+func TestRemoveSkipsAPathTakenOverByTheUser(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	target := filepath.Join(home, ".claude", "skills", names[0])
+
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	precious := filepath.Join(target, "mine.txt")
+	if err := os.WriteFile(precious, []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Remove([]string{"claude"})
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(precious); err != nil {
+		t.Errorf("Remove destroyed a path taken over by the user: %v", err)
+	}
+	found := false
+	for _, p := range res.Skipped {
+		if p == target {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("taken-over path not reported as skipped: %v", res.Skipped)
+	}
+}
+
+func TestRefreshSkipsAPathTakenOverByTheUser(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	target := filepath.Join(home, ".claude", "skills", names[0])
+
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	precious := filepath.Join(target, "mine.txt")
+	if err := os.WriteFile(precious, []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "next-release-2")
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := os.Stat(precious); err != nil {
+		t.Errorf("Refresh destroyed a path taken over by the user: %v", err)
+	}
+	found := false
+	for _, p := range res.Skipped {
+		if p == target {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("taken-over path not reported as skipped: %v", res.Skipped)
+	}
+}
+
+func TestRefreshSkipsALinkReplacedWithAForeignSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	target := filepath.Join(home, ".claude", "skills", names[0])
+
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(home, "my-own-stuff")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "mine.txt"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The user replaced our symlink with their own symlink to their own
+	// directory. It is still a symlink, so a type-only check would say it is
+	// still ours; it must not be, because its target is outside our snapshot.
+	if err := os.Symlink(elsewhere, target); err != nil {
+		t.Fatal(err)
+	}
+
+	SetFingerprintForTest(t, "next-release-3")
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	resolved, err := os.Readlink(target)
+	if err != nil || resolved != elsewhere {
+		t.Errorf("Refresh clobbered the user's own symlink: %v %q", err, resolved)
+	}
+	found := false
+	for _, p := range res.Skipped {
+		if p == target {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("foreign symlink not reported as skipped: %v", res.Skipped)
+	}
+}
