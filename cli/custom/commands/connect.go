@@ -168,6 +168,18 @@ func manifestSkillAgents() []string {
 // asking for a credential before installing them stands a network prompt in
 // front of an operation that is pure file I/O — and makes the offline install
 // the spec promises impossible.
+// credentialFreeCaps is what is left of a request once the credential is known
+// to be unavailable: everything this binary can still do from its own contents.
+func credentialFreeCaps(caps []string) []string {
+	var out []string
+	for _, c := range caps {
+		if c == capSkills {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func capsNeedCredential(caps []string) bool {
 	for _, c := range caps {
 		if c != capSkills {
@@ -436,11 +448,27 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	if capsNeedCredential(caps) {
 		var err error
 		state, client, err = resolveConnectAuth(cmd, rep, opts)
-		if errors.Is(err, errLoginDeclined) {
+		switch {
+		case err != nil && hasCap(caps, capSkills):
+			// A missing credential costs this run the gateway, not everything
+			// it could still do. Losing the offline skills install because the
+			// gateway leg — which may have nothing to do anyway, claude has no
+			// provider config — could not find a key is the whole credential
+			// coupling this branch set out to remove, reintroduced one level
+			// up by the bare capability set.
+			if errors.Is(err, errLoginDeclined) {
+				rep.info("gateway skipped: no credential — run 'orq setup' when ready, or pass --api-key")
+			} else {
+				rep.warn("gateway skipped: %v", err)
+			}
+			caps = credentialFreeCaps(caps)
+			opts.caps = caps
+			opts.noGateway = true
+			state, client = nil, nil
+		case errors.Is(err, errLoginDeclined):
 			rep.info("nothing wired — run 'orq setup' when ready, or pass --api-key")
 			return nil
-		}
-		if err != nil {
+		case err != nil:
 			return err
 		}
 	}

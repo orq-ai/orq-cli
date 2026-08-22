@@ -238,7 +238,11 @@ func TestConnectNoCredentialNonInteractiveKeepsTheError(t *testing.T) {
 	ensureCreds(t)
 	resetSetupMemos(t)
 
-	for _, args := range [][]string{{"kimi"}, {"kimi", "--yes"}} {
+	// gateway named explicitly: a request that also carries skills degrades to
+	// the skills leg rather than failing, because that leg needs no credential
+	// (TestKeylessBareConnectStillInstallsSkills). The hard error belongs to a
+	// request that has nothing left to do without a key, which is this one.
+	for _, args := range [][]string{{"kimi", "gateway"}, {"kimi", "gateway", "--yes"}} {
 		cmd := NewConnectCommand()
 		cmd.SetArgs(args)
 		err := cmd.Execute()
@@ -1295,7 +1299,9 @@ func TestConnectSkillsNeedsNoCredential(t *testing.T) {
 }
 
 // ...and the credential gate stays exactly where it was for the capability
-// that actually talks to orq.
+// that actually talks to orq. A request that has nothing left to do without a
+// key still fails loudly; one that also carries skills degrades to the leg it
+// can still complete (TestKeylessBareConnectStillInstallsSkills).
 func TestConnectGatewayStillNeedsACredential(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1307,7 +1313,7 @@ func TestConnectGatewayStillNeedsACredential(t *testing.T) {
 	resetSetupMemos(t)
 
 	c := NewConnectCommand()
-	c.SetArgs([]string{"kimi", "gateway", "skills", "--yes"})
+	c.SetArgs([]string{"kimi", "gateway", "--yes"})
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "no saved API key") {
 		t.Fatalf("gateway without a credential: err = %v, want the saved-key error", err)
@@ -1437,5 +1443,78 @@ func TestSkillsAreVisibleInTheMachineReadableOutput(t *testing.T) {
 	removed, _ := payload["skills"].(map[string]any)
 	if removed == nil || removed["removed"] == nil {
 		t.Fatalf("disconnect's payload never mentions the skills it removed: %v", payload)
+	}
+}
+
+// A bare `orq connect` on a machine with no credential must still install the
+// skills it can install offline. Widening the bare capability set to
+// {gateway, skills} put the two fixes in each other's way: the credential gate
+// fires for the whole run if any capability needs one, so a missing key aborted
+// a run whose skills leg needed nothing. The gateway leg is the part that needs
+// a credential; only it should be lost.
+func TestKeylessBareConnectStillInstallsSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"--yes"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("keyless bare connect: %v", err)
+		}
+	})
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("keyless bare connect installed nothing: %v", err)
+	}
+	if !strings.Contains(out, "gateway") {
+		t.Errorf("the gateway leg was dropped without saying so:\n%s", out)
+	}
+}
+
+// The same degradation on the interactive path: declining the login offer must
+// cost the user the gateway, not the skills. connectSelected is driven directly
+// because reaching the offer needs an interactive opts, which the command-level
+// entry point forces off without a TTY.
+func TestDecliningTheLoginStillInstallsSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	// noInput false and yes false: resolveConnectAuth offers the login, and
+	// opts.confirm fails closed (no TTY in a test), which is the decline.
+	opts := &setupOptions{}
+	cmd := NewConnectCommand()
+	out := captureOutput(t, func() {
+		if err := connectSelected(cmd, newReporter(false), opts,
+			[]string{"claude"}, []string{capGateway, capSkills}, false); err != nil {
+			t.Fatalf("declined login: %v", err)
+		}
+	})
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("declining the login cost the user the skills too: %v", err)
+	}
+	if !strings.Contains(out, "gateway") {
+		t.Errorf("the gateway leg was dropped without saying so:\n%s", out)
 	}
 }
