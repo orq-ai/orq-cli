@@ -49,8 +49,7 @@ type agentSpec struct {
 	providerEmbedsKey bool
 	// providerKey reads back the embedded credential. A literal copy cannot follow
 	// a renewal, so only reading it can tell a wired agent from a dead one.
-	providerKey   func(path string) string
-	providerUsage string
+	providerKey func(path string) string
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in order.
@@ -77,7 +76,6 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeCodexProviderTOML,
 			removeProvider:  removeCodexProfile,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
-			providerUsage:   "run 'codex --profile " + codexProfileName + "'",
 		},
 		{
 			ID:    "opencode",
@@ -88,7 +86,6 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
 			ID:     "kimi",
@@ -111,7 +108,6 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			providerUsage:   "pick an " + launch.ProviderDisplayName + " model",
 		},
 		{
 			ID:     "pi",
@@ -122,11 +118,6 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writePiProviderJSON,
 			removeProvider:  func(p string) (bool, error) { return removeJSONKeys(p, "providers", launch.PiProvider) },
 			providerPresent: jsonProviderPresentAt("providers", launch.PiProvider),
-			// The model has to be named. Verified against pi 0.83.0: a bare
-			// `pi --provider orq` answers from whatever model pi already had
-			// selected, so a hint stopping at the provider teaches a command that
-			// silently routes nowhere near orq.
-			providerUsage: "run 'pi --model " + launch.PiProvider + "/<model>', or pick one in /model",
 		},
 	}
 }

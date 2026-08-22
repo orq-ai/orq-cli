@@ -1217,11 +1217,6 @@ func reportAgent(rep *reporter, spec agentSpec, res agentResult, opts *setupOpti
 		line += fmt.Sprintf("  (%d %s available)", n, unit)
 	}
 	rep.ok("%s", line)
-
-	// orq is registered as an option, not the default, so some agents need a step the user would never find.
-	if spec.providerUsage != "" {
-		rep.note("  %s", spec.providerUsage)
-	}
 }
 
 var cachedCodingModels []auth.RouterModel
@@ -1423,44 +1418,54 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	w := rep.w
 	fmt.Fprintln(w)
+	// The verdict and the agent names sit flush left; everything they own is
+	// indented under them, so the screen has one column to scan down.
 	if verified {
-		fmt.Fprintf(w, "  %s %s\n", paint(ansiOK, "✓"), bold("Setup complete"))
+		fmt.Fprintf(w, "%s %s\n", paint(ansiOK, "✓"), bold("Setup complete"))
 	} else {
-		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"), bold("Setup finished with failed checks — see above"))
+		fmt.Fprintf(w, "%s %s\n", paint(ansiWarn, "!"), bold("Setup finished with failed checks — see above"))
 	}
 	fmt.Fprintln(w)
 
 	// The agent is the heading and its capabilities are indented under it, so
-	// the name is written once however many capabilities it got. No
-	// per-framework start commands: the question this screen answers is what
-	// is wired, not how to run each agent.
+	// the name is written once however many capabilities it got, and each row
+	// carries its own verdict. No per-framework start commands: the question
+	// this screen answers is what is wired, not how to run each agent.
 	wiredAny := false
 	for _, a := range agents {
-		if a.Error != "" {
-			continue
-		}
-		wired := [][2]string{}
-		if a.Provider != "" {
-			wired = append(wired, [2]string{capGateway, a.Provider})
+		type capRow struct{ mark, label, detail string }
+		rows := []capRow{}
+		// One gateway row per agent, whichever way the wire went: a failure
+		// that prints nothing reads as an agent nobody asked about.
+		switch {
+		// Error before Provider: a failed wire can still carry the path it was
+		// writing to, and reporting that path with a tick is the claim the
+		// error exists to deny.
+		case a.Error != "":
+			rows = append(rows, capRow{paint(ansiRed, "✗"), capGateway, a.Error})
+		case a.Provider != "":
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capGateway, tilde(a.Provider)})
+		case a.Skipped != "":
+			rows = append(rows, capRow{paint(ansiRed, "✗"), capGateway, a.Skipped})
 		}
 		if a.Skills != "" {
-			wired = append(wired, [2]string{capSkills, tilde(a.Skills)})
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capSkills, tilde(a.Skills)})
 		}
-		if len(wired) == 0 {
+		if len(rows) == 0 {
 			continue
 		}
 		if wiredAny {
 			fmt.Fprintln(w)
 		}
-		fmt.Fprintf(w, "  %s\n", bold(a.Agent))
-		for _, cap := range wired {
-			fmt.Fprintf(w, "      %-9s %s\n", cap[0], cap[1])
+		fmt.Fprintf(w, "%s\n", bold(paint(ansiBrand, a.Agent)))
+		for _, row := range rows {
+			fmt.Fprintf(w, "    %s %-9s %s\n", row.mark, row.label, paint(ansiDim, row.detail))
 		}
 		wiredAny = true
 	}
 	if !wiredAny {
-		fmt.Fprintln(w, "  Nothing is wired on this machine yet.")
-		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
+		fmt.Fprintln(w, "Nothing is wired on this machine yet.")
+		fmt.Fprintf(w, "%s orq connect\n", padLabel("Wire"))
 	}
 	keyReferenced := false
 	for _, a := range agents {
@@ -1490,9 +1495,9 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	}
 	fmt.Fprintln(w)
 	if ws := links["workspace"]; ws != "" {
-		fmt.Fprintf(w, "  %s %s\n", padLabel("Workspace"), ws)
+		fmt.Fprintf(w, "%s %s\n", padLabel("Workspace"), ws)
 	}
-	fmt.Fprintf(w, "  %s orq doctor  %s  %s\n", padLabel("Stuck?"), paint(ansiDim, "·"), docsURL)
+	fmt.Fprintf(w, "%s orq doctor  %s  %s\n", padLabel("Stuck?"), paint(ansiDim, "·"), docsURL)
 	fmt.Fprintln(w)
 }
 
