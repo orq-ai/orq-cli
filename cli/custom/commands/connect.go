@@ -77,24 +77,32 @@ func nothingWired(named bool, agents []string) string {
 	return "nothing wired for " + strings.Join(agents, ", ")
 }
 
-// reportUnwirableAgents drops the named agents that have no provider config and
-// says so, rather than letting them fall through to "detected but not wired".
-// The same message runConnect prints, for the same reason: reporting claude as
-// unwired promises a wire that cannot exist.
+// reportUnwirableAgents warns about the named agents that have no provider
+// config, so a request never says nothing and never falls through to
+// "detected but not wired" for a gateway wire that cannot exist. The same
+// message runConnect prints, for the same reason.
 //
-// The filter is gateway-specific — an agent with no provider config can still
-// carry skills — so it only applies when gateway is among the requested caps.
-// Selecting only skills must never drop claude before its skills are touched.
+// It only drops the agent from the returned set when gateway is the sole
+// requested capability: a gateway-only request has nothing left to do for
+// that agent, so dropping it is the whole story. A request combining gateway
+// with anything else — skills, most concretely — must keep the agent in
+// play; an agent with no provider config can still carry skills, and every
+// other capability's own per-agent logic already no-ops cleanly on a nil
+// provider config (see wiredPath). Dropping the agent there would silently
+// discard those other capabilities along with the gateway leg.
 func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
 	if !hasCap(caps, capGateway) {
 		return agents
 	}
+	onlyGateway := len(caps) == 1
 	var out []string
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if ok && spec.writeProvider == nil {
 			rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
-			continue
+			if onlyGateway {
+				continue
+			}
 		}
 		out = append(out, id)
 	}
@@ -605,6 +613,8 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 		rows = append(rows, r)
 	}
 	if hasCap(caps, capSkills) {
+		// skills.Remove always returns a non-nil *Result, even on error, so
+		// res.Skipped below is safe to range over unconditionally.
 		res, err := skills.Remove(agents)
 		switch {
 		case err != nil:
@@ -613,10 +623,8 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 		case len(res.Removed) > 0:
 			rep.ok("orq skills removed (%d entries)", len(res.Removed))
 		}
-		if res != nil {
-			for _, path := range res.Skipped {
-				rep.warn("%s is no longer ours — left alone", tilde(path))
-			}
+		for _, path := range res.Skipped {
+			rep.warn("%s is no longer ours — left alone", tilde(path))
 		}
 	}
 	return rows, failed

@@ -99,14 +99,21 @@ func Install(agents []string) (*Result, error) {
 
 // Remove deletes only what the manifest records for the given agents. An empty
 // agent list removes everything non-session we own.
+//
+// A link with an empty Agent is the shared agents-spec directory (see
+// Targets): it belongs to the request whenever any named agent is one of the
+// shared readers, the same membership Targets uses to decide whether to
+// write there in the first place.
 func Remove(agents []string) (*Result, error) {
 	m, err := LoadManifest()
 	if err != nil || m == nil {
 		return &Result{}, err
 	}
 	wanted := map[string]bool{}
+	sharedWanted := false
 	for _, a := range agents {
 		wanted[a] = true
+		sharedWanted = sharedWanted || sharedReaders[a]
 	}
 	res := &Result{}
 	var gone []string
@@ -114,7 +121,7 @@ func Remove(agents []string) (*Result, error) {
 		if l.Session {
 			continue
 		}
-		if len(agents) > 0 && !wanted[l.Agent] {
+		if len(agents) > 0 && !wanted[l.Agent] && !(l.Agent == "" && sharedWanted) {
 			continue
 		}
 		if exists(l.Path) && !isOurs(l) {

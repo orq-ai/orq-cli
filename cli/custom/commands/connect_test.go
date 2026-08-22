@@ -776,6 +776,90 @@ func TestConnectSkillsInstallsAndDisconnectRemoves(t *testing.T) {
 	}
 }
 
+// claude has no gateway provider config, so naming it alongside "gateway" and
+// "skills" must not lose the skills leg: reportUnwirableAgents used to drop
+// the whole agent whenever gateway was requested at all, which silently
+// skipped skills removal for an agent combining a real capability with an
+// unwirable one.
+func TestDisconnectCombinesGatewayAndSkillsForClaude(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect claude skills: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no skills installed: %v %d", err, len(entries))
+	}
+
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"claude", "gateway", "skills", "--yes"})
+	if err := d.Execute(); err != nil {
+		t.Fatalf("disconnect claude gateway skills: %v", err)
+	}
+	entries, err = os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err == nil && len(entries) != 0 {
+		t.Errorf("gateway+skills disconnect left %d skill entries behind", len(entries))
+	}
+}
+
+// The status equivalent of the disconnect case above: claude's missing
+// gateway config must not suppress the skills it does carry.
+func TestConnectStatusReportsSkillsAlongsideAnUnwirableGateway(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect claude skills: %v", err)
+	}
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	status := NewConnectCommand()
+	status.SetArgs([]string{"--status", "claude", "gateway", "skills"})
+	if err := status.Execute(); err != nil {
+		t.Fatalf("status claude gateway skills: %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "not wired") {
+		t.Errorf("skills wiring went unreported, claude read as entirely unwired:\n%s", got)
+	}
+	if !strings.Contains(got, "skills") {
+		t.Errorf("status did not report the skills capability:\n%s", got)
+	}
+	if !strings.Contains(got, "nothing to configure") {
+		t.Errorf("claude's lack of a gateway config went unsaid:\n%s", got)
+	}
+}
+
 func TestConnectSkillsDryRunWritesNothing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

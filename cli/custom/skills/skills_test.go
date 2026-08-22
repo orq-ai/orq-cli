@@ -569,3 +569,38 @@ func TestRefreshSkipsALinkReplacedWithAForeignSymlink(t *testing.T) {
 		t.Errorf("foreign symlink not reported as skipped: %v", res.Skipped)
 	}
 }
+
+// opencode reads the shared agents-spec directory (~/.agents/skills), which
+// Targets attaches to any request naming a shared reader. Remove must honor
+// the same membership: naming "opencode" has to remove those shared links,
+// not just an opencode-specific directory that does not exist.
+func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if _, err := Install([]string{"opencode"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	sharedDir := filepath.Join(home, ".agents", "skills")
+	names, _ := Names()
+	if len(names) == 0 {
+		t.Fatal("no skills to install")
+	}
+	for _, n := range names {
+		if _, err := os.Stat(filepath.Join(sharedDir, n)); err != nil {
+			t.Fatalf("shared install missing %q: %v", n, err)
+		}
+	}
+
+	res, err := Remove([]string{"opencode"})
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(res.Removed) != len(names) {
+		t.Errorf("removed %d links, want %d", len(res.Removed), len(names))
+	}
+	entries, err := os.ReadDir(sharedDir)
+	if err == nil && len(entries) != 0 {
+		t.Errorf("shared directory still has %d entries after removing its only reader", len(entries))
+	}
+}
