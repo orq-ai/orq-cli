@@ -215,10 +215,10 @@ func TestConcurrentSaveManifestSucceeds(t *testing.T) {
 				Generation:  "/gen-test",
 			}
 			m.AddLink(Link{
-				Path:   filepath.Join("/home/user/.claude/skills", "skill", "dir", fmt.Sprintf("link%d", id)),
-				Skill:  fmt.Sprintf("skill%d", id),
-				Mode:   ModeSymlink,
-				Agent:  "agent",
+				Path:  filepath.Join("/home/user/.claude/skills", "skill", "dir", fmt.Sprintf("link%d", id)),
+				Skill: fmt.Sprintf("skill%d", id),
+				Mode:  ModeSymlink,
+				Agent: "agent",
 			})
 			errs <- SaveManifest(m)
 		}(i)
