@@ -1109,3 +1109,56 @@ func TestConnectStatusCollapsesMissingLinksPerDirectory(t *testing.T) {
 		t.Errorf("status did not point at the fix:\n%s", out)
 	}
 }
+
+func TestAnUpdatedBinaryRelinksOnTheNextCommand(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	before, err := skills.LoadManifest()
+	if err != nil || before == nil {
+		t.Fatalf("manifest after connect: %v %v", before, err)
+	}
+
+	// skills.SetFingerprintForTest lives in export_test.go, which is scoped to
+	// the skills package's own tests and is not linkable from here. Simulating
+	// "an older binary installed this" by staling the recorded fingerprint
+	// directly has the same effect on Refresh's decision (it only ever
+	// compares the manifest's recorded fingerprint against the live one) and
+	// needs no new exported production API.
+	before.Fingerprint = "a-previous-release"
+	if err := skills.SaveManifest(before); err != nil {
+		t.Fatalf("seed stale manifest: %v", err)
+	}
+
+	if _, err := skills.Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	after, err := skills.LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("manifest after refresh: %v %v", after, err)
+	}
+	if after.Fingerprint != skills.Fingerprint() {
+		t.Errorf("fingerprint = %q, want it corrected to the current build's %q", after.Fingerprint, skills.Fingerprint())
+	}
+	names, _ := skills.Names()
+	for _, n := range names {
+		p := filepath.Join(home, ".claude", "skills", n, "SKILL.md")
+		if _, statErr := os.Stat(p); statErr != nil {
+			t.Errorf("%s unreadable after refresh: %v", n, statErr)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
+	"orq/cli/custom/skills"
 
 	colorable "github.com/mattn/go-colorable"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -280,6 +281,50 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewSetupCommand())
 	root.AddCommand(commands.NewConnectCommand())
 	root.AddCommand(commands.NewDisconnectCommand())
+	installSkillsRefreshPreRun()
+}
+
+// installSkillsRefreshPreRun keeps installed skills current with the running
+// binary, and reclaims links left behind by launches that died without
+// cleaning up after themselves, on every `orq` invocation — not just
+// `orq connect`, so someone who updates the CLI and then opens their agent
+// directly is not left on the old set.
+//
+// root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
+// root.PersistentPreRunE to a function that, after its own housekeeping,
+// calls the single package-level bartolocli.PreRun hook if one is set. That
+// is the same seam installSessionPreRun above already uses, so this chains
+// onto it the same way rather than assigning root.PersistentPreRun directly
+// — which cobra would never even look at, since PersistentPreRunE (bartolo's)
+// takes priority over PersistentPreRun on the same command.
+//
+// Both calls only ever touch what the manifest already records: a machine
+// that never ran `orq connect` has no manifest, and Refresh and
+// SweepDeadSessions both return before touching the filesystem in that case.
+// Neither call may fail a command — an update or a dead-session sweep that
+// cannot proceed (most likely because a concurrent `orq launch` or `orq
+// connect` holds the manifest lock) is worth a warning, not a broken
+// `orq --help`. The lock wait itself is capped (see lock.go's lockTimeout),
+// so a contended manifest costs this at most a couple of seconds, not a hang.
+func installSkillsRefreshPreRun() {
+	prev := bartolocli.PreRun
+	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(cmd, args); err != nil {
+				return err
+			}
+		}
+		if res, err := skills.Refresh(); err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Warning: could not refresh orq skills: %v\n", err)
+		} else if len(res.Added) > 0 || len(res.Removed) > 0 {
+			fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
+				len(res.Added), len(res.Removed))
+		}
+		if err := skills.SweepDeadSessions(); err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)
+		}
+		return nil
+	}
 }
 
 func replaceDoctor(root *cobra.Command) {
