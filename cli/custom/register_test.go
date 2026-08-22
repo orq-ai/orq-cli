@@ -2,11 +2,16 @@ package custom
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"orq/cli/custom/skills"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
 )
 
 // A machine that never ran `orq connect` has no manifest. registerCommands
@@ -103,5 +108,65 @@ func TestSkillsRefreshHookFixesAStaleManifestBeforeTheCommandRuns(t *testing.T) 
 	}
 	if after.Fingerprint != skills.Fingerprint() {
 		t.Errorf("fingerprint = %q, want it refreshed to the current build's %q before the command ran", after.Fingerprint, skills.Fingerprint())
+	}
+}
+
+// A contended manifest lock must not turn an unrelated command into a
+// multi-second stall: skills.Refresh and skills.SweepDeadSessions each wait
+// out lock.go's lockTimeout on their own, and calling both unconditionally
+// would make a single contended command pay that timeout twice. This pins
+// the hook itself skips the sweep once Refresh has already reported the
+// manifest locked, so the command pays it at most once.
+func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := skills.Install([]string{"claude"}); err != nil {
+		t.Fatalf("seed install: %v", err)
+	}
+
+	// Hold the manifest lock with this test process's own PID, which
+	// holderIsDead (lock.go) reports as alive, so acquireLock waits out the
+	// full timeout rather than breaking the lock immediately.
+	lockPath := filepath.Join(home, ".orq", "materialized-skills.json.lock")
+	if err := os.WriteFile(lockPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
+		t.Fatalf("seed lock file: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(lockPath) })
+
+	// installSkillsRefreshPreRun writes its warnings to bartolocli.Stderr
+	// directly (see captureOutput in commands/connect_test.go for the same
+	// pattern), not through cobra's root.SetErr, so that is what has to be
+	// swapped to observe them.
+	var stderr bytes.Buffer
+	prevStderr := bartolocli.Stderr
+	bartolocli.Stderr = &stderr
+	t.Cleanup(func() { bartolocli.Stderr = prevStderr })
+
+	root := buildRoot(t)
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"man-pages", "--dir", filepath.Join(t.TempDir(), "man")})
+
+	start := time.Now()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("man-pages: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	// One lockTimeout (2s in lock.go) plus generous scheduling slack; two
+	// sequential waits would take roughly double that.
+	if elapsed > 3*time.Second {
+		t.Errorf("command took %s with a contended lock; want at most one lockTimeout wait, not two", elapsed)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "could not refresh orq skills") {
+		t.Errorf("expected a refresh warning, got:\n%s", out)
+	}
+	if strings.Contains(out, "could not clean up stale session skills") {
+		t.Errorf("sweep ran despite the lock already being reported as held, doubling the wait:\n%s", out)
 	}
 }

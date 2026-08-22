@@ -19,6 +19,18 @@ func buildRoot(t *testing.T) *cobra.Command {
 		DefaultOutputFormat: "toon",
 		Version:             "test",
 	})
+	// bartolocli.PreRun is a single package-level var that installSessionPreRun
+	// and installSkillsRefreshPreRun (register.go) both chain onto by
+	// capturing whatever is already there. A real process calls Register
+	// exactly once, but this helper is called once per test within the same
+	// test binary, and without resetting first each call would stack another
+	// layer onto the last, running every earlier test's hooks again on every
+	// later Execute. Save and restore around the call so each test gets
+	// exactly the one clean chain a real invocation would have.
+	prevPreRun := bartolocli.PreRun
+	bartolocli.PreRun = nil
+	t.Cleanup(func() { bartolocli.PreRun = prevPreRun })
+
 	root := bartolocli.Root
 	generated.Register(root)
 	Register(root)

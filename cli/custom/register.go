@@ -2,6 +2,7 @@ package custom
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -305,7 +306,9 @@ func registerCommands(root *cobra.Command) {
 // cannot proceed (most likely because a concurrent `orq launch` or `orq
 // connect` holds the manifest lock) is worth a warning, not a broken
 // `orq --help`. The lock wait itself is capped (see lock.go's lockTimeout),
-// so a contended manifest costs this at most a couple of seconds, not a hang.
+// and a failed Refresh skips the sweep rather than waiting out that same
+// timeout twice, so a contended manifest costs this at most one lockTimeout
+// (currently 2s), not a hang and not a doubled wait.
 func installSkillsRefreshPreRun() {
 	prev := bartolocli.PreRun
 	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
@@ -314,8 +317,18 @@ func installSkillsRefreshPreRun() {
 				return err
 			}
 		}
-		if res, err := skills.Refresh(); err != nil {
+		res, err := skills.Refresh()
+		if err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Warning: could not refresh orq skills: %v\n", err)
+			// Refresh and SweepDeadSessions each wait out the same lock
+			// (lockTimeout in lock.go) before giving up, and a lock a moment
+			// ago is still very likely held now: trying the sweep anyway
+			// would make an already-contended command wait out that same
+			// timeout a second time for essentially no chance of success.
+			// Skipping it caps the worst case at one timeout instead of two.
+			if errors.Is(err, skills.ErrManifestLocked) {
+				return nil
+			}
 		} else if len(res.Added) > 0 || len(res.Removed) > 0 {
 			fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
 				len(res.Added), len(res.Removed))
