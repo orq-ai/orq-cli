@@ -1474,13 +1474,13 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		fmt.Fprintf(w, "%s\n", bold(paint(ansiBrand, a.Agent)))
 		for _, row := range rows {
-			fmt.Fprintf(w, "  %s %-9s %s\n", row.mark, row.label, paint(ansiDim, row.detail))
+			fmt.Fprintf(w, "%s %-9s %s\n", row.mark, row.label, paint(ansiDim, row.detail))
 		}
 		wiredAny = true
 	}
 	if !wiredAny {
 		fmt.Fprintln(w, "Nothing is wired on this machine yet.")
-		fmt.Fprintf(w, "  %s orq connect\n", padLabel("Wire"))
+		fmt.Fprintf(w, "%s orq connect\n", padLabel("Wire"))
 	}
 	keyReferenced := false
 	for _, a := range agents {
@@ -1492,20 +1492,20 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 	if keyReferenced && UserEnvAPIKey() == "" {
 		sh := detectShell(viper.GetString("config-directory"))
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  %s %s\n", paint(ansiWarn, "!"),
+		fmt.Fprintf(w, "%s %s\n", paint(ansiWarn, "!"),
 			"ORQ_API_KEY is not exported here, and agents inherit it from this shell.")
 		switch {
 		// A declined mint leaves no env file; sourcing it would be the remedy that fails.
 		case fileMissing(sh.EnvFile):
-			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "run 'orq setup' to create an API key and its env file"))
+			fmt.Fprintf(w, "%s\n", paint(ansiDim, "run 'orq setup' to create an API key and its env file"))
 		case sh.Profile != "" && profileSourcesEnvFile(sh):
-			fmt.Fprintf(w, "    %s\n", sh.displayLine())
-			fmt.Fprintf(w, "    %s\n", paint(ansiDim, fmt.Sprintf("new shells already get it from %s", tilde(sh.Profile))))
+			fmt.Fprintf(w, "%s\n", sh.displayLine())
+			fmt.Fprintf(w, "%s\n", paint(ansiDim, fmt.Sprintf("new shells already get it from %s", tilde(sh.Profile))))
 		case sh.Profile == "":
-			fmt.Fprintf(w, "    %s\n", sh.displayLine())
-			fmt.Fprintf(w, "    %s\n", paint(ansiDim, "add that line to your shell profile so new shells get it too"))
+			fmt.Fprintf(w, "%s\n", sh.displayLine())
+			fmt.Fprintf(w, "%s\n", paint(ansiDim, "add that line to your shell profile so new shells get it too"))
 		default:
-			fmt.Fprintf(w, "    echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
+			fmt.Fprintf(w, "echo '%s' >> %s && %s\n", sh.displayLine(), tilde(sh.Profile), sh.displayLine())
 		}
 	}
 	fmt.Fprintln(w)
