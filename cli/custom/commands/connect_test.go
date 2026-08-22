@@ -740,3 +740,57 @@ func TestRemovalNamesOrqAsTheThingRemoved(t *testing.T) {
 		t.Errorf("nothing said where orq was removed from:\n%s", got)
 	}
 }
+
+func TestConnectSkillsInstallsAndDisconnectRemoves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect claude skills: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no skills installed: %v %d", err, len(entries))
+	}
+
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"claude", "skills", "--yes"})
+	if err := d.Execute(); err != nil {
+		t.Fatalf("disconnect claude skills: %v", err)
+	}
+	entries, err = os.ReadDir(filepath.Join(home, ".claude", "skills"))
+	if err == nil && len(entries) != 0 {
+		t.Errorf("disconnect left %d entries behind", len(entries))
+	}
+}
+
+func TestConnectSkillsDryRunWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills")); !os.IsNotExist(err) {
+		t.Error("dry run created the skills directory")
+	}
+}

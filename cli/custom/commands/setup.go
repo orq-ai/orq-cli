@@ -13,6 +13,7 @@ import (
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
+	"orq/cli/custom/skills"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -38,6 +39,7 @@ type setupOptions struct {
 	workspace   string
 	apiKey      string
 	agents      []string
+	caps        []string
 	noGateway   bool
 	noInput     bool
 	yes         bool
@@ -1032,6 +1034,22 @@ func workspaceLink(state *authState, path string) string {
 
 func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) ([]agentResult, error) {
 	selected := opts.agents
+
+	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
+		res, err := skills.Install(selected)
+		if err != nil {
+			// Connect's only job for this capability is the thing that just
+			// failed, so it is fatal here. launch degrades instead.
+			return nil, fmt.Errorf("installing skills: %w", err)
+		}
+		for _, target := range skillTargetsFor(selected) {
+			rep.ok("%-8s %-9s %s", target.Agent, capSkills, tilde(target.Dir))
+		}
+		for _, path := range res.Skipped {
+			rep.warn("%-8s %-9s %s already exists and is not ours — left alone", "", capSkills, tilde(path))
+		}
+	}
+
 	if len(selected) == 0 || opts.noGateway {
 		return nil, nil
 	}
@@ -1068,6 +1086,17 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 		results = append(results, res)
 	}
 	return results, nil
+}
+
+// skillTargetsFor is the reporting view of skills.Targets: resolution failures
+// are already fatal in Install, so a second failure here is not worth a second
+// error path.
+func skillTargetsFor(agents []string) []skills.Target {
+	targets, err := skills.Targets(agents)
+	if err != nil {
+		return nil
+	}
+	return targets
 }
 
 // writeAgentProvider registers orq as a model provider for one agent, recording

@@ -3,10 +3,12 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
@@ -15,9 +17,10 @@ import (
 const (
 	capGateway = "gateway"
 	capTracing = "tracing"
+	capSkills  = "skills"
 )
 
-var connectCapabilities = []string{capGateway, capTracing}
+var connectCapabilities = []string{capGateway, capTracing, capSkills}
 
 // partitionConnectArgs splits positional args into agent IDs and capability
 // names. The registry owns the agent namespace, so the two sets cannot collide.
@@ -78,7 +81,14 @@ func nothingWired(named bool, agents []string) string {
 // says so, rather than letting them fall through to "detected but not wired".
 // The same message runConnect prints, for the same reason: reporting claude as
 // unwired promises a wire that cannot exist.
-func reportUnwirableAgents(rep *reporter, agents []string) []string {
+//
+// The filter is gateway-specific — an agent with no provider config can still
+// carry skills — so it only applies when gateway is among the requested caps.
+// Selecting only skills must never drop claude before its skills are touched.
+func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
+	if !hasCap(caps, capGateway) {
+		return agents
+	}
 	var out []string
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
@@ -149,7 +159,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	named := len(agents) > 0
 	if !named {
 		agents = detectedAgents()
-	} else if agents = reportUnwirableAgents(rep, agents); len(agents) == 0 {
+	} else if agents = reportUnwirableAgents(rep, agents, caps); len(agents) == 0 {
 		return nil
 	}
 	wired := wiredTargets(agents, caps, opts)
@@ -228,6 +238,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 
 func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agents, caps []string, dryRun bool) error {
 	opts.agents = agents
+	opts.caps = caps
 	opts.noGateway = !hasCap(caps, capGateway)
 
 	if dryRun {
@@ -316,6 +327,11 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 					rep.info("%-8s gateway   %s", id, tilde(path))
 				}
 			}
+		}
+	}
+	if hasCap(caps, capSkills) {
+		for _, target := range skillTargetsFor(agents) {
+			rep.info("%-8s skills    %s", target.Agent, tilde(target.Dir))
 		}
 	}
 	return nil
@@ -433,7 +449,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	namedAgents := len(agents) > 0
 	if !namedAgents {
 		agents = detectedAgents()
-	} else if agents = reportUnwirableAgents(rep, agents); len(agents) == 0 {
+	} else if agents = reportUnwirableAgents(rep, agents, caps); len(agents) == 0 {
 		return nil
 	}
 
@@ -509,6 +525,32 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 			}
 		}
 	}
+	if hasCap(caps, capSkills) {
+		m, err := skills.LoadManifest()
+		if err == nil && m != nil {
+			seen := map[string]bool{}
+			wanted := map[string]bool{}
+			for _, id := range agents {
+				wanted[id] = true
+			}
+			for _, l := range m.Links {
+				if l.Session {
+					continue
+				}
+				// An empty agent is the shared directory, which serves any
+				// selected agent that reads it.
+				if l.Agent != "" && !wanted[l.Agent] {
+					continue
+				}
+				dir := filepath.Dir(l.Path)
+				if seen[dir] {
+					continue
+				}
+				seen[dir] = true
+				out = append(out, wiredTarget{l.Agent, capSkills, dir})
+			}
+		}
+	}
 	return out
 }
 
@@ -561,6 +603,21 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 		}
 		r.Removed = removedFrom
 		rows = append(rows, r)
+	}
+	if hasCap(caps, capSkills) {
+		res, err := skills.Remove(agents)
+		switch {
+		case err != nil:
+			rep.fail("%-8s %-9s %v", "", capSkills, err)
+			failed = true
+		case len(res.Removed) > 0:
+			rep.ok("orq skills removed (%d entries)", len(res.Removed))
+		}
+		if res != nil {
+			for _, path := range res.Skipped {
+				rep.warn("%s is no longer ours — left alone", tilde(path))
+			}
+		}
 	}
 	return rows, failed
 }
