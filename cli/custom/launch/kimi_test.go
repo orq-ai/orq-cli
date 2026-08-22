@@ -158,3 +158,82 @@ func TestResponsesModelSetFallsBackForUnknownModels(t *testing.T) {
 		t.Error("unknown non-openai model must default to chat")
 	}
 }
+
+// TestKimiResolvePlantsSessionSkills pins the wiring itself: resolveKimi must
+// actually call maybeWriteSessionSkills, not just the helper functions in
+// isolation. kimi is the one agent this task gets for free — its
+// KIMI_CODE_HOME is exactly where skills/targets.go says kimi reads from
+// (skills/targets.go:35, $KIMI_CODE_HOME/skills) — so a real skills/
+// directory landing under plan.TempDirs[0].HostPath is the thing that must
+// keep being true across future refactors.
+func TestKimiResolvePlantsSessionSkills(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	def := kimiAgent()
+	plan, err := def.Resolve(&AgentContext{
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+		Getenv: env(nil),
+		Flags:  GatewayFlags{},
+		Fetch: func(_, _ string) ([]ModelInfo, error) {
+			return kimiInfos, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Cleanup()
+
+	if len(plan.TempDirs) == 0 {
+		t.Fatal("no TempDirs on the plan")
+	}
+	entries, err := os.ReadDir(filepath.Join(plan.TempDirs[0].HostPath, "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("resolveKimi did not plant session skills: %v %d", err, len(entries))
+	}
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "skills unavailable") {
+			t.Fatalf("unexpected skills warning on a healthy resolve: %v", plan.Warnings)
+		}
+	}
+}
+
+// TestKimiSessionSkillsFailureWarnsWithoutFailingLaunch pins the
+// loud-but-not-fatal constraint: a materialization failure must surface as a
+// plan.Warnings entry, never as a returned error that refuses to start the
+// agent. HOME is pointed at a plain file (not a directory), so
+// skills.EnsureGeneration's os.MkdirAll under it fails deterministically,
+// without touching any of the resolver's own writers.
+func TestKimiSessionSkillsFailureWarnsWithoutFailingLaunch(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", notADir)
+
+	def := kimiAgent()
+	plan, err := def.Resolve(&AgentContext{
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+		Getenv: env(nil),
+		Flags:  GatewayFlags{},
+		Fetch: func(_, _ string) ([]ModelInfo, error) {
+			return kimiInfos, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("a skills failure must not fail the launch: %v", err)
+	}
+	if plan == nil {
+		t.Fatal("plan must be non-nil even when skills materialization fails")
+	}
+	defer plan.Cleanup()
+
+	found := false
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "skills unavailable this session") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a skills-unavailable warning, got: %v", plan.Warnings)
+	}
+}

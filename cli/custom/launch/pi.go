@@ -2,7 +2,6 @@ package launch
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -63,11 +62,15 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	skillsErr := maybeWriteSessionSkills(ctx, dir)
-
 	// No MCP wiring: pi has no built-in MCP support by design (extensions
 	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
 	// grows a native config surface.
+	//
+	// No session skills either: pi is a sharedReader whose only skills target
+	// is ~/.agents/skills (cli/custom/skills/targets.go), not
+	// PI_CODING_AGENT_DIR — that env var only redirects pi's own config dir.
+	// Writing into it would be a silent no-op. pi belongs to Task 10's
+	// refcounted-link group, which writes into the real home, not this one.
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
@@ -76,11 +79,6 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		PreArgs:  []string{"--provider", PiProvider, "--model", resolved.GatewayModel},
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
-	}
-	if skillsErr != nil {
-		// Skills are an enhancement; refusing to start the agent because a
-		// symlink failed is worse than starting without them.
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", skillsErr))
 	}
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
 	appendCapWarning(plan, resolved)

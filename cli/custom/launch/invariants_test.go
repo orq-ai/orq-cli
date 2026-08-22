@@ -20,6 +20,12 @@ const canaryKey = "sk-canary-8f3a1b9c-secret"
 // zero value alone stopped exercising every MCP config the moment MCP became
 // opt-in, and a key inlined there would have gone unnoticed.
 func TestCanaryKeyNeverLeaks(t *testing.T) {
+	// kimi now reaches skills.EnsureGeneration, which writes into the real
+	// $HOME/.orq unless isolated: without this, a plain `go test` run leaves
+	// a generation directory on the developer's (or CI runner's) machine and
+	// makes this test's outcome depend on whatever is already there.
+	t.Setenv("HOME", t.TempDir())
+
 	for _, def := range Agents() {
 		def := def
 		for _, flags := range flagStates() {

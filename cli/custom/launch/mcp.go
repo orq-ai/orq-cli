@@ -114,7 +114,7 @@ func openCodeMCPBlock(url string) map[string]any {
 	}
 }
 
-// writeSessionSkills copies the shipped skills into an agent directory the
+// writeSessionSkills symlinks the shipped skills into an agent directory the
 // launcher owns for this session. Each name is symlinked into the current
 // generation, which outlives the session (EnsureGeneration only retires a
 // generation when a later call unpacks a different fingerprint, and the
