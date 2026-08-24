@@ -48,37 +48,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
-- **Added:** `skills` is a capability of `orq connect` and `orq disconnect`,
-  alongside `gateway`. `orq connect claude skills` installs the orq agent
-  skills into the directories each selected agent reads; `orq disconnect skills`
-  removes them. The skills ship inside the binary, so this works offline and
-  always matches the CLI version that installed it. Previously skills reached
-  claude only, as a GitHub zip URL that Claude Code downloaded per session.
-- **Added:** `orq setup --capability <name>`, repeatable, taking the same names
-  as connect's positional capabilities. Without it, an interactive run asks
-  which capabilities to connect and a non-interactive one takes every available
-  capability.
-- **Changed:** `orq setup` asks a second question. After picking agents you are
-  asked what to connect, with `gateway` and `skills` both selected by default.
-- **Changed:** `orq setup`'s final screen. It now lists one row per agent per
-  capability with the file or directory that was written, and a mark saying
-  whether that capability landed. It no longer prints the OpenAI client snippet
-  or per-agent start commands, and the per-wire progress lines above it are no
-  longer repeated. `orq connect` keeps those lines, having no final screen.
-- **Changed:** `orq setup --capability skills` and `orq connect <agent> skills`
-  no longer require a credential. Skills are unpacked from the binary onto the
-  local filesystem, so a skills-only run does not log in, mint a key, or fail
-  without one. A run that also asks for the gateway still needs one, and if it
-  cannot get it, the skills are still installed and the gateway leg is reported
-  as skipped.
-- **Changed:** `orq launch` links the skills into the agent's directory for the
-  session and removes them on exit. Parallel sessions are reference-counted, and
-  a session killed without cleaning up is swept on the next `orq` command. On
-  Windows, launch does not do this; run `orq connect skills` once instead.
-- **Changed:** `orq connect --status` reports the skills capability per agent,
-  including a skill link that is missing or has been replaced by something that
-  is not ours.
-
+- **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
+  a coding agent. It previously printed the failure and then reported success, so
+  a script saw exit 0 while kimi's config still held the key. The `--json`
+  payload gains `coding_agents_remove_failed`.
 - **Changed (security):** the key `orq setup` and `orq connect` mint is now
   restricted to gateway permissions instead of every permission in the
   workspace. Keys minted by v4.13.10 carry `permission_mode: "all"`, which

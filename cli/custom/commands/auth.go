@@ -126,7 +126,7 @@ func NewLogoutCommand() *cobra.Command {
 					return err
 				}
 				envCleared := clearShellEnvFile()
-				removed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
+				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
 					if keyCleared {
@@ -136,17 +136,21 @@ func NewLogoutCommand() *cobra.Command {
 					}
 					reportClearedEnvFiles(envCleared)
 					reportSurvivingGatewayKey()
-					return nil
+					return removalError(removeFailed)
 				}
-				return emit(map[string]any{
-					"authenticated":           false,
-					"cleared":                 keyCleared,
-					"api_key_profile_cleared": keyCleared,
-					"env_files_cleared":       envCleared,
-					"coding_agents_removed":   removed,
-					"gateway_key_id":          savedGatewayKeyID(),
-					"session_file":            auth.SessionFilePath(),
-				})
+				if err := emit(map[string]any{
+					"authenticated":               false,
+					"cleared":                     keyCleared,
+					"api_key_profile_cleared":     keyCleared,
+					"env_files_cleared":           envCleared,
+					"coding_agents_removed":       removed,
+					"coding_agents_remove_failed": removeFailed,
+					"gateway_key_id":              savedGatewayKeyID(),
+					"session_file":                auth.SessionFilePath(),
+				}); err != nil {
+					return err
+				}
+				return removalError(removeFailed)
 			}
 
 			// --force clears local credentials no matter what, so it implies
@@ -204,7 +208,7 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 			envCleared := clearShellEnvFile()
-			removed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
+			removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
@@ -219,18 +223,22 @@ func NewLogoutCommand() *cobra.Command {
 				}
 				reportClearedEnvFiles(envCleared)
 				reportSurvivingGatewayKey()
-				return nil
+				return removalError(removeFailed)
 			}
-			return emit(map[string]any{
-				"authenticated":           false,
-				"cleared":                 true,
-				"revoked":                 revokeErr == nil,
-				"api_key_profile_cleared": keyCleared,
-				"env_files_cleared":       envCleared,
-				"coding_agents_removed":   removed,
-				"gateway_key_id":          savedGatewayKeyID(),
-				"session_file":            auth.SessionFilePath(),
-			})
+			if err := emit(map[string]any{
+				"authenticated":               false,
+				"cleared":                     true,
+				"revoked":                     revokeErr == nil,
+				"api_key_profile_cleared":     keyCleared,
+				"env_files_cleared":           envCleared,
+				"coding_agents_removed":       removed,
+				"coding_agents_remove_failed": removeFailed,
+				"gateway_key_id":              savedGatewayKeyID(),
+				"session_file":                auth.SessionFilePath(),
+			}); err != nil {
+				return err
+			}
+			return removalError(removeFailed)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
@@ -238,6 +246,15 @@ func NewLogoutCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
 	cmd.Flags().BoolVar(&disconnect, "disconnect", false, "Also remove orq from this machine's coding agents, without asking")
 	return cmd
+}
+
+var errRemovalFailed = errors.New("orq could not be removed from one or more coding agents")
+
+func removalError(failed bool) error {
+	if failed {
+		return errRemovalFailed
+	}
+	return nil
 }
 
 // reportSurvivingGatewayKey names the one thing logout cannot undo. The key is

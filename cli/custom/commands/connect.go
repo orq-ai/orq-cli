@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -64,7 +65,9 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 // Tracing is excluded for the same reason defaultCapabilities excludes it:
 // dropUnavailableCaps would strip it and print "not available yet" on every
 // bare invocation.
-func availableCapabilities() []string { return []string{capGateway, capSkills} }
+func availableCapabilities() []string { return []string{capGateway} }
+
+func capAvailable(c string) bool { return slices.Contains(availableCapabilities(), c) }
 
 // detectedAgents lists the agents on this machine that connect can act on for
 // the gateway. claude is installed on plenty of machines and has no gateway
@@ -316,7 +319,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	// on a machine that plainly was; without the second, a named claude was
 	// reported unwired when no wire can exist for it.
 	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereOnlyTracing(args) {
+	if len(caps) == 0 && capsWereAllUnavailable(args) {
 		return nil
 	}
 	if len(caps) == 0 {
@@ -387,7 +390,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 		return err
 	}
 	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereOnlyTracing(args) {
+	if len(caps) == 0 && capsWereAllUnavailable(args) {
 		return nil
 	}
 	if len(caps) == 0 {
@@ -531,8 +534,8 @@ func hasCap(caps []string, c string) bool {
 func dropUnavailableCaps(rep *reporter, caps []string) []string {
 	out := caps[:0]
 	for _, c := range caps {
-		if c == capTracing {
-			rep.info("tracing is not available yet")
+		if !capAvailable(c) {
+			rep.info("%s is not available yet", c)
 			continue
 		}
 		out = append(out, c)
@@ -540,17 +543,19 @@ func dropUnavailableCaps(rep *reporter, caps []string) []string {
 	return out
 }
 
-func capsWereOnlyTracing(args []string) bool {
-	sawTracing := false
+func capsWereAllUnavailable(args []string) bool {
+	saw := false
 	for _, a := range args {
-		switch strings.ToLower(strings.TrimSpace(a)) {
-		case capTracing:
-			sawTracing = true
-		case capGateway:
+		c := strings.ToLower(strings.TrimSpace(a))
+		if !slices.Contains(connectCapabilities, c) {
+			continue
+		}
+		if capAvailable(c) {
 			return false
 		}
+		saw = true
 	}
-	return sawTracing
+	return saw
 }
 
 // dryRunConnect prints the files each selected capability would touch. Paths
@@ -691,7 +696,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	// as ["tracing"], found no gateway target, and reported "nothing wired" on a
 	// machine that plainly was.
 	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereOnlyTracing(args) {
+	if len(caps) == 0 && capsWereAllUnavailable(args) {
 		return nil
 	}
 	if len(caps) == 0 {
@@ -950,17 +955,17 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 // program's config would be a much larger yes than the one given, and asking
 // anyway would hang the scripts that pass it. --disconnect is how a script
 // opts in.
-func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
+func disconnectOnLogout(opts *setupOptions, assumeYes bool) ([]disconnectRow, bool) {
 	wired := detectedAgents()
 	caps := []string{capGateway}
 	targets := wiredTargets(wired, caps, opts)
 	if len(targets) == 0 {
-		return nil
+		return nil, false
 	}
 	rep := newReporter(false)
 	if !assumeYes {
 		if opts.noInput || opts.yes {
-			return nil
+			return nil, false
 		}
 		names := make([]string, 0, len(targets))
 		seen := map[string]bool{}
@@ -971,11 +976,11 @@ func disconnectOnLogout(opts *setupOptions, assumeYes bool) []disconnectRow {
 			}
 		}
 		if !opts.confirm(fmt.Sprintf("Also remove orq from your coding agents (%s)?", strings.Join(names, ", ")), false) {
-			return nil
+			return nil, false
 		}
 	}
-	rows, _, _ := removeWiring(rep, wired, caps, false)
-	return rows
+	rows, _, failed := removeWiring(rep, wired, caps, false)
+	return rows, failed
 }
 
 // reportCredentialSurvives corrects the mental model disconnect otherwise

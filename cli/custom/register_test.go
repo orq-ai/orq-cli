@@ -216,7 +216,13 @@ func TestSkillsRefreshHookIsReachableFromAGeneratedCommand(t *testing.T) {
 		out, _ := cmd.CombinedOutput() // exit status is not the point here
 		return out
 	}
-	run("connect", "claude", "skills", "--yes")
+	// Seeded in-process: the skills capability is gated off for this release,
+	// so `orq connect claude skills` writes nothing. The PreRun refresh hook
+	// under test is still live regardless of the capability gate.
+	t.Setenv("HOME", home)
+	if _, err := skills.Install([]string{"claude"}); err != nil {
+		t.Fatalf("seed skills install: %v", err)
+	}
 
 	manifestPath := filepath.Join(home, ".orq", "materialized-skills.json")
 	data, err := os.ReadFile(manifestPath)
