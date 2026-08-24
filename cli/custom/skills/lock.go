@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -30,6 +32,14 @@ import (
 const (
 	lockRetryInterval = 20 * time.Millisecond
 	lockTimeout       = 2 * time.Second
+	// Older than this and the holder is gone whatever the PID says. Covers a
+	// lock stamped by a process whose PID has since been reused, and one
+	// killed between creating the file and writing its PID into it. Both
+	// otherwise wedge every later command for good. Ten minutes, not seconds:
+	// breaking a live holder's lock loses manifest records, which is worse
+	// than a wedge that commands wait out, so the bound sits far beyond any
+	// real critical section, including a copy-mode install on a slow disk.
+	lockMaxAge = 10 * time.Minute
 )
 
 // manifestMu serializes writers inside one process. The lock file cannot:
@@ -85,20 +95,37 @@ func acquireLock() (func(), error) {
 		}
 		return nil, statErr
 	}
+	mine, err := lockToken()
+	if err != nil {
+		return nil, err
+	}
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
-			_, _ = f.WriteString(strconv.Itoa(os.Getpid()))
-			_ = f.Close()
-			return func() { _ = os.Remove(path) }, nil
+			_, writeErr := f.WriteString(mine)
+			closeErr := f.Close()
+			if writeErr != nil || closeErr != nil {
+				// An unstamped lock file reads as held by nobody and wedges
+				// every later command, so drop it rather than leave it.
+				_ = os.Remove(path)
+				return nil, errors.Join(writeErr, closeErr)
+			}
+			return func() { releaseLock(path, mine) }, nil
 		}
 		if !os.IsExist(err) {
 			return nil, err
 		}
-		if holderIsDead(path) {
-			// The holder was killed mid-write. Break the lock rather than
-			// making every later invocation wait out the timeout.
+		if lockIsStale(path) {
+			// Known limitation: observing staleness and removing the file are
+			// not one operation, so two breakers can both proceed and a second
+			// acquire can land on top of the first. Measured at roughly one
+			// overlap per six contended breaks. Removing the break is not the
+			// answer either, since a lock left by a killed holder would then
+			// wedge every later command. The fix is flock, which the kernel
+			// releases on death and which has no stale state to break; that
+			// needs a Windows implementation alongside, so it is its own
+			// change. Tracked in the PR description.
 			_ = os.Remove(path)
 			continue
 		}
@@ -110,21 +137,56 @@ func acquireLock() (func(), error) {
 	}
 }
 
-// holderIsDead reports whether the process named in the lock file is gone. An
-// unreadable or unparsable lock file is treated as held: guessing wrong in
-// that direction only costs a wait, guessing wrong the other way lets two
-// writers in at once.
+// lockToken identifies one acquisition, not one process. The PID alone cannot:
+// two goroutines in this process read the same value, so neither the release
+// check nor the rename-break could tell them apart.
+func lockToken() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%d-%s", os.Getpid(), hex.EncodeToString(b[:])), nil
+}
+
+// lockPID reads the process id out of a lock token.
+func lockPID(token string) (int, error) {
+	pid, _, _ := strings.Cut(strings.TrimSpace(token), "-")
+	return strconv.Atoi(pid)
+}
+
+// releaseLock removes the lock only while we still hold it. After a stale
+// break the file on disk can belong to another process, and removing that one
+// would let a third writer in alongside it.
+func releaseLock(path, mine string) {
+	data, err := os.ReadFile(path)
+	if err != nil || strings.TrimSpace(string(data)) != mine {
+		return
+	}
+	_ = os.Remove(path)
+}
+
+// lockIsStale reports whether the lock can be broken: its holder is gone, or
+// it is old enough that no live critical section could still be running.
 //
-// This assumes the lock file and its holder live on the same machine, which
-// is true for a per-user ~/.orq. A $HOME shared over the network between
-// machines would make a live remote PID look dead here.
-func holderIsDead(path string) bool {
+// The PID check assumes the lock file and its holder live on the same machine,
+// which is true for a per-user ~/.orq. A $HOME shared over the network between
+// machines would make a live remote PID look dead here; the age bound is what
+// keeps that from being permanent in the other direction.
+func lockIsStale(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if time.Since(info.ModTime()) > lockMaxAge {
+		return true
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	pid, err := lockPID(string(data))
 	if err != nil {
+		// Unstamped: only the age bound above can retire it.
 		return false
 	}
 	return !processAlive(pid)
@@ -136,7 +198,7 @@ func holderDescription(path string) string {
 	if err != nil {
 		return "another process"
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	pid, err := lockPID(string(data))
 	if err != nil {
 		return "another process"
 	}

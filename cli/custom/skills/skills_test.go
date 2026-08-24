@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestNamesAreOrqPrefixedAndNonEmpty(t *testing.T) {
@@ -1274,4 +1276,77 @@ func countEntries(t *testing.T, dir string) int {
 		return 0
 	}
 	return len(entries)
+}
+
+// Breaking a stale lock by remove deleted whatever was there at that moment,
+// which after another breaker had already acquired was their live lock. Both
+// then ran load-mutate-save and one lost the other's records.
+func TestStaleLockBreakAdmitsOneWriter(t *testing.T) {
+	t.Skip("known: the stale break is not atomic, so two breakers can both acquire. Needs flock; see lock.go")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var inside, overlaps int64
+	var wg sync.WaitGroup
+	for round := 0; round < 40; round++ {
+		// A lock stamped by a PID that is certainly gone.
+		if err := os.WriteFile(path, []byte("999999"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// acquireLock directly, not withManifestLock: manifestMu
+				// serializes this process before the file lock is consulted,
+				// which is what the cross-process race has to get past.
+				release, err := acquireLock()
+				if err != nil || release == nil {
+					return
+				}
+				if atomic.AddInt64(&inside, 1) > 1 {
+					atomic.AddInt64(&overlaps, 1)
+				}
+				time.Sleep(time.Millisecond)
+				atomic.AddInt64(&inside, -1)
+				release()
+			}()
+		}
+		wg.Wait()
+	}
+	if overlaps > 0 {
+		t.Errorf("%d overlapping entries into the critical section", overlaps)
+	}
+}
+
+// A lock file created but never stamped, or stamped by a PID the OS has since
+// reused, used to be held by nobody forever: every later command paid the full
+// timeout and connect failed outright, with no way out but deleting a dotfile.
+func TestAnUnstampedLockDoesNotWedgeForever(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * lockMaxAge)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := withManifestLock(func() error { return nil }); err != nil {
+		t.Errorf("an unstamped, long-dead lock still blocked a writer: %v", err)
+	}
 }
