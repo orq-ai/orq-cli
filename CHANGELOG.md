@@ -54,12 +54,17 @@ the version and this changelog as the source of truth for breaking changes.
   payload gains `coding_agents_remove_failed`.
 - **Added:** `orq update`. Replaces this binary with the latest published
   release through the channel it was installed with: npm installs get
-  `npm install -g @orq-ai/cli@latest`, install.sh installs re-run install.sh,
-  which resolves the release, verifies its published `.sha256` and swaps the
-  binary in atomically. A binary that arrived any other way is refused, naming
-  its path and both channels' commands, rather than overwritten. `--check`
-  reports current, latest and channel and changes nothing; `--json` carries
-  `update_available` for scripts. A dev build refuses and says to rebuild.
+  `npm install -g @orq-ai/cli@<version>`, install.sh installs re-run install.sh
+  with `--version` set to that same version, and it verifies the release's
+  published `.sha256` and swaps the binary in atomically. Both channels are
+  given the exact version the check resolved rather than resolving "newest"
+  again, so what lands is what was reported — and an rc build updates along the
+  rc line instead of being silently moved onto the older stable release. A
+  binary that arrived any other way is refused, naming its path and both
+  channels' commands, rather than overwritten. `--check` reports current,
+  latest and channel and changes nothing; `--json` carries `update_available`
+  for scripts. npm's and the installer's own progress goes to stderr, so
+  `--json` stdout stays parseable. A dev build refuses and says to rebuild.
 - **Added:** update notice. Once every 24 hours, after a command has finished
   successfully, the CLI compares its own version against the npm dist-tag for
   its release line (`latest`, or `rc` for an rc build) and prints one stderr

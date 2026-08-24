@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,7 +18,11 @@ import (
 // instead of really running npm or the installer.
 func updateCmdEnv(t *testing.T, channel updateChannel, latest string) (stdout *bytes.Buffer, ran *[]string) {
 	t.Helper()
-	tags := map[string]string{"latest": latest}
+	return updateCmdEnvTags(t, channel, map[string]string{"latest": latest})
+}
+
+func updateCmdEnvTags(t *testing.T, channel updateChannel, tags map[string]string) (stdout *bytes.Buffer, ran *[]string) {
+	t.Helper()
 	if _, hits := updateTestEnv(t, tags); hits == nil {
 		t.Fatal("test env not wired")
 	}
@@ -27,7 +32,7 @@ func updateCmdEnv(t *testing.T, channel updateChannel, latest string) (stdout *b
 	bartolocli.Stdout = stdout
 	detectChannel = func() (updateChannel, string) { return channel, "/somewhere/orq" }
 	executed := []string{}
-	runUpdateCommand = func(name string, args ...string) error {
+	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
 		executed = append(executed, strings.Join(append([]string{name}, args...), " "))
 		return nil
 	}
@@ -63,7 +68,7 @@ func TestUpdateViaNPMChannel(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(*ran) != 1 || (*ran)[0] != "npm install -g @orq-ai/cli@latest" {
+	if len(*ran) != 1 || (*ran)[0] != "npm install -g @orq-ai/cli@4.13.22" {
 		t.Fatalf("executed %v, want the npm global install", *ran)
 	}
 	if got := stdout.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
@@ -76,7 +81,7 @@ func TestUpdateViaNPMWithoutNPMPrintsTheCommand(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // no npm here
 
 	err := runUpdateCmd(t, "4.13.18")
-	if err == nil || !strings.Contains(err.Error(), "npm install -g @orq-ai/cli@latest") {
+	if err == nil || !strings.Contains(err.Error(), "npm install -g @orq-ai/cli@4.13.22") {
 		t.Fatalf("error = %v, want the npm command printed for the user to run", err)
 	}
 	if len(*ran) != 0 {
@@ -104,14 +109,53 @@ func TestUpdateViaInstallerChannel(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(*ran) != 1 {
-		t.Fatalf("executed %v, want one installer run", *ran)
+	if len(*ran) != 2 {
+		t.Fatalf("executed %v, want a download then a run - a curl|sh pipeline hides a failed download", *ran)
 	}
-	got := (*ran)[0]
-	for _, want := range []string{"sh -c", installerURL, "--no-modify-path", "--no-setup"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("installer command %q missing %q", got, want)
+	if download := (*ran)[0]; !strings.HasPrefix(download, "curl ") || !strings.Contains(download, installerURL) {
+		t.Errorf("first command %q is not a download of the installer", download)
+	}
+	for _, want := range []string{"--no-modify-path", "--no-setup", "--version v4.13.22"} {
+		if !strings.Contains((*ran)[1], want) {
+			t.Errorf("installer run %q missing %q", (*ran)[1], want)
 		}
+	}
+	if strings.Contains((*ran)[1], "|") {
+		t.Errorf("installer run %q still pipes; curl's exit status would be lost", (*ran)[1])
+	}
+}
+
+func TestUpdateAbortsWhenTheInstallerCannotBeDownloaded(t *testing.T) {
+	_, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+	stubOnPath(t, "curl", "sh")
+	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
+		*ran = append(*ran, name)
+		if name == "curl" {
+			return errors.New("exit status 22")
+		}
+		return nil
+	}
+
+	err := runUpdateCmd(t, "4.13.18")
+	if err == nil || !strings.Contains(err.Error(), "cannot download the installer") {
+		t.Fatalf("error = %v, want the download failure surfaced", err)
+	}
+	for _, name := range *ran {
+		if name == "sh" {
+			t.Fatal("ran the installer after the download failed")
+		}
+	}
+}
+
+func TestUpdateInstallsTheRCLineForAnRCBuild(t *testing.T) {
+	_, ran := updateCmdEnvTags(t, channelNPM, map[string]string{"latest": "4.13.22", "rc": "4.14.0-rc.48"})
+	stubOnPath(t, "npm")
+
+	if err := runUpdateCmd(t, "4.14.0-rc.47"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(*ran) != 1 || !strings.HasSuffix((*ran)[0], "@4.14.0-rc.48") {
+		t.Fatalf("executed %v, want the rc version installed, not the older stable", *ran)
 	}
 }
 
@@ -163,7 +207,12 @@ func TestUpdateCheckReportsWithoutInstalling(t *testing.T) {
 func TestUpdatePropagatesInstallerFailure(t *testing.T) {
 	_, _ = updateCmdEnv(t, channelInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(string, ...string) error { return errors.New("exit status 1") }
+	runUpdateCommand = func(_ context.Context, name string, _ ...string) error {
+		if name == "sh" {
+			return errors.New("exit status 1")
+		}
+		return nil
+	}
 	err := runUpdateCmd(t, "4.13.18")
 	if err == nil || !strings.Contains(err.Error(), "installer failed") {
 		t.Fatalf("error = %v, want the installer failure surfaced", err)
@@ -225,5 +274,50 @@ func TestDetectChannel(t *testing.T) {
 				t.Errorf("detectChannel() for %s = %s, want %s", c.path, got, c.want)
 			}
 		})
+	}
+}
+
+func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
+	stdout, _ := updateCmdEnv(t, channelInstaller, "4.13.22")
+	ensureFormatter(t)
+	origHuman := humanOutput
+	t.Cleanup(func() { humanOutput = origHuman })
+	humanOutput = func() bool { return false } // a script, not a terminal
+
+	if err := runUpdateCmd(t, "4.13.18", "--check"); err != nil {
+		t.Fatalf("update --check: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{"update_available", "true", "4.13.22", "installer"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("machine-format payload %q missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "Run 'orq update'") {
+		t.Errorf("machine-format payload %q carries the human sentence", got)
+	}
+}
+
+func TestUpdateFailureLeavesTheNoticeArmed(t *testing.T) {
+	_, _ = updateCmdEnv(t, channelInstaller, "4.13.22")
+	stubOnPath(t, "curl", "sh")
+	runUpdateCommand = func(context.Context, string, ...string) error { return errors.New("exit status 1") }
+
+	if err := runUpdateCmd(t, "4.13.18"); err == nil {
+		t.Fatal("expected the update to fail")
+	}
+	if readUpdateCache("4.13.18") != nil {
+		t.Error("a failed update wrote the cache, silencing the notice for 24h about an update that never happened")
+	}
+}
+
+func TestUpdateCommandSuppressesItsOwnNotice(t *testing.T) {
+	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	root := &cobra.Command{Use: "orq", Version: "4.13.18"}
+	root.AddCommand(NewUpdateCommand())
+
+	MaybePrintUpdateNotice(root.Commands()[0])
+	if got := stderr.String(); got != "" {
+		t.Errorf("orq update printed the passive notice too: %q", got)
 	}
 }

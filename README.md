@@ -355,8 +355,10 @@ Sandboxed execution is not available in this version.
 
 `orq update` replaces this binary with the latest published release through the
 channel it was installed with: an npm install runs `npm install -g
-@orq-ai/cli@latest`, an `install.sh` install re-runs the installer, which
-verifies the release checksum and swaps the binary in atomically. A binary that
+@orq-ai/cli@<version>`, an `install.sh` install re-runs the installer pinned to
+that same version, which verifies the release checksum and swaps the binary in
+atomically. An rc build follows the rc line rather than being moved onto the
+older stable release. A binary that
 arrived some other way is refused rather than overwritten, with both commands
 printed so you can pick. `orq update --check` reports the versions and changes
 nothing.

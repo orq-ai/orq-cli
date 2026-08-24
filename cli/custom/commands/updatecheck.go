@@ -96,6 +96,12 @@ func updateCheckDisabled(cmd *cobra.Command) bool {
 	if os.Getenv("ORQ_NO_UPDATE_CHECK") != "" || os.Getenv("CI") != "" {
 		return true
 	}
+	if cmd.Name() == "update" {
+		// `orq update` has just said everything the notice would, from fresher
+		// data, and after a successful one this process still reports the
+		// version it replaced.
+		return true
+	}
 	return !wantsHumanView(cmd)
 }
 
@@ -168,8 +174,6 @@ func sameDir(a, b string) bool {
 	return ra == rb
 }
 
-// currentVersion is the version cobra was built with, which the release
-// pipeline stamps; an unstamped build reports "dev".
 func currentVersion(cmd *cobra.Command) string {
 	return strings.TrimSpace(cmd.Root().Version)
 }
