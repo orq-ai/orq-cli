@@ -36,6 +36,7 @@ var profileExemptCommands = map[string]bool{
 	"add-profile":   true,
 	"list-profiles": true, // listing profiles is how you diagnose an unknown one
 	"doctor":        true,
+	"update":        true, // updating must work without a session; it touches no orq API
 	"help":          true,
 	"completion":    true,
 	"man-pages":     true,
@@ -282,6 +283,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewSetupCommand())
 	root.AddCommand(commands.NewConnectCommand())
 	root.AddCommand(commands.NewDisconnectCommand())
+	root.AddCommand(commands.NewUpdateCommand())
 	installSkillsRefreshPreRun()
 }
 

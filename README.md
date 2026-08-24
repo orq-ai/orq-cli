@@ -245,6 +245,7 @@ surface changes are always a reviewed diff.
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
 | `orq doctor` | Diagnose config, auth, reachability |
+| `orq update` | Update this binary to the latest release (`--check` reports only) |
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
@@ -350,11 +351,19 @@ Sandboxed execution is not available in this version.
 
 `.env` and `.env.local` files in the current directory are loaded automatically.
 
-### Update notice
+### Updating
 
-At most once a day, after a command succeeds, the CLI checks the npm dist-tag
-for its release line and prints a single stderr line if a newer version exists,
-along with the command that installs it. The only request is a `GET` of the
+`orq update` replaces this binary with the latest published release through the
+channel it was installed with: an npm install runs `npm install -g
+@orq-ai/cli@latest`, an `install.sh` install re-runs the installer, which
+verifies the release checksum and swaps the binary in atomically. A binary that
+arrived some other way is refused rather than overwritten, with both commands
+printed so you can pick. `orq update --check` reports the versions and changes
+nothing.
+
+At most once a day, after a command succeeds, the CLI also checks the npm
+dist-tag for its release line and prints a single stderr line if a newer version
+exists, telling you to run `orq update`. The only request is a `GET` of the
 public `registry.npmjs.org` dist-tags document: no version, platform or
 identifier is sent anywhere. Nothing is printed when `ORQ_NO_UPDATE_CHECK` or
 `CI` is set, when output is piped, when `--json`/`-o` requested a machine

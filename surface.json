@@ -8218,6 +8218,16 @@
       ]
     },
     {
+      "path": "orq update",
+      "use": "update",
+      "flags": [
+        {
+          "name": "check",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq webhooks",
       "use": "webhooks"
     },

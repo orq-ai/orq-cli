@@ -52,12 +52,20 @@ the version and this changelog as the source of truth for breaking changes.
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
   payload gains `coding_agents_remove_failed`.
+- **Added:** `orq update`. Replaces this binary with the latest published
+  release through the channel it was installed with: npm installs get
+  `npm install -g @orq-ai/cli@latest`, install.sh installs re-run install.sh,
+  which resolves the release, verifies its published `.sha256` and swaps the
+  binary in atomically. A binary that arrived any other way is refused, naming
+  its path and both channels' commands, rather than overwritten. `--check`
+  reports current, latest and channel and changes nothing; `--json` carries
+  `update_available` for scripts. A dev build refuses and says to rebuild.
 - **Added:** update notice. Once every 24 hours, after a command has finished
   successfully, the CLI compares its own version against the npm dist-tag for
   its release line (`latest`, or `rc` for an rc build) and prints one stderr
-  line naming the newer version and the command that installs it — `npm install
-  -g @orq-ai/cli@latest` for an npm install, the `install.sh` one-liner
-  otherwise. The check is skipped entirely, with no network request, when
+  line naming the newer version and the command that installs it: `orq update`,
+  or the `install.sh` one-liner when the binary arrived through a channel
+  `orq update` cannot act on. The check is skipped entirely, with no network request, when
   `ORQ_NO_UPDATE_CHECK` or `CI` is set, when stdout is not a terminal, when
   `--json`/`-o` asked for a machine format, and for unstamped dev builds. Any
   failure or timeout is silent: the check can never fail a command, and never

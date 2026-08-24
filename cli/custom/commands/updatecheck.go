@@ -24,10 +24,22 @@ import (
 const (
 	npmPackage   = "@orq-ai/cli"
 	distTagsURL  = "https://registry.npmjs.org/-/package/" + npmPackage + "/dist-tags"
-	installerCmd = "curl -fsSL https://cli.orq.ai/install.sh | sh"
+	installerURL = "https://cli.orq.ai/install.sh"
+	installerCmd = "curl -fsSL " + installerURL + " | sh"
 
 	updateCheckTTL     = 24 * time.Hour
 	updateCheckTimeout = 2 * time.Second
+)
+
+// updateChannel is how this binary arrived, which decides how it can be
+// replaced. Shared by the notice and by `orq update`, so the two can never
+// disagree about what the user should run.
+type updateChannel string
+
+const (
+	channelNPM       updateChannel = "npm"
+	channelInstaller updateChannel = "installer"
+	channelUnknown   updateChannel = "unknown"
 )
 
 // updateCacheFile records the last check so the notice appears at most once a
@@ -46,6 +58,7 @@ type updateCacheFile struct {
 var (
 	updateDistTagsURL = distTagsURL
 	updateHomeDir     = os.UserHomeDir
+	osExecutable      = os.Executable
 )
 
 // MaybePrintUpdateNotice prints a one-line "newer version available" notice on
@@ -56,7 +69,7 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if updateCheckDisabled(cmd) {
 		return
 	}
-	current := strings.TrimSpace(cmd.Root().Version)
+	current := currentVersion(cmd)
 	if _, ok := parseSemver(current); !ok {
 		return // dev build, or a version we cannot reason about
 	}
@@ -86,22 +99,79 @@ func updateCheckDisabled(cmd *cobra.Command) bool {
 	return !wantsHumanView(cmd)
 }
 
-// updateHint is the command that actually updates this binary, which depends on
-// how it arrived: npm's launcher shim execs the platform binary out of
-// node_modules, so that path is the channel marker. Everything else is treated
-// as an install.sh install, whose installer is idempotent.
-// ponytail: two channels, two strings - no channel registry until a third exists.
+// updateHint is the command to print in the notice: `orq update` when this
+// binary is on a channel that command can act on, and the raw installer
+// one-liner otherwise, since telling someone to run a command that will refuse
+// is worse than telling them nothing.
 func updateHint() string {
-	if p, err := os.Executable(); err == nil {
-		if resolved, err := filepath.EvalSymlinks(p); err == nil {
-			p = resolved
-		}
-		sep := string(os.PathSeparator)
-		if strings.Contains(p, sep+"node_modules"+sep) {
-			return "npm install -g " + npmPackage + "@latest"
-		}
+	if channel, _ := detectChannel(); channel == channelUnknown {
+		return installerCmd
 	}
-	return installerCmd
+	return "orq update"
+}
+
+// detectChannel classifies the running binary by where it lives, and returns
+// the resolved path so an error can name it. npm's launcher shim execs the
+// platform binary out of node_modules, so that path component is the npm
+// marker; the installer writes into $ORQ_CLI_INSTALL_DIR (default ~/.orq/bin).
+// Anything else - a hand-copied binary, a `go build` output, a distro package -
+// is unknown, and updating it is not ours to do.
+// ponytail: two channels, no registry until a third exists.
+//
+// Variable so tests can pin a channel: a test binary lives in neither place.
+var detectChannel = func() (updateChannel, string) {
+	path, err := osExecutable()
+	if err != nil {
+		return channelUnknown, ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	sep := string(os.PathSeparator)
+	if strings.Contains(path, sep+"node_modules"+sep) {
+		return channelNPM, path
+	}
+	if dir := installerDir(); dir != "" && sameDir(filepath.Dir(path), dir) {
+		return channelInstaller, path
+	}
+	return channelUnknown, path
+}
+
+// installerDir mirrors install.sh's own resolution order, so a custom
+// --install-dir install is still recognised as ours.
+func installerDir() string {
+	if dir := strings.TrimSpace(os.Getenv("ORQ_CLI_INSTALL_DIR")); dir != "" {
+		return dir
+	}
+	home, err := updateHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".orq", "bin")
+}
+
+// sameDir compares two directories through symlinks, so ~/.orq/bin still
+// matches when part of the path is a link (a symlinked $HOME is the common one
+// on macOS and in containers).
+func sameDir(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ra, err := filepath.EvalSymlinks(a)
+	if err != nil {
+		return false
+	}
+	rb, err := filepath.EvalSymlinks(b)
+	if err != nil {
+		return false
+	}
+	return ra == rb
+}
+
+// currentVersion is the version cobra was built with, which the release
+// pipeline stamps; an unstamped build reports "dev".
+func currentVersion(cmd *cobra.Command) string {
+	return strings.TrimSpace(cmd.Root().Version)
 }
 
 func updateCachePath() (string, error) {
