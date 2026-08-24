@@ -167,7 +167,7 @@ func registerchatCommands(root *cobra.Command) {
 							Name:        "reasoning_effort",
 							FlagName:    "reasoning-effort",
 							Type:        "enum-string",
-							Description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\".",
+							Description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\".",
 							Enum: []string{
 								"none",
 								"minimal",
@@ -175,6 +175,7 @@ func registerchatCommands(root *cobra.Command) {
 								"medium",
 								"high",
 								"xhigh",
+								"max",
 							},
 						},
 						{
@@ -425,7 +426,7 @@ func registerchatCommands(root *cobra.Command) {
 					Name:        "reasoning_effort",
 					FlagName:    "reasoning-effort",
 					Type:        "enum-string",
-					Description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\".",
+					Description: "Constrains effort on reasoning for [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently supported values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.\n\n- `gpt-5.1` defaults to `none`, which does not perform reasoning. The supported reasoning values for `gpt-5.1` are `none`, `low`, `medium`, and `high`. Tool calls are supported for all reasoning values in gpt-5.1.\n- All models before `gpt-5.1` default to `medium` reasoning effort, and do not support `none`.\n- The `gpt-5-pro` model defaults to (and only supports) `high` reasoning effort.\n- `xhigh` is currently only supported for `gpt-5.1-codex-max`.\n\nAny of \"none\", \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"max\".",
 					Enum: []string{
 						"none",
 						"minimal",
@@ -433,6 +434,7 @@ func registerchatCommands(root *cobra.Command) {
 						"medium",
 						"high",
 						"xhigh",
+						"max",
 					},
 				},
 				{

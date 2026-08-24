@@ -14,7 +14,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 	budgetsCmd := &cobra.Command{
 		Use:   "budgets",
 		Short: "Budgets",
-		Long:  bartolocli.Markdown("Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, api-key, provider, and model. A budget is hierarchical and defense-in-depth — every applicable budget is a hard gate, and the most restrictive one wins per dimension (see ADR 0007)."),
+		Long:  bartolocli.Markdown("Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, API key, provider, and model. Every applicable budget is enforced, and the most restrictive limit applies per dimension."),
 	}
 	root.AddCommand(budgetsCmd)
 

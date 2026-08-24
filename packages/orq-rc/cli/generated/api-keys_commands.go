@@ -14,7 +14,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 	apiKeysCmd := &cobra.Command{
 		Use:   "api-keys",
 		Short: "API keys",
-		Long:  bartolocli.Markdown("API keys authenticate programmatic access to the workspace. The unified key model exposes opaque tokens, per-domain access grants, and budget / rate-limit constraints (see ADR 0001 and ADR 0002)."),
+		Long:  bartolocli.Markdown("API keys authenticate programmatic access to the workspace. They expose opaque tokens, per-domain access grants, and budget and rate-limit constraints."),
 	}
 	root.AddCommand(apiKeysCmd)
 
