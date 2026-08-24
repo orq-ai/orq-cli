@@ -7318,6 +7318,10 @@
           "type": "string"
         },
         {
+          "name": "capability",
+          "type": "stringSlice"
+        },
+        {
           "name": "interactive",
           "shorthand": "i",
           "type": "bool"
