@@ -317,7 +317,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "is_active",
 							FlagName:    "is-active",
 							Type:        "bool",
-							Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
+							Description: "Activate or deactivate the schedule. Deactivating stops future executions; activating schedules future executions using the current values.",
 						},
 						{
 							Name:        "payload",
@@ -329,7 +329,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "type",
 							FlagName:    "type",
 							Type:        "enum-string",
-							Description: "Change the schedule type. Only cron is accepted. Changing type or expression resets the NATS schedule and bumps generation.",
+							Description: "Change the schedule type. Only cron is accepted. Changing the type or expression reschedules future executions and increments generation.",
 							Enum: []string{
 								"cron",
 							},
@@ -378,7 +378,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "is_active",
 					FlagName:    "is-active",
 					Type:        "bool",
-					Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
+					Description: "Activate or deactivate the schedule. Deactivating stops future executions; activating schedules future executions using the current values.",
 				},
 				{
 					Name:        "payload",
@@ -390,7 +390,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "type",
 					FlagName:    "type",
 					Type:        "enum-string",
-					Description: "Change the schedule type. Only cron is accepted. Changing type or expression resets the NATS schedule and bumps generation.",
+					Description: "Change the schedule type. Only cron is accepted. Changing the type or expression reschedules future executions and increments generation.",
 					Enum: []string{
 						"cron",
 					},

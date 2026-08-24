@@ -38,6 +38,8 @@ func Register(root *cobra.Command) {
 	registeridentitiesCommands(root)
 	registerknowledgeBasesCommands(root)
 	registermanagementKeysCommands(root)
+	registermcpGatewaysCommands(root)
+	registermcpServersCommands(root)
 	registermemoryStoresCommands(root)
 	registermodelCatalogCommands(root)
 	registermodelsCommands(root)
