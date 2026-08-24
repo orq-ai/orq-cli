@@ -83,6 +83,13 @@ func InstallSession(agent string) (func(), error) {
 					// skill. Both cases mean: use what is there, own nothing,
 					// remove nothing on exit.
 					continue
+				case existing != nil && !existing.Session:
+					// A permanent install whose link has gone missing. Repair
+					// it and leave the record permanent: claiming it here
+					// would delete the user's install when this session exits.
+					if err := project(filepath.Join(gen, name), path); err != nil {
+						return fmt.Errorf("repair %s in %s: %w", name, target.Dir, err)
+					}
 				default:
 					if err := project(filepath.Join(gen, name), path); err != nil {
 						if os.IsExist(err) {

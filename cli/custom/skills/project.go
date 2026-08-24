@@ -219,6 +219,16 @@ func refresh() (*Result, error) {
 		if l.Session {
 			continue
 		}
+		// Ownership is checked before anything is removed, including on the
+		// prune path: the manifest records a path, not a promise that we still
+		// own what sits there.
+		if exists(l.Path) && !isOurs(l) {
+			res.Skipped = append(res.Skipped, l.Path)
+			if !inSet[l.Skill] {
+				pruned = append(pruned, l.Path)
+			}
+			continue
+		}
 		if !inSet[l.Skill] {
 			// The skill left the shipped set. Without this the agent keeps
 			// loading something we no longer ship, pointing at a generation
@@ -228,10 +238,6 @@ func refresh() (*Result, error) {
 			}
 			pruned = append(pruned, l.Path)
 			res.Removed = append(res.Removed, l.Path)
-			continue
-		}
-		if exists(l.Path) && !isOurs(l) {
-			res.Skipped = append(res.Skipped, l.Path)
 			continue
 		}
 		// Per-link tolerance from here down. A link that cannot be reprojected

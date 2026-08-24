@@ -367,12 +367,18 @@ func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 	}
 	dir := filepath.Join(home, ".claude", "skills")
 	ghost := filepath.Join(dir, "orq-retired-skill")
-	if err := os.Symlink(filepath.Join(home, "nowhere"), ghost); err != nil {
+	// Into the snapshot, which is where every link we write points. A link
+	// aimed anywhere else is not ours and refresh must leave it alone.
+	gen, err := EnsureGeneration()
+	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := LoadManifest()
-	if err != nil || m == nil {
-		t.Fatalf("LoadManifest: %v %v", m, err)
+	if err := os.Symlink(filepath.Join(gen, "orq-retired-skill"), ghost); err != nil {
+		t.Fatal(err)
+	}
+	m, err2 := LoadManifest()
+	if err2 != nil || m == nil {
+		t.Fatalf("LoadManifest: %v %v", m, err2)
 	}
 	m.AddLink(Link{Path: ghost, Agent: "claude", Skill: "orq-retired-skill", Mode: ModeSymlink})
 	if err := SaveManifest(m); err != nil {
@@ -1161,4 +1167,111 @@ func TestGenerationPermissionsMatchItsContents(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o755 {
 		t.Errorf("generation directory is %o, want 0755 to match its contents and ~/.orq/snapshot", got)
 	}
+}
+
+// The manifest records a path, not a promise that we still own what sits there.
+// Pruning a skill that left the shipped set used to os.RemoveAll whatever was at
+// the recorded path, and refresh runs from PreRun on every command.
+func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A real directory of the user's, at a path the manifest still claims for a
+	// skill this binary no longer ships.
+	victim := filepath.Join(dir, "orq-departed-skill")
+	if err := os.MkdirAll(victim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(victim, "their-work.md")
+	if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
+	m.AddLink(Link{Path: victim, Agent: "claude", Skill: "orq-departed-skill", Mode: linkMode()})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("refresh deleted a directory it does not own: %v", err)
+	}
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest after refresh: %v", err)
+	}
+	for _, l := range after.Links {
+		if l.Path == victim {
+			t.Error("kept tracking a path we do not own; the record should be dropped")
+		}
+	}
+}
+
+// A launch must never inherit a permanent install. Deleting the skills
+// directory is documented as safe, so the repair path has to leave the record
+// permanent, or the next session exit takes the user's `orq connect` install
+// with it.
+func TestALaunchDoesNotInheritAPermanentInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	before, err := LoadManifest()
+	if err != nil || before == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	permanent := len(before.Links)
+	if permanent == 0 {
+		t.Fatal("install recorded no links")
+	}
+
+	// The user removes the directory; project.go documents this as recoverable.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	release()
+
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest after session: %v", err)
+	}
+	if len(after.Links) != permanent {
+		t.Errorf("permanent links after a session: %d, want %d", len(after.Links), permanent)
+	}
+	for _, l := range after.Links {
+		if l.Session {
+			t.Errorf("%s was demoted to session-scoped", l.Path)
+		}
+	}
+	if n := countEntries(t, dir); n != permanent {
+		t.Errorf("%d skills on disk after the session exited, want %d", n, permanent)
+	}
+}
+
+func countEntries(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	return len(entries)
 }
