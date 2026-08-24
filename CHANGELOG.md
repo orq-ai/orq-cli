@@ -52,6 +52,17 @@ the version and this changelog as the source of truth for breaking changes.
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
   payload gains `coding_agents_remove_failed`.
+- **Added:** update notice. Once every 24 hours, after a command has finished
+  successfully, the CLI compares its own version against the npm dist-tag for
+  its release line (`latest`, or `rc` for an rc build) and prints one stderr
+  line naming the newer version and the command that installs it — `npm install
+  -g @orq-ai/cli@latest` for an npm install, the `install.sh` one-liner
+  otherwise. The check is skipped entirely, with no network request, when
+  `ORQ_NO_UPDATE_CHECK` or `CI` is set, when stdout is not a terminal, when
+  `--json`/`-o` asked for a machine format, and for unstamped dev builds. Any
+  failure or timeout is silent: the check can never fail a command, and never
+  delays one by more than two seconds. The result is cached in
+  `~/.orq/update-check.json`.
 - **Changed (security):** the key `orq setup` and `orq connect` mint is now
   restricted to gateway permissions instead of every permission in the
   workspace. Keys minted by v4.13.10 carry `permission_mode: "all"`, which

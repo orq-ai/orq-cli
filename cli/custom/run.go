@@ -6,6 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"orq/cli/custom/commands"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
@@ -49,6 +51,12 @@ func Run(version string, registerGenerated func(root *cobra.Command)) {
 	Register(bartolocli.Root)
 
 	err := bartolocli.Root.ExecuteContext(ctx)
+	if err == nil {
+		// After the command's own output, so the notice never interleaves with
+		// it, and never on a failing run where the user has a real problem to
+		// read. Silent unless a person at a terminal is a day overdue an update.
+		commands.MaybePrintUpdateNotice(bartolocli.Root)
+	}
 	select {
 	case s := <-received:
 		if s == syscall.SIGTERM {

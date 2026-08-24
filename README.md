@@ -346,8 +346,19 @@ Sandboxed execution is not available in this version.
 | `ORQ_CLI_INSTALL_DIR` | Install directory for `install.sh` |
 | `ORQ_WEB_BASE_URL` | Web app base URL used for the links `orq setup` prints |
 | `ORQ_NO_SPLASH` | Suppress the `orq setup` banner |
+| `ORQ_NO_UPDATE_CHECK` | Suppress the update notice and the version check behind it |
 
 `.env` and `.env.local` files in the current directory are loaded automatically.
+
+### Update notice
+
+At most once a day, after a command succeeds, the CLI checks the npm dist-tag
+for its release line and prints a single stderr line if a newer version exists,
+along with the command that installs it. The only request is a `GET` of the
+public `registry.npmjs.org` dist-tags document: no version, platform or
+identifier is sent anywhere. Nothing is printed when `ORQ_NO_UPDATE_CHECK` or
+`CI` is set, when output is piped, when `--json`/`-o` requested a machine
+format, or when the check fails.
 
 ---
 
