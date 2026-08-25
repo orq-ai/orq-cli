@@ -133,8 +133,8 @@ func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
 	if !capsWereAllUnavailable([]string{"claude", "tracing"}) {
 		t.Error("unavailable-only detection missed the only-unavailable case")
 	}
-	if !capsWereAllUnavailable([]string{"claude", "skills"}) {
-		t.Error("skills is not available this release and must count as unavailable")
+	if capsWereAllUnavailable([]string{"claude", "skills"}) {
+		t.Error("skills is built and must count as a real capability")
 	}
 	if capsWereAllUnavailable([]string{"claude", "tracing", "gateway"}) {
 		t.Error("unavailable-only detection swallowed a real capability")
@@ -751,7 +751,6 @@ func TestRemovalNamesOrqAsTheThingRemoved(t *testing.T) {
 }
 
 func TestConnectSkillsInstallsAndDisconnectRemoves(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -792,7 +791,6 @@ func TestConnectSkillsInstallsAndDisconnectRemoves(t *testing.T) {
 // skipped skills removal for an agent combining a real capability with an
 // unwirable one.
 func TestDisconnectCombinesGatewayAndSkillsForClaude(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -905,7 +903,6 @@ func captureOutput(t *testing.T, fn func()) string {
 }
 
 func TestConnectStatusGroupsByAgent(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	// Connecting skills, unlike --status, needs a resolvable credential (see
@@ -947,7 +944,6 @@ func TestConnectStatusGroupsByAgent(t *testing.T) {
 // stopped working silently until something happens to look. --status must
 // surface it as a warning instead of staying quiet.
 func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -1033,7 +1029,6 @@ func TestConnectStatusIgnoresMissingSessionLinks(t *testing.T) {
 // surface skills breakage regardless of which agent is named — the same
 // scoping the rest of runConnectStatus already applies to gateway targets.
 func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1090,7 +1085,6 @@ func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
 // at the same remedy. One line naming the directory and a count is the right
 // shape; a dozen identical lines would tell the user nothing more.
 func TestConnectStatusCollapsesMissingLinksPerDirectory(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1128,7 +1122,6 @@ func TestConnectStatusCollapsesMissingLinksPerDirectory(t *testing.T) {
 }
 
 func TestAnUpdatedBinaryRelinksOnTheNextCommand(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Chdir(t.TempDir())
@@ -1187,7 +1180,6 @@ func TestAnUpdatedBinaryRelinksOnTheNextCommand(t *testing.T) {
 // invisible to a bare `--status` and unreachable from a bare `disconnect`: the
 // user could install fourteen skills and then neither see nor remove them.
 func TestBareStatusAndDisconnectSeeSkillsOnAClaudeOnlyMachine(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -1240,7 +1232,6 @@ func TestBareStatusAndDisconnectSeeSkillsOnAClaudeOnlyMachine(t *testing.T) {
 // from every bare command. The manifest, not the machine, is the authority on
 // what was installed.
 func TestBareDisconnectReachesSkillsForAnUndetectedAgent(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -1286,7 +1277,6 @@ func TestBareDisconnectReachesSkillsForAnUndetectedAgent(t *testing.T) {
 // unpack an embedded tree onto the local filesystem defeats the whole premise,
 // and the spec asks for it to work on a plane.
 func TestConnectSkillsNeedsNoCredential(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1403,7 +1393,6 @@ func TestConnectHelpExplainsCapabilitiesAndDisambiguatesOrqSkills(t *testing.T) 
 // fourteen symlinks in the user's home and reported `coding_agents: null`.
 // Anything scripting the CLI could not observe the capability at all.
 func TestSkillsAreVisibleInTheMachineReadableOutput(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1467,7 +1456,6 @@ func TestSkillsAreVisibleInTheMachineReadableOutput(t *testing.T) {
 // a run whose skills leg needed nothing. The gateway leg is the part that needs
 // a credential; only it should be lost.
 func TestKeylessBareConnectStillInstallsSkills(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1539,7 +1527,6 @@ func TestDecliningTheLoginStillInstallsSkills(t *testing.T) {
 // through step 1 and died at "no TTY available for browser login" on a machine
 // with no saved credential.
 func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -1561,12 +1548,5 @@ func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("no skills installed: %d entries, err = %v", len(entries), err)
-	}
-}
-
-func requireSkillsCapability(t *testing.T) {
-	t.Helper()
-	if !capAvailable(capSkills) {
-		t.Skip("skills is gated off this release; re-enable in availableCapabilities()")
 	}
 }

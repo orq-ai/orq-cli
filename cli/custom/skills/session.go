@@ -83,6 +83,19 @@ func InstallSession(agent string) (func(), error) {
 					// skill. Both cases mean: use what is there, own nothing,
 					// remove nothing on exit.
 					continue
+				case existing != nil && !existing.Session:
+					// A permanent install whose link has gone missing. Repair
+					// it and leave the record permanent: claiming it here
+					// would delete the user's install when this session exits.
+					// os.IsExist is the same lost race the default branch
+					// tolerates below: another writer repaired the link
+					// between the exists check and the create. The link is
+					// in place, which is all this branch wanted — failing
+					// the whole launch over a job already done would be
+					// worse than the race.
+					if err := project(filepath.Join(gen, name), path); err != nil && !os.IsExist(err) {
+						return fmt.Errorf("repair %s in %s: %w", name, target.Dir, err)
+					}
 				default:
 					if err := project(filepath.Join(gen, name), path); err != nil {
 						if os.IsExist(err) {
@@ -154,19 +167,24 @@ func ReleaseSession(id string) error {
 // the next invocation sweeps again. A session killed rather than exited leaves its links behind, and
 // this is what makes the next `orq` command clean them up.
 func SweepDeadSessions() error {
+	// Read before locking, for the same reason Refresh does: on every
+	// invocation but the one after a session died there is nothing to sweep,
+	// and that answer costs one file read instead of a lock — which on a
+	// machine that never connected would also create the state directory.
+	// The sweep re-checks under the lock, where the write is decided.
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		return err
+	}
+	if !anyDead(m.Sessions) {
+		return nil
+	}
 	return withManifestLock(func() error {
 		m, err := LoadManifest()
 		if err != nil || m == nil {
 			return err
 		}
-		dead := false
-		for _, s := range m.Sessions {
-			if !processAlive(s.PID) {
-				dead = true
-				break
-			}
-		}
-		if !dead {
+		if !anyDead(m.Sessions) {
 			return nil
 		}
 		if err := releaseLocked(m, func(s Session) bool { return !processAlive(s.PID) }); err != nil {
@@ -174,6 +192,15 @@ func SweepDeadSessions() error {
 		}
 		return SaveManifest(m)
 	})
+}
+
+func anyDead(sessions []Session) bool {
+	for _, s := range sessions {
+		if !processAlive(s.PID) {
+			return true
+		}
+	}
+	return false
 }
 
 // releaseLocked drops every session matching claimed from m and deletes the

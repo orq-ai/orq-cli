@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -27,14 +25,25 @@ import (
 // So a writer that cannot take the lock does not write. Callers turn that into
 // a warning (launch) or a failed command (connect), which is recoverable;
 // unrecorded links in the user's home are not.
+//
+// The lock itself is the kernel's (flock on unix, LockFileEx on Windows), held
+// on an open descriptor rather than written into a file. That is what makes
+// this small: a descriptor lock is released when the process exits however it
+// exits, so there is no abandoned lock to detect, no PID to check for
+// liveness, no age bound to guess at, no heartbeat to prove a slow holder is
+// still alive, and no non-atomic break where two processes can both decide a
+// lock is free. A file-contents lock needed all five, and each was its own
+// way to either wedge every command or admit two writers at once.
 const (
 	lockRetryInterval = 20 * time.Millisecond
 	lockTimeout       = 2 * time.Second
 )
 
-// manifestMu serializes writers inside one process. The lock file cannot:
-// a second acquire from the same process sees its own live PID and would
-// simply wait for itself.
+// manifestMu serializes writers inside one process. The file lock alone would
+// not: flock is held per open file description, so a second acquisition here
+// opens its own descriptor and blocks against the one this process already
+// holds — a self-deadlock that waits out the full timeout and then reports
+// another process is using the manifest, naming ourselves.
 var manifestMu sync.Mutex
 
 func lockPath() (string, error) {
@@ -61,84 +70,39 @@ func withManifestLock(fn func() error) error {
 	if err != nil {
 		return err
 	}
-	if release != nil {
-		defer release()
-	}
+	defer release()
 	return fn()
 }
 
-// acquireLock returns a release func, or (nil, nil) when there is no state
-// directory yet and therefore no manifest to race over. Any other failure is
-// an error: a lock file we cannot create next to the manifest means we cannot
-// safely write the manifest either.
+// acquireLock returns a release func. The state directory is created if it is
+// missing rather than taken as licence to skip the lock: two first-run writers
+// would otherwise both find no directory, both proceed unlocked, and lose one
+// another's manifest. Callers that must leave a never-connected machine
+// untouched check for a manifest before they get here (Refresh,
+// SweepDeadSessions), so nothing reaches this that was not about to write.
 func acquireLock() (func(), error) {
 	path, err := lockPath()
 	if err != nil {
 		return nil, err
 	}
-	// Never create the state directory just to lock it: a read-only path like
-	// Refresh on a machine that never connected must leave no trace, and
-	// where there is no directory there is no manifest to race over yet.
-	if _, statErr := os.Stat(filepath.Dir(path)); statErr != nil {
-		if os.IsNotExist(statErr) {
-			return nil, nil
-		}
-		return nil, statErr
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
 	}
 	deadline := time.Now().Add(lockTimeout)
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = f.WriteString(strconv.Itoa(os.Getpid()))
-			_ = f.Close()
-			return func() { _ = os.Remove(path) }, nil
+		release, held, err := lockFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("could not lock the skills manifest at %s: %w", path, err)
 		}
-		if !os.IsExist(err) {
-			return nil, err
-		}
-		if holderIsDead(path) {
-			// The holder was killed mid-write. Break the lock rather than
-			// making every later invocation wait out the timeout.
-			_ = os.Remove(path)
-			continue
+		if !held {
+			return release, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("%w: %s is held by %s. Wait for the other command to finish, or remove that file if no orq process is running",
-				ErrManifestLocked, path, holderDescription(path))
+			// No remedy about deleting the file: unlike a contents-based
+			// lock, this one cannot outlive its holder, so a lock that is
+			// held means a live orq process is holding it.
+			return nil, fmt.Errorf("%w: %s. Wait for the other command to finish", ErrManifestLocked, path)
 		}
 		time.Sleep(lockRetryInterval)
 	}
-}
-
-// holderIsDead reports whether the process named in the lock file is gone. An
-// unreadable or unparsable lock file is treated as held: guessing wrong in
-// that direction only costs a wait, guessing wrong the other way lets two
-// writers in at once.
-//
-// This assumes the lock file and its holder live on the same machine, which
-// is true for a per-user ~/.orq. A $HOME shared over the network between
-// machines would make a live remote PID look dead here.
-func holderIsDead(path string) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return false
-	}
-	return !processAlive(pid)
-}
-
-// holderDescription names the process in the lock file for the error message.
-func holderDescription(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "another process"
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return "another process"
-	}
-	return fmt.Sprintf("pid %d", pid)
 }

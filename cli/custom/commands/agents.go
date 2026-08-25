@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
+	"orq/cli/custom/skills"
 
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
@@ -868,4 +870,73 @@ func dropDanglingKimiDefault(content string) string {
 		out.WriteString(line)
 	}
 	return out.String()
+}
+
+// skillsCheck reports two states nothing else converges on its own: recorded
+// links whose path is gone, and an install left behind by a CLI update.
+//
+// A missing link is reported as not installed, not as damage: refresh only
+// reprojects a recorded link when the fingerprint moves, so between CLI
+// updates nothing puts it back, and nothing else says it is gone.
+// A stale install is repaired by refresh, but only on the commands that
+// touch skills (see skillsCommand in register.go), so someone who updates the
+// CLI and opens their agent directly stays on the old set until they run one.
+// Both are real, persistent, and invisible; naming them is doctor's job.
+//
+// Session links are excluded: they are created and destroyed by a live
+// `orq launch`, and their absence between sessions is not breakage.
+//
+// Collapsed per directory, like connect --status's version: deleting a
+// skills directory records a dozen missing links, and a dozen lines pointing
+// at one remedy say nothing a count would not.
+func skillsCheck() (doctorCheck, bool) {
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		return doctorCheck{}, false
+	}
+	recorded, missing := 0, 0
+	dirs := map[string]bool{}
+	for _, l := range m.Links {
+		if l.Session {
+			continue
+		}
+		recorded++
+		if _, statErr := os.Lstat(l.Path); statErr == nil {
+			continue
+		}
+		missing++
+		dirs[filepath.Dir(l.Path)] = true
+	}
+	if recorded == 0 {
+		return doctorCheck{}, false
+	}
+	check := doctorCheck{
+		ID:      "skills",
+		Details: map[string]any{"recorded": recorded, "missing": missing},
+	}
+	stale := m.Fingerprint != skills.Fingerprint()
+	check.Details["stale"] = stale
+	if missing == 0 && !stale {
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
+		return check, true
+	}
+	if missing == 0 {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d orq skills are from an older CLI version — run 'orq connect skills' to update them", recorded)
+		return check, true
+	}
+	check.Status = "warn"
+	check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
+		missing, recorded, strings.Join(sortedKeys(dirs), ", "))
+	return check, true
+}
+
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, tilde(k))
+	}
+	sort.Strings(out)
+	return out
 }

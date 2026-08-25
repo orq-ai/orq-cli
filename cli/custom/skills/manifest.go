@@ -140,6 +140,11 @@ func (m *Manifest) AddLink(l Link) {
 	l.Path = filepath.Clean(l.Path)
 	for i, existing := range m.Links {
 		if existing.Path == l.Path {
+			// A permanent install never becomes session-scoped; the session
+			// would take it with it on exit.
+			if !existing.Session {
+				l.Session = false
+			}
 			m.Links[i] = l
 			return
 		}

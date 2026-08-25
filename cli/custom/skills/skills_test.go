@@ -4,13 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNamesAreOrqPrefixedAndNonEmpty(t *testing.T) {
@@ -367,7 +368,13 @@ func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 	}
 	dir := filepath.Join(home, ".claude", "skills")
 	ghost := filepath.Join(dir, "orq-retired-skill")
-	if err := os.Symlink(filepath.Join(home, "nowhere"), ghost); err != nil {
+	// Into the snapshot, which is where every link we write points. A link
+	// aimed anywhere else is not ours and refresh must leave it alone.
+	gen, err := EnsureGeneration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(gen, "orq-retired-skill"), ghost); err != nil {
 		t.Fatal(err)
 	}
 	m, err := LoadManifest()
@@ -832,15 +839,7 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if _, err := EnsureGeneration(); err != nil {
 		t.Fatal(err)
 	}
-	lp, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Held by a PID that is definitely alive (this test binary), so the
-	// stale-lock heal cannot break it.
-	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	holdLockForeignly(t, home)
 
 	release, err := InstallSession("claude")
 	if err == nil {
@@ -866,8 +865,103 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if _, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) {
 		t.Errorf("Install under a held lock: %v", err)
 	}
+}
+
+// The sweep is a writer too, and it refuses for the same reason. It only
+// reaches the lock when there is something to collect, so this has to record a
+// dead session first: with nothing to sweep it returns before locking, which
+// is what keeps an uncontended command from waiting on a busy one.
+func TestSweepUnderAHeldLockKeepsTheDeadSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint()}
+	m.Sessions = append(m.Sessions, Session{ID: "dead", PID: 999999, Paths: []string{filepath.Join(home, ".claude", "skills", "orq-gone")}})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+	holdLockForeignly(t, home)
+
 	if err := SweepDeadSessions(); !errors.Is(err, ErrManifestLocked) {
-		t.Errorf("SweepDeadSessions under a held lock: %v", err)
+		t.Fatalf("SweepDeadSessions under a held lock: %v", err)
+	}
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if len(after.Sessions) != 1 {
+		t.Errorf("a locked-out sweep dropped the claim anyway: %d sessions left", len(after.Sessions))
+	}
+}
+
+// Nothing recorded means nothing to lock. A writer on a machine that has never
+// connected must still take the lock rather than read the missing state
+// directory as permission to skip it: two first-run launches would otherwise
+// both write the manifest and lose one another's links.
+func TestAFirstRunWriterCreatesTheStateDirectoryAndLocksIt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	lock := filepath.Join(home, ".orq", "materialized-skills.json.lock")
+	err := withManifestLock(func() error {
+		if _, statErr := os.Stat(lock); statErr != nil {
+			t.Errorf("wrote the manifest without a lock file at %s: %v", lock, statErr)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withManifestLock on a fresh home: %v", err)
+	}
+}
+
+// Disconnect leaves a path it no longer owns alone, and stops recording it.
+// Keeping the record would strand an entry no command can clear: refresh only
+// disowns a foreign path once its skill also leaves the shipped set, so every
+// later connect and disconnect would skip this one again in silence.
+func TestDisconnectDropsTheRecordForAPathWeNoLongerOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	names, err := Names()
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(dir, names[0])
+	if err := os.MkdirAll(theirs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(theirs, "their-work.md")
+	if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint()}
+	m.AddLink(Link{Path: theirs, Agent: "claude", Skill: names[0], Mode: ModeCopy})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Remove([]string{"claude"})
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0] != theirs {
+		t.Errorf("Skipped = %v, want [%s] so disconnect can say it left it alone", res.Skipped, theirs)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("disconnect deleted a directory it does not own: %v", err)
+	}
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest after remove: %v", err)
+	}
+	for _, l := range after.Links {
+		if l.Path == theirs {
+			t.Error("kept a record for a path disconnect will skip forever")
+		}
 	}
 }
 
@@ -881,13 +975,7 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallSession: %v", err)
 	}
-	lp, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	stop := holdLockForeignly(t, home)
 	release() // cannot acquire; must not drop the claim
 
 	m, err := LoadManifest()
@@ -904,9 +992,7 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 	}
 
 	// With the lock free again, the same release function retries and works.
-	if err := os.Remove(lp); err != nil {
-		t.Fatal(err)
-	}
+	stop()
 	release()
 	m, err = LoadManifest()
 	if err != nil || m == nil {
@@ -1160,5 +1246,405 @@ func TestGenerationPermissionsMatchItsContents(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o755 {
 		t.Errorf("generation directory is %o, want 0755 to match its contents and ~/.orq/snapshot", got)
+	}
+}
+
+// The manifest records a path, not a promise that we still own what sits there.
+// Pruning a skill that left the shipped set used to os.RemoveAll whatever was at
+// the recorded path, and refresh runs from PreRun on every command.
+func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
+	// Both modes, not linkMode(): ModeCopy is the Windows fallback, and its
+	// ownership check is weaker than the symlink one — isOurs can only see
+	// that a directory is a directory. Running only the host's mode meant the
+	// Unix suite passed while the same refresh deleted the user's work on
+	// Windows.
+	for _, mode := range []string{ModeSymlink, ModeCopy} {
+		t.Run(mode, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			dir := filepath.Join(home, ".claude", "skills")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			// A real directory of the user's, at a path the manifest still
+			// claims for a skill this binary no longer ships.
+			victim := filepath.Join(dir, "orq-departed-skill")
+			if err := os.MkdirAll(victim, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			keep := filepath.Join(victim, "their-work.md")
+			if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
+			m.AddLink(Link{Path: victim, Agent: "claude", Skill: "orq-departed-skill", Mode: mode})
+			if err := SaveManifest(m); err != nil {
+				t.Fatal(err)
+			}
+
+			res, err := Refresh()
+			if err != nil {
+				t.Fatalf("Refresh: %v", err)
+			}
+
+			if _, err := os.Stat(keep); err != nil {
+				t.Errorf("refresh deleted a directory it does not own: %v", err)
+			}
+			after, err := LoadManifest()
+			if err != nil || after == nil {
+				t.Fatalf("LoadManifest after refresh: %v", err)
+			}
+			for _, l := range after.Links {
+				if l.Path == victim {
+					t.Error("kept tracking a path we do not own; the record should be dropped")
+				}
+			}
+			// Dropping the record silently would leave the user a directory
+			// nothing mentions again, not even `orq disconnect skills`.
+			if len(res.Disowned) != 1 || res.Disowned[0] != victim {
+				t.Errorf("Disowned = %v, want [%s] so the caller can say so once", res.Disowned, victim)
+			}
+		})
+	}
+}
+
+// A permanent link is only ever demoted to session-scoped by mistake, and the
+// mistake is expensive: the session takes the user's install with it on exit.
+// AddLink is the last place that can refuse, so pin all four combinations
+// rather than only the end-to-end path through InstallSession.
+func TestAddLinkNeverDemotesAPermanentLink(t *testing.T) {
+	cases := []struct {
+		name              string
+		existing, added   bool
+		wantSessionScoped bool
+	}{
+		{"permanent stays permanent", false, true, false},
+		{"permanent is not re-marked", false, false, false},
+		{"session is promoted", true, false, false},
+		{"session stays session", true, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := &Manifest{Version: manifestVersion}
+			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.existing})
+			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.added})
+			if len(m.Links) != 1 {
+				t.Fatalf("got %d links, want 1: the second AddLink should replace the first", len(m.Links))
+			}
+			if m.Links[0].Session != c.wantSessionScoped {
+				t.Errorf("Session = %v, want %v", m.Links[0].Session, c.wantSessionScoped)
+			}
+		})
+	}
+}
+
+// A launch must never inherit a permanent install. Deleting the skills
+// directory is documented as safe, so the repair path has to leave the record
+// permanent, or the next session exit takes the user's `orq connect` install
+// with it.
+func TestALaunchDoesNotInheritAPermanentInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Install([]string{"claude"}); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	before, err := LoadManifest()
+	if err != nil || before == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	permanent := len(before.Links)
+	if permanent == 0 {
+		t.Fatal("install recorded no links")
+	}
+
+	// The user removes the directory; project.go documents this as recoverable.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatalf("InstallSession: %v", err)
+	}
+	release()
+
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest after session: %v", err)
+	}
+	if len(after.Links) != permanent {
+		t.Errorf("permanent links after a session: %d, want %d", len(after.Links), permanent)
+	}
+	for _, l := range after.Links {
+		if l.Session {
+			t.Errorf("%s was demoted to session-scoped", l.Path)
+		}
+	}
+	if n := countEntries(t, dir); n != permanent {
+		t.Errorf("%d skills on disk after the session exited, want %d", n, permanent)
+	}
+}
+
+func countEntries(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	return len(entries)
+}
+
+// The lock is the kernel's, held on an open descriptor. A second acquirer
+// waits and then gives up rather than writing anyway: the manifest is the
+// deletion allow-list, and a lost update there leaves links nothing can ever
+// remove.
+func TestASecondAcquireWaitsThenReportsTheHolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// acquireLock directly, not withManifestLock: manifestMu would serialize
+	// these two before the file lock is ever consulted, which is the whole
+	// point of having both, and would make this test prove the mutex instead.
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+	if release == nil {
+		t.Fatal("first acquire returned no release, so there was no state directory")
+	}
+
+	start := time.Now()
+	second, err := acquireLock()
+	elapsed := time.Since(start)
+	if second != nil {
+		second()
+		t.Fatal("a second acquire took the lock while the first still held it")
+	}
+	if !errors.Is(err, ErrManifestLocked) {
+		t.Errorf("err = %v, want it to wrap ErrManifestLocked so callers can recognise the case", err)
+	}
+	if elapsed < lockTimeout {
+		t.Errorf("gave up after %s, want it to wait out lockTimeout (%s) first", elapsed, lockTimeout)
+	}
+
+	release()
+	third, err := acquireLock()
+	if err != nil || third == nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	third()
+}
+
+// The reason for a descriptor lock rather than a lock written into a file: a
+// holder that dies takes its lock with it. Every wedge this package has had —
+// an unstamped lock file, a lock stamped with a PID the OS later reused, a
+// lock whose holder was killed mid-write — was a way for a contents-based
+// lock to outlive the process that took it, and each needed its own guess
+// (liveness, an age bound, a heartbeat) to undo.
+func TestALockDiesWithItsHolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ready := filepath.Join(home, "held")
+
+	// Re-exec this test binary as a helper that takes the lock and blocks.
+	// A goroutine cannot stand in: it would share this process's descriptors
+	// and, more to the point, could not be killed without cleanup the way a
+	// crashed holder is.
+	helper := exec.Command(os.Args[0], "-test.run=TestLockHolderHelper")
+	helper.Env = append(os.Environ(), "ORQ_LOCK_HELPER=1", "HOME="+home, "ORQ_LOCK_READY="+ready)
+	if err := helper.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = helper.Process.Kill()
+		_, _ = helper.Process.Wait()
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper never signalled that it holds the lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Killed, not asked to exit: nothing gets to run a cleanup, which is the
+	// case a contents-based lock could not recover from.
+	if err := helper.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := helper.Process.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("acquire after the holder was killed: %v", err)
+	}
+	if release == nil {
+		t.Fatal("acquire returned no release, so there was no state directory")
+	}
+	release()
+	if elapsed := time.Since(start); elapsed >= lockTimeout {
+		t.Errorf("waited %s for a dead holder's lock; the kernel should have released it on exit", elapsed)
+	}
+}
+
+// holdLockForeignly takes the manifest lock in a subprocess and returns the
+// function that kills it. It has to be another process: the lock is the
+// kernel's, held per open file description, so nothing this process does to a
+// file on disk can simulate a foreign holder.
+func holdLockForeignly(t *testing.T, home string) (stop func()) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ready := filepath.Join(t.TempDir(), "held")
+	helper := exec.Command(os.Args[0], "-test.run=TestLockHolderHelper")
+	helper.Env = append(os.Environ(), "ORQ_LOCK_HELPER=1", "HOME="+home, "ORQ_LOCK_READY="+ready)
+	if err := helper.Start(); err != nil {
+		t.Fatal(err)
+	}
+	killed := false
+	stop = func() {
+		if killed {
+			return
+		}
+		killed = true
+		_ = helper.Process.Kill()
+		_, _ = helper.Process.Wait()
+	}
+	t.Cleanup(stop)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			return stop
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper never signalled that it holds the lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestLockHolderHelper is not a test. It is the subprocess half of
+// TestALockDiesWithItsHolder, and it does nothing at all unless that test
+// re-execs this binary with ORQ_LOCK_HELPER set.
+func TestLockHolderHelper(t *testing.T) {
+	if os.Getenv("ORQ_LOCK_HELPER") != "1" {
+		t.Skip("subprocess helper for TestALockDiesWithItsHolder")
+	}
+	release, err := acquireLock()
+	if err != nil || release == nil {
+		t.Fatalf("helper could not take the lock: %v", err)
+	}
+	if err := os.WriteFile(os.Getenv("ORQ_LOCK_READY"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Held until killed. Never released: that is what is being tested. A
+	// sleep loop rather than select{}, which the runtime would report as a
+	// deadlock and exit on — releasing the lock, which is the opposite of
+	// the point.
+	for {
+		time.Sleep(time.Second)
+	}
+}
+
+// A copy-mode projection has no symlink target to prove it is ours, so it
+// carries a marker instead. Without one, "is a directory here" was the whole
+// ownership check and any directory the user put at one of our paths passed
+// it — on Windows that meant refresh, install and disconnect all treated the
+// user's own work as ours and deleted it.
+func TestACopyProvesOwnershipWithItsMarker(t *testing.T) {
+	home := t.TempDir()
+	src := filepath.Join(home, "snapshot", "orq-x")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(home, "skills", "orq-x")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// projectCopy directly: the copy branch only runs on Windows, and it is
+	// the branch whose ownership is hardest to prove.
+	if err := projectCopy(src, dest, filepath.Dir(dest)); err != nil {
+		t.Fatalf("projectCopy: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Fatalf("the copy did not land: %v", err)
+	}
+	link := Link{Path: dest, Skill: "orq-x", Mode: ModeCopy}
+	if !isOurs(link) {
+		t.Error("a copy we just projected is not recognised as ours")
+	}
+	if !ourOrphan(dest) {
+		t.Error("an unrecorded copy of ours is not recognised as our orphan, so install would refuse to adopt it")
+	}
+
+	// The user takes the directory over. Removing the marker is the documented
+	// way to say so, and a directory they created themselves never had one.
+	if err := os.Remove(filepath.Join(dest, ownerMarker)); err != nil {
+		t.Fatal(err)
+	}
+	if isOurs(link) {
+		t.Error("a directory with no marker was claimed as ours; refresh, install and disconnect would all delete it")
+	}
+	if ourOrphan(dest) {
+		t.Error("a directory with no marker was adoptable as our orphan")
+	}
+}
+
+// The other side of the guard: a copy that is still ours must be prunable
+// when its skill leaves the shipped set, or a retired skill stays in the
+// agent's index forever.
+func TestPruneRemovesACopyThatIsStillOurs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(dir, "orq-departed-skill")
+	if err := os.MkdirAll(gone, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gone, ownerMarker), []byte(ownerMarkerBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
+	m.AddLink(Link{Path: gone, Agent: "claude", Skill: "orq-departed-skill", Mode: ModeCopy})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Errorf("a copy that is still ours was not pruned: %v", err)
+	}
+	if len(res.Disowned) != 0 {
+		t.Errorf("Disowned = %v, want empty: we owned this one and removed it", res.Disowned)
 	}
 }
