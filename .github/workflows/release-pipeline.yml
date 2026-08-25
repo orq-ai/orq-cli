@@ -159,9 +159,8 @@ jobs:
             #
             # VERSION is the last released version of this line - the pipeline
             # writes it on every release - so the bump applies to it exactly
-            # once. The tag is not scanned for a maximum: the CLI's line starts
-            # at 3.0.0 and the old v4.12.x-v4.13.x tags (the orq API's numbering,
-            # not ours) would win that comparison for years.
+            # once. Applying it to a tag range the bump was itself derived from
+            # is what counts the same commits twice.
             #
             # A VERSION with no tag of its own means the line has not started
             # yet, or that a hand edit is forcing a number the rules would not
@@ -178,10 +177,10 @@ jobs:
             prefix="${base%.*}"
             version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
-            # Says so out loud: the number the rules asked for was taken, which
-            # after the 3.0.0 reset means this line walked into one of the orq
-            # API's old v4.12.x/v4.13.x tags. npm has those versions too, and it
-            # refuses a reused version outright, so the publish would fail next.
+            # Says so out loud rather than silently shipping a different
+            # number. The line starts above every tag the old orq API numbering
+            # left behind, so the only way here is a tag from a half-finished
+            # release of our own.
             if [ "$version" != "$base" ]; then
               echo "::warning::v$base is already tagged; publishing $version instead"
             fi

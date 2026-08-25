@@ -39,8 +39,9 @@ What you may depend on, and what you may not:
 ## Versioning
 
 The CLI has its own semver, independent of the orq API line (RES-1434). The line
-starts at `3.0.0`; everything at `4.12.x`–`4.13.x` was the orq API's number, not
-the CLI's, and does not continue into it.
+starts at `5.0.0`: everything at `4.12.x`–`4.14.x` was the orq API's number
+rather than the CLI's, and starting above all of it means no release this line
+ever cuts can collide with a version npm has already published.
 
 The tag `v<version>` is the authority — the release pipeline creates it, and
 writes the same number back to `VERSION` at the repo root so a checkout knows
@@ -66,12 +67,12 @@ So an orq patch release carrying a `feat:` of ours is a minor, and a `fix:` on
 its own is a patch.
 
 `VERSION` is the record of what was last released on this line — the pipeline
-writes it on every release — and the bump is applied to it exactly once. The tags
-are not scanned for a maximum: the old `v4.12.x`–`v4.13.x` tags are the orq API's
-numbering, and they sort above everything this line will publish for years.
+writes it on every release — and the bump is applied to it exactly once, rather
+than to whatever the highest tag happens to be. Applying it to a tag range the
+bump was itself derived from is what would count the same commits twice.
 
 A `VERSION` with no tag of its own means the line has not started yet — that is
-how `3.0.0` is published as `3.0.0` and not as `3.0.1` — or that someone is
+how `5.0.0` is published as `5.0.0` and not as `5.0.1` — or that someone is
 forcing a number the rules would not reach on their own. That hand edit is the
 one case for touching the file. The pipeline takes the next free tag from what
 you write, so it is a floor rather than a promise.
@@ -216,16 +217,11 @@ controls on surface changes, whichever side they originate from.
 
 - **Changed (versioning):** the CLI version no longer tracks the orq API
   version. See [Versioning](#versioning) above. The first decoupled release is
-  `3.0.0` — a deliberate reset, not a continuation of the `4.13.x` line, which
-  was the API's number rather than ours. `3.x` is the lowest major free of both
-  the published npm versions and the git tags, so it is the first number that
-  can mean "this line starts here". Nothing about a version number tells you the
-  API line any more — `orq version` does.
-
-  Two consequences if you are already on `4.13.x`: `npm update` will not move
-  you, because 3.0.0 is a lower number — install with `@latest`, the installer,
-  or `orq update`. And a version number no longer compares meaningfully across
-  the boundary: `3.0.0` is newer than `4.13.22`.
+  `5.0.0` — the first number above everything the old `4.12.x`–`4.14.x` line
+  ever published, so the sequence only ever moves forward and no future release
+  can collide with a version npm already holds (npm never allows a version
+  string to be reused, and a collision fails the publish mid-release). Nothing
+  about a version number tells you the API line any more — `orq version` does.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the channel it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
