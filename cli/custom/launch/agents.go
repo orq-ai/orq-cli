@@ -9,12 +9,12 @@ type AgentContext struct {
 	Fetch  ModelFetcher // nil → FetchEnabledModels
 
 	// ExecProbe runs a helper command and returns its stdout (codex model
-	// catalog). In sandbox mode it is docker-exec-aware.
+	// catalog).
 	ExecProbe func(binary string, args ...string) (string, error)
 }
 
-// TempDir is a host directory holding config the agent reads; in sandbox mode
-// it is replicated into the container at the same path (see copyTempDirs).
+// TempDir is a host directory holding config the agent reads. Declaring it lets
+// the dry-run report it and Cleanup remove it.
 type TempDir struct {
 	HostPath string
 }
@@ -25,7 +25,26 @@ type LaunchPlan struct {
 	Env      map[string]string // exact env; empty-string values are preserved
 	TempDirs []TempDir
 	Warnings []string
-	Cleanup  func()
+	// Notes describe what a real run would do that this one did not. Only
+	// --dry-run fills them in, and only printDryRun prints them.
+	Notes   []string
+	Cleanup func()
+}
+
+// AddCleanup chains a cleanup onto whatever the plan already has. Assigning
+// Cleanup directly drops the previous one, which is how a temp directory gets
+// left behind.
+func (p *LaunchPlan) AddCleanup(fn func()) {
+	if fn == nil {
+		return
+	}
+	prev := p.Cleanup
+	p.Cleanup = func() {
+		fn()
+		if prev != nil {
+			prev()
+		}
+	}
 }
 
 // AgentDef describes one launchable coding agent.
@@ -34,7 +53,6 @@ type AgentDef struct {
 	Binary      string
 	Label       string
 	InstallHint string
-	NpmPackage  string // sandbox image install target
 	AllowModels bool
 	// FetchesModels reports whether Resolve reads the gateway catalogue, and
 	// therefore whether --no-fetch-models does anything. claude speaks the

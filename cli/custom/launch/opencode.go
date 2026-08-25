@@ -3,7 +3,7 @@ package launch
 import "encoding/json"
 
 const (
-	DefaultOpenCodeModel = "openai/gpt-5-mini"
+	DefaultOpenCodeModel = "openai/gpt-5.6-terra"
 
 	// OpenCode loads one AI SDK package per provider (no per-model override),
 	// so we expose two: openai models go through the Responses API (function
@@ -24,7 +24,6 @@ type openCodeFamily struct {
 	label        string
 	configEnvVar string
 	installHint  string
-	npmPackage   string
 }
 
 func opencodeAgent() AgentDef {
@@ -34,7 +33,6 @@ func opencodeAgent() AgentDef {
 		label:        "OpenCode",
 		configEnvVar: "OPENCODE_CONFIG_CONTENT",
 		installHint:  "https://opencode.ai/docs",
-		npmPackage:   "opencode-ai",
 	})
 }
 
@@ -45,7 +43,6 @@ func kiloAgent() AgentDef {
 		label:        "Kilo CLI",
 		configEnvVar: "KILO_CONFIG_CONTENT",
 		installHint:  "npm install -g @kilocode/cli (https://kilo.ai/docs/cli)",
-		npmPackage:   "@kilocode/cli",
 	})
 }
 
@@ -55,7 +52,6 @@ func openCodeFamilyAgent(family openCodeFamily) AgentDef {
 		Binary:        family.binary,
 		Label:         family.label,
 		InstallHint:   family.installHint,
-		NpmPackage:    family.npmPackage,
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{
@@ -111,6 +107,9 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		},
 	}
 	appendModelWarnings(plan, resolved, opencodeNormalize, "openai/gpt-5-mini")
+	// Both members of the family read the shared ~/.agents/skills, which is in
+	// the real home and cannot be redirected by any config env var they take.
+	maybeInstallSessionSkills(ctx, plan, family.name)
 	return plan, nil
 }
 
@@ -148,7 +147,7 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	if len(chatModels) > 0 {
 		provider[OpenCodeChatProvider] = openCodeProvider{
 			Npm:     "@ai-sdk/openai-compatible",
-			Name:    "Orq Gateway",
+			Name:    ProviderDisplayName,
 			Options: options,
 			Models:  toModelMap(chatModels),
 		}
@@ -156,7 +155,7 @@ func BuildOpenCodeConfigContent(baseURL, gatewayModel string, gatewayModels []st
 	if len(responsesModels) > 0 {
 		provider[OpenCodeResponsesProvider] = openCodeProvider{
 			Npm:     "@ai-sdk/openai",
-			Name:    "Orq Gateway (Responses)",
+			Name:    ProviderResponsesDisplayName,
 			Options: options,
 			Models:  toModelMap(responsesModels),
 		}

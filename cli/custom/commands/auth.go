@@ -87,7 +87,9 @@ func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
 	if err != nil {
 		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
 	}
-	if err := saveAPIKeyProfile(key); err != nil {
+	// A user-supplied key carries no workspace provenance — saved as unknown,
+	// so setup's reuse check treats it as such rather than as a mismatch.
+	if err := saveAPIKeyProfile(key, ""); err != nil {
 		return err
 	}
 
@@ -106,6 +108,7 @@ func NewLogoutCommand() *cobra.Command {
 	var apiBase string
 	var yes bool
 	var force bool
+	var disconnect bool
 
 	cmd := &cobra.Command{
 		Use:   "logout",
@@ -122,6 +125,8 @@ func NewLogoutCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				envCleared := clearShellEnvFile()
+				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
 					if keyCleared {
@@ -129,14 +134,23 @@ func NewLogoutCommand() *cobra.Command {
 					} else {
 						info("Not logged in - nothing to clear.")
 					}
-					return nil
+					reportClearedEnvFiles(envCleared)
+					reportSurvivingGatewayKey()
+					return removalError(removeFailed)
 				}
-				return emit(map[string]any{
-					"authenticated":           false,
-					"cleared":                 keyCleared,
-					"api_key_profile_cleared": keyCleared,
-					"session_file":            auth.SessionFilePath(),
-				})
+				if err := emit(map[string]any{
+					"authenticated":               false,
+					"cleared":                     keyCleared,
+					"api_key_profile_cleared":     keyCleared,
+					"env_files_cleared":           envCleared,
+					"coding_agents_removed":       removed,
+					"coding_agents_remove_failed": removeFailed,
+					"gateway_key_id":              savedGatewayKeyID(),
+					"session_file":                auth.SessionFilePath(),
+				}); err != nil {
+					return err
+				}
+				return removalError(removeFailed)
 			}
 
 			// --force clears local credentials no matter what, so it implies
@@ -193,6 +207,8 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			envCleared := clearShellEnvFile()
+			removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
 
 			// Same human/machine split as login and whoami: the human view
@@ -205,21 +221,49 @@ func NewLogoutCommand() *cobra.Command {
 				} else {
 					Warn("local credentials cleared, but the server-side token was not revoked")
 				}
-				return nil
+				reportClearedEnvFiles(envCleared)
+				reportSurvivingGatewayKey()
+				return removalError(removeFailed)
 			}
-			return emit(map[string]any{
-				"authenticated":           false,
-				"cleared":                 true,
-				"revoked":                 revokeErr == nil,
-				"api_key_profile_cleared": keyCleared,
-				"session_file":            auth.SessionFilePath(),
-			})
+			if err := emit(map[string]any{
+				"authenticated":               false,
+				"cleared":                     true,
+				"revoked":                     revokeErr == nil,
+				"api_key_profile_cleared":     keyCleared,
+				"env_files_cleared":           envCleared,
+				"coding_agents_removed":       removed,
+				"coding_agents_remove_failed": removeFailed,
+				"gateway_key_id":              savedGatewayKeyID(),
+				"session_file":                auth.SessionFilePath(),
+			}); err != nil {
+				return err
+			}
+			return removalError(removeFailed)
 		},
 	}
 	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
+	cmd.Flags().BoolVar(&disconnect, "disconnect", false, "Also remove orq from this machine's coding agents, without asking")
 	return cmd
+}
+
+var errRemovalFailed = errors.New("orq could not be removed from one or more coding agents")
+
+func removalError(failed bool) error {
+	if failed {
+		return errRemovalFailed
+	}
+	return nil
+}
+
+// reportSurvivingGatewayKey names the one thing logout cannot undo. The key is
+// still Active in the workspace until its own expiry, and the id is the only
+// handle for killing it, so saying nothing here strands a live credential.
+func reportSurvivingGatewayKey() {
+	if id := savedGatewayKeyID(); id != "" {
+		info("the gateway key is still active — revoke it with: orq api-keys delete %s", id)
+	}
 }
 
 func NewWhoAmICommand() *cobra.Command {
@@ -287,4 +331,14 @@ func printIdentity(report IdentityReport, verb string) {
 		kv(w, "access", "%d workspaces", len(report.Workspaces))
 	}
 	kv(w, "session", "%s", report.SessionFile)
+}
+
+// reportClearedEnvFiles names the files logout emptied. A credential leaving
+// the machine is a state change the user has to be able to model: without this
+// line, "Signed out" is printed while the shell profile still sources a file
+// that exported a live key a moment ago.
+func reportClearedEnvFiles(paths []string) {
+	for _, path := range paths {
+		info("Removed the exported key from %s", tilde(path))
+	}
 }

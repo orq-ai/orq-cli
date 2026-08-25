@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DefaultPiModel = "openai/gpt-5-mini"
+	DefaultPiModel = "openai/gpt-5.6-terra"
 
 	// Pi (github.com/badlogic/pi-mono) takes custom providers via a
 	// models.json in its agent dir; "openai-completions" = /chat/completions.
@@ -20,7 +20,6 @@ func piAgent() AgentDef {
 		Binary:        "pi",
 		Label:         "Pi Coding Agent",
 		InstallHint:   "npm install -g @earendil-works/pi-coding-agent (https://github.com/badlogic/pi-mono)",
-		NpmPackage:    "@earendil-works/pi-coding-agent",
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{
@@ -66,6 +65,12 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 	// No MCP wiring: pi has no built-in MCP support by design (extensions
 	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
 	// grows a native config surface.
+	//
+	// Skills do not go in here: pi is a sharedReader whose only skills target
+	// is ~/.agents/skills (cli/custom/skills/targets.go), not
+	// PI_CODING_AGENT_DIR — that env var only redirects pi's own config dir.
+	// Writing into it would be a silent no-op, so pi takes the refcounted
+	// real-home path below instead.
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
@@ -75,6 +80,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 		TempDirs: []TempDir{{HostPath: dir}},
 		Cleanup:  cleanup,
 	}
+	maybeInstallSessionSkills(ctx, plan, "pi")
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")
 	appendCapWarning(plan, resolved)
 	return plan, nil

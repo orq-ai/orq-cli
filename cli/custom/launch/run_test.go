@@ -1,7 +1,10 @@
 package launch
 
 import (
+	"io"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -24,29 +27,13 @@ func TestRunDryRun(t *testing.T) {
 	}
 }
 
-// Sandbox dry-run must be side-effect free: no docker required at all
-// (this test env may not have a daemon), no image build, no container.
-func TestRunSandboxDryRun(t *testing.T) {
-	t.Setenv("ORQ_API_KEY", "test-key")
-	t.Setenv("ORQ_LAUNCH_NON_INTERACTIVE", "1")
-	t.Setenv("PATH", "") // any docker invocation would fail loudly
-
-	for _, name := range []string{"claude", "opencode", "kimi", "pi"} {
-		def := FindAgent(name)
-		code, err := Run(def, []string{"--sandbox", "--dry-run", "--no-fetch-models"})
-		if err != nil || code != 0 {
-			t.Fatalf("%s sandbox dry-run: code=%d err=%v", name, code, err)
-		}
-	}
-}
-
 func TestCompletionFlags(t *testing.T) {
 	def := FindAgent("opencode") // has AllowModels + a prompt mapping
 	if got := CompletionFlags(def, "exec"); got != nil {
 		t.Fatalf("non-flag input must complete nothing: %v", got)
 	}
 	got := CompletionFlags(def, "--mo")
-	want := []string{"--model", "--mount-cwd", "--models"}
+	want := []string{"--model", "--models"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}
@@ -82,4 +69,42 @@ func TestFindAgentRegistry(t *testing.T) {
 	if FindAgent("nope") != nil {
 		t.Fatal("unknown agent should be nil")
 	}
+}
+
+// I4. The flag's help described the pre-branch world: a claude plugin gated on
+// --mcp and a kimi-only session directory. It now governs session links for
+// every agent uniformly, and it is the one place a launch user reads about
+// skills at all.
+func TestNoSkillsHelpDescribesWhatTheFlagNowDoes(t *testing.T) {
+	out := captureStdout(t, func() { printAgentHelp(FindAgent("kimi")) })
+	for _, stale := range []string{"plugin", "--mcp-gated", "independent of --mcp"} {
+		if strings.Contains(out, stale) {
+			t.Errorf("--no-skills help still describes the pre-branch world (%q):\n%s", stale, out)
+		}
+	}
+	for _, want := range []string{"--no-skills", "removed", "orq connect skills"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--no-skills help never says %q:\n%s", want, out)
+		}
+	}
+}
+
+// captureStdout collects what fn prints, so a help string can be asserted on.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- string(data)
+	}()
+	fn()
+	w.Close()
+	os.Stdout = prev
+	return <-done
 }

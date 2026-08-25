@@ -9,7 +9,9 @@ import (
 )
 
 const (
-	DefaultKimiModel = "anthropic/claude-sonnet-4-6"
+	// Preferred pick when the catalogue offers it; gateway.go falls back to the
+	// first enabled model otherwise, and to this literal when the catalogue is empty.
+	DefaultKimiModel = "moonshotai/kimi-k2.7-code"
 
 	// Kimi Code (@moonshot-ai/kimi-code) is a standalone CLI (not an OpenCode
 	// fork). Provider type "openai" = /chat/completions, "openai_responses" =
@@ -22,13 +24,6 @@ const (
 
 	kimiChatType      = "openai"
 	kimiResponsesType = "openai_responses"
-
-	// Fallbacks for models the catalog has no metadata for. Kimi sends
-	// max_tokens = max_output_size on the chat path, so it must be <= the
-	// model's real output cap; 8192 is safe for all but a handful of legacy
-	// models (which do carry metadata).
-	fallbackContextSize = 262144
-	fallbackOutputSize  = 8192
 )
 
 var kimiNormalize = MakeNormalizeModel([]string{KimiResponsesProvider, KimiChatProvider})
@@ -39,7 +34,6 @@ func kimiAgent() AgentDef {
 		Binary:        "kimi",
 		Label:         "Kimi Code",
 		InstallHint:   "npm install -g @moonshot-ai/kimi-code (or curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash)",
-		NpmPackage:    "@moonshot-ai/kimi-code",
 		FetchesModels: true,
 		AllowModels:   true,
 		Prompt: &PromptMapping{
@@ -94,16 +88,21 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 		TempDirs: []TempDir{{HostPath: home}},
 		Cleanup:  cleanup,
 	}
+	// After the plan exists: the session skills report their own warnings and
+	// dry-run notes onto it, the same way maybeInstallSessionSkills does for
+	// every other agent.
+	maybeWriteSessionSkills(ctx, plan, home)
 	appendModelWarnings(plan, resolved, kimiNormalize, "anthropic/claude-sonnet-4-6")
 	appendCapWarning(plan, resolved)
 	return plan, nil
 }
 
-// tomlString encodes a TOML basic string. JSON string encoding is a valid
+// TOMLString encodes a TOML basic string. JSON string encoding is a valid
 // TOML basic string (quotes, backslashes, and control chars all escaped) —
-// raw control characters from a hostile model id would otherwise make kimi
-// reject the whole config file.
-func tomlString(value string) string {
+// raw control characters from a hostile model id would otherwise make an
+// agent reject the whole config file. Every TOML writer in both commands
+// must use it; hand-rolled quoting is how a hostile id breaks a config open.
+func TOMLString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
 }
@@ -112,6 +111,11 @@ func tomlString(value string) string {
 // unavoidable: kimi resolves provider credentials from the file only (no env
 // fallback or interpolation), so callers must keep the file private and
 // short-lived.
+//
+// An empty gatewayModel omits default_model. Launch always names one — it owns
+// a throwaway config dir — but setup merges into the user's real file, where
+// kimi stores the model they picked in the UI, and that choice is not ours to
+// replace.
 func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []string, infos []ModelInfo) string {
 	limits := make(map[string]ModelInfo, len(infos))
 	for _, info := range infos {
@@ -129,13 +133,15 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "default_model = %s\n\n", tomlString(gatewayModel))
+	if gatewayModel != "" {
+		fmt.Fprintf(&b, "default_model = %s\n\n", TOMLString(gatewayModel))
+	}
 
 	provider := func(name, typ string) {
 		fmt.Fprintf(&b, "[providers.%s]\n", name)
-		fmt.Fprintf(&b, "type = %s\n", tomlString(typ))
-		fmt.Fprintf(&b, "base_url = %s\n", tomlString(baseURL))
-		fmt.Fprintf(&b, "api_key = %s\n\n", tomlString(apiKey))
+		fmt.Fprintf(&b, "type = %s\n", TOMLString(typ))
+		fmt.Fprintf(&b, "base_url = %s\n", TOMLString(baseURL))
+		fmt.Fprintf(&b, "api_key = %s\n\n", TOMLString(apiKey))
 	}
 	if len(chatModels) > 0 {
 		provider(KimiChatProvider, kimiChatType)
@@ -154,9 +160,9 @@ func BuildKimiConfigTOML(baseURL, apiKey, gatewayModel string, gatewayModels []s
 				outputSize = limit.MaxOutputTokens
 			}
 		}
-		fmt.Fprintf(&b, "[models.%s]\n", tomlString(id))
-		fmt.Fprintf(&b, "provider = %s\n", tomlString(providerName))
-		fmt.Fprintf(&b, "model = %s\n", tomlString(id))
+		fmt.Fprintf(&b, "[models.%s]\n", TOMLString(id))
+		fmt.Fprintf(&b, "provider = %s\n", TOMLString(providerName))
+		fmt.Fprintf(&b, "model = %s\n", TOMLString(id))
 		fmt.Fprintf(&b, "max_context_size = %d\n", contextSize)
 		// Kimi sends max_tokens = max_output_size on the chat path; must be <=
 		// the model's real output cap or the upstream rejects the request.

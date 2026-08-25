@@ -40,6 +40,21 @@ if [ ! -d "$BUILD_DIR/cmd/orq" ]; then
   exit 1
 fi
 
+# Fingerprint the vendored skills tree so the binary can compare its own
+# skill set to what's on disk without hashing the embedded FS at runtime. The
+# skills tree is vendored once at the repo root (cli/custom/skills/assets),
+# not per-module, so this is computed relative to ROOT_DIR regardless of
+# MODULE_DIR. The value only has to be stable and change when the tree
+# changes; it does not have to match the in-binary hashTree() fallback.
+#
+# `cd` into the assets dir first and hash paths relative to it (`find .`)
+# rather than the absolute $ROOT_DIR path: otherwise the fingerprint would
+# depend on where the repo happens to be checked out (a different worktree,
+# a different CI runner, a second clone), not on the tree's actual content.
+# `-print0`/`sort -z`/`xargs -0` keep the pipeline null-delimited so a future
+# vendored skill name containing a space or newline can't get word-split.
+SKILLS_FP="$(cd "$ROOT_DIR/cli/custom/skills/assets" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -c1-16)"
+
 # Platforms we ship: "goos goarch npm-package-suffix exe-name"
 PLATFORMS=(
   "darwin arm64 cli-darwin-arm64 orq"
@@ -73,7 +88,7 @@ for row in "${PLATFORMS[@]}"; do
     GOARCH="$goarch" \
     go build \
       -trimpath \
-      -ldflags "-s -w -X main.version=$VERSION" \
+      -ldflags "-s -w -X main.version=$VERSION -X orq/cli/custom/skills.buildFingerprint=$SKILLS_FP" \
       -o "$target_dir/$exe" \
       ./cmd/orq
   )

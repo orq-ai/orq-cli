@@ -19,10 +19,10 @@ Requires Node.js 14 or newer. The matching native binary is downloaded automatic
 ### curl | sh
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/orq-ai/orq-cli/main/install.sh | sh
+curl -fsSL https://cli.orq.ai/install.sh | sh
 ```
 
-Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published per-asset `.sha256`, adds the install directory to your shell profile, and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
+Installs a raw binary to `~/.orq/bin/orq`, verifies it against the release's published per-asset `.sha256`, asks before adding the install directory to your shell profile (declining is fine — PATH just stays unset), and then runs `orq setup` to get you authenticated. Pass flags after `-s --`:
 
 ```sh
 # pin a version
@@ -57,10 +57,10 @@ make build
 ## Quick start
 
 ```sh
-orq setup                # sign in, pick a project, wire up your coding agent
+orq setup                # sign in, wire up your coding agents
 ```
 
-That is the whole first run. It signs you in, selects or creates a project, mints a project-scoped API key, and registers the orq.ai MCP server with your coding agent. After that:
+That is the whole first run. It signs you in, creates a workspace API key (reused on later runs), and wires your coding agents to orq. Projects are never asked about: keys are workspace-scoped, and project scope belongs where resources are created (agents, deployments). After that:
 
 ```sh
 orq whoami               # verify identity
@@ -71,38 +71,54 @@ orq doctor               # diagnose auth, config, and endpoint reachability
 
 ### `orq setup`
 
-Three modes, same command:
+Setup authenticates the machine; wiring agents is `orq connect`:
 
 ```sh
-orq setup                # short path — asks only what it cannot infer
-orq setup -i             # asks about every choice
-orq setup --no-input \
-  --project support-bot \
-  --api-key "$ORQ_API_KEY" \
-  --agent codex          # fully parameterized, for CI
+orq setup                          # sign in, create the key, then offers to connect
+orq connect                        # wire every detected agent through the gateway
+orq connect codex kimi             # specific agents
+orq connect codex gateway          # the capability is optional; gateway is the only one
+orq connect --dry-run              # show the files that would change
+orq disconnect codex               # remove exactly what connect wrote
 ```
 
-Supported coding agents: `claude`, `codex`, `opencode`, `kimi`, `kilo` (repeat `--agent` for several). Each gets the `orq-workspace` MCP server registered in its own config format. `pi` is not listed: it supports neither MCP nor a provider config, so there is nothing for setup to write.
+An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.
 
-Setup does not install skills. `orq launch` still loads them session-only for claude, and persistent installation is left to the agent plugin spec, which will cover MCP and skills together.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered by connect: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route it.
 
-**Kimi additionally gets orq registered as its model provider**, so its own LLM calls route through the orq AI Gateway and show up in your traces. Setup writes an `[providers.orq]` block into `~/.kimi-code/config.toml` pointing at `<api-base>/v3/router`, along with a handful of coding models. Models are resolved against the live gateway catalogue and each one is probed before being written — a model the gateway advertises but cannot serve is left out rather than added as a broken entry, and the number skipped is reported.
+Connect wires the gateway and nothing else. MCP and skills are not part of it in this version — `orq launch --mcp` is the only place the orq MCP server is still wired, per session, writing nothing to disk.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and, in a project directory, `./.env`.
+**Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
+
+| Agent | Connect writes | Route through orq by |
+|---|---|---|
+| `kimi` | `[providers.orq]` + the model list into `~/.kimi-code/config.toml` | just running `kimi` (default filled when absent) |
+| `codex` | a self-contained profile at `$CODEX_HOME/orq.config.toml` (default `~/.codex/`) | `codex --profile orq` |
+| `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
+| `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
+| `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
+| `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
+
+Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
+
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
+Setup flags: `--workspace <key>` (activate a workspace), `--api-key <key>` (use this key instead of logging in and creating one), `-i` (ask about every choice), `--no-input` (never prompt; missing values become errors).
+
+Connect and disconnect take agents and capabilities as arguments, plus:
+
 | Flag | Effect |
 |---|---|
-| `--project <name>` | Select the project, creating it when it does not exist |
-| `--workspace <key>` | Activate a workspace |
-| `--api-key <key>` | Use this key instead of logging in and minting one |
-| `--agent <name>` | Instrument a coding agent (repeatable) |
-| `--global` | Write agent config under `$HOME` instead of the current project |
-| `--no-agent` / `--no-env` | Skip agent instrumentation / skip writing `.env` |
-| `--no-input` | Never prompt; missing values become errors |
+| `--api-key <key>` | Use this key for the run; it is not saved |
+| `--dry-run` | Show the files that would change, write nothing (connect only) |
+| `--yes` | Act on every detected agent without asking |
+| `--status` | Print what is wired on this machine and exit (connect only) |
 
-Scope is chosen automatically: setup writes into the current directory when it looks like a project (`.git`, `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`) and falls back to `$HOME` otherwise, so installing from your home directory does not scatter config files there.
+Re-running the wiring after installing a new agent is just `orq connect <agent>`; it reuses the key setup saved rather than creating another. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; connect wires the coding-agent CLIs on this machine.
+
+Every provider config resolves to one absolute path, so there is no project-versus-home scope to choose: `--global` and `--local` were removed once MCP left, because no config was project-scoped any more.
 
 ---
 
@@ -220,7 +236,7 @@ surface changes are always a reviewed diff.
 
 | Command | Purpose |
 |---|---|
-| `orq setup` | First-run onboarding: auth, project, API key, coding agent |
+| `orq setup` | First-run onboarding: auth, API key, coding agents |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
@@ -229,6 +245,7 @@ surface changes are always a reviewed diff.
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
 | `orq doctor` | Diagnose config, auth, reachability |
+| `orq update` | Update this binary to the latest release (`--check` reports only) |
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
@@ -269,44 +286,38 @@ orq launch kimi                   # Kimi Code
 orq launch pi                     # Pi Coding Agent
 ```
 
-For local mode the agent CLI itself must be installed (each subcommand prints an install hint when it is missing); `--sandbox` installs it into the container image for you. All requests appear in your orq.ai traces and logs like any other gateway traffic.
+The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-The [orq MCP server](https://api.orq.ai/v2/mcp) is wired into each launched agent automatically using its native mechanism — the API key is passed by env-var reference, never written into config files. Opt out with `--no-mcp`, point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there.
+Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
 
-For claude, the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) is loaded **session-only** via `--plugin-url` — nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
+With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
 ### Shared flags
 
 | Flag | Description |
 |---|---|
-| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-4-6` |
+| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-5` |
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
-| `--no-mcp` | Do not wire the orq MCP server into the agent |
-| `--no-skills` | Do not load the orq skills plugin (claude only) |
+| `--mcp` | Wire the orq MCP server (workspace tools) into the agent |
+| `--no-skills` | With `--mcp`, skip the orq skills plugin (claude only) |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
-| `--sandbox` | Run inside a throwaway Docker container |
-| `--mount-cwd` | Sandbox only: mount the current directory read-write at `/workspace` |
-| `--rebuild` | Sandbox only: rebuild the Docker image (`--no-cache --pull`) |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim (so agent flags that collide with ours, like codex's `--sandbox <mode>`, stay reachable). Everything after `--` is passed to the agent untouched:
+Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim, so agent flags stay reachable. Everything after `--` is passed to the agent untouched:
 
 ```sh
 orq launch claude -- --resume
 orq launch codex -- exec --full-auto "fix the build"
+orq launch codex --dry-run --sandbox read-only   # --sandbox is codex's; put launcher flags first
 ```
 
-### Local vs sandbox
+### Running locally
 
-Local mode runs the agent directly on your machine — it has full access to your filesystem, shell, and network, so an interactive warning is shown on TTYs (skip it with `ORQ_LAUNCH_NON_INTERACTIVE=1`).
+The agent runs directly on your machine, with full access to your filesystem, shell, and network — the same access it has when you start it yourself. `ORQ_LAUNCH_NON_INTERACTIVE=1` suppresses every prompt, including the login prompt.
 
-`--sandbox` runs the agent inside a throwaway Docker container instead: the image is built locally on first use, **nothing is mounted by default** (opt in with `--mount-cwd`), and the container is removed when the session ends. Works with Docker Desktop (the `docker` CLI is the only requirement). The routing env (including the API key) is passed at `docker exec` time via name-only `-e` flags, so it never appears in the container's `docker inspect` config or in host `ps`. Leftover containers can be removed manually with:
-
-```sh
-docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
-```
+Sandboxed execution is not available in this version.
 
 ### Per-agent environment overrides
 
@@ -336,8 +347,29 @@ docker ps -a --filter label=orq.launch=1 -q | xargs docker rm -f
 | `ORQ_CLI_INSTALL_DIR` | Install directory for `install.sh` |
 | `ORQ_WEB_BASE_URL` | Web app base URL used for the links `orq setup` prints |
 | `ORQ_NO_SPLASH` | Suppress the `orq setup` banner |
+| `ORQ_NO_UPDATE_CHECK` | Suppress the update notice and the version check behind it |
 
 `.env` and `.env.local` files in the current directory are loaded automatically.
+
+### Updating
+
+`orq update` replaces this binary with the latest published release through the
+channel it was installed with: an npm install runs `npm install -g
+@orq-ai/cli@<version>`, an `install.sh` install re-runs the installer pinned to
+that same version, which verifies the release checksum and swaps the binary in
+atomically. An rc build follows the rc line rather than being moved onto the
+older stable release. A binary that
+arrived some other way is refused rather than overwritten, with both commands
+printed so you can pick. `orq update --check` reports the versions and changes
+nothing.
+
+At most once a day, after a command succeeds, the CLI also checks the npm
+dist-tag for its release line and prints a single stderr line if a newer version
+exists, telling you to run `orq update`. The only request is a `GET` of the
+public `registry.npmjs.org` dist-tags document: no version, platform or
+identifier is sent anywhere. Nothing is printed when `ORQ_NO_UPDATE_CHECK` or
+`CI` is set, when output is piped, when `--json`/`-o` requested a machine
+format, or when the check fails.
 
 ---
 
@@ -360,7 +392,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
-| `<host>/v2/mcp` | the orq MCP server registered in each agent |
+| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch --mcp` |
 
 ```sh
 orq --profile acme auth login --api-base-url https://orq.acme.internal

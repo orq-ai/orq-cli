@@ -15,78 +15,132 @@ const canaryKey = "sk-canary-8f3a1b9c-secret"
 // the delivery mechanism) — never inside argv, never inside a substring of a
 // composed env value, and never in any file the resolver writes. A new agent
 // fails this automatically if it embeds the key anywhere.
+//
+// Both flag states, because the MCP writers only run under --mcp: sweeping the
+// zero value alone stopped exercising every MCP config the moment MCP became
+// opt-in, and a key inlined there would have gone unnoticed.
 func TestCanaryKeyNeverLeaks(t *testing.T) {
+	// kimi now reaches skills.EnsureGeneration, which writes into the real
+	// $HOME/.orq unless isolated: without this, a plain `go test` run leaves
+	// a generation directory on the developer's (or CI runner's) machine and
+	// makes this test's outcome depend on whatever is already there.
+	t.Setenv("HOME", t.TempDir())
+
 	for _, def := range Agents() {
 		def := def
-		t.Run(def.Name, func(t *testing.T) {
-			plan, err := def.Resolve(&AgentContext{
-				Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL},
-				Getenv: env(nil),
-				Flags:  GatewayFlags{},
-				Fetch: func(_, _ string) ([]ModelInfo, error) {
-					return []ModelInfo{{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
-						{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000}}, nil
-				},
-				ExecProbe: func(string, ...string) (string, error) {
-					return "", io.EOF // catalog probes degrade to a warning
-				},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if plan.Cleanup != nil {
-				defer plan.Cleanup()
-			}
-
-			for _, arg := range plan.PreArgs {
-				if strings.Contains(arg, canaryKey) {
-					t.Fatalf("key leaked into argv: %q", arg)
-				}
-			}
-			for k, v := range plan.Env {
-				if v != canaryKey && strings.Contains(v, canaryKey) {
-					t.Fatalf("key embedded in composed env %s=%q", k, v)
-				}
-			}
-			for _, dir := range plan.TempDirs {
-				err := filepath.Walk(dir.HostPath, func(path string, info os.FileInfo, err error) error {
-					if err != nil || info.IsDir() {
-						return err
-					}
-					// Kimi is the sole sanctioned exception: it resolves
-					// provider credentials from config.toml only (no env
-					// fallback or interpolation), so the key lives in a 0600
-					// file inside a temp dir removed at session end.
-					if def.Name == "kimi" && filepath.Base(path) == "config.toml" {
-						if info.Mode().Perm() != 0o600 {
-							t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
-						}
-						return nil
-					}
-					data, err := os.ReadFile(path)
-					if err != nil {
-						return err
-					}
-					if strings.Contains(string(data), canaryKey) {
-						t.Fatalf("key written to %s", path)
-					}
-					return nil
+		for _, flags := range flagStates() {
+			flags := flags
+			t.Run(def.Name+flags.label, func(t *testing.T) {
+				plan, err := def.Resolve(&AgentContext{
+					Creds:  &Credentials{APIKey: canaryKey, APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+					Getenv: env(nil),
+					Flags:  flags.GatewayFlags,
+					Fetch: func(_, _ string) ([]ModelInfo, error) {
+						return []ModelInfo{{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000},
+							{ID: "anthropic/claude-sonnet-4-6", ContextWindow: 200000, MaxOutputTokens: 64000}}, nil
+					},
+					ExecProbe: func(string, ...string) (string, error) {
+						return "", io.EOF // catalog probes degrade to a warning
+					},
 				})
 				if err != nil {
 					t.Fatal(err)
 				}
-			}
+				if plan.Cleanup != nil {
+					defer plan.Cleanup()
+				}
 
-			// Every host path handed to the agent must be declared in
-			// TempDirs — sandbox mode only delivers declared dirs, so an
-			// undeclared path breaks exclusively inside the container.
-			for _, arg := range plan.PreArgs {
-				assertDeclaredIfPath(t, arg, plan.TempDirs)
-			}
-			for _, v := range plan.Env {
-				assertDeclaredIfPath(t, v, plan.TempDirs)
-			}
-		})
+				for _, arg := range plan.PreArgs {
+					if strings.Contains(arg, canaryKey) {
+						t.Fatalf("key leaked into argv: %q", arg)
+					}
+				}
+				for k, v := range plan.Env {
+					if v != canaryKey && strings.Contains(v, canaryKey) {
+						t.Fatalf("key embedded in composed env %s=%q", k, v)
+					}
+				}
+				for _, dir := range plan.TempDirs {
+					var walkFn filepath.WalkFunc
+					walkFn = func(path string, info os.FileInfo, err error) error {
+						if err != nil {
+							return err
+						}
+						// Session skills are symlinked into the temp dir (kimi,
+						// pi): filepath.Walk does not follow symlinks itself, so
+						// resolve one level and walk the real target instead —
+						// otherwise a symlinked skill directory is neither
+						// recursed into (Walk sees a non-directory) nor
+						// readable as a file (it is one).
+						if info.Mode()&os.ModeSymlink != 0 {
+							target, evalErr := filepath.EvalSymlinks(path)
+							if evalErr != nil {
+								return evalErr
+							}
+							targetInfo, statErr := os.Lstat(target)
+							if statErr != nil {
+								return statErr
+							}
+							if targetInfo.IsDir() {
+								return filepath.Walk(target, walkFn)
+							}
+							path, info = target, targetInfo
+						}
+						if info.IsDir() {
+							return nil
+						}
+						// Kimi is the sole sanctioned exception: it resolves
+						// provider credentials from config.toml only (no env
+						// fallback or interpolation), so the key lives in a 0600
+						// file inside a temp dir removed at session end. Scoped to
+						// the home root specifically — a shipped skill also ships
+						// its own unrelated config.toml under skills/.
+						if def.Name == "kimi" && path == filepath.Join(dir.HostPath, "config.toml") {
+							if info.Mode().Perm() != 0o600 {
+								t.Fatalf("kimi config.toml must be 0600, got %v", info.Mode().Perm())
+							}
+							return nil
+						}
+						data, err := os.ReadFile(path)
+						if err != nil {
+							return err
+						}
+						if strings.Contains(string(data), canaryKey) {
+							t.Fatalf("key written to %s", path)
+						}
+						return nil
+					}
+					if err := filepath.Walk(dir.HostPath, walkFn); err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				// Every host path handed to the agent must be declared in
+				// TempDirs — an undeclared dir is never cleaned up, and never
+				// reported by --dry-run.
+				for _, arg := range plan.PreArgs {
+					assertDeclaredIfPath(t, arg, plan.TempDirs)
+				}
+				for _, v := range plan.Env {
+					assertDeclaredIfPath(t, v, plan.TempDirs)
+				}
+			})
+		}
+	}
+}
+
+// flagStates are the states that change which writers run. MCP is opt-in, so
+// its config writers execute only under --mcp.
+func flagStates() []struct {
+	GatewayFlags
+	label string
+} {
+	return []struct {
+		GatewayFlags
+		label string
+	}{
+		{GatewayFlags{}, ""},
+		{GatewayFlags{MCP: true}, "/--mcp"},
 	}
 }
 
@@ -106,41 +160,19 @@ func assertDeclaredIfPath(t *testing.T, value string, dirs []TempDir) {
 	t.Fatalf("host path %q not declared in TempDirs %v", value, dirs)
 }
 
-func TestParseLocalChoice(t *testing.T) {
-	cases := map[string]localChoice{
-		"o":         localOk,
-		"OK":        localOk,
-		"yes":       localOk,
-		"\n":        localOk, // bare Enter accepts, by design (see comment)
-		"s":         localSandbox,
-		"Sandbox\n": localSandbox,
-		"c":         localCancel,
-		"no":        localCancel,
-		"garbage":   localCancel,
-	}
-	for in, want := range cases {
-		if got := parseLocalChoice(in); got != want {
-			t.Fatalf("parseLocalChoice(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
-// Regressions for the launcher-flag collision review findings: launcher flags
-// are leading-only, values must not look like flags, prompt expansions land
-// at the front, and `--` after agent args reaches the agent.
 func TestParseArgvLeadingOnly(t *testing.T) {
-	// codex's own --sandbox <mode> after a subcommand stays codex's.
-	flags, rest, err := ParseArgv([]string{"exec", "--sandbox", "workspace-write", "do it"}, ParseArgvOptions{})
-	if err != nil || flags.Sandbox {
-		t.Fatalf("agent --sandbox consumed: %+v err=%v", flags, err)
+	// codex's own -p <profile> after a subcommand stays codex's.
+	flags, rest, err := ParseArgv([]string{"exec", "-p", "work", "do it"}, ParseArgvOptions{})
+	if err != nil {
+		t.Fatalf("err=%v", err)
 	}
-	if strings.Join(rest, " ") != "exec --sandbox workspace-write do it" {
+	if strings.Join(rest, " ") != "exec -p work do it" {
 		t.Fatalf("passthrough mangled: %v", rest)
 	}
 
 	// Leading launcher flags still work.
-	flags, rest, err = ParseArgv([]string{"--sandbox", "--dry-run", "exec"}, ParseArgvOptions{})
-	if err != nil || !flags.Sandbox || !flags.DryRun || strings.Join(rest, " ") != "exec" {
+	flags, rest, err = ParseArgv([]string{"--mcp", "--dry-run", "exec"}, ParseArgvOptions{})
+	if err != nil || !flags.MCP || !flags.DryRun || strings.Join(rest, " ") != "exec" {
 		t.Fatalf("leading flags: %+v rest=%v err=%v", flags, rest, err)
 	}
 
@@ -168,8 +200,8 @@ func TestParseArgvLeadingOnly(t *testing.T) {
 		t.Fatalf("agent's -- dropped: %v", rest)
 	}
 	// Leading -- delimits launcher flags and is consumed.
-	flags, rest, err = ParseArgv([]string{"--", "--sandbox"}, ParseArgvOptions{})
-	if err != nil || flags.Sandbox || strings.Join(rest, " ") != "--sandbox" {
+	flags, rest, err = ParseArgv([]string{"--", "--dry-run"}, ParseArgvOptions{})
+	if err != nil || flags.DryRun || strings.Join(rest, " ") != "--dry-run" {
 		t.Fatalf("leading --: %+v %v", flags, rest)
 	}
 }

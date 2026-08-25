@@ -49,8 +49,9 @@ func printSplash(w io.Writer, version string) {
 		}
 		fmt.Fprintln(w, paint(ansiBrand, line))
 	}
-	fmt.Fprintf(w, "\n  Let's get you set up — %d steps.\n", setupSteps)
-	fmt.Fprint(w, "  Ctrl-C any time. Nothing is written until a step reports ✓.\n\n")
+	// No "here is what is about to happen" preamble: the steps are numbered
+	// Step n/N as they run, and Ctrl-C is not news to anyone in a terminal.
+	fmt.Fprintln(w)
 }
 
 // supportsArt reports whether the terminal can be expected to render the UTF-8
@@ -101,8 +102,24 @@ func (r *reporter) warn(format string, args ...any) {
 	fmt.Fprintf(r.w, paint(ansiWarn, "!")+" "+format+"\n", args...)
 }
 
+// info is a fact the user should see but not read as a problem: a dash rather
+// than a "!". Like warn, it survives quiet mode, because the facts it carries
+// come with remedies that must stay reachable there.
+func (r *reporter) info(format string, args ...any) {
+	fmt.Fprintf(r.w, "- "+format+"\n", args...)
+}
+
 func (r *reporter) fail(format string, args ...any) {
 	fmt.Fprintf(r.w, paint(ansiRed, "✗")+" "+format+"\n", args...)
+}
+
+// blank is a bare newline. note("") would emit the two-space indent as
+// trailing whitespace, which shows up in scrollback and in captured output.
+func (r *reporter) blank() {
+	if r.quiet {
+		return
+	}
+	fmt.Fprintln(r.w)
 }
 
 func (r *reporter) note(format string, args ...any) {

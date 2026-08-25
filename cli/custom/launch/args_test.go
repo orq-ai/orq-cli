@@ -49,7 +49,7 @@ func TestParseArgvPassthroughDelimiter(t *testing.T) {
 	if !reflect.DeepEqual(rest, []string{"--help", "--sandbox"}) {
 		t.Fatalf("rest: %v", rest)
 	}
-	if flags.Help || flags.Sandbox {
+	if flags.Help || flags.DryRun {
 		t.Fatal("flags after -- must not be parsed")
 	}
 }
@@ -72,12 +72,34 @@ func TestParseArgvModelsDisallowed(t *testing.T) {
 }
 
 func TestParseArgvLaunchFlags(t *testing.T) {
-	flags, rest, err := ParseArgv([]string{"--sandbox", "--mount-cwd", "--rebuild", "--dry-run", "--no-fetch-models"}, ParseArgvOptions{AllowModels: true})
+	flags, rest, err := ParseArgv([]string{"--mcp", "--no-skills", "--dry-run", "--no-fetch-models"}, ParseArgvOptions{AllowModels: true})
 	if err != nil || len(rest) != 0 {
 		t.Fatalf("rest=%v err=%v", rest, err)
 	}
-	if !flags.Sandbox || !flags.MountCwd || !flags.Rebuild || !flags.DryRun || !flags.NoFetchModels {
+	if !flags.MCP || !flags.NoSkills || !flags.DryRun || !flags.NoFetchModels {
 		t.Fatalf("flags: %+v", flags)
+	}
+}
+
+// Sandbox support is gone, so the flags it owned belong to the agent now. The
+// collision this un-shadows is real: codex has its own --sandbox <mode>.
+func TestSandboxFlagsBelongToTheAgent(t *testing.T) {
+	flags, rest, err := ParseArgv([]string{"--sandbox", "read-only"}, ParseArgvOptions{})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if !reflect.DeepEqual(rest, []string{"--sandbox", "read-only"}) {
+		t.Errorf("rest = %v, want the agent to receive both", rest)
+	}
+	// The launcher consumed nothing, so parsing stopped at --sandbox.
+	if flags.DryRun {
+		t.Error("launcher kept parsing past an agent-owned flag")
+	}
+	for _, arg := range []string{"--local", "--mount-cwd", "--rebuild"} {
+		_, rest, err := ParseArgv([]string{arg}, ParseArgvOptions{})
+		if err != nil || !reflect.DeepEqual(rest, []string{arg}) {
+			t.Errorf("%s: rest=%v err=%v, want passthrough", arg, rest, err)
+		}
 	}
 }
 
@@ -91,7 +113,7 @@ func TestParseArgvHelp(t *testing.T) {
 		t.Fatal("--help not detected")
 	}
 	// Leading launcher flags don't disqualify help...
-	flags, _, _ = ParseArgv([]string{"--sandbox", "-h"}, ParseArgvOptions{})
+	flags, _, _ = ParseArgv([]string{"--mcp", "-h"}, ParseArgvOptions{})
 	if !flags.Help {
 		t.Fatal("-h after launcher flag not detected")
 	}

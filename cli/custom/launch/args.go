@@ -29,8 +29,8 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if !strings.HasPrefix(toComplete, "-") {
 		return nil
 	}
-	flags := []string{"--model", "--base-url", "--no-fetch-models", "--no-mcp",
-		"--no-skills", "--sandbox", "--mount-cwd", "--rebuild", "--dry-run", "--help"}
+	flags := []string{"--model", "--base-url", "--no-fetch-models", "--mcp",
+		"--no-skills", "--dry-run", "--help"}
 	if def.AllowModels {
 		flags = append(flags, "--models")
 	}
@@ -47,13 +47,12 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 }
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
-// cobra DisableFlagParsing). Launcher-owned flags — shared --model/--models/
-// --base-url/--no-fetch-models plus --sandbox/--mount-cwd/--rebuild/
-// --dry-run/-h — are recognized only at the FRONT of argv: the first arg the
-// launcher doesn't own ends launcher parsing and everything from there on
-// belongs to the agent verbatim. This keeps agent flags that collide with
-// ours (codex's --sandbox <mode>, codex's -p profile) reachable:
-// `orq launch codex exec --sandbox workspace-write` passes both to codex. A
+// cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
+// --base-url/--no-fetch-models/--mcp/--no-skills/--dry-run/-h — are recognized
+// only at the FRONT of argv: the first arg the launcher doesn't own ends
+// launcher parsing and everything from there on belongs to the agent verbatim.
+// This keeps agent flags that collide with ours (codex's -p profile) reachable:
+// `orq launch codex exec -p work` passes both to codex. A
 // leading `--` ends launcher parsing explicitly; a later `--` is the agent's.
 // Prompt-mapped flags (-p/--prompt) expand to the agent's own syntax (e.g.
 // `run <text>`) and land at the front of the agent argv by construction.
@@ -136,16 +135,12 @@ scan:
 			flags.BaseURL = v
 		case arg == "--no-fetch-models":
 			flags.NoFetchModels = true
+		case arg == "--mcp":
+			flags.MCP = true
 		case arg == "--no-mcp":
-			flags.NoMCP = true
+			// Accepted no-op: was the opt-out when MCP wired by default.
 		case arg == "--no-skills":
 			flags.NoSkills = true
-		case arg == "--sandbox":
-			flags.Sandbox = true
-		case arg == "--mount-cwd":
-			flags.MountCwd = true
-		case arg == "--rebuild":
-			flags.Rebuild = true
 		case arg == "--dry-run":
 			flags.DryRun = true
 		case opts.Prompt != nil && slices.Contains(opts.Prompt.Flags, arg):

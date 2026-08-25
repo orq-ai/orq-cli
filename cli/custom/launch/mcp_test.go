@@ -8,35 +8,51 @@ import (
 	"testing"
 )
 
-func TestMCPURLDefaultAndOverrides(t *testing.T) {
+func TestMCPIsOptIn(t *testing.T) {
 	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{}}
-	if mcpURL(ctx) != DefaultMCPURL {
-		t.Fatalf("default: %s", mcpURL(ctx))
+	if mcpURL(ctx) != "" {
+		t.Fatalf("MCP wired without --mcp: %s", mcpURL(ctx))
+	}
+	// The shipped skill set is linked in from the binary now, so no plugin is
+	// fetched unless someone pins their own bundle.
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("a plugin was fetched without ORQ_SKILLS_URL")
 	}
 
-	ctx.Getenv = env(map[string]string{"ORQ_MCP_URL": "https://custom.example/mcp"})
+	ctx.Flags.MCP = true
+	if mcpURL(ctx) != DefaultMCPURL {
+		t.Fatalf("--mcp: %s", mcpURL(ctx))
+	}
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("--mcp should not pull a skills plugin off the network")
+	}
+
+	ctx.Getenv = env(map[string]string{
+		"ORQ_MCP_URL":    "https://custom.example/mcp",
+		"ORQ_SKILLS_URL": "https://example.com/custom.zip",
+	})
 	if mcpURL(ctx) != "https://custom.example/mcp" {
 		t.Fatal("env override ignored")
 	}
+	if skillsPluginURL(ctx) != "https://example.com/custom.zip" {
+		t.Fatal("ORQ_SKILLS_URL is the opt-in and must still be honoured")
+	}
 
-	ctx.Flags.NoMCP = true
-	if mcpURL(ctx) != "" {
-		t.Fatal("--no-mcp should disable")
+	ctx.Flags.NoSkills = true
+	if skillsPluginURL(ctx) != "" {
+		t.Fatal("--no-skills should still opt out of an explicit ORQ_SKILLS_URL")
 	}
 }
 
 func TestClaudeMCPWiring(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{MCP: true}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer plan.Cleanup()
 
-	if len(plan.PreArgs) != 4 || plan.PreArgs[0] != "--mcp-config" {
+	if len(plan.PreArgs) != 2 || plan.PreArgs[0] != "--mcp-config" {
 		t.Fatalf("preargs: %v", plan.PreArgs)
-	}
-	if plan.PreArgs[2] != "--plugin-url" || plan.PreArgs[3] != DefaultSkillsPluginURL {
-		t.Fatalf("skills plugin args: %v", plan.PreArgs)
 	}
 	data, err := os.ReadFile(plan.PreArgs[1])
 	if err != nil {
@@ -59,32 +75,41 @@ func TestClaudeMCPWiring(t *testing.T) {
 	}
 }
 
-func TestClaudeNoMCP(t *testing.T) {
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{NoMCP: true, NoSkills: true}))
+func TestClaudeBareLaunchWiresNoArgs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.PreArgs) != 0 || plan.Cleanup != nil {
-		t.Fatalf("opt-outs should skip all wiring: %v", plan.PreArgs)
+	// Session skills still install (they are local files, not an MCP-dependent
+	// plugin), so a cleanup is expected; nothing reaches the argv.
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if len(plan.PreArgs) != 0 {
+		t.Fatalf("bare launch should put nothing on the argv: %v", plan.PreArgs)
 	}
 }
 
 func TestClaudeSkillsOverride(t *testing.T) {
 	plan, err := resolveClaude(&AgentContext{
-		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(map[string]string{"ORQ_SKILLS_URL": "https://example.com/custom.zip"}),
-		Flags:  GatewayFlags{NoMCP: true},
+		Flags:  GatewayFlags{MCP: true, NoSkills: false},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.PreArgs) != 2 || plan.PreArgs[1] != "https://example.com/custom.zip" {
+	if len(plan.PreArgs) != 4 || plan.PreArgs[3] != "https://example.com/custom.zip" {
 		t.Fatalf("skills url override: %v", plan.PreArgs)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
 	}
 }
 
 func TestCodexMCPArgs(t *testing.T) {
-	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{}, okProbe))
+	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{MCP: true}, okProbe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,9 +151,9 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 func TestKimiMCPFile(t *testing.T) {
 	def := kimiAgent()
 	plan, err := def.Resolve(&AgentContext{
-		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL},
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
 		Getenv: env(nil),
-		Flags:  GatewayFlags{},
+		Flags:  GatewayFlags{MCP: true},
 		Fetch:  func(_, _ string) ([]ModelInfo, error) { return kimiInfos, nil },
 	})
 	if err != nil {
@@ -147,5 +172,40 @@ func TestKimiMCPFile(t *testing.T) {
 	}
 	if strings.Contains(content, "sk-test") {
 		t.Fatal("key leaked into mcp.json")
+	}
+}
+
+// TestWriteSessionSkillsPlantsShippedSkills exercises writeSessionSkills in
+// isolation against a bare temp dir. This is agent-agnostic: kimi calls it
+// today, and Task 10's four refcounted-link agents will reuse it too — see
+// resolveKimi in kimi.go for the one call site currently wired up.
+func TestWriteSessionSkillsPlantsShippedSkills(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	dir := t.TempDir()
+	if err := writeSessionSkills(dir); err != nil {
+		t.Fatalf("writeSessionSkills: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "skills"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("no skills written: %v %d", err, len(entries))
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skills", entries[0].Name(), "SKILL.md")); err != nil {
+		t.Errorf("skill not readable: %v", err)
+	}
+}
+
+func TestMaybeWriteSessionSkillsSuppressedByNoSkills(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+
+	ctx := &AgentContext{Flags: GatewayFlags{NoSkills: true}, Getenv: func(string) string { return "" }}
+	plan := &LaunchPlan{}
+	maybeWriteSessionSkills(ctx, plan, dir)
+	if len(plan.Warnings) != 0 || len(plan.Notes) != 0 {
+		t.Errorf("--no-skills reported something: %v %v", plan.Warnings, plan.Notes)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
+		t.Error("--no-skills still wrote skills")
 	}
 }

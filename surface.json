@@ -1322,6 +1322,10 @@
           "type": "string"
         },
         {
+          "name": "disconnect",
+          "type": "bool"
+        },
+        {
           "name": "force",
           "type": "bool"
         },
@@ -1926,6 +1930,29 @@
       ]
     },
     {
+      "path": "orq connect",
+      "use": "connect [agent...] [capability...]",
+      "flags": [
+        {
+          "name": "api-key",
+          "type": "string"
+        },
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "status",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq datasets",
       "use": "datasets"
     },
@@ -2334,6 +2361,21 @@
         {
           "name": "thread",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq disconnect",
+      "use": "disconnect [agent...] [capability...]",
+      "flags": [
+        {
+          "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
         }
       ]
     },
@@ -4229,6 +4271,10 @@
         {
           "name": "api-base-url",
           "type": "string"
+        },
+        {
+          "name": "disconnect",
+          "type": "bool"
         },
         {
           "name": "force",
@@ -7268,37 +7314,17 @@
       "use": "setup",
       "flags": [
         {
-          "name": "agent",
-          "type": "stringSlice"
-        },
-        {
           "name": "api-key",
           "type": "string"
         },
         {
-          "name": "global",
-          "type": "bool"
+          "name": "capability",
+          "type": "stringSlice"
         },
         {
           "name": "interactive",
           "shorthand": "i",
           "type": "bool"
-        },
-        {
-          "name": "no-agent",
-          "type": "bool"
-        },
-        {
-          "name": "no-env",
-          "type": "bool"
-        },
-        {
-          "name": "no-mcp",
-          "type": "bool"
-        },
-        {
-          "name": "project",
-          "type": "string"
         },
         {
           "name": "yes",
@@ -8188,6 +8214,16 @@
         {
           "name": "timestamps-granularity",
           "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq update",
+      "use": "update",
+      "flags": [
+        {
+          "name": "check",
+          "type": "bool"
         }
       ]
     },

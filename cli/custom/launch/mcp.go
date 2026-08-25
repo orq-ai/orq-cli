@@ -2,8 +2,13 @@ package launch
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+
+	"orq/cli/custom/skills"
 )
 
 // MCPServerName is the key launch registers the orq MCP server under. It is
@@ -20,28 +25,74 @@ const MCPServerName = "orq-workspace"
 // my.orq.ai answers the same route but is the dashboard.
 const DefaultMCPURL = "https://api.orq.ai/v2/mcp"
 
-// DefaultSkillsPluginURL is the orq skills plugin (github.com/orq-ai/
-// assistant-plugins) as a zip; claude loads it session-only via --plugin-url.
-// Pinned to a commit SHA so a compromised or bad upstream push can't reach
-// users unreviewed — bump the SHA in CLI releases to ship plugin updates
-// (override ad hoc with ORQ_SKILLS_URL).
-const DefaultSkillsPluginURL = "https://github.com/orq-ai/assistant-plugins/archive/415edd51ddba3b10d4e3091c6d91b0cbca57566b.zip"
-
-// skillsPluginURL returns the plugin zip URL, or "" when disabled via
-// --no-skills.
+// skillsPluginURL returns a plugin zip for claude to fetch, and normally
+// returns nothing: the default skill set ships inside this binary and is
+// linked into the agent's own skills directory for the session, so no network
+// fetch happens on launch. ORQ_SKILLS_URL is the explicit opt-in for anyone
+// pinning their own bundle, and only then is --plugin-url passed.
 func skillsPluginURL(ctx *AgentContext) string {
 	if ctx.Flags.NoSkills {
 		return ""
 	}
-	return firstNonEmpty(ctx.Getenv("ORQ_SKILLS_URL"), DefaultSkillsPluginURL)
+	return strings.TrimSpace(ctx.Getenv("ORQ_SKILLS_URL"))
 }
 
-// mcpURL returns the orq MCP endpoint for this launch, or "" when disabled
-// via --no-mcp. A non-default ORQ_API_BASE_URL (self-hosted / regional)
+// maybeInstallSessionSkills materializes the shipped skills into the real
+// directory the agent reads, for the length of one launch, and chains the
+// release onto the plan's cleanup. It is for the agents whose skills
+// directory cannot be redirected (claude, codex, and the shared-directory
+// readers); kimi instead gets a launcher-owned KIMI_CODE_HOME and uses
+// maybeWriteSessionSkills.
+//
+// Failure is loud but never fatal: an agent that starts without skills is far
+// better than an agent that refuses to start.
+func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string) {
+	if ctx.Flags.NoSkills {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		// No symlinks to rely on, so a session install would mean copying the
+		// whole set in and out of the user's home on every launch. Point at
+		// the one-off install instead.
+		plan.Warnings = append(plan.Warnings,
+			"skills are not installed for a single session on Windows — run 'orq connect skills' once to install them")
+		return
+	}
+	if ctx.Flags.DryRun {
+		// A dry run resolves everything and starts nothing, so it must not
+		// rearrange the agent's real skills directory on the way. Report the
+		// destination instead of writing to it: the point is to lose the side
+		// effect, not the information.
+		targets, err := skills.Targets([]string{agent})
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		names, err := skills.Names()
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		for _, target := range targets {
+			plan.Notes = append(plan.Notes, fmt.Sprintf(
+				"a real run links %d skills into %s for the session and removes them on exit", len(names), target.Dir))
+		}
+		return
+	}
+	release, err := skills.InstallSession(agent)
+	if err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+		return
+	}
+	plan.AddCleanup(release)
+}
+
+// mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.
+// A non-default ORQ_API_BASE_URL (self-hosted / regional)
 // carries the MCP endpoint with it. The API key is never embedded — each
 // harness references the ORQ_API_KEY env var through its own mechanism.
 func mcpURL(ctx *AgentContext) string {
-	if ctx.Flags.NoMCP {
+	if !ctx.Flags.MCP {
 		return ""
 	}
 	// A credential that cannot pass MCP auth (session token from a login
@@ -109,6 +160,69 @@ func openCodeMCPBlock(url string) map[string]any {
 			"oauth":   false,
 			"headers": map[string]string{"Authorization": "Bearer {env:ORQ_API_KEY}"},
 		},
+	}
+}
+
+// writeSessionSkills symlinks the shipped skills into an agent directory the
+// launcher owns for this session. Each name is symlinked into the current
+// generation, which outlives the session (EnsureGeneration only retires a
+// generation when a later call unpacks a different fingerprint, and the
+// current one is always kept). On platforms where os.Symlink fails (Windows
+// without developer mode/elevation), fall back to a real copy so the
+// launcher never depends on symlink support to run.
+func writeSessionSkills(dir string) error {
+	gen, err := skills.EnsureGeneration()
+	if err != nil {
+		return err
+	}
+	names, err := skills.Names()
+	if err != nil {
+		return err
+	}
+	dest := filepath.Join(dir, "skills")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
+	for _, name := range names {
+		src := filepath.Join(gen, name)
+		dst := filepath.Join(dest, name)
+		if err := os.Symlink(src, dst); err != nil {
+			if copyErr := skills.CopyDir(src, dst); copyErr != nil {
+				return copyErr
+			}
+		}
+	}
+	return nil
+}
+
+// maybeWriteSessionSkills is the flag-aware wrapper for the launcher-owned
+// directory path (kimi). It carries the same two guarantees
+// maybeInstallSessionSkills does: --no-skills writes nothing, --dry-run writes
+// nothing and reports what a real run would do instead, and a failure is a
+// warning on the plan rather than a refusal to start the agent.
+func maybeWriteSessionSkills(ctx *AgentContext, plan *LaunchPlan, dir string) {
+	if ctx.Flags.NoSkills {
+		return
+	}
+	if ctx.Flags.DryRun {
+		// Same reasoning as maybeInstallSessionSkills: a dry run resolves
+		// everything and starts nothing, so it must not unpack a generation
+		// into the user's home on the way. Report the destination instead of
+		// writing to it — losing the side effect, not the information.
+		names, err := skills.Names()
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		plan.Notes = append(plan.Notes, fmt.Sprintf(
+			"a real run links %d skills into %s for the session and removes them with it on exit",
+			len(names), filepath.Join(dir, "skills")))
+		return
+	}
+	if err := writeSessionSkills(dir); err != nil {
+		// Skills are an enhancement; refusing to start the agent because a
+		// symlink failed is worse than starting without them.
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
 	}
 }
 

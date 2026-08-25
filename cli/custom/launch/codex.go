@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const DefaultCodexModel = "openai/gpt-5.4"
+const DefaultCodexModel = "openai/gpt-5.6-terra"
 
 var codexNormalize = MakeNormalizeModel([]string{"orq"})
 
@@ -18,7 +18,6 @@ func codexAgent() AgentDef {
 		Binary:        "codex",
 		Label:         "OpenAI Codex CLI",
 		InstallHint:   "npm install -g @openai/codex",
-		NpmPackage:    "@openai/codex",
 		FetchesModels: true,
 		AllowModels:   false,
 		Prompt: &PromptMapping{
@@ -55,46 +54,66 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 
 	catalogPath := ""
 	if ctx.ExecProbe == nil {
-		// Sandbox dry-run: no container to probe, so the catalog step is
-		// skipped — say so, or the printed command silently differs from a
-		// real run.
-		plan.Warnings = append(plan.Warnings, "codex model catalog skipped (no container on dry-run); a real run adds -c model_catalog_json=…")
+		// No probe available, so the catalog step is skipped — say so, or the
+		// printed command silently differs from a real run.
+		plan.Warnings = append(plan.Warnings, "codex model catalog skipped (no exec probe); a real run adds -c model_catalog_json=…")
 	} else if path, cleanup, err := writeCodexCatalog(ctx, resolved.GatewayModels); err != nil {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"could not build codex model catalog (model picker will show bundled models): %v", err))
 	} else {
 		catalogPath = path
 		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
-		plan.Cleanup = cleanup
+		plan.AddCleanup(cleanup)
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
 	if url := mcpURL(ctx); url != "" {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
 	}
+	maybeInstallSessionSkills(ctx, plan, "codex")
 	return plan, nil
 }
 
 func tomlOverride(key, value string) string {
-	quoted, _ := json.Marshal(value)
-	return key + "=" + string(quoted)
+	return key + "=" + TOMLString(value)
+}
+
+// CodexProvider is the key codex registers the orq gateway under.
+const CodexProvider = "orq"
+
+// CodexProviderSettings is the codex configuration that points it at the orq
+// gateway, as ordered dotted-key/value pairs.
+//
+// Two commands deliver these differently — launch as `-c key=value` overrides
+// on the argv, setup as TOML in a profile file — so the settings themselves
+// live in one place and each command only formats them. An empty model or
+// modelCatalogPath omits that key rather than writing a blank one.
+func CodexProviderSettings(model, baseURL, modelCatalogPath string) [][2]string {
+	settings := [][2]string{}
+	if model != "" {
+		settings = append(settings, [2]string{"model", model})
+	}
+	settings = append(settings,
+		[2]string{"model_provider", CodexProvider},
+		[2]string{"model_providers." + CodexProvider + ".name", ProviderDisplayName},
+		[2]string{"model_providers." + CodexProvider + ".base_url", baseURL},
+		[2]string{"model_providers." + CodexProvider + ".env_key", "ORQ_API_KEY"},
+		// codex removed chat/completions support (hard error since Feb 2026);
+		// "responses" is the only valid wire_api, and it is per-provider only
+		// — a second chat-shaped provider like opencode's is not an option.
+		[2]string{"model_providers." + CodexProvider + ".wire_api", "responses"},
+	)
+	if modelCatalogPath != "" {
+		settings = append(settings, [2]string{"model_catalog_json", modelCatalogPath})
+	}
+	return settings
 }
 
 // BuildCodexOverrideArgs builds the -c TOML override argv prefix.
 func BuildCodexOverrideArgs(model, baseURL, modelCatalogPath string) []string {
-	args := []string{
-		"-c", tomlOverride("model", model),
-		"-c", tomlOverride("model_provider", "orq"),
-		"-c", tomlOverride("model_providers.orq.name", "orq Gateway"),
-		"-c", tomlOverride("model_providers.orq.base_url", baseURL),
-		"-c", tomlOverride("model_providers.orq.env_key", "ORQ_API_KEY"),
-		// codex removed chat/completions support (hard error since Feb 2026);
-		// "responses" is the only valid wire_api, and it is per-provider only
-		// — a second chat-shaped provider like opencode's is not an option.
-		"-c", tomlOverride("model_providers.orq.wire_api", "responses"),
-	}
-	if modelCatalogPath != "" {
-		args = append(args, "-c", tomlOverride("model_catalog_json", modelCatalogPath))
+	var args []string
+	for _, kv := range CodexProviderSettings(model, baseURL, modelCatalogPath) {
+		args = append(args, "-c", tomlOverride(kv[0], kv[1]))
 	}
 	return args
 }
@@ -126,7 +145,7 @@ func BuildCodexModelCatalog(templateCatalogJSON string, models []string) (string
 		}
 		entry["slug"] = model
 		entry["display_name"] = model
-		entry["description"] = "Available through orq Gateway: " + model
+		entry["description"] = "Available through " + ProviderDisplayName + ": " + model
 		priority := 1000 - i
 		if priority < 1 {
 			priority = 1

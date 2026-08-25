@@ -14,17 +14,31 @@ import (
 	"orq/cli/custom/auth"
 )
 
+// CredentialKind is what ResolveCredentials decided the key is. The zero value
+// is unknown on purpose: a credential nobody resolved must not claim a
+// capability. This was two bools, where "real API key" was the zero value of
+// FromSession, so a Credentials nobody filled in reported that it could reach
+// the MCP server — which is how the pre-MCP-scopes warning stopped firing once
+// the CLI began injecting its own session token into ORQ_API_KEY.
+type CredentialKind int
+
+const (
+	CredentialUnknown CredentialKind = iota
+	// CredentialAPIKey is a key the user exported or brought.
+	CredentialAPIKey
+	// CredentialSessionToken is a workspace token from the login session.
+	CredentialSessionToken
+)
+
 // Credentials is the resolved auth pair every launch needs.
 type Credentials struct {
 	APIKey     string
 	APIBaseURL string
-	// FromSession is set when APIKey is a login-session workspace token
-	// rather than a real API key.
-	FromSession bool
+	Kind       CredentialKind
 	// MCPScoped reports whether a session token carries the mcp:* scopes.
-	// Logins made before the CLI requested them produce tokens without, and
-	// the MCP server rejects those with insufficient_scope. Real API keys
-	// (FromSession false) always pass MCP auth and skip this check.
+	// Logins made before the CLI requested them produce tokens without, and the
+	// MCP server rejects those with insufficient_scope. Meaningful only for
+	// CredentialSessionToken.
 	MCPScoped bool
 	// ShadowsSession is set when ORQ_API_KEY won over an existing login
 	// session. The workspace the key belongs to is then in force instead of
@@ -32,10 +46,31 @@ type Credentials struct {
 	ShadowsSession bool
 }
 
-// SupportsMCP reports whether the credential can authenticate against the
-// orq MCP server.
+// SupportsMCP reports whether the credential can authenticate against the orq
+// MCP server. An API key is assumed to pass: we cannot read its permissions
+// from here, and the key `orq setup` mints does not carry mcp_gateway, so this
+// answer is optimistic for exactly that case. The MCP server's own rejection is
+// the authority; this only decides whether to warn first.
 func (c *Credentials) SupportsMCP() bool {
-	return !c.FromSession || c.MCPScoped
+	switch c.Kind {
+	case CredentialAPIKey:
+		return true
+	case CredentialSessionToken:
+		return c.MCPScoped
+	default:
+		return false
+	}
+}
+
+// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
+// session's own cached workspace tokens rather than a key the user exported.
+func isSessionWorkspaceToken(key string, session *auth.Session) bool {
+	for _, tok := range session.WorkspaceTokens {
+		if strings.TrimSpace(tok.Token) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // tokenHasMCPScope decodes the JWT payload (unverified — this is a local
@@ -63,6 +98,32 @@ func tokenHasMCPScope(token string) bool {
 	return false
 }
 
+// shadowsSession reports whether the env key provably belongs to a different
+// workspace than the session. Coexistence alone is not a conflict: setup writes
+// ~/.orq/env exporting the key it minted for the workspace resolved at login,
+// so the ordinary machine has both, pointing at the same place.
+func shadowsSession(key string, session *auth.Session) bool {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return false
+	}
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return false
+	}
+	// installSessionPreRun injects the session's own workspace token into
+	// ORQ_API_KEY whenever no api_key is configured, which is now the ordinary
+	// state. That token is ours, not a key the user exported, so comparing it to
+	// the saved key reported a mismatch on every single launch.
+	if tok, ok := session.WorkspaceTokens[active]; ok && strings.TrimSpace(tok.Token) == key {
+		return false
+	}
+	// auth.SavedAgentKey, not a local profile read: the minted key moved to
+	// gateway_key and this copy kept reading api_key, so an empty savedKey made
+	// every launch report a mismatch that was not there either.
+	savedKey, savedWS := auth.SavedAgentKey()
+	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
+}
+
 // ResolveCredentials resolves the orq API key and API base URL explicitly
 // (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
 // (the session is not read at all), else the active workspace token from the
@@ -72,10 +133,22 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	apiBase := firstNonEmpty(getenv("ORQ_API_BASE_URL"), DefaultGatewayAPIBaseURL)
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
-		// The session is not used, but knowing one exists lets the caller warn
-		// that the env key silently outranks the workspace picked at login.
 		session, _ := auth.ReadSession()
-		return &Credentials{APIKey: key, APIBaseURL: apiBase, ShadowsSession: session != nil}, nil
+		creds := &Credentials{
+			APIKey:         key,
+			APIBaseURL:     apiBase,
+			Kind:           CredentialAPIKey,
+			ShadowsSession: shadowsSession(key, session),
+		}
+		// installSessionPreRun injects the session's own workspace token into
+		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
+		// split made the ordinary state. Reading it as an exported key is what
+		// stopped the pre-MCP-scopes warning firing.
+		if session != nil && isSessionWorkspaceToken(key, session) {
+			creds.Kind = CredentialSessionToken
+			creds.MCPScoped = tokenHasMCPScope(key)
+		}
+		return creds, nil
 	}
 
 	session, err := auth.ReadSession()
@@ -96,10 +169,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		return nil, err
 	}
 	return &Credentials{
-		APIKey:      active.AccessToken,
-		APIBaseURL:  apiBase,
-		FromSession: true,
-		MCPScoped:   tokenHasMCPScope(active.AccessToken),
+		APIKey:     active.AccessToken,
+		APIBaseURL: apiBase,
+		Kind:       CredentialSessionToken,
+		MCPScoped:  tokenHasMCPScope(active.AccessToken),
 	}, nil
 }
 

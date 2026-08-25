@@ -2,16 +2,19 @@ package custom
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
+	"orq/cli/custom/skills"
 
 	colorable "github.com/mattn/go-colorable"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -33,6 +36,7 @@ var profileExemptCommands = map[string]bool{
 	"add-profile":   true,
 	"list-profiles": true, // listing profiles is how you diagnose an unknown one
 	"doctor":        true,
+	"update":        true, // updating must work without a session; it touches no orq API
 	"help":          true,
 	"completion":    true,
 	"man-pages":     true,
@@ -72,6 +76,9 @@ func Register(root *cobra.Command) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
+	// Help presentation: runs last so it sees the complete tree.
+	applyCommandGroups(root)
+	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
 }
 
@@ -81,6 +88,13 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+}
+
+// annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
+func annotateGlobalFlagEnvVars(root *cobra.Command) {
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		f.Usage += fmt.Sprintf(" [env: ORQ_%s]", strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_")))
+	})
 }
 
 func appendHelpFooter(root *cobra.Command) {
@@ -118,6 +132,7 @@ func installSessionPreRun() {
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
 		commands.SetExplicitAPIKey(apiKeyConfigured())
+		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
 				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
@@ -266,6 +281,76 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewSetupCommand())
+	root.AddCommand(commands.NewConnectCommand())
+	root.AddCommand(commands.NewDisconnectCommand())
+	root.AddCommand(commands.NewUpdateCommand())
+	installSkillsRefreshPreRun()
+}
+
+// installSkillsRefreshPreRun keeps installed skills current with the running
+// binary, and reclaims links left behind by launches that died without
+// cleaning up after themselves, on every `orq` invocation — not just
+// `orq connect`, so someone who updates the CLI and then opens their agent
+// directly is not left on the old set.
+//
+// root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
+// root.PersistentPreRunE to a function that, after its own housekeeping,
+// calls the single package-level bartolocli.PreRun hook if one is set. That
+// is the same seam installSessionPreRun above already uses, so this chains
+// onto it the same way rather than assigning root.PersistentPreRun directly
+// — which cobra would never even look at, since PersistentPreRunE (bartolo's)
+// takes priority over PersistentPreRun on the same command.
+//
+// Both calls only ever touch what the manifest already records: a machine
+// that never ran `orq connect` has no manifest, and Refresh and
+// SweepDeadSessions both return before touching the filesystem in that case.
+// Neither call may fail a command — an update or a dead-session sweep that
+// cannot proceed (most likely because a concurrent `orq launch` or `orq
+// connect` holds the manifest lock) is worth a warning, not a broken
+// `orq --help`. The lock wait itself is capped (see lock.go's lockTimeout),
+// and a failed Refresh skips the sweep rather than waiting out that same
+// timeout twice, so a contended manifest costs this at most one lockTimeout
+// (currently 2s), not a hang and not a doubled wait.
+func installSkillsRefreshPreRun() {
+	prev := bartolocli.PreRun
+	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(cmd, args); err != nil {
+				return err
+			}
+		}
+		res, err := skills.Refresh()
+		if err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Warning: could not refresh orq skills: %v\n", err)
+			// Refresh and SweepDeadSessions each wait out the same lock
+			// (lockTimeout in lock.go) before giving up, and a lock a moment
+			// ago is still very likely held now: trying the sweep anyway
+			// would make an already-contended command wait out that same
+			// timeout a second time for essentially no chance of success.
+			// Skipping it caps the worst case at one timeout instead of two.
+			if errors.Is(err, skills.ErrManifestLocked) {
+				return nil
+			}
+		} else {
+			if len(res.Added) > 0 || len(res.Removed) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
+					len(res.Added), len(res.Removed))
+			}
+			// One line naming the remedy, not one raw Go error per broken
+			// link on every command for the rest of time. Refresh already
+			// advanced past them, so this stops as soon as the user repairs
+			// the directory — or on the next `orq connect skills`, which
+			// creates what is missing.
+			if len(res.Failed) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "Warning: %d orq skill link(s) could not be updated — run 'orq connect skills' to repair them\n",
+					len(res.Failed))
+			}
+		}
+		if err := skills.SweepDeadSessions(); err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)
+		}
+		return nil
+	}
 }
 
 func replaceDoctor(root *cobra.Command) {
