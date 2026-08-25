@@ -1,7 +1,7 @@
 # orq CLI: MCP wiring for coding agents
 
 Date: 2026-08-25
-Status: approved design, not yet implemented
+Status: design under verification — three gates remain (see "Verify before implementing")
 Ticket: RES-1435
 Branch base: `Baukebrenninkmeijer/cli-mcp-support` (on `origin/main` + `arianpasquali/skills-safety-fixes`)
 
@@ -17,11 +17,9 @@ least-privilege keys"), because the key it wrote into agent configs was minted w
 commit removed MCP wholesale rather than narrow it, and left entries written by
 v4.13.10 in place rather than deleting them.
 
-This design re-adds MCP wiring on a credential model that does not have that failure:
-OAuth for the agents that support it, and a key scoped to a single capability domain
-for the agents that do not.
+This design re-adds MCP wiring without writing a credential at all.
 
-## Why OAuth is available now
+## Why that is now possible
 
 `https://api.orq.ai/v2/mcp` answers an unauthenticated request with a complete
 RFC 9728 discovery chain:
@@ -38,173 +36,271 @@ metadata advertises `authorization_endpoint`, `token_endpoint`, a
 `registration_endpoint` (dynamic client registration), `code_challenge_methods_supported: ["S256"]`,
 and both `authorization_code` and `refresh_token` grants.
 
-An MCP client that implements the spec's auth flow therefore needs nothing from us but
-the URL: it discovers the authorization server, registers itself dynamically, runs
-PKCE in the user's browser, and holds its own refresh token. No credential is written
-to disk by the CLI, and none can leak from an agent config.
+**Every agent in the registry that speaks MCP at all can use it.** Surveyed
+2026-08-25, live where the agent is installed on this machine:
+
+| Agent | MCP OAuth | Evidence |
+| --- | --- | --- |
+| Claude Code 2.1.245 | yes | `claude mcp login <name>`, `--client-id` / `--callback-port` flags |
+| Codex 0.144.6 | yes | `codex mcp login orq-workspace` produced a live PKCE authorize URL against `my.orq.ai`; `codex mcp list` reports a per-server `Auth` column |
+| opencode 1.17.20 | yes | installed SDK types: `McpRemoteConfig.oauth?: McpOAuthConfig \| false`, DCR when `clientId` is absent; `needs_auth` / `needs_client_registration` statuses |
+| Kilo Code | yes | same `mcp.<name>` schema as opencode; docs state OAuth starts automatically. Not installed here — see gate G1 |
+| Kimi Code | yes | `kimi mcp add --transport http --auth oauth`, then `kimi mcp auth <name>`. Not installed here — see gate G1 |
+| Pi | **no MCP at all** | grep of the installed `@earendil-works/pi-coding-agent` 0.84.2 bundle finds no MCP code; extensibility is proprietary "extensions" |
+
+So there is exactly **one** mode: write the URL, write no credential. The
+header/bearer fallback an earlier draft of this design carried — a second API key
+scoped to `mcp_gateway`, stored as `mcp_key`, revoked on disconnect — is deleted. It
+had no users, and it could not have worked anyway: `createAPIKeyBody`
+(`cli/custom/auth/projects.go:162`) always sends `"source": "router"`, and its own
+comment records that identity-api *"never reads permission_mode or access — it
+discards both and applies the catalog's router preset"*. A key minted with
+`{"mcp_gateway": "write"}` would have received the router preset, which
+`launch/auth.go:51` says does not carry `mcp_gateway`.
+
+Also relevant to Codex: `experimental_use_rmcp_client` is **obsolete**. The flag was
+removed in openai/codex PR #8087; the OAuth-capable client is now the default stack. A
+remote HTTP entry with `url` and nothing else is the OAuth shape.
 
 ## Design
 
 ### 1. MCP is a connect capability
 
-`cli/custom/commands/connect.go` already models capabilities: `capGateway`,
-`capTracing`, `capSkills` in `connectCapabilities`, with `availableCapabilities()`
-gating which are actually built. Add `capMCP = "mcp"` to both.
-
-Everything else follows from the existing dispatcher with no new command:
+`cli/custom/commands/connect.go` models capabilities as `capGateway`, `capTracing`,
+`capSkills` in `connectCapabilities`, with `availableCapabilities()` gating which are
+actually built. Add `capMCP = "mcp"` to both. `capSkills` stays excluded from
+`availableCapabilities()` — it is disabled deliberately (`d210a98`) pending its own
+review — so after this change a bare `orq connect` writes **gateway + mcp**, not
+skills.
 
 | Command | Behaviour |
 | --- | --- |
-| `orq connect` | writes gateway + skills + mcp for detected agents |
+| `orq connect` | writes gateway + mcp for detected agents |
 | `orq connect codex mcp` | writes only the MCP entry, only for codex |
 | `orq disconnect claude mcp` | removes only Claude's MCP entry |
-| `orq connect --status` | reports MCP wiring alongside gateway and skills |
-| `orq connect --dry-run` | shows the file and the entry it would write |
+| `orq connect --status` | reports MCP wiring alongside gateway |
+| `orq connect --dry-run` | reports the file path it would write (paths only, per `dryRunConnect`'s existing contract) |
 
-`orq setup` gains **no new consent question**. Its `promptForCapabilities` multi-select
-("What should orq connect?") already lists every available capability; `mcp` appears
-there automatically once it is in `availableCapabilities()`, selected by default like
-the others.
+Adding the constant is not the work. Every capability-dispatching function in
+`connect.go` is a chain of `if hasCap(caps, capGateway)` / `hasCap(caps, capSkills)`
+branches and needs a `capMCP` clause: `agentsToConnect` (line 92), `agentsToInspect`
+(line 116), `dryRunConnect` (563), `wiredTargets` (776), `removeWiring` (891),
+`reportUnwirableAgents` (240), plus `disconnectOnLogout` (958), whose capability list
+is hardcoded to `{capGateway}`. `agentsToConnect` matters most: it selects agents on
+`spec.writeProvider != nil`, and claude has no provider config, so without an MCP
+clause a bare `orq connect mcp` would select zero agents on the most common machine
+there is.
 
-### 2. Two credential modes on the agent registry
+`orq setup` needs no new *capability* question — `promptForCapabilities`
+(`setup.go:1340`) builds its multi-select from `availableCapabilities()`, so `mcp`
+appears there by default like the others. It does gain one new question, in section 3.
 
-Restore the four `agentSpec` fields deleted in `e44c747` — `mcpConfig`, `writeMCP`,
-`removeMCP`, `manualSnippet` — plus `mcpPresent` (the read side, for `--status` and
-doctor) and one new field, `mcpAuth`, with two values.
+### 2. The agent registry gains four MCP fields
 
-**`mcpAuthOAuth` — claude, codex.** The writer emits the server entry and nothing
-else:
+Restore the fields deleted in `e44c747`, mirroring the existing provider naming:
 
-```json
-{ "mcpServers": { "orq-workspace": { "type": "http", "url": "https://api.orq.ai/v2/mcp" } } }
-```
+| Field | Mirrors |
+| --- | --- |
+| `mcpConfig func(global bool) (string, error)` | `providerConfig` |
+| `writeMCP func(path, url string) error` | `writeProvider` |
+| `mcpPresent func(path string) bool` | `providerPresent` |
+| `removeMCP func(path string) (bool, error)` | `removeProvider` |
 
-No `headers` key, no `Authorization`, no env reference. The agent runs the OAuth flow
-itself on first use.
+There is no `mcpAuth` field and no credential analogue of `providerEmbedsKey` /
+`providerKey`, because there is no second mode and no credential. `writeMCP` takes a
+URL and nothing else — a signature that cannot embed a secret is the structural
+guarantee that replaces `e44c747`'s hand-checking.
 
-**`mcpAuthHeader` — opencode, kilo, kimi.** These clients authenticate remote MCP
-servers with a bearer header only. They get a **second, separate API key**:
+`manualSnippet` is **not** restored. It was only ever called from `setup.go`, and
+`dryRunConnect`'s comment is explicit — *"Paths only, not content: the writers resolve
+content against the live catalogue"* — so rendering MCP content in dry-run alone would
+make one command behave two ways.
 
-- New `auth.MCPAccess()` returning `{"mcp_gateway": "write"}` — the single domain
-  `gatewayAccessMap` deliberately excludes, with the comment "MCP data-plane execution
-  rather than gateway wiring".
-- Minted through the existing `auth.NewAPIKeyRequest` path with
-  `permission_mode: "restricted"`, exactly as the gateway key is.
-- Stored in `credentials.json` as `mcp_key` and `mcp_key_id`, alongside `gateway_key`
-  / `gateway_key_id`. It must not reuse either `api_key` (which `installSessionPreRun`
-  keys off) or `gateway_key` (which cannot authenticate to MCP by construction).
-- Written into the agent's config in that agent's own format, with the config file at
-  `0600`.
-- `orq disconnect ... mcp` revokes the key once no header-mode agent is still wired,
-  and clears the `mcp_key` fields.
+Per-agent entry shapes (see gate G1 for the two unverified paths):
 
-The tradeoff is explicit: header mode puts a credential on disk. It is bounded to one
-capability domain and revocable, which is what `e44c747` asked for and did not have.
-Verification item V3 below decides whether that bound holds.
+- **claude** — `./.mcp.json` or `~/.claude.json`, key `mcpServers`:
+  `{"type": "http", "url": "…"}`
+- **codex** — `~/.codex/config.toml`: `[mcp_servers.orq-workspace]` with `url` only
+- **opencode** — `~/.config/opencode/opencode.json`, key `mcp`:
+  `{"type": "remote", "url": "…", "enabled": true, "oauth": {}}`
+- **kilo** — `~/.config/kilo/kilo.jsonc`, same shape as opencode
+- **kimi** — `~/.kimi/mcp.json`, key `mcpServers`: `{"url": "…"}`. Note the path: the
+  pre-`e44c747` writer used `~/.kimi-code/mcp.json`, which the current docs contradict
+- **pi** — no MCP entry. `detect()` still finds pi for the gateway; MCP reports
+  "not supported by this agent", the same way claude reports no gateway config today
+
+No manifest. Unlike skills — where a symlink on disk cannot say who created it, which
+is why `skills.LoadManifest()` exists — an MCP entry is self-describing: it is the
+value at `orq-workspace` in a known file. `mcpPresent` reading that key is the whole
+state model.
 
 ### 3. Scope: a wizard step and two flags
 
 `--global` and `--local` return to `orq connect` and `orq disconnect`, meaningful for
-`mcp` only. Naming a scope alongside a gateway-only run warns rather than silently
-doing nothing.
+`mcp` only. Naming a scope on a gateway-only run warns rather than silently doing
+nothing.
 
 Only Claude Code has two scopes: `./.mcp.json` (project) and `~/.claude.json` (global).
-Codex, opencode, kilo and kimi read MCP config from a fixed directory; `--local`
-against them warns and writes the global path. The old `pathFor(project, global)` and
-`alwaysGlobalPath` helpers in `agents.go` already express exactly this.
+Codex, opencode, kilo and kimi read MCP config from a fixed location, so `--local`
+against them warns and writes the global path.
 
-**New wizard step.** `orq setup` asks a second question immediately after the
-capability multi-select, in the same style (`survey`, same label padding, routed
-through `promptStdio()`):
+The two-scope resolver is **new code**. `alwaysGlobalPath` exists (`agents.go:144`) but
+`pathFor(project, global)` does not — it went out with `e44c747` and an earlier draft
+of this spec wrongly claimed it was still there. Restoring it also means deciding how
+it interacts with `wiredPath` (`agents.go:652`) and `bothScopePaths`
+(`connect.go:1006`), which today probe *both* scopes unconditionally: for reads
+(`--status`, doctor, disconnect) probing both is correct and should stay, since the
+user may have wired either; only the *write* path takes the chosen scope.
+
+**New wizard step.** This is a second question in `orq setup`, asked immediately after
+the capability multi-select, in the same style (`survey.Select`, same label padding,
+routed through `promptStdio()` — which `promptForCapabilities` currently omits and may
+as well gain):
 
 ```
 Where should the MCP entry go?
-  > local     this project only (./.mcp.json)
-    global    every project on this machine (~/.claude.json)
+  > global    every project on this machine (~/.claude.json)
+    local     this project only (./.mcp.json)
 ```
 
-Asked only when `mcp` is among the chosen capabilities, the run is interactive, and at
-least one scope-capable agent (today: claude) is detected. Skipped — defaulting to
-local — otherwise. `--global` / `--local` / `--yes` / `--no-input` all pre-answer it.
+Asked only when `mcp` is among the chosen capabilities, the run is interactive, and a
+scope-capable agent (today: claude) is detected. `--global` / `--local` / `--yes` /
+`--no-input` all pre-answer it.
 
-There is no scope *inference*. The pre-`e44c747` code had none either: the path was
-cwd-relative unless `--global`. The answer comes from the user or the flag, so there is
-nothing for a heuristic to disagree with.
+**Default is global**, changed from the pre-`e44c747` behaviour, which defaulted to the
+cwd. Every other artifact `orq setup` writes is machine-global — `~/.orq/env`, the
+shell profile line, every provider config — and `orq setup` is documented as getting "a
+new machine from zero to working". A `curl | sh` install run from `$HOME` that silently
+produces `~/.mcp.json`, or a run inside one repo that gives that repo MCP tools and no
+other, is a footgun the old default carried because nothing then had two scopes.
 
-Note while adding this: the existing `promptForCapabilities` calls `survey.AskOne`
-without `promptStdio()`, unlike every other prompt in the CLI. Not a bug — a prompt
-only appears when stdout is a terminal, so it cannot land in a redirected payload — but
-the new prompt should use `promptStdio()`, and the existing one may as well match.
+There is no scope *inference*. The answer comes from the prompt or the flag.
 
-### 4. One URL resolver, shared with launch
+### 4. One entry writer, and `orq launch` stops embedding a credential
 
-`cli/custom/launch/mcp.go` already resolves the endpoint as
-`ORQ_MCP_URL` → `deriveFromAPIBase(apiBase, "/v2/mcp")` → `DefaultMCPURL`, and
-registers it under `MCPServerName = "orq-workspace"`. The comment on that constant is
-load-bearing: launch deliberately uses the same name so a session entry *shadows* a
-persisted one instead of the agent loading both and paying for every tool definition
-twice.
+`cli/custom/launch/mcp.go` already writes MCP entries for claude, codex, opencode,
+kilo and kimi, under the same `MCPServerName = "orq-workspace"` this design uses, and
+every one of them embeds a bearer credential: `Authorization: Bearer ${ORQ_API_KEY}`
+(`mcp.go:124`), `bearer_token_env_var = "ORQ_API_KEY"` (`:149`),
+`Bearer {env:ORQ_API_KEY}` (`:161`), `"bearerTokenEnvVar": "ORQ_API_KEY"` (`:236`).
 
-Connect must therefore use the same name and the same resolution, from one shared
-helper rather than a second copy. Self-hosted and regional deployments carry their MCP
-endpoint from `ORQ_API_BASE_URL` for free.
+Left alone, that defeats this design entirely. The `MCPServerName` comment says a
+session entry deliberately **shadows** the persisted one — so the first
+`orq launch claude --mcp` after `orq connect claude mcp` replaces the headerless OAuth
+entry with a bearer entry carrying the gateway key, which is exactly the
+credential-in-agent-config pattern `e44c747` deleted. Worse, that key almost certainly
+does not work: `launch/auth.go:51` records that the key `orq setup` mints does not
+carry `mcp_gateway`, so `SupportsMCP()` is "optimistic" — launch is wiring a credential
+that the MCP server is expected to reject.
+
+Two changes, both in `launch`:
+
+1. **Drop the credential from every launch MCP writer.** All five agents do OAuth; a
+   bare URL is the correct entry in every one of their formats. This deletes the
+   `ORQ_API_KEY` reference from `claudeMCPConfig`, `codexMCPArgs`, `openCodeMCPBlock`
+   and `kimiMCPConfig`. It is not a regression: it replaces a credential the server is
+   expected to reject with one the agent can actually obtain.
+2. **No-op when the agent is already wired.** Before injecting a session entry, check
+   `mcpPresent` on that agent's persisted config; if the entry is there, write nothing
+   and let the persisted one serve. This is only correct where launch's injection sits
+   *alongside* the agent's own config — claude (`--mcp-config` temp file,
+   `claude.go:82`) and codex (`-c` overrides, `mcp.go:148`). For kimi, launch points
+   `KIMI_CODE_HOME` at a temp dir (`kimi.go:75`), and the opencode family gets a whole
+   inline document via `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`
+   (`opencode.go:34`); there the persisted entry may not be visible at all, so launch
+   keeps writing — now headerless. Gate G3 settles which of those two the opencode
+   family is.
+
+URL resolution stays where it is: `ORQ_MCP_URL` → `deriveFromAPIBase(apiBase, "/v2/mcp")`
+→ `DefaultMCPURL`, exported from `launch` and called by `connect` rather than copied,
+so self-hosted and regional deployments carry their MCP endpoint for free.
 
 ### 5. Doctor
 
 `arianpasquali/skills-safety-fixes` added `skillsCheck()` to `doctor.go` — a check
 group returning `pass`/`warn` and naming the command that fixes it. The MCP check is a
-sibling of that function, same shape:
+sibling of that function, same shape, with one wording constraint.
 
-- `pass` — entry present in the agent's config.
-- `warn` — agent detected, no entry: "run `orq connect <agent> mcp`". Never a non-zero
-  exit; an unwired agent is an offer, not a breakage (per RES-1270).
-- `warn` — header-mode agent wired but `mcp_key` missing from credentials.
+`pass` must say **"entry present"**, never "MCP works". The CLI writes no credential
+and holds no token, so it cannot see whether the user ever completed the OAuth flow in
+that agent — a green check that implied working MCP would be a false positive for
+every user who has not yet run `/mcp` or `codex mcp login`. The `pass` message names
+the login command so the check is also the instruction.
 
-### 6. Testing
+`warn` when an MCP-capable agent is detected with no entry, naming
+`orq connect <agent> mcp`. Never a non-zero exit: an unwired agent is an offer, not a
+breakage (per RES-1270). Pi is not reported at all — it cannot receive MCP.
+
+No expiry, renewal, or credential-drift checks. There is no credential.
+
+### 6. After the write
+
+Per agent, one line naming the login command — no shelling out, no blocking:
+
+| Agent | Line |
+| --- | --- |
+| claude | `run /mcp in Claude Code, or 'claude mcp login orq-workspace'` |
+| codex | `run 'codex mcp login orq-workspace'` |
+| opencode | opencode prompts on first use (status `needs_auth`) |
+| kilo | `run 'kilo mcp auth orq-workspace'` |
+| kimi | `run 'kimi mcp auth orq-workspace'` |
+
+### 7. Testing
 
 - Round-trip write/remove per config format, restored from `e44c747^`'s
-  `agents_test.go`, which had them for all five agents.
+  `agents_test.go`, which had them for all five agents, updated for the corrected paths
+  and the headerless shapes.
 - Idempotence: writing twice produces one entry, byte-identical.
-- Foreign-content preservation: unrelated keys and unrelated TOML survive a write and
-  a remove.
-- **Credential canary:** an `mcpAuthOAuth` agent's config, after a write, contains no
-  `Authorization`, no `headers`, and no substring of any key. This is the test that
-  keeps `e44c747`'s regression from returning.
+- Foreign-content preservation: unrelated keys and unrelated TOML survive a write and a
+  remove.
+- **Credential canary, now covering every agent and both packages:** no config written
+  by `connect` *or* `launch` contains `Authorization`, `headers`, `bearer_token_env_var`,
+  `bearerTokenEnvVar`, or any substring of a stored key. This is the test that keeps
+  `e44c747`'s regression from returning, and it is the reason `writeMCP` takes no
+  credential argument.
+- Launch/connect interaction: with a persisted entry present, `orq launch claude --mcp`
+  and `orq launch codex --mcp` inject nothing.
 - Scope: `--local` writes `./.mcp.json` and leaves `~/.claude.json` untouched;
-  `--global` the inverse; `--local` against a global-only agent warns and writes global.
+  `--global` the inverse; `--local` against a global-only agent warns and writes global;
+  reads still find an entry in either scope.
+- Doctor: `pass` asserts on the "entry present" wording, so a future edit cannot quietly
+  promote it to a health claim.
+- Pi: `orq connect pi mcp` reports unsupported and writes nothing.
 - URL derivation for a non-default `ORQ_API_BASE_URL`.
 
 ## Verify before implementing
 
-These four are gates, not notes. V3 in particular can invalidate the section-2 design.
+The two agent-capability gates an earlier draft carried are closed — the survey in "Why
+that is now possible" answered both, and the key-scoping gate died with header mode.
+Three remain, none of which can invalidate the design; they set details.
 
-**V1 — Codex remote MCP.** Confirm against a real Codex install that it supports a
-remote streamable-HTTP MCP server with OAuth, and what the current `config.toml` shape
-is (`[mcp_servers.orq-workspace] url = ...`, versus an `experimental_use_rmcp_client`
-gate). If Codex cannot do OAuth in the shipped version, it moves to header mode.
+**G1 — Kilo and Kimi config paths and shapes.** Neither is installed on this machine, so
+both entries above are from docs. Kimi in particular contradicts the code we are
+restoring: docs say `~/.kimi/mcp.json`, the old writer said `~/.kimi-code/mcp.json`.
+Kilo's is `.jsonc`, where the old writer said `.json`. Install both, or verify against
+their current docs, before writing either writer.
 
-**V2 — opencode / kilo / kimi.** Confirm they lack OAuth support. Any that has gained
-it moves to OAuth mode and needs no key at all, which is strictly better.
+**G2 — Local and global file writes, for real, per agent.** `./.mcp.json` created and
+merged in a project; `~/.claude.json` merged in place without disturbing Claude's own
+contents (it owns that file aggressively and keeps far more than MCP servers in it);
+and a `disconnect` that leaves each file functionally clean. Note that
+`writeJSONConfig` chmods every JSON config it touches to `0600` — inherited behaviour,
+not chosen here, and worth confirming it does not fight Claude's own writes to
+`~/.claude.json`.
 
-**V3 — Is an `mcp_gateway`-only key actually enough?** Mint one against a live
-workspace and call `/v2/mcp`. Two failure modes: it may not authenticate at all, or it
-may authenticate and then expose a tool list that fails on every call because the
-individual tools need `agents`, `deployments`, `traces` and friends. If the key needs a
-materially wider access map, "narrowly scoped" is a fiction and the header-mode
-tradeoff must go back to the user before implementation.
-
-**V4 — Local and global file writes.** Validate both scopes for real, per agent:
-`./.mcp.json` created and merged in a project; `~/.claude.json` merged in place without
-disturbing Claude's own contents (it owns that file aggressively and keeps far more
-than MCP servers in it); permissions `0600` on header-mode files; and that a
-`disconnect` returns each file to its pre-write bytes.
+**G3 — Does the opencode family see its persisted config when launched?**
+`OPENCODE_CONFIG_CONTENT` supplies a whole config document inline. If opencode merges
+it with `~/.config/opencode/opencode.json`, the launch no-op from section 4 applies to
+opencode and kilo too; if it replaces it, they must keep receiving a session entry.
+Same question for kimi's `KIMI_CODE_HOME`, where the answer is almost certainly
+"replaces".
 
 ## Out of scope
 
 - Triggering the agent's OAuth flow from the CLI. Connect writes the config and prints
-  one line per agent saying how to authenticate there (`/mcp` in Claude Code,
-  `codex mcp login orq-workspace`). No shelling out, no blocking on a browser.
+  one line per agent (section 6). No shelling out, no blocking on a browser.
 - Cleaning up MCP entries written by v4.13.10. `e44c747` pinned a test that connect and
   disconnect leave them byte-identical, and this design does not change that.
-- `orq setup mcp` as a subcommand. RES-1270 already decided against it: redundant with
-  the capability argument.
+- `orq setup mcp` as a subcommand. RES-1270 decided against it: redundant with the
+  capability argument.
+- Any second API key. See "Why that is now possible".
