@@ -65,7 +65,7 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 // Tracing is excluded for the same reason defaultCapabilities excludes it:
 // dropUnavailableCaps would strip it and print "not available yet" on every
 // bare invocation.
-func availableCapabilities() []string { return []string{capGateway} }
+func availableCapabilities() []string { return []string{capGateway, capSkills} }
 
 func capAvailable(c string) bool { return slices.Contains(availableCapabilities(), c) }
 

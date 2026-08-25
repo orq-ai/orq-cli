@@ -2472,7 +2472,6 @@ func TestWiringReportsNoPathsOrIDs(t *testing.T) {
 // ============================================================================
 
 func TestSetupDefaultCapabilitiesIncludeSkills(t *testing.T) {
-	requireSkillsCapability(t)
 	caps := defaultCapabilities()
 	if !hasCap(caps, capSkills) {
 		t.Errorf("defaults = %v, want skills included", caps)
@@ -2486,7 +2485,6 @@ func TestSetupDefaultCapabilitiesIncludeSkills(t *testing.T) {
 }
 
 func TestSetupNonInteractiveUsesTheDefaultCapabilities(t *testing.T) {
-	requireSkillsCapability(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	resetSetupMemos(t)
@@ -2508,7 +2506,6 @@ func TestSetupNonInteractiveUsesTheDefaultCapabilities(t *testing.T) {
 // prompt and the defaults: it is the CI escape hatch, and must not block on a
 // TTY that does not exist.
 func TestSetupExplicitCapabilitiesWinOverDefaults(t *testing.T) {
-	requireSkillsCapability(t)
 	opts := &setupOptions{noInput: true, caps: []string{capSkills}}
 	caps, err := resolveCapabilities(newReporter(true), opts)
 	if err != nil {
@@ -2535,7 +2532,6 @@ func TestSetupExplicitCapabilitiesStillDropTheUnavailable(t *testing.T) {
 
 // --yes takes the affirmative default without asking, same as opts.confirm.
 func TestSetupYesUsesTheDefaultCapabilities(t *testing.T) {
-	requireSkillsCapability(t)
 	opts := &setupOptions{yes: true}
 	caps, err := resolveCapabilities(newReporter(true), opts)
 	if err != nil {
