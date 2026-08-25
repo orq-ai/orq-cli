@@ -27,7 +27,12 @@ import (
 //
 // registerGenerated attaches the module's own generated commands onto the root
 // before the custom commands are wired on top.
-func Run(version string, registerGenerated func(root *cobra.Command)) {
+//
+// apiVersion is the orq API line the generated commands came from. It is kept
+// out of root.Version — that string is parsed as a bare semver by the update
+// check, by install.sh and by anything else reading `orq --version` — and is
+// surfaced through the version template and `orq version` instead.
+func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigCh := make(chan os.Signal, 1)
@@ -47,6 +52,10 @@ func Run(version string, registerGenerated func(root *cobra.Command)) {
 		DefaultOutputFormat: "toon",
 		Version:             version,
 	})
+
+	commands.SetAPIVersion(apiVersion)
+	bartolocli.Root.SetVersionTemplate(
+		"{{.Name}} version {{.Version}}\nbuilt against orq API " + apiVersion + "\n")
 
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root)

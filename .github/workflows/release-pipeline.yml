@@ -6,9 +6,12 @@ name: Release Pipeline
 # code back to main, tags + publishes a GitHub release, cross-compiles every
 # platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
 #
-# The version is read from the module's .bartolo.json app_version (bumped by
-# orquesta-web); the tag is derived as v<app_version>. rc versions carry an
-# -rc.N suffix and produce a prerelease.
+# The CLI version is the repo's own and comes from ./VERSION: major and minor
+# are edited by hand, the patch is taken as the next free tag, and rc builds
+# become <next-minor>.0-rc.<run-number> prereleases. It is independent of the
+# orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
+# recorded instead — in the release notes, in the binary (orq version), and in
+# package.json's orqApiVersion.
 on:
   workflow_call:
     inputs:
@@ -22,9 +25,11 @@ on:
         type: string
         required: true
 
-# Serialize releases per module so two pushes can't race the commit-back/tag.
+# Serialize ALL releases, not just per module: both modules commit back to main
+# and a stable run racing an rc run would lose its ref update (the PATCH is a
+# fast-forward from the sha it read at checkout).
 concurrency:
-  group: release-${{ inputs.module_dir || 'root' }}
+  group: release
   cancel-in-progress: false
 
 env:
@@ -78,21 +83,67 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
+          set -euo pipefail
           workdir="${MODULE_DIR:-.}"
-          version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
-          if [ -z "$version" ] || [ "$version" = "null" ]; then
+
+          # The CLI version is the repo's own, and lives in ./VERSION — one file
+          # for both modules. Deliberately NOT in .bartolo.json: `bartolo
+          # generate` rewrites that file from its own struct, so any field it
+          # does not know about is silently dropped on the next regen.
+          base="$(tr -d '[:space:]' < VERSION)"
+          # major.minor.patch, digits only: everything below derives a tag from
+          # this, and a malformed one would fail late, after the release commit.
+          case "$base" in
+            *[!0-9.]*|*..*|.*|*.) base='' ;;
+          esac
+          if [ -z "$base" ] || [ "$(printf '%s' "$base" | tr -cd . | wc -c)" -ne 2 ]; then
+            echo "error: VERSION must be a bare major.minor.patch semver" >&2
+            exit 1
+          fi
+
+          # The orq API line these commands were generated from. orquesta-web
+          # writes it into .bartolo.json when it publishes a schema; it is
+          # reported and recorded, never used to derive the tag.
+          api_version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          if [ -z "$api_version" ] || [ "$api_version" = "null" ]; then
             echo "error: app_version missing in $workdir/.bartolo.json" >&2
             exit 1
           fi
-          tag="v$version"
-          if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
+
+          if [ -n "${MODULE_DIR:-}" ]; then
+            # An rc is the prerelease of the NEXT minor, so it always sorts
+            # above the stable release it will succeed. run_number only has to
+            # be monotonic, which it is.
+            major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"
+            version="$major.$((minor + 1)).0-rc.$RUN_NUMBER"
+            prerelease=true
+          else
+            # Patch releases are automatic: take the next free tag, so a
+            # CLI-only fix ships without anyone hand-editing VERSION. Major and
+            # minor stay manual — a human decides those, in VERSION.
+            prefix="${base%.*}"; patch="${base##*.}"; version="$base"
+            while gh api "repos/$REPO/git/ref/tags/v$version" >/dev/null 2>&1; do
+              patch=$((patch + 1))
+              version="$prefix.$patch"
+            done
+            prerelease=false
+            # Written back in the commit-back step below, so main always states
+            # the version that was last released from it.
+            if [ "$version" != "$base" ]; then echo "$version" > VERSION; fi
+          fi
+
           {
             echo "version=$version"
-            echo "tag=$tag"
+            echo "tag=v$version"
+            echo "api_version=$api_version"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
-          echo "Releasing $tag (prerelease=$prerelease) from module '${MODULE_DIR:-root}'"
+          echo "Releasing v$version (prerelease=$prerelease, orq API $api_version) from module '${MODULE_DIR:-root}'"
 
       - name: Regenerate CLI from schema
         run: |
@@ -115,7 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json 2>/dev/null || true
+          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
             exit 0
@@ -163,20 +214,34 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
+          API_VERSION: ${{ steps.version.outputs.api_version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           # gh creates the tag itself (at the current HEAD, already pushed to main
           # by the commit-back step) and publishes the release — no separate
           # `git tag`/`git push` needed.
-          flags=(--title "$TAG" --target "$(git rev-parse HEAD)" --generate-notes)
+          #
+          # Notes are generated through the API rather than with
+          # `--generate-notes` so the API line can be prepended to them: which
+          # orq API a build speaks is the first thing a reader needs, and it is
+          # no longer inferable from the version number.
+          target="$(git rev-parse HEAD)"
+          {
+            printf 'Built against **orq API %s**.\n\n' "$API_VERSION"
+            gh api --method POST "repos/$REPO/releases/generate-notes" \
+              -f tag_name="$TAG" -f target_commitish="$target" --jq .body
+          } > release-notes.md
+          flags=(--title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
+          API_VERSION: ${{ steps.version.outputs.api_version }}
+        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}" "$API_VERSION"
 
       - name: Publish platform packages to npm
         env:

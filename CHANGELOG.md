@@ -38,13 +38,23 @@ What you may depend on, and what you may not:
 
 ## Versioning
 
-The CLI version tracks the orq API line it was generated against (see
-`app_version` in `.bartolo.json`, stamped by the release pipeline). This means
-a CLI minor bump can carry surface changes originating in the API. The
-`surface.json` gate plus this file are the compensating controls: any surface
-change is visible in review and recorded here. Decoupling the CLI onto its own
-semver is an open team decision (RES-1133); until then, treat the API line as
-the version and this changelog as the source of truth for breaking changes.
+The CLI has its own semver, independent of the orq API line (RES-1434). It
+lives in `VERSION` at the repo root: major and minor are edited by hand, in the
+pull request that earns them, and the release pipeline takes the next free
+patch. A pre-release build of the next minor is published on the `rc` line.
+
+The orq API version a build was generated against is recorded, not encoded:
+
+- `orq --version` prints it under the CLI version, and `orq version` reports
+  both plus the install channel (`--json` for scripts).
+- Every GitHub release's notes open with `Built against orq API <version>`.
+- `npm view @orq-ai/cli orqApiVersion` reads it off the published package.
+
+A release is now cut for any change that reaches a binary, including
+hand-written CLI code and `install.sh` — not only for an API schema bump, which
+used to be the sole trigger and left CLI fixes unreleased until an unrelated
+API version happened to land. The `surface.json` gate plus this file remain the
+controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
@@ -160,6 +170,18 @@ the version and this changelog as the source of truth for breaking changes.
   release. It also reaches the generated API commands for the first time, which
   never honored it. Set `ORQ_SERVER` instead.
 
+- **Changed (versioning):** the CLI version no longer tracks the orq API
+  version. See [Versioning](#versioning) above. The first decoupled release is
+  `5.0.0`, chosen so the version only ever moves forward from the `4.13.x` line
+  it replaces. Nothing about a version number tells you the API line any more —
+  `orq version` does.
+- **Added:** `orq version`. Prints the CLI version, the orq API version the
+  build was generated against, and the channel it was installed through
+  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
+  `channel`. `orq --version` keeps printing the bare semver on its first line,
+  so anything parsing it is unaffected, with the API line printed under it.
+- **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
+  pre-release line instead of the stable one. The default is unchanged.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
@@ -294,13 +316,11 @@ the version and this changelog as the source of truth for breaking changes.
   `ORQ_API_KEY` was being compared against the saved key as though the user had
   exported it. The credential lookup now lives in one place (`auth.SavedAgentKey`)
   that `launch`, `setup` and `doctor` share.
-- **Fixed:** `orq launch` recognises the session's own workspace token again.
-  The CLI injects it into `ORQ_API_KEY`, and `launch` was treating that as a key
-  you had exported, which left it marked as "not from a session" — so every
-  decision keyed on where the credential came from was made on the wrong answer.
-  (The MCP scope warning this originally restored is gone with the credential:
-  MCP entries carry none, so the login session no longer decides whether MCP
-  works.)
+- **Fixed:** `orq launch --mcp` warns again when your login predates MCP scopes.
+  The CLI injects the session's own workspace token into `ORQ_API_KEY`, and
+  `launch` was treating that as a key you had exported — which left it marked as
+  "not from a session", so the scope check could never fire and the MCP server
+  rejected the call instead with an unexplained `insufficient_scope`.
 - **Fixed:** `orq setup --api-key <key>` is no longer silently overridden. A
   previously minted `gateway_key` outranks `api_key`, so the supplied key was
   used for that run and then ignored by the next `orq connect`. Saving an
@@ -358,15 +378,11 @@ the version and this changelog as the source of truth for breaking changes.
   `./.mcp.json`, `~/.kimi-code/mcp.json`, `~/.config/opencode/opencode.json`,
   `~/.config/kilo/kilo.json`, and the `[mcp_servers.orq]` table in codex's
   `config.toml`. `orq launch --mcp` is unaffected: it wires MCP for a single
-  session using your login, and writes nothing to disk. *(Superseded before
-  release for MCP: the capability returns, writing a URL and no credential. The
-  v4.13.10 entries this describes are still yours to delete — the new writer
-  replaces the `orq-workspace` entry, not the old `orq` one.)*
+  session using your login, and writes nothing to disk.
 - **Removed (breaking):** `--global` and `--local` on `orq connect` and
   `orq disconnect`. No provider config is project-scoped — every agent reads its
   gateway configuration from one absolute path — so both flags had no effect
-  once MCP was removed. *(Superseded before release: both flags return with the
-  `mcp` capability.)*
+  once MCP was removed.
 - **Changed:** `orq connect` no longer offers Claude Code, and `--status` no
   longer reports it as unwired. Claude reads its endpoint from the environment
   and has no gateway provider config, so with MCP gone there is nothing to
@@ -422,9 +438,7 @@ the version and this changelog as the source of truth for breaking changes.
   to be wired on every launch with `--no-mcp` to decline; it is now off unless
   you pass `--mcp`, and `--no-mcp` is accepted but does nothing. The skills
   plugin follows MCP, so it is off by default too. A wrapper relying on the old
-  default gets an agent with no orq tools and no error. *(Superseded before
-  release: MCP is on by default again, and `--no-mcp` declines. See the entry at
-  the top of this section.)*
+  default gets an agent with no orq tools and no error.
 - **Changed:** the API key `orq setup` mints is owned by you, not by a service
   account. Service accounts can only be created by workspace admins, so the old
   behaviour failed for Developer and Researcher members of an Enterprise

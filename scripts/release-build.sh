@@ -6,7 +6,7 @@
 # all six package.json files.
 #
 # Usage:
-#   scripts/release-build.sh <semver> [module-dir]
+#   scripts/release-build.sh <semver> [module-dir] [api-version]
 #
 # <module-dir> is a repo-relative path to the Go module to build from (its
 # cmd/orq is the entrypoint). Defaults to the repo root (the prod `orq`
@@ -14,9 +14,14 @@
 # binaries land in the shared npm/cli-* packages — prod and rc publish the
 # same @orq-ai/cli package, differing only by npm dist-tag.
 #
+# <api-version> is the orq API version the generated commands came from
+# (.bartolo.json app_version). It is stamped into the binary and into every
+# package.json as `orqApiVersion`, because the CLI version no longer encodes
+# it. Defaults to "unknown" for a local build.
+#
 # Example:
 #   scripts/release-build.sh 0.1.0
-#   scripts/release-build.sh 0.1.0-rc.1 packages/orq-rc
+#   scripts/release-build.sh 0.1.0-rc.1 packages/orq-rc 4.13.22
 #
 # Intended to run inside the GitHub Actions release workflow on macos-latest
 # (so `codesign` is available for ad-hoc signing) but safe to run locally too.
@@ -24,12 +29,13 @@
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-  echo "usage: $0 <semver> [module-dir]" >&2
+  echo "usage: $0 <semver> [module-dir] [api-version]" >&2
   exit 1
 fi
 
 VERSION="$1"
 MODULE_DIR="${2:-}"
+API_VERSION="${3:-unknown}"
 ROOT_DIR="$(cd -- "$(dirname "$0")/.." && pwd)"
 NPM_DIR="$ROOT_DIR/npm"
 # Absolute path to the Go module we build from. Empty MODULE_DIR = repo root.
@@ -88,7 +94,7 @@ for row in "${PLATFORMS[@]}"; do
     GOARCH="$goarch" \
     go build \
       -trimpath \
-      -ldflags "-s -w -X main.version=$VERSION -X orq/cli/custom/skills.buildFingerprint=$SKILLS_FP" \
+      -ldflags "-s -w -X main.version=$VERSION -X main.apiVersion=$API_VERSION -X orq/cli/custom/skills.buildFingerprint=$SKILLS_FP" \
       -o "$target_dir/$exe" \
       ./cmd/orq
   )
@@ -111,7 +117,7 @@ done
 # @orq-ai/cli-* pin lines up with the wrapper's version.
 echo "Stamping version $VERSION into package.json files..."
 
-VERSION="$VERSION" NPM_DIR="$NPM_DIR" node -e '
+VERSION="$VERSION" API_VERSION="$API_VERSION" NPM_DIR="$NPM_DIR" node -e '
   const fs = require("node:fs");
   const version = process.env.VERSION;
   const npmDir = process.env.NPM_DIR;
@@ -127,6 +133,9 @@ VERSION="$VERSION" NPM_DIR="$NPM_DIR" node -e '
     const path = dir + "/package.json";
     const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
     pkg.version = version;
+    // Which orq API this build speaks, queryable without installing it:
+    //   npm view @orq-ai/cli orqApiVersion
+    pkg.orqApiVersion = process.env.API_VERSION;
     if (pkg.optionalDependencies) {
       for (const key of Object.keys(pkg.optionalDependencies)) {
         pkg.optionalDependencies[key] = version;
