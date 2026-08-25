@@ -466,26 +466,31 @@ This wipes `cli/generated/` and rebuilds it from `openapi.json`. **`cli/custom/`
 
 ### Cutting a release
 
-You do not cut one by hand. `.github/workflows/release.yml` fires on any push to
-`main` that touches something reaching a binary — `cli/custom/`, `cmd/orq/`,
-`npm/`, `scripts/`, `install.sh`, `VERSION`, `go.mod`, or either module's
-OpenAPI schema — and calls `release-pipeline.yml`, which:
+You do not cut one by hand. `.github/workflows/release.yml` fires on every push
+to `main`, releases when the push touched something that reaches a binary —
+`cli/custom/`, `cmd/orq/`, `npm/`, `scripts/`, `install.sh`, `VERSION`,
+`go.mod`, or either module's OpenAPI schema — and calls `release-pipeline.yml`,
+which:
 
-1. Resolves the version. The CLI version lives in `VERSION`; the pipeline takes
-   the next free patch tag, so a fix ships without anyone editing the file.
-   **Bump the major or minor in `VERSION`, in the PR that earns it.** An rc
-   release becomes `<next-minor>.0-rc.<run-number>`.
+1. Resolves the version. The CLI version lives in `VERSION`, and the pipeline
+   moves it: a push carrying a new orq API schema takes the minor, anything else
+   takes the patch, and both take the next free tag — nobody edits the file for
+   a release. **Bump the major in `VERSION`, in the PR that earns it.** An rc
+   release becomes `<next-minor>.0-rc.<n>`.
 2. Regenerates `cli/generated/` from the module's schema and commits it back to
    `main` (signed, through the Git Data API — `main` requires verified
    signatures).
-3. Tags, and publishes a GitHub release whose notes open with the orq API
-   version the build was generated against.
+3. Creates a draft GitHub release whose notes open with the orq API version the
+   build was generated against; it is published, and the tag created, only once
+   every asset is attached.
 4. Cross-compiles 5 platform binaries (`darwin-arm64`, `darwin-x64`,
-   `linux-x64`, `linux-arm64`, `win32-x64`), ad-hoc signs the macOS ones, stamps
-   version and `orqApiVersion` into all 6 `package.json` files, and publishes to
-   npm under `latest` (stable) or `rc` (pre-release).
+   `linux-x64`, `linux-arm64`, `win32-x64`), ad-hoc signs the macOS ones, and
+   stamps version and `orqApiVersion` into all 6 `package.json` files.
 5. Uploads the raw binaries, their `.sha256` files, the man pages and a stamped
-   `install.sh` to the GitHub release.
+   `install.sh` to the release, publishes it, and only then publishes to npm
+   under `latest` (stable) or `rc` (pre-release) — the npm dist-tags are what
+   `install.sh --channel rc` resolves a version from, so they must never point
+   at a release whose assets are still uploading.
 
 npm publishing authenticates through OIDC (`id-token: write`), not a stored
 token. `workflow_dispatch` runs a release on demand — `stable`, `prerelease` or

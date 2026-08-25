@@ -7,8 +7,9 @@ name: Release Pipeline
 # code back to main, tags + publishes a GitHub release, cross-compiles every
 # platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
 #
-# The CLI version is the repo's own and comes from ./VERSION: major and minor
-# are edited by hand, the patch is taken as the next free tag, and rc builds
+# The CLI version is the repo's own and comes from ./VERSION. A new orq API
+# schema bumps the minor, any other change to main bumps the patch, and both
+# take the next free tag; the major is the only field a human edits. rc builds
 # become <next-minor>.0-rc.<n> prereleases, with n likewise the next free one. It is independent of the
 # orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
 # recorded instead — in the release notes, in the binary (orq version), and in
@@ -25,6 +26,11 @@ on:
         description: "npm dist-tag to publish under (latest for prod, rc for pre-release)"
         type: string
         required: true
+      bump:
+        description: "'minor' when a new orq API schema landed, 'patch' for a CLI-only change"
+        type: string
+        required: false
+        default: patch
 
 # Serialize ALL releases, not just per module: both modules commit back to main
 # and a stable run racing an rc run would lose its ref update (the PATCH is a
@@ -35,6 +41,7 @@ concurrency:
 
 env:
   MODULE_DIR: ${{ inputs.module_dir }}
+  BUMP: ${{ inputs.bump }}
 
 jobs:
   release:
@@ -95,7 +102,8 @@ jobs:
           # for both modules. Deliberately NOT in .bartolo.json: `bartolo
           # generate` rewrites that file from its own struct, so any field it
           # does not know about is silently dropped on the next regen.
-          base="$(tr -d '[:space:]' < VERSION)"
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          base="$file_version"
           # Leading zeros are rejected along with the obvious garbage: "5.08.0"
           # looks fine until $((minor + 1)) reads 08 as octal and the shell
           # aborts mid-release. npm rejects them too.
@@ -140,15 +148,26 @@ jobs:
             version="$next-rc.$(first_free "$next-rc." 1)"
             prerelease=true
           else
-            # Patch releases are automatic, so a CLI-only fix ships without
-            # anyone hand-editing VERSION. Major and minor stay manual — a human
-            # decides those, in VERSION.
+            # Nobody hand-edits the version for a release. A new orq API
+            # schema is the one thing that can change what the commands are, so
+            # it takes the minor; everything else — a CLI fix, an installer
+            # change — takes the patch. The major is left to a human.
+            #
+            # A static rule, deliberately: deriving the bump from a diff of the
+            # generated command surface would be more precise and would make
+            # every release's number depend on a comparison that can itself be
+            # wrong.
+            if [ "${BUMP:-patch}" = "minor" ]; then
+              major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"
+              base="$major.$((minor + 1)).0"
+            fi
             prefix="${base%.*}"
             version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
             # Written back in the commit-back step below, so main always states
-            # the version that was last released from it.
-            if [ "$version" != "$base" ]; then echo "$version" > VERSION; fi
+            # the version that was last released from it. Compared against the
+            # file, not against $base, which the minor bump above rewrites.
+            if [ "$version" != "$file_version" ]; then echo "$version" > VERSION; fi
           fi
 
           {
