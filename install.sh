@@ -208,8 +208,11 @@ if [ -z "$VERSION" ]; then
   version_pinned=0
   # GitHub's latest-release API returns JSON; awk out the tag_name field
   # without requiring jq. Pre-releases are excluded by the endpoint itself.
+  # awk drains the stream rather than exiting on the match: an early exit
+  # closes the pipe while curl is mid-body, and curl then prints a write
+  # failure per retry plus an HTTP/2 framing error on every install.
   api_url="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ {print $4; exit}')"
+  VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
 
   if [ -z "$VERSION" ]; then
     err "failed to determine latest release from $api_url"
