@@ -470,10 +470,11 @@ to `main`, releases when something that reaches a binary is unreleased —
 `go.mod`, or either module's OpenAPI schema, changed since that line's last tag
 — and calls `release-pipeline.yml`, which:
 
-1. Resolves the version, from the larger of what the orq API version moved and
-   what our own conventional-commit types since the last release earn, and takes
-   the next free tag from it. Nobody edits `VERSION` and nobody tags; see
-   [Versioning](CHANGELOG.md#versioning) and `CLAUDE.md`.
+1. Resolves the version: the larger of what the orq API version moved and what
+   our own conventional-commit types since the last release earn, applied to the
+   last released tag, floored at `VERSION`, then the next free tag from that.
+   Nobody tags, and `VERSION` is hand-edited only to force a number the rules
+   would not reach; see [Versioning](CHANGELOG.md#versioning) and `CLAUDE.md`.
 2. Stamps `CHANGELOG.md`: the hand-written `## Unreleased` section is renamed to
    the version being cut, a fresh empty one takes its place, and the section
    becomes the top of the release notes. An rc release becomes

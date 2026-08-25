@@ -95,8 +95,10 @@ commit type is the version.
 
 The release pipeline reads the commits since the last release, takes the largest
 bump they earn, and compares it with the field the orq API version moved —
-whichever is larger wins. **You do not edit `VERSION` and you do not tag.** That
-file records what was last released; the pipeline writes it.
+whichever is larger wins. The bump is applied to the last released tag, and
+`VERSION` is a floor on the result. **You do not tag, and you edit `VERSION`
+only to force a number the rules would not reach on their own** (see
+[Versioning](CHANGELOG.md#versioning)); otherwise the pipeline writes it.
 
 **Never write a breaking commit without asking first.** A single `!` or
 `BREAKING CHANGE:` footer anywhere in the range cuts a major release, and it

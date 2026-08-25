@@ -39,9 +39,9 @@ What you may depend on, and what you may not:
 ## Versioning
 
 The CLI has its own semver, independent of the orq API line (RES-1434). It lives
-in `VERSION` at the repo root and the release pipeline moves it — nobody edits
-that file and nobody tags. A pre-release build of the next minor is published on
-the `rc` line.
+in `VERSION` at the repo root and the release pipeline moves it — nobody tags,
+and hand edits to that file are for one case only (below). A pre-release build of
+the next minor is published on the `rc` line.
 
 ### What moves the version
 
@@ -60,10 +60,14 @@ Every release takes the larger of two answers:
 So an orq patch release carrying a `feat:` of ours is a minor, and a `fix:` on
 its own is a patch.
 
-`VERSION` is the record of what was last released, written back by the pipeline.
-Editing it by hand is for one case only: releasing a number the rules would not
-reach on their own. The pipeline then takes the next free tag from it, so what
-you write is a floor rather than a promise.
+The bump is applied to the **last released tag**, not to `VERSION`: the bump
+already counts every unreleased commit, so applying it to a `VERSION` that a
+previous release of those same commits had already moved would count them twice.
+
+`VERSION` is the record of what was last released, written back by the pipeline,
+and a floor on the next one. Editing it by hand is for one case only: releasing a
+number the rules would not reach on their own. The pipeline then takes the next
+free tag from it, so what you write is a floor rather than a promise.
 
 ### Release notes
 

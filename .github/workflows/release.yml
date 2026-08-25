@@ -89,10 +89,18 @@ jobs:
           # to VERSION in the PR that earns it, like any other semver project.
           field() { v="${1#*.}"; case "$2" in 1) printf '%s' "${1%%.*}" ;; 2) printf '%s' "${v%%.*}" ;; esac; }
           bump=patch
+          # Same validation the pipeline does: jq prints "null" for a missing
+          # key, and "null" != "4.13.22" would read as an API change and cut a
+          # release off a broken schema file.
           api_now="$(jq -r '.app_version' .bartolo.json)"
+          if [ -z "$api_now" ] || [ "$api_now" = "null" ]; then
+            echo "error: app_version missing in .bartolo.json" >&2
+            exit 1
+          fi
           api_released=""
           if [ -n "$stable_tag" ]; then
             api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
+            if [ "$api_released" = "null" ]; then api_released=""; fi
           fi
           if [ -n "$api_released" ] && [ "$api_released" != "$api_now" ]; then
             if [ "$(field "$api_now" 1)" != "$(field "$api_released" 1)" ]; then
@@ -112,7 +120,15 @@ jobs:
           # match and closes the pipe, printf dies of SIGPIPE, and pipefail
           # reads that 141 as "no match" - silently, and only once the input
           # outgrows the pipe buffer.
-          commits="$(git log --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD")"
+          #
+          # Scoped to the paths the stable binary is built from, the same way
+          # CHANGED_STABLE is: an rc-only `feat:` ships to nobody on this line,
+          # so it must not decide this line's version. --full-history keeps
+          # merge commits that touch those paths, whose subject is where a
+          # squash-merged `feat:` usually lives.
+          commits="$(git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
+            VERSION cli/custom npm scripts install.sh \
+            openapi.yaml .bartolo.json go.mod go.sum cmd/orq)"
           commit_bump=patch
           if grep -qE '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:' <<< "$commits"; then
             commit_bump=major
