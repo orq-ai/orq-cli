@@ -78,23 +78,31 @@ jobs:
           CHANGED_STABLE="$(changed_since "$stable_tag" | grep -v '_test\.go$' || true)"
           CHANGED_RC="$(changed_since "$rc_tag" | grep -v '_test\.go$' || true)"
 
-          # Which field of the version the stable release moves. The orq API
-          # version is the one thing that can change what the commands are, so
-          # a new one - an actual orq release, landed here by orquesta-web's
-          # schema publish - takes the minor. Everything this repo does to
-          # itself takes the patch. Compared value-to-value rather than by file:
-          # a schema republished at the same app_version is not a new API.
+          # The stable release moves the same field the orq API moved: their
+          # major is our major, their minor our minor. The CLI has its own
+          # number, but the API is the contract our commands are generated
+          # from, so the size of their change is the size of ours.
+          #
+          # Compared value-to-value rather than by file: a schema republished at
+          # the same app_version is not a new API. Changes this repo makes to
+          # itself take a patch; a feature or a break of OUR own is a hand edit
+          # to VERSION in the PR that earns it, like any other semver project.
+          field() { v="${1#*.}"; case "$2" in 1) printf '%s' "${1%%.*}" ;; 2) printf '%s' "${v%%.*}" ;; esac; }
           bump=patch
           api_now="$(jq -r '.app_version' .bartolo.json)"
           api_released=""
           if [ -n "$stable_tag" ]; then
             api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
           fi
-          if [ "$api_now" != "$api_released" ]; then
-            bump=minor
+          if [ -n "$api_released" ] && [ "$api_released" != "$api_now" ]; then
+            if [ "$(field "$api_now" 1)" != "$(field "$api_released" 1)" ]; then
+              bump=major
+            elif [ "$(field "$api_now" 2)" != "$(field "$api_released" 2)" ]; then
+              bump=minor
+            fi
           fi
           echo "bump=$bump" >> "$GITHUB_OUTPUT"
-          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API $api_released -> $api_now, bump=$bump"
+          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API ${api_released:-none} -> $api_now, bump=$bump"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$TARGET" in
