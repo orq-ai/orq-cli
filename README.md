@@ -472,7 +472,8 @@ to `main`, releases when something that reaches a binary is unreleased —
 
 1. Resolves the version. The CLI version lives in `VERSION`, and the pipeline
    moves whichever field the orq API version moved; anything else takes the
-   patch. All take the next free tag — nobody edits the file for a release. **Bump the major in `VERSION`, in the PR that earns it.** An rc
+   patch. All take the next free tag — nobody edits the file for a release.
+   (When to bump it by hand for a change of our own: see `CHANGELOG.md`.) **Bump the major in `VERSION`, in the PR that earns it.** An rc
    release becomes `<next-minor>.0-rc.<n>`.
 2. Regenerates `cli/generated/` from the module's schema and commits it back to
    `main` (signed, through the Git Data API — `main` requires verified
