@@ -155,7 +155,7 @@ esac
 
 # A pinned version names one exact release, so the channel has nothing left to
 # resolve. Refusing beats silently ignoring one of the two flags the caller
-# passed - `--channel rc --version v3.0.0` would otherwise install a stable
+# passed - `--channel rc --version v5.0.0` would otherwise install a stable
 # release and report success.
 if [ -n "$VERSION" ] && [ "$CHANNEL_EXPLICIT" = "1" ]; then
   err "--channel and --version cannot be combined: --version already names a release"

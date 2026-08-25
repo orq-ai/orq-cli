@@ -96,8 +96,8 @@ commit type is the version.
 The release pipeline reads the commits since the last release, takes the largest
 bump they earn, and compares it with the field the orq API version moved —
 whichever is larger wins. The bump is applied to `VERSION`, which records what
-this line last released — the line starts at `3.0.0`; the `4.13.x` tags are the
-orq API's old numbering and are not part of it. **You do not tag, and you edit
+this line last released — the line starts at `5.0.0`, above every number the orq
+API's old `4.x` line published. **You do not tag, and you edit
 `VERSION` only to force a number the rules would not reach on their own** (see
 [Versioning](CHANGELOG.md#versioning)); otherwise the pipeline writes it.
 
