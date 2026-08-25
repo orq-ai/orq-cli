@@ -38,10 +38,15 @@ What you may depend on, and what you may not:
 
 ## Versioning
 
-The CLI has its own semver, independent of the orq API line (RES-1434). It lives
-in `VERSION` at the repo root and the release pipeline moves it — nobody tags,
-and hand edits to that file are for one case only (below). A pre-release build of
-the next minor is published on the `rc` line.
+The CLI has its own semver, independent of the orq API line (RES-1434). The line
+starts at `3.0.0`; everything at `4.12.x`–`4.13.x` was the orq API's number, not
+the CLI's, and does not continue into it.
+
+The tag `v<version>` is the authority — the release pipeline creates it, and
+writes the same number back to `VERSION` at the repo root so a checkout knows
+what it last shipped. You never tag by hand, and hand edits to `VERSION` are for
+one case only (below). A pre-release build of the next minor is published on the
+`rc` line.
 
 ### What moves the version
 
@@ -60,14 +65,16 @@ Every release takes the larger of two answers:
 So an orq patch release carrying a `feat:` of ours is a minor, and a `fix:` on
 its own is a patch.
 
-The bump is applied to the **last released tag**, not to `VERSION`: the bump
-already counts every unreleased commit, so applying it to a `VERSION` that a
-previous release of those same commits had already moved would count them twice.
+`VERSION` is the record of what was last released on this line — the pipeline
+writes it on every release — and the bump is applied to it exactly once. The tags
+are not scanned for a maximum: the old `v4.12.x`–`v4.13.x` tags are the orq API's
+numbering, and they sort above everything this line will publish for years.
 
-`VERSION` is the record of what was last released, written back by the pipeline,
-and a floor on the next one. Editing it by hand is for one case only: releasing a
-number the rules would not reach on their own. The pipeline then takes the next
-free tag from it, so what you write is a floor rather than a promise.
+A `VERSION` with no tag of its own means the line has not started yet — that is
+how `3.0.0` is published as `3.0.0` and not as `3.0.1` — or that someone is
+forcing a number the rules would not reach on their own. That hand edit is the
+one case for touching the file. The pipeline takes the next free tag from what
+you write, so it is a floor rather than a promise.
 
 ### Release notes
 
@@ -209,9 +216,16 @@ controls on surface changes, whichever side they originate from.
 
 - **Changed (versioning):** the CLI version no longer tracks the orq API
   version. See [Versioning](#versioning) above. The first decoupled release is
-  `5.0.0`, chosen so the version only ever moves forward from the `4.13.x` line
-  it replaces. Nothing about a version number tells you the API line any more —
-  `orq version` does.
+  `3.0.0` — a deliberate reset, not a continuation of the `4.13.x` line, which
+  was the API's number rather than ours. `3.x` is the lowest major free of both
+  the published npm versions and the git tags, so it is the first number that
+  can mean "this line starts here". Nothing about a version number tells you the
+  API line any more — `orq version` does.
+
+  Two consequences if you are already on `4.13.x`: `npm update` will not move
+  you, because 3.0.0 is a lower number — install with `@latest`, the installer,
+  or `orq update`. And a version number no longer compares meaningfully across
+  the boundary: `3.0.0` is newer than `4.13.22`.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the channel it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
