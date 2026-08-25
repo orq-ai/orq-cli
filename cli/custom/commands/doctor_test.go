@@ -74,7 +74,7 @@ func TestCodingAgentsSummaryStates(t *testing.T) {
 func TestSkillsCheck(t *testing.T) {
 	newManifest := func(t *testing.T, dir string, present, absent int) {
 		t.Helper()
-		m := &skills.Manifest{Version: 1}
+		m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint()}
 		for i := 0; i < present; i++ {
 			p := filepath.Join(dir, fmt.Sprintf("orq-present-%d", i))
 			if err := os.MkdirAll(p, 0o755); err != nil {
@@ -123,6 +123,28 @@ func TestSkillsCheck(t *testing.T) {
 		}
 		if check.Details["missing"] != 2 || check.Details["recorded"] != 3 {
 			t.Errorf("details = %v, want missing=2 recorded=3", check.Details)
+		}
+	})
+
+	t.Run("an install from an older CLI is stale", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir := filepath.Join(home, ".claude", "skills")
+		newManifest(t, dir, 2, 0)
+		m, err := skills.LoadManifest()
+		if err != nil || m == nil {
+			t.Fatal(err)
+		}
+		m.Fingerprint = "an-older-release"
+		if err := skills.SaveManifest(m); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := skillsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, "older CLI version") {
+			t.Errorf("message does not say the install is stale: %q", check.Message)
 		}
 	})
 

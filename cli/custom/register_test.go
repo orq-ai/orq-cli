@@ -15,6 +15,7 @@ import (
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 )
 
 // A machine that never ran `orq connect` has no manifest. registerCommands
@@ -259,5 +260,45 @@ func TestSkillsRefreshHookIsReachableFromAGeneratedCommand(t *testing.T) {
 	}
 	if m.Fingerprint != realFingerprint {
 		t.Errorf("fingerprint = %q, want it refreshed to %q; the pre-run hook did not fire for a generated command", m.Fingerprint, realFingerprint)
+	}
+}
+
+// The skills refresh runs from a PersistentPreRun, so without a gate it fires
+// on every command — a manifest read, a lock acquisition and a directory walk
+// in front of `orq --help`, and every bug in that path reachable from a
+// command that has nothing to do with skills.
+func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
+	root := &cobra.Command{Use: "orq"}
+	for _, name := range []string{"launch", "connect", "disconnect", "setup", "doctor", "help", "workspace"} {
+		cmd := &cobra.Command{Use: name}
+		root.AddCommand(cmd)
+	}
+	want := map[string]bool{"launch": true, "connect": true, "disconnect": true, "setup": true}
+	for _, cmd := range root.Commands() {
+		if got := skillsCommand(cmd); got != want[cmd.Name()] {
+			t.Errorf("skillsCommand(%q) = %v, want %v", cmd.Name(), got, want[cmd.Name()])
+		}
+	}
+
+	// A subcommand answers the same as its parent: `orq connect skills` and
+	// `orq launch claude` must not fall through the switch on their own name.
+	for _, parent := range []string{"connect", "launch", "workspace"} {
+		p, _, err := root.Find([]string{parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		child := &cobra.Command{Use: "anything"}
+		p.AddCommand(child)
+		if got := skillsCommand(child); got != want[parent] {
+			t.Errorf("skillsCommand(%q %q) = %v, want %v", parent, child.Name(), got, want[parent])
+		}
+	}
+
+	if skillsCommand(nil) {
+		t.Error("a nil command refreshed skills")
+	}
+	// The root itself is `orq` with no subcommand — help output, nothing else.
+	if skillsCommand(root) {
+		t.Error("bare `orq` refreshed skills")
 	}
 }

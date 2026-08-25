@@ -287,9 +287,16 @@ func registerCommands(root *cobra.Command) {
 
 // installSkillsRefreshPreRun keeps installed skills current with the running
 // binary, and reclaims links left behind by launches that died without
-// cleaning up after themselves, on every `orq` invocation — not just
-// `orq connect`, so someone who updates the CLI and then opens their agent
-// directly is not left on the old set.
+// cleaning up after themselves.
+//
+// Scoped to the commands that actually touch skills (see skillsCommand). It
+// used to run on every `orq` invocation, on the reasoning that someone who
+// updates the CLI and then opens their agent directly should not be left on
+// the old set. That put a manifest read, a lock acquisition and a directory
+// walk in front of `orq --help`, and made every bug in this path — a wedged
+// lock, a bad prune — reachable from a command that has nothing to do with
+// skills. The convergence it bought back is now doctor'"'"'s job: it reports a
+// stale or incomplete install and names the one command that fixes it.
 //
 // root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
 // root.PersistentPreRunE to a function that, after its own housekeeping,
@@ -316,6 +323,9 @@ func installSkillsRefreshPreRun() {
 			if err := prev(cmd, args); err != nil {
 				return err
 			}
+		}
+		if !skillsCommand(cmd) {
+			return nil
 		}
 		res, err := skills.Refresh()
 		if err != nil {
@@ -417,4 +427,29 @@ func addHiddenAuthAliases(root *cobra.Command) {
 		alias.Hidden = true
 		root.AddCommand(alias)
 	}
+}
+
+// skillsCommand reports whether cmd is one whose job involves the skills on
+// this machine, and therefore one that should converge them first.
+//
+// Matched on the root-level command, so subcommands and aliases ride along
+// with their parent: `orq connect skills` and `orq launch claude` are both
+// the same answer as their root.
+func skillsCommand(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	top := cmd
+	for top.Parent() != nil && top.Parent().Parent() != nil {
+		top = top.Parent()
+	}
+	switch top.Name() {
+	// launch installs session links; connect and disconnect are the whole
+	// point; setup runs connect. doctor is deliberately absent: it reports
+	// what is on disk, and a diagnostic that repairs the thing it is
+	// diagnosing can never show you the state you called it about.
+	case "launch", "connect", "disconnect", "setup":
+		return true
+	}
+	return false
 }

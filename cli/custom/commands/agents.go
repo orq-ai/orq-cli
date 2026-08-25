@@ -872,11 +872,15 @@ func dropDanglingKimiDefault(content string) string {
 	return out.String()
 }
 
-// skillsCheck reports recorded skill links whose path is gone. refresh
-// deliberately does not put them back: it converges the skill *set*, and a
-// file the user deleted by hand is a decision, not drift — silently
-// recreating it on the next `orq --help` would fight the user. So the state
-// is real and worth naming, and naming it is doctor's job.
+// skillsCheck reports two states nothing else converges on its own: recorded
+// links whose path is gone, and an install left behind by a CLI update.
+//
+// Missing links are not repaired by refresh, deliberately — it converges the
+// skill *set*, and a file the user deleted by hand is a decision, not drift.
+// A stale install is repaired by refresh, but only on the commands that
+// touch skills (see skillsCommand in register.go), so someone who updates the
+// CLI and opens their agent directly stays on the old set until they run one.
+// Both are real, persistent, and invisible; naming them is doctor's job.
 //
 // Session links are excluded: they are created and destroyed by a live
 // `orq launch`, and their absence between sessions is not breakage.
@@ -909,9 +913,16 @@ func skillsCheck() (doctorCheck, bool) {
 		ID:      "skills",
 		Details: map[string]any{"recorded": recorded, "missing": missing},
 	}
-	if missing == 0 {
+	stale := m.Fingerprint != skills.Fingerprint()
+	check.Details["stale"] = stale
+	if missing == 0 && !stale {
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
+		return check, true
+	}
+	if missing == 0 {
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d orq skills are from an older CLI version — run 'orq connect skills' to update them", recorded)
 		return check, true
 	}
 	check.Status = "warn"
