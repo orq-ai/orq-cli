@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -378,9 +377,9 @@ func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 	if err := os.Symlink(filepath.Join(gen, "orq-retired-skill"), ghost); err != nil {
 		t.Fatal(err)
 	}
-	m, err2 := LoadManifest()
-	if err2 != nil || m == nil {
-		t.Fatalf("LoadManifest: %v %v", m, err2)
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v %v", m, err)
 	}
 	m.AddLink(Link{Path: ghost, Agent: "claude", Skill: "orq-retired-skill", Mode: ModeSymlink})
 	if err := SaveManifest(m); err != nil {
@@ -1175,45 +1174,90 @@ func TestGenerationPermissionsMatchItsContents(t *testing.T) {
 // Pruning a skill that left the shipped set used to os.RemoveAll whatever was at
 // the recorded path, and refresh runs from PreRun on every command.
 func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	dir := filepath.Join(home, ".claude", "skills")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	// Both modes, not linkMode(): ModeCopy is the Windows fallback, and its
+	// ownership check is weaker than the symlink one — isOurs can only see
+	// that a directory is a directory. Running only the host's mode meant the
+	// Unix suite passed while the same refresh deleted the user's work on
+	// Windows.
+	for _, mode := range []string{ModeSymlink, ModeCopy} {
+		t.Run(mode, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			dir := filepath.Join(home, ".claude", "skills")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
 
-	// A real directory of the user's, at a path the manifest still claims for a
-	// skill this binary no longer ships.
-	victim := filepath.Join(dir, "orq-departed-skill")
-	if err := os.MkdirAll(victim, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	keep := filepath.Join(victim, "their-work.md")
-	if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+			// A real directory of the user's, at a path the manifest still
+			// claims for a skill this binary no longer ships.
+			victim := filepath.Join(dir, "orq-departed-skill")
+			if err := os.MkdirAll(victim, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			keep := filepath.Join(victim, "their-work.md")
+			if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
-	m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
-	m.AddLink(Link{Path: victim, Agent: "claude", Skill: "orq-departed-skill", Mode: linkMode()})
-	if err := SaveManifest(m); err != nil {
-		t.Fatal(err)
-	}
+			m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
+			m.AddLink(Link{Path: victim, Agent: "claude", Skill: "orq-departed-skill", Mode: mode})
+			if err := SaveManifest(m); err != nil {
+				t.Fatal(err)
+			}
 
-	if _, err := Refresh(); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
+			res, err := Refresh()
+			if err != nil {
+				t.Fatalf("Refresh: %v", err)
+			}
 
-	if _, err := os.Stat(keep); err != nil {
-		t.Errorf("refresh deleted a directory it does not own: %v", err)
+			if _, err := os.Stat(keep); err != nil {
+				t.Errorf("refresh deleted a directory it does not own: %v", err)
+			}
+			after, err := LoadManifest()
+			if err != nil || after == nil {
+				t.Fatalf("LoadManifest after refresh: %v", err)
+			}
+			for _, l := range after.Links {
+				if l.Path == victim {
+					t.Error("kept tracking a path we do not own; the record should be dropped")
+				}
+			}
+			// Dropping the record silently would leave the user a directory
+			// nothing mentions again, not even `orq disconnect skills`.
+			if len(res.Disowned) != 1 || res.Disowned[0] != victim {
+				t.Errorf("Disowned = %v, want [%s] so the caller can say so once", res.Disowned, victim)
+			}
+		})
 	}
-	after, err := LoadManifest()
-	if err != nil || after == nil {
-		t.Fatalf("LoadManifest after refresh: %v", err)
+}
+
+// A permanent link is only ever demoted to session-scoped by mistake, and the
+// mistake is expensive: the session takes the user's install with it on exit.
+// AddLink is the last place that can refuse, so pin all four combinations
+// rather than only the end-to-end path through InstallSession.
+func TestAddLinkNeverDemotesAPermanentLink(t *testing.T) {
+	cases := []struct {
+		name              string
+		existing, added   bool
+		wantSessionScoped bool
+	}{
+		{"permanent stays permanent", false, true, false},
+		{"permanent is not re-marked", false, false, false},
+		{"session is promoted", true, false, false},
+		{"session stays session", true, true, true},
 	}
-	for _, l := range after.Links {
-		if l.Path == victim {
-			t.Error("kept tracking a path we do not own; the record should be dropped")
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := &Manifest{Version: manifestVersion}
+			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.existing})
+			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.added})
+			if len(m.Links) != 1 {
+				t.Fatalf("got %d links, want 1: the second AddLink should replace the first", len(m.Links))
+			}
+			if m.Links[0].Session != c.wantSessionScoped {
+				t.Errorf("Session = %v, want %v", m.Links[0].Session, c.wantSessionScoped)
+			}
+		})
 	}
 }
 
@@ -1278,11 +1322,13 @@ func countEntries(t *testing.T, dir string) int {
 	return len(entries)
 }
 
-// Breaking a stale lock by remove deleted whatever was there at that moment,
-// which after another breaker had already acquired was their live lock. Both
-// then ran load-mutate-save and one lost the other's records.
-func TestStaleLockBreakAdmitsOneWriter(t *testing.T) {
-	t.Skip("known: the stale break is not atomic, so two breakers can both acquire. Needs flock; see lock.go")
+// A live holder heartbeats its lock file, so the age bound never retires a
+// lock somebody is still writing under. Before the heartbeat the age was
+// measured from acquisition, so any holder slower than lockMaxAge — a
+// copy-mode install behind antivirus, a machine suspended mid-command — had
+// its lock broken while it was mid load-mutate-save, and the second writer
+// silently dropped its records.
+func TestAHeartbeatKeepsALiveHoldersLock(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
@@ -1292,37 +1338,90 @@ func TestStaleLockBreakAdmitsOneWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	var inside, overlaps int64
-	var wg sync.WaitGroup
-	for round := 0; round < 40; round++ {
-		// A lock stamped by a PID that is certainly gone.
-		if err := os.WriteFile(path, []byte("999999"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		for i := 0; i < 8; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// acquireLock directly, not withManifestLock: manifestMu
-				// serializes this process before the file lock is consulted,
-				// which is what the cross-process race has to get past.
-				release, err := acquireLock()
-				if err != nil || release == nil {
-					return
-				}
-				if atomic.AddInt64(&inside, 1) > 1 {
-					atomic.AddInt64(&overlaps, 1)
-				}
-				time.Sleep(time.Millisecond)
-				atomic.AddInt64(&inside, -1)
-				release()
-			}()
-		}
-		wg.Wait()
+	mine, err := lockToken()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if overlaps > 0 {
-		t.Errorf("%d overlapping entries into the critical section", overlaps)
+	if err := os.WriteFile(path, []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Older than the bound, and stamped with a PID that is live (our own):
+	// exactly the shape a slow holder has.
+	old := time.Now().Add(-2 * lockMaxAge)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	stop := startHeartbeat(path, mine, 5*time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
+	if lockIsStale(path) {
+		t.Error("a heartbeating holder's lock was reported stale, so another writer would break it mid-write")
+	}
+
+	// And once the holder is gone the beats stop, so the same lock ages out
+	// rather than wedging every later command.
+	stop()
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if !lockIsStale(path) {
+		t.Error("an abandoned lock past the age bound was not stale")
+	}
+}
+
+// The other half of the age bound: a lock stamped by a process that exited
+// and whose PID the OS has since handed to a live process. The PID reads as
+// alive, so only the age can retire it — and nothing heartbeats it, so it
+// does.
+func TestALockStampedWithARecycledPIDDoesNotWedgeForever(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// lockToken stamps our own PID, which is as live as a recycled one.
+	stale, err := lockToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * lockMaxAge)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := withManifestLock(func() error { return nil }); err != nil {
+		t.Errorf("a lock held by a live-looking PID that has not beaten in %v still blocked a writer: %v", lockMaxAge, err)
+	}
+}
+
+// A timestamp in the future cannot be reasoned about with this machine's
+// clock, and left one-sided it wedges an unstamped lock for as long as the
+// clock says so — which the PID path cannot rescue.
+func TestALockFromTheFutureDoesNotWedgeForever(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := lockPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ahead := time.Now().Add(24 * time.Hour)
+	if err := os.Chtimes(path, ahead, ahead); err != nil {
+		t.Fatal(err)
+	}
+	if err := withManifestLock(func() error { return nil }); err != nil {
+		t.Errorf("a lock stamped in the future still blocked a writer: %v", err)
 	}
 }
 

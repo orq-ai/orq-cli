@@ -87,7 +87,13 @@ func InstallSession(agent string) (func(), error) {
 					// A permanent install whose link has gone missing. Repair
 					// it and leave the record permanent: claiming it here
 					// would delete the user's install when this session exits.
-					if err := project(filepath.Join(gen, name), path); err != nil {
+					// os.IsExist is the same lost race the default branch
+					// tolerates below: another writer repaired the link
+					// between the exists check and the create. The link is
+					// in place, which is all this branch wanted — failing
+					// the whole launch over a job already done would be
+					// worse than the race.
+					if err := project(filepath.Join(gen, name), path); err != nil && !os.IsExist(err) {
 						return fmt.Errorf("repair %s in %s: %w", name, target.Dir, err)
 					}
 				default:

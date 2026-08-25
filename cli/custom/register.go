@@ -343,6 +343,14 @@ func installSkillsRefreshPreRun() {
 				fmt.Fprintf(bartolocli.Stderr, "Warning: %d orq skill link(s) could not be updated — run 'orq connect skills' to repair them\n",
 					len(res.Failed))
 			}
+			// A path we stopped tracking without deleting is the one case the
+			// user cannot discover afterwards: the record is gone, so
+			// `orq disconnect skills` will never mention it either. Said once,
+			// here, naming the paths, or not at all.
+			if len(res.Disowned) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "orq no longer manages %d path(s) in your skills directory and left them in place — remove them by hand if you no longer want them: %s\n",
+					len(res.Disowned), strings.Join(res.Disowned, ", "))
+			}
 		}
 		if err := skills.SweepDeadSessions(); err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)

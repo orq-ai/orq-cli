@@ -15,6 +15,13 @@ type Result struct {
 	Added   []string
 	Removed []string
 	Skipped []string
+	// Disowned holds paths that were skipped AND dropped from the manifest,
+	// because the skill left the shipped set and we could not prove we still
+	// own what sits at the path. Separate from Skipped because the user has
+	// to hear about it once: nothing tracks those paths any more, so a later
+	// `orq disconnect skills` will not mention them and they are the user's
+	// to remove by hand.
+	Disowned []string
 	// Failed holds paths a refresh could not reproject. One agent's broken
 	// directory must not abandon every other agent's links, so refresh records
 	// the failure and carries on; the caller summarises it once rather than
@@ -226,6 +233,7 @@ func refresh() (*Result, error) {
 			res.Skipped = append(res.Skipped, l.Path)
 			if !inSet[l.Skill] {
 				pruned = append(pruned, l.Path)
+				res.Disowned = append(res.Disowned, l.Path)
 			}
 			continue
 		}
@@ -233,6 +241,23 @@ func refresh() (*Result, error) {
 			// The skill left the shipped set. Without this the agent keeps
 			// loading something we no longer ship, pointing at a generation
 			// that collection will eventually delete.
+			//
+			// Deleting requires provable ownership, and only ModeSymlink has
+			// it: isOurs resolves the link into our own snapshot, so a user
+			// who took the path over cannot pass. ModeCopy has no such proof
+			// — it can only see that a directory is a directory — so a
+			// user-owned directory there would pass the guard above and be
+			// deleted, on Windows, from PreRun, which is precisely the data
+			// loss this ordering exists to prevent. Drop the record instead
+			// and leave the directory: a stale copy the user can delete beats
+			// a deleted directory they cannot get back.
+			if l.Mode != ModeSymlink {
+				pruned = append(pruned, l.Path)
+				if exists(l.Path) {
+					res.Disowned = append(res.Disowned, l.Path)
+				}
+				continue
+			}
 			if err := removePath(l.Path); err != nil {
 				return &Result{}, err
 			}
