@@ -36,6 +36,7 @@ jobs:
     outputs:
       stable: ${{ steps.changes.outputs.stable }}
       prerelease: ${{ steps.changes.outputs.prerelease }}
+      bump: ${{ steps.changes.outputs.bump }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -121,6 +122,16 @@ jobs:
             # and cmd/surface-dump ships to nobody.
             SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
 
+            # Which field of the version the stable release moves. A new orq
+            # API schema is the only change that can alter what the commands
+            # are, so it takes the minor; everything else - a CLI fix, an
+            # installer change - takes the patch, which the pipeline assumes
+            # when this output is unset. A manual run has no push range to
+            # judge, so it lands on patch as well.
+            if echo "$CHANGED" | grep -qE '^(openapi\.yaml|\.bartolo\.json)$'; then
+              echo "bump=minor" >> "$GITHUB_OUTPUT"
+            fi
+
             if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED"; then
               echo "stable=true" >> "$GITHUB_OUTPUT"
             else
@@ -144,6 +155,7 @@ jobs:
       id-token: write
     with:
       npm_dist_tag: latest
+      bump: ${{ needs.detect-changes.outputs.bump }}
 
   release-prerelease:
     needs: detect-changes
