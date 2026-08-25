@@ -60,6 +60,10 @@ that makes the change, not in a release PR:
 - **Patch** — nothing to do. Fixes, refactors, docs, dependency bumps and the
   regenerated tree all take the next free patch automatically.
 
+Which of the three a change earns is decided by its conventional-commit type;
+the table is in `CLAUDE.md`, next to the commit rules, so it is read while the
+commit is being written rather than at release time.
+
 Write the number you want as a floor, not as a promise: the pipeline still takes
 the next free tag from it, so `5.1.0` becomes `5.1.1` if `v5.1.0` already exists.
 If an orq API bump lands in the same release, its field is applied on top of the
