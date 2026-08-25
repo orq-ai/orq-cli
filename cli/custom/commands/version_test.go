@@ -18,9 +18,8 @@ func TestVersionCommandReportsBothVersions(t *testing.T) {
 	bartolocli.Stdout = out
 	humanOutput = func() bool { return true }
 	detectChannel = func() (updateChannel, string) { return channelInstaller, "/somewhere/orq" }
-	SetAPIVersion("4.13.22")
-
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
+	SetAPIVersion(root, "4.13.22")
 	root.AddCommand(NewVersionCommand())
 	root.SetArgs([]string{"version"})
 	root.SetOut(&bytes.Buffer{})
@@ -35,11 +34,21 @@ func TestVersionCommandReportsBothVersions(t *testing.T) {
 	}
 }
 
-func TestSetAPIVersionRejectsTemplateSyntax(t *testing.T) {
+// The API version reaches the version template as data, so a value that looks
+// like template syntax must print verbatim rather than be parsed - or panic
+// template.Must, which would take every `orq --version` with it.
+func TestVersionFlagPrintsAPIVersionVerbatim(t *testing.T) {
 	orig := apiVersion
 	t.Cleanup(func() { apiVersion = orig })
-	SetAPIVersion("4.13.22{{.Bogus}}")
-	if got := APIVersionLine(); strings.Contains(got, "{{") {
-		t.Fatalf("APIVersionLine() = %q, want the template syntax stripped", got)
+	out := &bytes.Buffer{}
+	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
+	root.SetOut(out)
+	root.SetArgs([]string{"--version"})
+	SetAPIVersion(root, "4.13.22{{.Bogus}}")
+	if err := root.Execute(); err != nil {
+		t.Fatalf("--version: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "built against orq API 4.13.22{{.Bogus}}") {
+		t.Fatalf("--version printed %q, want the API version verbatim", got)
 	}
 }
