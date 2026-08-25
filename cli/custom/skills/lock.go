@@ -70,29 +70,23 @@ func withManifestLock(fn func() error) error {
 	if err != nil {
 		return err
 	}
-	if release != nil {
-		defer release()
-	}
+	defer release()
 	return fn()
 }
 
-// acquireLock returns a release func, or (nil, nil) when there is no state
-// directory yet and therefore no manifest to race over. Any other failure is
-// an error: a lock file we cannot create next to the manifest means we cannot
-// safely write the manifest either.
+// acquireLock returns a release func. The state directory is created if it is
+// missing rather than taken as licence to skip the lock: two first-run writers
+// would otherwise both find no directory, both proceed unlocked, and lose one
+// another's manifest. Callers that must leave a never-connected machine
+// untouched check for a manifest before they get here (Refresh,
+// SweepDeadSessions), so nothing reaches this that was not about to write.
 func acquireLock() (func(), error) {
 	path, err := lockPath()
 	if err != nil {
 		return nil, err
 	}
-	// Never create the state directory just to lock it: a read-only path like
-	// Refresh on a machine that never connected must leave no trace, and
-	// where there is no directory there is no manifest to race over yet.
-	if _, statErr := os.Stat(filepath.Dir(path)); statErr != nil {
-		if os.IsNotExist(statErr) {
-			return nil, nil
-		}
-		return nil, statErr
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
 	}
 	deadline := time.Now().Add(lockTimeout)
 	for {

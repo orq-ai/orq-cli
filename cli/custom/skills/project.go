@@ -171,7 +171,13 @@ func remove(agents []string) (*Result, error) {
 			continue
 		}
 		if exists(l.Path) && !isOurs(l) {
+			// Left in place, but the record goes: disconnect means stop
+			// managing this path. Keeping it would strand an entry no command
+			// can ever clear — refresh only drops a foreign path once its
+			// skill also leaves the shipped set, and every later connect and
+			// disconnect would skip it again in silence.
 			res.Skipped = append(res.Skipped, l.Path)
+			gone = append(gone, l.Path)
 			continue
 		}
 		if err := removePath(l.Path); err != nil {
@@ -190,9 +196,22 @@ func remove(agents []string) (*Result, error) {
 // Refresh brings already-installed views up to the current fingerprint. It
 // creates nothing new: a machine that never connected has no manifest, and
 // this returns immediately without touching the filesystem.
+//
+// The fingerprint is compared before the lock is taken. Nothing is mutated by
+// that comparison, and on every command but the one right after a CLI update
+// it is the whole answer — so the common case neither creates the state
+// directory nor waits out a lock another orq process happens to hold. refresh
+// re-checks under the lock, where the decision to write is actually made.
 func Refresh() (*Result, error) {
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		return &Result{}, err
+	}
+	if m.Fingerprint == Fingerprint() {
+		return &Result{}, nil
+	}
 	var res *Result
-	err := withManifestLock(func() error {
+	err = withManifestLock(func() error {
 		var err error
 		res, err = refresh()
 		return err

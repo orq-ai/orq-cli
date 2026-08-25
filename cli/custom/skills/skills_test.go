@@ -865,8 +865,103 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if _, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) {
 		t.Errorf("Install under a held lock: %v", err)
 	}
+}
+
+// The sweep is a writer too, and it refuses for the same reason. It only
+// reaches the lock when there is something to collect, so this has to record a
+// dead session first: with nothing to sweep it returns before locking, which
+// is what keeps an uncontended command from waiting on a busy one.
+func TestSweepUnderAHeldLockKeepsTheDeadSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint()}
+	m.Sessions = append(m.Sessions, Session{ID: "dead", PID: 999999, Paths: []string{filepath.Join(home, ".claude", "skills", "orq-gone")}})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+	holdLockForeignly(t, home)
+
 	if err := SweepDeadSessions(); !errors.Is(err, ErrManifestLocked) {
-		t.Errorf("SweepDeadSessions under a held lock: %v", err)
+		t.Fatalf("SweepDeadSessions under a held lock: %v", err)
+	}
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if len(after.Sessions) != 1 {
+		t.Errorf("a locked-out sweep dropped the claim anyway: %d sessions left", len(after.Sessions))
+	}
+}
+
+// Nothing recorded means nothing to lock. A writer on a machine that has never
+// connected must still take the lock rather than read the missing state
+// directory as permission to skip it: two first-run launches would otherwise
+// both write the manifest and lose one another's links.
+func TestAFirstRunWriterCreatesTheStateDirectoryAndLocksIt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	lock := filepath.Join(home, ".orq", "materialized-skills.json.lock")
+	err := withManifestLock(func() error {
+		if _, statErr := os.Stat(lock); statErr != nil {
+			t.Errorf("wrote the manifest without a lock file at %s: %v", lock, statErr)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("withManifestLock on a fresh home: %v", err)
+	}
+}
+
+// Disconnect leaves a path it no longer owns alone, and stops recording it.
+// Keeping the record would strand an entry no command can clear: refresh only
+// disowns a foreign path once its skill also leaves the shipped set, so every
+// later connect and disconnect would skip this one again in silence.
+func TestDisconnectDropsTheRecordForAPathWeNoLongerOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	names, err := Names()
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(dir, names[0])
+	if err := os.MkdirAll(theirs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(theirs, "their-work.md")
+	if err := os.WriteFile(keep, []byte("the user's own edits"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint()}
+	m.AddLink(Link{Path: theirs, Agent: "claude", Skill: names[0], Mode: ModeCopy})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Remove([]string{"claude"})
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0] != theirs {
+		t.Errorf("Skipped = %v, want [%s] so disconnect can say it left it alone", res.Skipped, theirs)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("disconnect deleted a directory it does not own: %v", err)
+	}
+	after, err := LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest after remove: %v", err)
+	}
+	for _, l := range after.Links {
+		if l.Path == theirs {
+			t.Error("kept a record for a path disconnect will skip forever")
+		}
 	}
 }
 

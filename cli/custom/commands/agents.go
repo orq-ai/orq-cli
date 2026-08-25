@@ -875,8 +875,9 @@ func dropDanglingKimiDefault(content string) string {
 // skillsCheck reports two states nothing else converges on its own: recorded
 // links whose path is gone, and an install left behind by a CLI update.
 //
-// Missing links are not repaired by refresh, deliberately — it converges the
-// skill *set*, and a file the user deleted by hand is a decision, not drift.
+// A missing link is reported as not installed, not as damage: refresh only
+// reprojects a recorded link when the fingerprint moves, so between CLI
+// updates nothing puts it back, and nothing else says it is gone.
 // A stale install is repaired by refresh, but only on the commands that
 // touch skills (see skillsCommand in register.go), so someone who updates the
 // CLI and opens their agent directly stays on the old set until they run one.
@@ -926,7 +927,7 @@ func skillsCheck() (doctorCheck, bool) {
 		return check, true
 	}
 	check.Status = "warn"
-	check.Message = fmt.Sprintf("%d of %d recorded orq skills are missing from %s — run 'orq connect skills' to restore them",
+	check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
 		missing, recorded, strings.Join(sortedKeys(dirs), ", "))
 	return check, true
 }

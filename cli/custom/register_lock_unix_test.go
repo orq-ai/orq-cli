@@ -4,6 +4,7 @@ package custom
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,10 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 	if _, err := skills.Install([]string{"claude"}); err != nil {
 		t.Fatalf("seed install: %v", err)
 	}
+	// Refresh compares the fingerprint before it locks anything, so a manifest
+	// already on this version never reaches the lock. Age it, or the hook has
+	// no reason to contend and this test proves nothing.
+	stale(t, filepath.Join(home, ".orq", "materialized-skills.json"))
 
 	// Hold the lock on our own descriptor. flock is held per open file
 	// description, not per process, so this contends with the hook's
@@ -86,5 +91,27 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 	}
 	if strings.Contains(out, "could not clean up stale session skills") {
 		t.Errorf("sweep ran despite the lock already being reported as held, doubling the wait:\n%s", out)
+	}
+}
+
+// stale rewrites the manifest's fingerprint in place, the one field that
+// decides whether refresh has work to do.
+func stale(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["fingerprint"] = "a-previous-release"
+	data, err = json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

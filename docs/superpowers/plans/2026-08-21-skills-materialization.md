@@ -4,7 +4,7 @@
 
 **Goal:** Ship the orq agent skills inside the CLI binary and install them into every supported coding agent through a new `skills` capability on `orq connect`.
 
-**Architecture:** The skills tree is vendored from `orq-ai/assistant-plugins` at release time and embedded with `go:embed`. A new `cli/custom/skills` package materializes that tree into a content-addressed generation directory under the orq home, then projects it into each agent's skills directory as per-skill symlinks (copies where symlinks are unavailable), recording every link in a manifest. `orq connect skills` / `orq disconnect skills` drive it, every `orq` command refreshes stale views it already owns, and `orq launch` gets skills for the session only.
+**Architecture:** The skills tree is vendored from `orq-ai/assistant-plugins` at release time and embedded with `go:embed`. A new `cli/custom/skills` package materializes that tree into a content-addressed generation directory under the orq home, then projects it into each agent's skills directory as per-skill symlinks (copies where symlinks are unavailable), recording every link in a manifest. `orq connect skills` / `orq disconnect skills` drive it, the commands that touch skills (`launch`, `connect`, `disconnect`, `setup`) refresh stale views the manifest already records, `orq doctor` names what does not converge on its own, and `orq launch` gets skills for the session only.
 
 **Tech Stack:** Go 1.25, module `orq`, cobra commands under `cli/custom/commands`, launch plans under `cli/custom/launch`, stdlib only for the new package (`embed`, `crypto/sha256`, `encoding/json`, `os`, `path/filepath`).
 
@@ -16,7 +16,7 @@
 - Every skill directory keeps its `orq-` prefix in every target directory, exactly as it is named in the vendored tree.
 - The CLI removes or replaces only paths recorded in its own manifest. It never clears a target directory and never overwrites a path that is not our own link.
 - Materialization failure is fatal in `connect` (non-zero exit) and non-fatal but loudly reported in `launch`.
-- The per-command staleness check updates only views the manifest already records and creates nothing new. No manifest means no filesystem writes at all.
+- The staleness check updates only views the manifest already records and creates nothing new. No manifest means no filesystem writes at all. It runs on the skills-touching commands only (`launch`, `connect`, `disconnect`, `setup`), not on every `orq` invocation: a manifest read and a lock in front of `orq --help` bought convergence for a case `orq doctor` reports instead.
 - The manifest is written last, after links are in place, so an interrupted run re-runs cleanly.
 - Manifest schema version is `1`. Any manifest with a different version is treated as foreign and left alone.
 - Reporter output for skills uses the existing connect line format: `%-8s %-9s %s` (agent, capability, path).
