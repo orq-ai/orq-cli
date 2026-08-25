@@ -127,9 +127,14 @@ Asked only when `mcp` is among the chosen capabilities, the run is interactive, 
 least one scope-capable agent (today: claude) is detected. Skipped — defaulting to
 local — otherwise. `--global` / `--local` / `--yes` / `--no-input` all pre-answer it.
 
+There is no scope *inference*. The pre-`e44c747` code had none either: the path was
+cwd-relative unless `--global`. The answer comes from the user or the flag, so there is
+nothing for a heuristic to disagree with.
+
 Note while adding this: the existing `promptForCapabilities` calls `survey.AskOne`
-**without** `promptStdio()`, so its question goes to stdout rather than stderr. Fix
-that in passing; the new prompt must not copy the bug.
+without `promptStdio()`, unlike every other prompt in the CLI. Not a bug — a prompt
+only appears when stdout is a terminal, so it cannot land in a redirected payload — but
+the new prompt should use `promptStdio()`, and the existing one may as well match.
 
 ### 4. One URL resolver, shared with launch
 
