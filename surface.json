@@ -8769,6 +8769,10 @@
       ]
     },
     {
+      "path": "orq version",
+      "use": "version"
+    },
+    {
       "path": "orq webhooks",
       "use": "webhooks"
     },

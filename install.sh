@@ -8,6 +8,7 @@
 #
 # Options:
 #   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
+#   --channel <c>        stable (default) or rc, the pre-release line.
 #   --install-dir <dir>  Install directory. Default: $HOME/.orq/bin.
 #   --no-modify-path     Do not touch the shell profile.
 #   --no-setup           Do not run 'orq setup' after installing.
@@ -15,6 +16,7 @@
 #
 # Environment (flags win when both are given):
 #   ORQ_CLI_VERSION       Same as --version.
+#   ORQ_CLI_CHANNEL       Same as --channel.
 #   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 #
 # This script downloads a single raw binary from the GitHub Releases page for
@@ -32,6 +34,7 @@ INSTALLER_VERSION="dev"
 REPO="orq-ai/orq-cli"
 INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
+CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
@@ -55,6 +58,7 @@ Usage:
 
 Options:
   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
+  --channel <c>        stable (default) or rc, the pre-release line.
   --install-dir <dir>  Install directory. Default: $HOME/.orq/bin.
   --no-modify-path     Do not touch the shell profile.
   --no-setup           Do not run 'orq setup' after installing.
@@ -62,6 +66,7 @@ Options:
 
 Environment (flags win when both are given):
   ORQ_CLI_VERSION       Same as --version.
+  ORQ_CLI_CHANNEL       Same as --channel.
   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 
 For Windows, install via npm instead:
@@ -106,6 +111,11 @@ while [ $# -gt 0 ]; do
       VERSION="$2"; shift 2 ;;
     --version=*)
       VERSION="${1#*=}"; shift ;;
+    --channel)
+      [ $# -ge 2 ] || { err "--channel needs a value"; exit 1; }
+      CHANNEL="$2"; shift 2 ;;
+    --channel=*)
+      CHANNEL="${1#*=}"; shift ;;
     --install-dir)
       [ $# -ge 2 ] || { err "--install-dir needs a value"; exit 1; }
       INSTALL_DIR="$2"; shift 2 ;;
@@ -123,6 +133,11 @@ while [ $# -gt 0 ]; do
       exit 1 ;;
   esac
 done
+
+case "$CHANNEL" in
+  stable|rc) ;;
+  *) err "unknown channel: $CHANNEL (expected 'stable' or 'rc')"; exit 1 ;;
+esac
 
 require_cmd curl
 require_cmd uname
@@ -206,19 +221,31 @@ version_label="$VERSION"
 version_pinned=1
 if [ -z "$VERSION" ]; then
   version_pinned=0
-  # GitHub's latest-release API returns JSON; awk out the tag_name field
-  # without requiring jq. Pre-releases are excluded by the endpoint itself.
-  # awk drains the stream: exiting on the match closes the pipe mid-body and
-  # curl reports a write failure per retry.
-  api_url="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
+  if [ "$CHANNEL" = "rc" ]; then
+    # The rc line is a GitHub pre-release, which /releases/latest deliberately
+    # skips, so it is resolved from the npm dist-tag instead - the same source
+    # `orq update` uses, so the two never disagree about what "rc" means.
+    api_url="https://registry.npmjs.org/-/package/@orq-ai/cli/dist-tags"
+    # One JSON object on one line: walk the quoted fields and take the value
+    # after the "rc" key. No `exit` in the body - that closes the pipe
+    # mid-stream and curl then reports a write failure on every retry.
+    VERSION="$(fetch -fsS "$api_url" \
+      | awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && !v) v = $(i + 2)} END {if (v != "") print "v" v}')"
+  else
+    # GitHub's latest-release API returns JSON; awk out the tag_name field
+    # without requiring jq. Pre-releases are excluded by the endpoint itself.
+    # awk drains the stream: exiting on the match closes the pipe mid-body and
+    # curl reports a write failure per retry.
+    api_url="https://api.github.com/repos/$REPO/releases/latest"
+    VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
+  fi
 
   if [ -z "$VERSION" ]; then
-    err "failed to determine latest release from $api_url"
+    err "failed to determine the latest $CHANNEL release from $api_url"
     err "You can pin one explicitly: --version v0.1.0"
     exit 1
   fi
-  version_label="$VERSION (latest)"
+  version_label="$VERSION (latest $CHANNEL)"
 fi
 
 asset="orq-${os}-${arch}"
@@ -241,7 +268,10 @@ expected_version="${VERSION#v}"
 if [ -x "$target" ]; then
   # Exit status required, and the version token compared whole: a substring
   # match reports 4.13.10 as satisfying a pinned 4.13.1 and installs nothing.
-  if current="$("$target" --version 2>/dev/null)"; then
+  # First line only: `orq --version` prints the semver line and then the orq
+  # API line under it, and flattening both would compare against the API
+  # version instead. Older binaries print the one line; head is happy either way.
+  if current="$("$target" --version 2>/dev/null | head -n 1)"; then
     current="$(printf '%s' "$current" | tr -d '\n')"
     current_version="$(printf '%s' "$current" | awk '{print $NF}')"
   else

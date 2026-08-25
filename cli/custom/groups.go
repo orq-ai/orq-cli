@@ -31,6 +31,7 @@ var commandGroup = map[string]string{
 	"launch":     groupGetStarted,
 	"doctor":     groupGetStarted,
 	"update":     groupGetStarted,
+	"version":    groupUtilities,
 	"auth":       groupGetStarted,
 	"login":      groupGetStarted,
 	"logout":     groupGetStarted,

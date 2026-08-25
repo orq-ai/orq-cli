@@ -77,6 +77,17 @@ jobs:
           SHELL=/bin/bash setsid dash install.sh \
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
+      - name: install the rc channel
+        # The rc line is a GitHub pre-release, so it resolves through the npm
+        # dist-tag rather than /releases/latest - a separate branch, and the
+        # one that silently returns the stable release when it breaks.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/rc-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh --channel rc \
+            --no-setup --no-modify-path --install-dir "$HOME/orq" < /dev/null
+          "$HOME/orq/orq" --version | head -n 1 | grep -q -- '-rc\.'
       - name: upgrade over an existing install
         # The first job installs into a fresh dir, so `previous` stays empty and
         # the whole upgrade/rollback block never runs. This one exercises it.

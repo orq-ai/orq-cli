@@ -1,13 +1,27 @@
 name: Release
 
+# A release is cut for any change that reaches a user's binary — hand-written
+# CLI code and the installer included, not only an API schema bump. Before
+# this, a CLI-only fix sat on main until orquesta-web happened to publish a
+# schema, because that push was the only release trigger.
+#
+# The paths deliberately exclude everything the release pipeline itself writes
+# back to main (cli/generated, examples, README.md, go.mod, go.sum,
+# surface.json, VERSION), so a release cannot trigger the next one.
 on:
   push:
     branches: [main]
     paths:
       - openapi.yaml
       - .bartolo.json
+      - cli/custom/**
+      - cmd/**
+      - npm/**
+      - scripts/**
+      - install.sh
       - packages/orq-rc/openapi.yaml
       - packages/orq-rc/.bartolo.json
+      - packages/orq-rc/cmd/**
   workflow_dispatch:
     inputs:
       target:
@@ -59,13 +73,18 @@ jobs:
             # Push event - detect from changed files
             CHANGED=$(git diff --name-only HEAD~1 HEAD)
 
-            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json)$"; then
+            # Shared paths (cli/custom, scripts, npm, install.sh) go into both
+            # binaries — packages/orq-rc builds the same hand-written commands
+            # against the staging schema — so they release both lines.
+            SHARED='^(cli/custom/|cmd/|npm/|scripts/|install\.sh$)'
+
+            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json)$|$SHARED"; then
               echo "stable=true" >> "$GITHUB_OUTPUT"
             else
               echo "stable=false" >> "$GITHUB_OUTPUT"
             fi
 
-            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json)$"; then
+            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|cmd/)|$SHARED"; then
               echo "prerelease=true" >> "$GITHUB_OUTPUT"
             else
               echo "prerelease=false" >> "$GITHUB_OUTPUT"
