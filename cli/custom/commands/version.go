@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
@@ -13,10 +14,31 @@ import (
 var apiVersion = "unknown"
 
 // SetAPIVersion is called once from custom.Run, before any command runs.
+//
+// The value is scrubbed to the characters a version can contain: it ends up
+// inside the cobra version TEMPLATE, which is parsed with template.Must, so a
+// stray "{{" arriving from .bartolo.json would panic every `orq --version`
+// rather than print a strange string.
 func SetAPIVersion(v string) {
+	v = strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			return r
+		case r == '.', r == '-', r == '+', r == '_':
+			return r
+		}
+		return -1
+	}, v)
 	if v != "" {
 		apiVersion = v
 	}
+}
+
+// APIVersionLine is the single rendering of which orq API this build speaks,
+// used by both `orq --version` and `orq version` so the two cannot drift into
+// two different wordings of the same fact.
+func APIVersionLine() string {
+	return "built against orq API " + apiVersion
 }
 
 // NewVersionCommand reports the CLI version and the orq API version it was
@@ -38,7 +60,8 @@ func NewVersionCommand() *cobra.Command {
 					"channel": string(channel),
 				})
 			}
-			fmt.Fprintf(bartolocli.Stdout, "orq version %s\n  orq API   %s\n  installed %s\n", cli, apiVersion, channel)
+			fmt.Fprintf(bartolocli.Stdout, "%s version %s\n%s\ninstalled via %s\n",
+				cmd.Root().Name(), cli, APIVersionLine(), channel)
 			return nil
 		},
 	}

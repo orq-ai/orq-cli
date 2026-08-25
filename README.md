@@ -33,9 +33,12 @@ curl -fsSL .../install.sh | sh -s -- --install-dir /usr/local/bin
 
 # just install: no profile edit, no setup
 curl -fsSL .../install.sh | sh -s -- --no-modify-path --no-setup
+
+# the pre-release line instead of stable
+curl -fsSL .../install.sh | sh -s -- --channel rc
 ```
 
-`ORQ_CLI_VERSION` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version` and `--install-dir`. A checksum *mismatch* aborts the install, as does any failure to fetch the checksum other than a 404; releases published before the checksum assets existed simply skip verification with a notice.
+`ORQ_CLI_VERSION`, `ORQ_CLI_CHANNEL` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version`, `--channel` and `--install-dir`. A checksum *mismatch* aborts the install, as does any failure to fetch the checksum other than a 404; releases published before the checksum assets existed simply skip verification with a notice.
 
 ### Pre-built release binaries
 
@@ -344,12 +347,23 @@ Sandboxed execution is not available in this version.
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
+| `ORQ_CLI_CHANNEL` | Release line for `install.sh`: `stable` (default) or `rc` |
 | `ORQ_CLI_INSTALL_DIR` | Install directory for `install.sh` |
 | `ORQ_WEB_BASE_URL` | Web app base URL used for the links `orq setup` prints |
 | `ORQ_NO_SPLASH` | Suppress the `orq setup` banner |
 | `ORQ_NO_UPDATE_CHECK` | Suppress the update notice and the version check behind it |
 
 `.env` and `.env.local` files in the current directory are loaded automatically.
+
+### Versions
+
+`orq version` prints the CLI version, the orq API version the build was
+generated against, and the channel it was installed through; `--json` gives
+`cli`, `api` and `channel`. `orq --version` prints the same first two lines.
+
+The CLI's version is its own — it does not track the orq API version, which is
+why the API line has to be reported rather than read off the tag. `--channel rc`
+installs the pre-release line, built from the staging API schema.
 
 ### Updating
 
@@ -450,21 +464,35 @@ This wipes `cli/generated/` and rebuilds it from `openapi.json`. **`cli/custom/`
 
 ### Cutting a release
 
-Releases are fully automated by `.github/workflows/release.yml`:
+You do not cut one by hand. `.github/workflows/release.yml` fires on any push to
+`main` that touches something reaching a binary — `cli/custom/`, `cmd/orq/`,
+`npm/`, `scripts/`, `install.sh`, `VERSION`, `go.mod`, or either module's
+OpenAPI schema — and calls `release-pipeline.yml`, which:
 
-1. Bump and push a tag: `git tag v0.1.1 && git push --tags`
-2. Create a [GitHub Release](https://github.com/orq-ai/orq-cli/releases/new) from that tag and publish it
-3. The workflow fires on `release: [published]` and:
-   - Cross-compiles 5 platform binaries (`darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `win32-x64`)
-   - Ad-hoc signs the macOS binaries with `codesign -s -`
-   - Stamps the version into all 6 `package.json` files
-   - Publishes the 5 platform packages to npm (in that order)
-   - Publishes `@orq-ai/cli` wrapper to npm
-   - Uploads raw binaries to the GitHub Release as assets for `install.sh` to fetch
+1. Resolves the version. The CLI version lives in `VERSION`; the pipeline takes
+   the next free patch tag, so a fix ships without anyone editing the file.
+   **Bump the major or minor in `VERSION`, in the PR that earns it.** An rc
+   release becomes `<next-minor>.0-rc.<run-number>`.
+2. Regenerates `cli/generated/` from the module's schema and commits it back to
+   `main` (signed, through the Git Data API — `main` requires verified
+   signatures).
+3. Tags, and publishes a GitHub release whose notes open with the orq API
+   version the build was generated against.
+4. Cross-compiles 5 platform binaries (`darwin-arm64`, `darwin-x64`,
+   `linux-x64`, `linux-arm64`, `win32-x64`), ad-hoc signs the macOS ones, stamps
+   version and `orqApiVersion` into all 6 `package.json` files, and publishes to
+   npm under `latest` (stable) or `rc` (pre-release).
+5. Uploads the raw binaries, their `.sha256` files, the man pages and a stamped
+   `install.sh` to the GitHub release.
 
-Required repository secret:
+npm publishing authenticates through OIDC (`id-token: write`), not a stored
+token. `workflow_dispatch` runs a release on demand — `stable`, `prerelease` or
+`both` — and no longer collides with an existing tag, because the patch is
+resolved rather than read.
 
-- `NPM_TOKEN` — an npm [automation token](https://docs.npmjs.com/creating-and-viewing-access-tokens) with publish access to the `@orq-ai` organization.
+The orq API version comes from `.bartolo.json`'s `app_version`, which
+orquesta-web writes when it publishes a schema. It is recorded in the release
+and in the binary; it is not the CLI's version.
 
 To reproduce the release build locally (without publishing):
 

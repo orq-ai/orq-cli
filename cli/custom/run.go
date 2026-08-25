@@ -54,7 +54,7 @@ func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)
 
 	commands.SetAPIVersion(apiVersion)
 	bartolocli.Root.SetVersionTemplate(
-		"{{.Name}} version {{.Version}}\nbuilt against orq API " + apiVersion + "\n")
+		"{{.Name}} version {{.Version}}\n" + commands.APIVersionLine() + "\n")
 
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root)

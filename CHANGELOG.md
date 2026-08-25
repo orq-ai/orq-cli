@@ -98,8 +98,10 @@ controls on surface changes, whichever side they originate from.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the channel it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
-  `channel`. `orq --version` keeps printing the bare semver on its first line,
-  so anything parsing it is unaffected, with the API line printed under it.
+  `channel`. `orq --version` keeps `orq version <semver>` as its first line, so
+  anything parsing that line is unaffected, and prints the API line under it —
+  a script that reads the whole output rather than the first line will now see
+  two lines.
 - **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
   pre-release line instead of the stable one. The default is unchanged.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
