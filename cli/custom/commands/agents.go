@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
+	"orq/cli/custom/skills"
 
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
@@ -868,4 +870,61 @@ func dropDanglingKimiDefault(content string) string {
 		out.WriteString(line)
 	}
 	return out.String()
+}
+
+// skillsCheck reports recorded skill links whose path is gone. refresh
+// deliberately does not put them back: it converges the skill *set*, and a
+// file the user deleted by hand is a decision, not drift — silently
+// recreating it on the next `orq --help` would fight the user. So the state
+// is real and worth naming, and naming it is doctor's job.
+//
+// Session links are excluded: they are created and destroyed by a live
+// `orq launch`, and their absence between sessions is not breakage.
+//
+// Collapsed per directory, like connect --status's version: deleting a
+// skills directory records a dozen missing links, and a dozen lines pointing
+// at one remedy say nothing a count would not.
+func skillsCheck() (doctorCheck, bool) {
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		return doctorCheck{}, false
+	}
+	recorded, missing := 0, 0
+	dirs := map[string]bool{}
+	for _, l := range m.Links {
+		if l.Session {
+			continue
+		}
+		recorded++
+		if _, statErr := os.Lstat(l.Path); statErr == nil {
+			continue
+		}
+		missing++
+		dirs[filepath.Dir(l.Path)] = true
+	}
+	if recorded == 0 {
+		return doctorCheck{}, false
+	}
+	check := doctorCheck{
+		ID:      "skills",
+		Details: map[string]any{"recorded": recorded, "missing": missing},
+	}
+	if missing == 0 {
+		check.Status = "pass"
+		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
+		return check, true
+	}
+	check.Status = "warn"
+	check.Message = fmt.Sprintf("%d of %d recorded orq skills are missing from %s — run 'orq connect skills' to restore them",
+		missing, recorded, strings.Join(sortedKeys(dirs), ", "))
+	return check, true
+}
+
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, tilde(k))
+	}
+	sort.Strings(out)
+	return out
 }

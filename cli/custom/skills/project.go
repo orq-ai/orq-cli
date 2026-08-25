@@ -242,22 +242,9 @@ func refresh() (*Result, error) {
 			// loading something we no longer ship, pointing at a generation
 			// that collection will eventually delete.
 			//
-			// Deleting requires provable ownership, and only ModeSymlink has
-			// it: isOurs resolves the link into our own snapshot, so a user
-			// who took the path over cannot pass. ModeCopy has no such proof
-			// — it can only see that a directory is a directory — so a
-			// user-owned directory there would pass the guard above and be
-			// deleted, on Windows, from PreRun, which is precisely the data
-			// loss this ordering exists to prevent. Drop the record instead
-			// and leave the directory: a stale copy the user can delete beats
-			// a deleted directory they cannot get back.
-			if l.Mode != ModeSymlink {
-				pruned = append(pruned, l.Path)
-				if exists(l.Path) {
-					res.Disowned = append(res.Disowned, l.Path)
-				}
-				continue
-			}
+			// Safe to delete because the guard above already proved this is
+			// ours, in both link modes: a symlink resolves into our own
+			// snapshot, a copy carries our marker.
 			if err := removePath(l.Path); err != nil {
 				return &Result{}, err
 			}
@@ -308,6 +295,12 @@ func project(src, dest string) error {
 	if symlinkSupported() {
 		return os.Symlink(src, dest)
 	}
+	return projectCopy(src, dest, parent)
+}
+
+// projectCopy is the copy branch of project, split out so the platform it
+// only ever runs on is not the only platform that can test it.
+func projectCopy(src, dest, parent string) error {
 	staging, err := os.MkdirTemp(parent, ".staging-")
 	if err != nil {
 		return err
@@ -316,7 +309,40 @@ func project(src, dest string) error {
 	if err := CopyDir(src, staging); err != nil {
 		return err
 	}
+	// Written into the staging tree, so it lands with the rename and a copy
+	// at dest either has it or does not exist.
+	if err := os.WriteFile(filepath.Join(staging, ownerMarker), []byte(ownerMarkerBody), 0o644); err != nil {
+		return err
+	}
 	return os.Rename(staging, dest)
+}
+
+// ownerMarker is how a copy-mode projection proves it is ours. A symlink
+// proves it by pointing into our own snapshot; a copy has no such property,
+// and without a marker the only available check is "is a directory here",
+// which every directory passes — including one the user put there.
+//
+// A dotfile, so it stays out of the skill's own contents, and it says plainly
+// what it is: the directory is replaced wholesale on every update, so
+// anything the user writes into it is lost on the next `orq` command that
+// sees a new skill set.
+const (
+	ownerMarker     = ".orq-owned"
+	ownerMarkerBody = `This directory is created and owned by the orq CLI.
+
+DO NOT EDIT ANYTHING IN IT. The orq CLI replaces this directory wholesale
+whenever the shipped skill set changes, and your changes go with it.
+
+Deleting this file makes the orq CLI treat the directory as yours: it will
+stop updating it and stop removing it, and 'orq disconnect skills' will
+leave it behind.
+`
+)
+
+// ownsCopy reports whether the copy at path carries our marker.
+func ownsCopy(path string) bool {
+	_, err := os.Stat(filepath.Join(path, ownerMarker))
+	return err == nil
 }
 
 // CopyDir recursively copies src into dest. It is exported because the
@@ -356,13 +382,12 @@ func CopyDir(src, dest string) error {
 	})
 }
 
-// ourOrphan reports whether an unrecorded path is one this CLI created: a
-// symlink into our own snapshot tree and nothing else. It is deliberately
-// narrower than isOurs, which trusts a recorded link's Mode — there is no
-// record here, so the evidence has to come from the path itself. A ModeCopy
-// (Windows) view carries no such evidence and is never adopted; treating a
-// real directory as ours on a hunch is how a user's own work gets deleted.
-func ourOrphan(path string) bool { return symlinkPointsIntoSnapshot(path) }
+// ourOrphan reports whether an unrecorded path is one this CLI created. There
+// is no record here, so the evidence has to come from the path itself: a
+// symlink into our own snapshot tree, or a copy carrying our marker. Anything
+// else is left alone — treating a real directory as ours on a hunch is how a
+// user's own work gets deleted.
+func ourOrphan(path string) bool { return symlinkPointsIntoSnapshot(path) || ownsCopy(path) }
 
 func findLink(m *Manifest, path string) *Link {
 	for i := range m.Links {
@@ -381,8 +406,12 @@ func findLink(m *Manifest, path string) *Link {
 // elsewhere has taken this path over just as surely as if they had put a real
 // directory there, and a mode/type check alone would miss it.
 //
-// For ModeCopy links this only checks that a directory still sits at the
-// path. It cannot tell a hand-edited copy from an untouched one — that would
+// For ModeCopy links it requires our own marker file inside the directory
+// (see ownerMarker), which is what a copy has instead of a symlink's target.
+// A user who put their own directory at one of our paths has no marker in it,
+// so ownership means the same thing on both platforms.
+//
+// It still cannot tell a hand-edited copy from an untouched one — that would
 // need per-file content hashes, and the frozen v1 manifest schema has no
 // field for them. ModeCopy is the Windows-only symlink fallback, so this is a
 // known, accepted gap rather than an oversight.
@@ -397,7 +426,7 @@ func isOurs(l Link) bool {
 		}
 		return symlinkPointsIntoSnapshot(l.Path)
 	}
-	return info.IsDir()
+	return info.IsDir() && ownsCopy(l.Path)
 }
 
 // symlinkPointsIntoSnapshot reports whether the symlink at path resolves to

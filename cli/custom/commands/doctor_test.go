@@ -1,8 +1,13 @@
 package commands
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"orq/cli/custom/skills"
 )
 
 // The human view keeps one row per fault and one coding_agents summary;
@@ -61,4 +66,76 @@ func TestCodingAgentsSummaryStates(t *testing.T) {
 	if c := codingAgentsSummary(2, 2, []string{"claude", "kimi"}); c.Status != "pass" || !strings.Contains(c.Message, "2 of 2 wired: claude, kimi") {
 		t.Errorf("all wired: %+v", c)
 	}
+}
+
+// refresh converges the skill set, not the files: a skill the user deleted by
+// hand stays deleted, because silently recreating it on the next `orq --help`
+// would fight the user. doctor is where that state gets named.
+func TestSkillsCheck(t *testing.T) {
+	newManifest := func(t *testing.T, dir string, present, absent int) {
+		t.Helper()
+		m := &skills.Manifest{Version: 1}
+		for i := 0; i < present; i++ {
+			p := filepath.Join(dir, fmt.Sprintf("orq-present-%d", i))
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p)})
+		}
+		for i := 0; i < absent; i++ {
+			p := filepath.Join(dir, fmt.Sprintf("orq-absent-%d", i))
+			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p)})
+		}
+		if err := skills.SaveManifest(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("no manifest says nothing", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		if _, ok := skillsCheck(); ok {
+			t.Error("reported a check on a machine that never connected")
+		}
+	})
+
+	t.Run("all present passes", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir := filepath.Join(home, ".claude", "skills")
+		newManifest(t, dir, 2, 0)
+		check, ok := skillsCheck()
+		if !ok || check.Status != "pass" {
+			t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
+		}
+	})
+
+	t.Run("missing links warn with the remedy", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir := filepath.Join(home, ".claude", "skills")
+		newManifest(t, dir, 1, 2)
+		check, ok := skillsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, "orq connect skills") {
+			t.Errorf("message names no remedy: %q", check.Message)
+		}
+		if check.Details["missing"] != 2 || check.Details["recorded"] != 3 {
+			t.Errorf("details = %v, want missing=2 recorded=3", check.Details)
+		}
+	})
+
+	t.Run("session links are not breakage", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		m := &skills.Manifest{Version: 1}
+		m.AddLink(skills.Link{Path: filepath.Join(home, ".claude", "skills", "orq-x"), Skill: "orq-x", Session: true})
+		if err := skills.SaveManifest(m); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := skillsCheck(); ok {
+			t.Error("a session link between launches was reported as a problem")
+		}
+	})
 }

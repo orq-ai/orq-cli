@@ -1449,3 +1449,86 @@ func TestAnUnstampedLockDoesNotWedgeForever(t *testing.T) {
 		t.Errorf("an unstamped, long-dead lock still blocked a writer: %v", err)
 	}
 }
+
+// A copy-mode projection has no symlink target to prove it is ours, so it
+// carries a marker instead. Without one, "is a directory here" was the whole
+// ownership check and any directory the user put at one of our paths passed
+// it — on Windows that meant refresh, install and disconnect all treated the
+// user's own work as ours and deleted it.
+func TestACopyProvesOwnershipWithItsMarker(t *testing.T) {
+	home := t.TempDir()
+	src := filepath.Join(home, "snapshot", "orq-x")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(home, "skills", "orq-x")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// projectCopy directly: the copy branch only runs on Windows, and it is
+	// the branch whose ownership is hardest to prove.
+	if err := projectCopy(src, dest, filepath.Dir(dest)); err != nil {
+		t.Fatalf("projectCopy: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); err != nil {
+		t.Fatalf("the copy did not land: %v", err)
+	}
+	link := Link{Path: dest, Skill: "orq-x", Mode: ModeCopy}
+	if !isOurs(link) {
+		t.Error("a copy we just projected is not recognised as ours")
+	}
+	if !ourOrphan(dest) {
+		t.Error("an unrecorded copy of ours is not recognised as our orphan, so install would refuse to adopt it")
+	}
+
+	// The user takes the directory over. Removing the marker is the documented
+	// way to say so, and a directory they created themselves never had one.
+	if err := os.Remove(filepath.Join(dest, ownerMarker)); err != nil {
+		t.Fatal(err)
+	}
+	if isOurs(link) {
+		t.Error("a directory with no marker was claimed as ours; refresh, install and disconnect would all delete it")
+	}
+	if ourOrphan(dest) {
+		t.Error("a directory with no marker was adoptable as our orphan")
+	}
+}
+
+// The other side of the guard: a copy that is still ours must be prunable
+// when its skill leaves the shipped set, or a retired skill stays in the
+// agent's index forever.
+func TestPruneRemovesACopyThatIsStillOurs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(dir, "orq-departed-skill")
+	if err := os.MkdirAll(gone, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gone, ownerMarker), []byte(ownerMarkerBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Manifest{Version: manifestVersion, Fingerprint: "a-previous-release"}
+	m.AddLink(Link{Path: gone, Agent: "claude", Skill: "orq-departed-skill", Mode: ModeCopy})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Errorf("a copy that is still ours was not pruned: %v", err)
+	}
+	if len(res.Disowned) != 0 {
+		t.Errorf("Disowned = %v, want empty: we owned this one and removed it", res.Disowned)
+	}
+}
