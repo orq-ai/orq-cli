@@ -5,15 +5,12 @@ name: Release
 # this, a CLI-only fix sat on main until orquesta-web happened to publish a
 # schema, because that push was the only release trigger.
 #
-# There is deliberately no `paths:` filter: detect-changes below already decides
-# what ships, per release line, and a second copy of that list in the trigger
-# would be one more thing to keep in sync — silently dropping releases when it
-# drifted.
-#
-# A release cannot trigger the next one: the pipeline's commit-back is made with
-# GITHUB_TOKEN, and GitHub does not start workflow runs for those. The
-# bot-authored guard in detect-changes is the second line of defence, for the
-# day someone swaps that credential for a PAT.
+# detect-changes judges each release line on everything since that line's last
+# tag rather than on the contents of the triggering push, so a release cannot be
+# lost by a run that GitHub cancels, by a pipeline that dies before tagging, or
+# by a push whose own diff looks innocent. That is also why there is no `paths:`
+# filter and no bot-author guard: the pipeline's commit-back is the commit the
+# tag points at, so the range behind it is empty and it releases nothing.
 on:
   push:
     branches: [main]
@@ -40,9 +37,11 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # 0, not 2: the range below spans the whole push, which can be more
-          # than one commit.
+          # Full history and tags: the ranges below run from each release
+          # line's last tag, and a missing tag would read as "nothing released
+          # yet" and release everything.
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Detect changed files
@@ -50,100 +49,78 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           TARGET: ${{ inputs.target }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            # Manual trigger - use input
+          set -euo pipefail
+
+          # Judged on what is UNRELEASED on each line - everything since that
+          # line's last tag - not on what this one push contained. GitHub keeps
+          # at most one run waiting per concurrency group and cancels the older
+          # one when a newer arrives, so a push-scoped run that loses its slot
+          # would take its commits' release with it. Measured from the last tag,
+          # the next run to survive picks up everything that has not shipped,
+          # whatever happened to the runs before it.
+          #
+          # It also means the pipeline's own commit-back cannot trigger a
+          # release: the tag is created AT that commit, so the range behind it
+          # is empty. And a release that died before tagging is retried by the
+          # next push instead of being lost.
+          # `|| true` on both: with pipefail set, an empty tag list makes grep
+          # exit 1 and head can SIGPIPE git, and "no tag yet" is a valid answer.
+          stable_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -e - | head -n 1 || true)"
+          rc_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | head -n 1 || true)"
+
+          # No tag on a line yet: everything it ships counts as unreleased.
+          changed_since() {
+            if [ -n "$1" ]; then git diff --name-only "$1" HEAD; else git ls-files; fi
+          }
+          # Test files change no shipped byte, so they cannot be what makes a
+          # release worth cutting.
+          CHANGED_STABLE="$(changed_since "$stable_tag" | grep -v '_test\.go$' || true)"
+          CHANGED_RC="$(changed_since "$rc_tag" | grep -v '_test\.go$' || true)"
+
+          # Which field of the version the stable release moves. The orq API
+          # version is the one thing that can change what the commands are, so
+          # a new one - an actual orq release, landed here by orquesta-web's
+          # schema publish - takes the minor. Everything this repo does to
+          # itself takes the patch. Compared value-to-value rather than by file:
+          # a schema republished at the same app_version is not a new API.
+          bump=patch
+          api_now="$(jq -r '.app_version' .bartolo.json)"
+          api_released=""
+          if [ -n "$stable_tag" ]; then
+            api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
+          fi
+          if [ "$api_now" != "$api_released" ]; then
+            bump=minor
+          fi
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API $api_released -> $api_now, bump=$bump"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$TARGET" in
-              stable)
-                echo "stable=true" >> "$GITHUB_OUTPUT"
-                echo "prerelease=false" >> "$GITHUB_OUTPUT"
-                ;;
-              prerelease)
-                echo "stable=false" >> "$GITHUB_OUTPUT"
-                echo "prerelease=true" >> "$GITHUB_OUTPUT"
-                ;;
-              both)
-                echo "stable=true" >> "$GITHUB_OUTPUT"
-                echo "prerelease=true" >> "$GITHUB_OUTPUT"
-                ;;
+              stable)     stable=true;  prerelease=false ;;
+              prerelease) stable=false; prerelease=true  ;;
+              both)       stable=true;  prerelease=true  ;;
             esac
           else
-            # Push event - detect from changed files.
-            #
-            # The whole push range, not HEAD~1..HEAD: a merge that lands four
-            # commits would otherwise be judged on the last one alone, and a
-            # CLI fix in an earlier commit would go unreleased - the exact
-            # failure this workflow exists to prevent.
-            #
-            # `before` is all-zeros on a branch's first push, and points at a
-            # commit that no longer exists after a force-push; in both cases the
-            # parent of the tip is the only range there is.
-            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-              START="$BEFORE"
-            elif START="$(git rev-parse -q --verify "$AFTER^")"; then
-              echo "note: $BEFORE is not reachable, judging the tip commit alone" >&2
-            else
-              # No range at all: release both rather than skip, because a missed
-              # release is the failure this workflow exists to prevent.
-              echo "stable=true" >> "$GITHUB_OUTPUT"
-              echo "prerelease=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            # The release pipeline commits its regenerated code and version
-            # bump back to main. Releasing that commit would release the
-            # release, forever. Matched on github-actions[bot], the identity
-            # the Git Data API attributes a GITHUB_TOKEN commit to - NOT on
-            # admin@orq.ai, which is also orquesta-web's schema-publish commit
-            # and must keep triggering releases. Judged over the whole range,
-            # like the file list: a human commit anywhere in the push must still
-            # release. A git failure here aborts rather than releasing blind.
-            if ! AUTHORS="$(git log --format=%an "$START..$AFTER")"; then
-              echo "error: cannot read commit authors for $START..$AFTER" >&2
-              exit 1
-            fi
-            if ! printf '%s\n' "$AUTHORS" | grep -qvx 'github-actions\[bot\]'; then
-              echo "push is the release pipeline's own commit-back; nothing to release"
-              echo "stable=false" >> "$GITHUB_OUTPUT"
-              echo "prerelease=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            # Test files are excluded: they change no shipped byte, and cutting
-            # a release for one publishes an identical binary under a new
-            # number.
-            CHANGED="$(git diff --name-only "$START" "$AFTER" | grep -v '_test\.go$' || true)"
-
             # Shared: built into both binaries (packages/orq-rc compiles the
             # root's hand-written commands against the staging schema), or
             # shared by both releases. Each module's own cmd/ is NOT shared,
             # and cmd/surface-dump ships to nobody.
             SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
 
-            # Which field of the version the stable release moves. A new orq
-            # API schema is the only change that can alter what the commands
-            # are, so it takes the minor; everything else - a CLI fix, an
-            # installer change - takes the patch, which the pipeline assumes
-            # when this output is unset. A manual run has no push range to
-            # judge, so it lands on patch as well.
-            if echo "$CHANGED" | grep -qE '^(openapi\.yaml|\.bartolo\.json)$'; then
-              echo "bump=minor" >> "$GITHUB_OUTPUT"
+            stable=false
+            prerelease=false
+            if printf '%s\n' "$CHANGED_STABLE" | grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED"; then
+              stable=true
             fi
-
-            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED"; then
-              echo "stable=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "stable=false" >> "$GITHUB_OUTPUT"
-            fi
-
-            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/)|$SHARED"; then
-              echo "prerelease=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            if printf '%s\n' "$CHANGED_RC" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/)|$SHARED"; then
+              prerelease=true
             fi
           fi
+
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
   release-stable:
     needs: detect-changes

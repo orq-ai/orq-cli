@@ -465,15 +465,15 @@ This wipes `cli/generated/` and rebuilds it from `openapi.json`. **`cli/custom/`
 ### Cutting a release
 
 You do not cut one by hand. `.github/workflows/release.yml` fires on every push
-to `main`, releases when the push touched something that reaches a binary —
+to `main`, releases when something that reaches a binary is unreleased —
 `cli/custom/`, `cmd/orq/`, `npm/`, `scripts/`, `install.sh`, `VERSION`,
-`go.mod`, or either module's OpenAPI schema — and calls `release-pipeline.yml`,
-which:
+`go.mod`, or either module's OpenAPI schema, changed since that line's last tag
+— and calls `release-pipeline.yml`, which:
 
 1. Resolves the version. The CLI version lives in `VERSION`, and the pipeline
-   moves it: a push carrying a new orq API schema takes the minor, anything else
-   takes the patch, and both take the next free tag — nobody edits the file for
-   a release. **Bump the major in `VERSION`, in the PR that earns it.** An rc
+   moves it: a new orq API version takes the minor, anything else takes the
+   patch, and both take the next free tag — nobody edits the file for a
+   release. **Bump the major in `VERSION`, in the PR that earns it.** An rc
    release becomes `<next-minor>.0-rc.<n>`.
 2. Regenerates `cli/generated/` from the module's schema and commits it back to
    `main` (signed, through the Git Data API — `main` requires verified

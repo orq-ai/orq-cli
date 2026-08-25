@@ -39,9 +39,10 @@ What you may depend on, and what you may not:
 ## Versioning
 
 The CLI has its own semver, independent of the orq API line (RES-1434). It
-lives in `VERSION` at the repo root, and the release pipeline moves it: a push
-that lands a new orq API schema takes the minor, any other change to `main`
-takes the patch, and both take the next free tag. The major is the only field a
+lives in `VERSION` at the repo root, and the release pipeline moves it: a new
+orq API version — an actual orq release, landed here by orquesta-web's schema
+publish — takes the minor, any other change to `main` takes the patch, and both
+take the next free tag. The major is the only field a
 human edits. A pre-release build of the next minor is published on the `rc`
 line.
 
