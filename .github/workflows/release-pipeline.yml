@@ -7,9 +7,10 @@ name: Release Pipeline
 # code back to main, tags + publishes a GitHub release, cross-compiles every
 # platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
 #
-# The CLI version is the repo's own and comes from ./VERSION. A new orq API
-# schema bumps the minor, any other change to main bumps the patch, and both
-# take the next free tag; the major is the only field a human edits. rc builds
+# The CLI version is the repo's own and comes from ./VERSION. It moves the same
+# field the orq API version moved - their major is our major, their minor our
+# minor - and any other change to main moves the patch; all of them take the
+# next free tag. A feature or a break of our own is a hand edit. rc builds
 # become <next-minor>.0-rc.<n> prereleases, with n likewise the next free one. It is independent of the
 # orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
 # recorded instead — in the release notes, in the binary (orq version), and in
@@ -27,7 +28,7 @@ on:
         type: string
         required: true
       bump:
-        description: "'minor' when a new orq API schema landed, 'patch' for a CLI-only change"
+        description: "Which version field to move: mirrors the field the orq API version moved (default patch)"
         type: string
         required: false
         default: patch
@@ -148,19 +149,16 @@ jobs:
             version="$next-rc.$(first_free "$next-rc." 1)"
             prerelease=true
           else
-            # Nobody hand-edits the version for a release. A new orq API
-            # schema is the one thing that can change what the commands are, so
-            # it takes the minor; everything else — a CLI fix, an installer
-            # change — takes the patch. The major is left to a human.
-            #
-            # A static rule, deliberately: deriving the bump from a diff of the
-            # generated command surface would be more precise and would make
-            # every release's number depend on a comparison that can itself be
-            # wrong.
-            if [ "${BUMP:-patch}" = "minor" ]; then
-              major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"
-              base="$major.$((minor + 1)).0"
-            fi
+            # Which field to move is decided by release.yml, from the field
+            # the orq API version moved: the API is the contract these commands
+            # are generated from, so a break there is a break here. A change of
+            # this repo's own is a patch, and a feature or a break of our own is
+            # a hand edit to VERSION in the PR that earns it.
+            major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"
+            case "${BUMP:-patch}" in
+              major) base="$((major + 1)).0.0" ;;
+              minor) base="$major.$((minor + 1)).0" ;;
+            esac
             prefix="${base%.*}"
             version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
