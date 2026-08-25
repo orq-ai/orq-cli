@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -839,15 +839,7 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if _, err := EnsureGeneration(); err != nil {
 		t.Fatal(err)
 	}
-	lp, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Held by a PID that is definitely alive (this test binary), so the
-	// stale-lock heal cannot break it.
-	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	holdLockForeignly(t, home)
 
 	release, err := InstallSession("claude")
 	if err == nil {
@@ -888,13 +880,7 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallSession: %v", err)
 	}
-	lp, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lp, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	stop := holdLockForeignly(t, home)
 	release() // cannot acquire; must not drop the claim
 
 	m, err := LoadManifest()
@@ -911,9 +897,7 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 	}
 
 	// With the lock free again, the same release function retries and works.
-	if err := os.Remove(lp); err != nil {
-		t.Fatal(err)
-	}
+	stop()
 	release()
 	m, err = LoadManifest()
 	if err != nil || m == nil {
@@ -1322,131 +1306,168 @@ func countEntries(t *testing.T, dir string) int {
 	return len(entries)
 }
 
-// A live holder heartbeats its lock file, so the age bound never retires a
-// lock somebody is still writing under. Before the heartbeat the age was
-// measured from acquisition, so any holder slower than lockMaxAge — a
-// copy-mode install behind antivirus, a machine suspended mid-command — had
-// its lock broken while it was mid load-mutate-save, and the second writer
-// silently dropped its records.
-func TestAHeartbeatKeepsALiveHoldersLock(t *testing.T) {
+// The lock is the kernel's, held on an open descriptor. A second acquirer
+// waits and then gives up rather than writing anyway: the manifest is the
+// deletion allow-list, and a lost update there leaves links nothing can ever
+// remove.
+func TestASecondAcquireWaitsThenReportsTheHolder(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path, err := lockPath()
+	// acquireLock directly, not withManifestLock: manifestMu would serialize
+	// these two before the file lock is ever consulted, which is the whole
+	// point of having both, and would make this test prove the mutex instead.
+	release, err := acquireLock()
 	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+	if release == nil {
+		t.Fatal("first acquire returned no release, so there was no state directory")
+	}
+
+	start := time.Now()
+	second, err := acquireLock()
+	elapsed := time.Since(start)
+	if second != nil {
+		second()
+		t.Fatal("a second acquire took the lock while the first still held it")
+	}
+	if !errors.Is(err, ErrManifestLocked) {
+		t.Errorf("err = %v, want it to wrap ErrManifestLocked so callers can recognise the case", err)
+	}
+	if elapsed < lockTimeout {
+		t.Errorf("gave up after %s, want it to wait out lockTimeout (%s) first", elapsed, lockTimeout)
+	}
+
+	release()
+	third, err := acquireLock()
+	if err != nil || third == nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	third()
+}
+
+// The reason for a descriptor lock rather than a lock written into a file: a
+// holder that dies takes its lock with it. Every wedge this package has had —
+// an unstamped lock file, a lock stamped with a PID the OS later reused, a
+// lock whose holder was killed mid-write — was a way for a contents-based
+// lock to outlive the process that took it, and each needed its own guess
+// (liveness, an age bound, a heartbeat) to undo.
+func TestALockDiesWithItsHolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mine, err := lockToken()
-	if err != nil {
+	ready := filepath.Join(home, "held")
+
+	// Re-exec this test binary as a helper that takes the lock and blocks.
+	// A goroutine cannot stand in: it would share this process's descriptors
+	// and, more to the point, could not be killed without cleanup the way a
+	// crashed holder is.
+	helper := exec.Command(os.Args[0], "-test.run=TestLockHolderHelper")
+	helper.Env = append(os.Environ(), "ORQ_LOCK_HELPER=1", "HOME="+home, "ORQ_LOCK_READY="+ready)
+	if err := helper.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(mine), 0o600); err != nil {
+	defer func() {
+		_ = helper.Process.Kill()
+		_, _ = helper.Process.Wait()
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper never signalled that it holds the lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Killed, not asked to exit: nothing gets to run a cleanup, which is the
+	// case a contents-based lock could not recover from.
+	if err := helper.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
-	// Older than the bound, and stamped with a PID that is live (our own):
-	// exactly the shape a slow holder has.
-	old := time.Now().Add(-2 * lockMaxAge)
-	if err := os.Chtimes(path, old, old); err != nil {
+	if _, err := helper.Process.Wait(); err != nil {
 		t.Fatal(err)
 	}
 
-	stop := startHeartbeat(path, mine, 5*time.Millisecond)
-	time.Sleep(50 * time.Millisecond)
-	if lockIsStale(path) {
-		t.Error("a heartbeating holder's lock was reported stale, so another writer would break it mid-write")
+	start := time.Now()
+	release, err := acquireLock()
+	if err != nil {
+		t.Fatalf("acquire after the holder was killed: %v", err)
 	}
-
-	// And once the holder is gone the beats stop, so the same lock ages out
-	// rather than wedging every later command.
-	stop()
-	if err := os.Chtimes(path, old, old); err != nil {
-		t.Fatal(err)
+	if release == nil {
+		t.Fatal("acquire returned no release, so there was no state directory")
 	}
-	if !lockIsStale(path) {
-		t.Error("an abandoned lock past the age bound was not stale")
+	release()
+	if elapsed := time.Since(start); elapsed >= lockTimeout {
+		t.Errorf("waited %s for a dead holder's lock; the kernel should have released it on exit", elapsed)
 	}
 }
 
-// The other half of the age bound: a lock stamped by a process that exited
-// and whose PID the OS has since handed to a live process. The PID reads as
-// alive, so only the age can retire it — and nothing heartbeats it, so it
-// does.
-func TestALockStampedWithARecycledPIDDoesNotWedgeForever(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+// holdLockForeignly takes the manifest lock in a subprocess and returns the
+// function that kills it. It has to be another process: the lock is the
+// kernel's, held per open file description, so nothing this process does to a
+// file on disk can simulate a foreign holder.
+func holdLockForeignly(t *testing.T, home string) (stop func()) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	path, err := lockPath()
-	if err != nil {
+	ready := filepath.Join(t.TempDir(), "held")
+	helper := exec.Command(os.Args[0], "-test.run=TestLockHolderHelper")
+	helper.Env = append(os.Environ(), "ORQ_LOCK_HELPER=1", "HOME="+home, "ORQ_LOCK_READY="+ready)
+	if err := helper.Start(); err != nil {
 		t.Fatal(err)
 	}
-	// lockToken stamps our own PID, which is as live as a recycled one.
-	stale, err := lockToken()
-	if err != nil {
-		t.Fatal(err)
+	killed := false
+	stop = func() {
+		if killed {
+			return
+		}
+		killed = true
+		_ = helper.Process.Kill()
+		_, _ = helper.Process.Wait()
 	}
-	if err := os.WriteFile(path, []byte(stale), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-2 * lockMaxAge)
-	if err := os.Chtimes(path, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if err := withManifestLock(func() error { return nil }); err != nil {
-		t.Errorf("a lock held by a live-looking PID that has not beaten in %v still blocked a writer: %v", lockMaxAge, err)
+	t.Cleanup(stop)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			return stop
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("helper never signalled that it holds the lock")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-// A timestamp in the future cannot be reasoned about with this machine's
-// clock, and left one-sided it wedges an unstamped lock for as long as the
-// clock says so — which the PID path cannot rescue.
-func TestALockFromTheFutureDoesNotWedgeForever(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+// TestLockHolderHelper is not a test. It is the subprocess half of
+// TestALockDiesWithItsHolder, and it does nothing at all unless that test
+// re-execs this binary with ORQ_LOCK_HELPER set.
+func TestLockHolderHelper(t *testing.T) {
+	if os.Getenv("ORQ_LOCK_HELPER") != "1" {
+		t.Skip("subprocess helper for TestALockDiesWithItsHolder")
+	}
+	release, err := acquireLock()
+	if err != nil || release == nil {
+		t.Fatalf("helper could not take the lock: %v", err)
+	}
+	if err := os.WriteFile(os.Getenv("ORQ_LOCK_READY"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	path, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ahead := time.Now().Add(24 * time.Hour)
-	if err := os.Chtimes(path, ahead, ahead); err != nil {
-		t.Fatal(err)
-	}
-	if err := withManifestLock(func() error { return nil }); err != nil {
-		t.Errorf("a lock stamped in the future still blocked a writer: %v", err)
-	}
-}
-
-// A lock file created but never stamped, or stamped by a PID the OS has since
-// reused, used to be held by nobody forever: every later command paid the full
-// timeout and connect failed outright, with no way out but deleting a dotfile.
-func TestAnUnstampedLockDoesNotWedgeForever(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path, err := lockPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-2 * lockMaxAge)
-	if err := os.Chtimes(path, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if err := withManifestLock(func() error { return nil }); err != nil {
-		t.Errorf("an unstamped, long-dead lock still blocked a writer: %v", err)
+	// Held until killed. Never released: that is what is being tested. A
+	// sleep loop rather than select{}, which the runtime would report as a
+	// deadlock and exit on — releasing the lock, which is the opposite of
+	// the point.
+	for {
+		time.Sleep(time.Second)
 	}
 }
 
