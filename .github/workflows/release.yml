@@ -64,10 +64,26 @@ jobs:
           # release: the tag is created AT that commit, so the range behind it
           # is empty. And a release that died before tagging is retried by the
           # next push instead of being lost.
-          # `|| true` on both: with pipefail set, an empty tag list makes grep
-          # exit 1 and head can SIGPIPE git, and "no tag yet" is a valid answer.
-          stable_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -e - | head -n 1 || true)"
-          rc_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | head -n 1 || true)"
+          # Anchored on VERSION, not on the highest tag in the repo: the CLI's
+          # line starts at 3.0.0 and the v4.12.x-v4.13.x tags are the orq API's
+          # old numbering, which sorts ABOVE everything this line will publish
+          # for years. VERSION is what the pipeline wrote at the last release,
+          # so v$VERSION is this line's last tag by construction; no tag yet
+          # means the line has not started and everything is unreleased.
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
+          stable_tag=""
+          if tag_exists "v$file_version"; then stable_tag="v$file_version"; fi
+
+          # The rc line runs ahead of stable at <next-minor>.0-rc.<n>, so its
+          # last tag is the highest rc of that minor, or the stable release it
+          # branched from if none has been cut yet.
+          # `|| true`: with pipefail set, an empty tag list makes head SIGPIPE
+          # git, and "no rc yet" is a valid answer.
+          rc_major="${file_version%%.*}"; rc_rest="${file_version#*.}"
+          rc_next="$rc_major.$((${rc_rest%%.*} + 1)).0"
+          rc_tag="$(git tag --list "v$rc_next-rc.*" --sort=-v:refname | head -n 1 || true)"
+          if [ -z "$rc_tag" ]; then rc_tag="$stable_tag"; fi
 
           # No tag on a line yet: everything it ships counts as unreleased.
           changed_since() {

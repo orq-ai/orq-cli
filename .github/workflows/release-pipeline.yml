@@ -157,29 +157,34 @@ jobs:
             # the field the orq API version moved and what our own commits since
             # the last release earn.
             #
-            # Applied to the LAST RELEASED tag, not to VERSION: the bump already
-            # counts every unreleased commit, so applying it to a VERSION a
-            # previous release of those same commits had already moved counts
-            # them twice - 4.13.22 + major = 5.0.0 written to VERSION, then
-            # 5.0.0 + major = 6.0.0 on the next run.
+            # VERSION is the last released version of this line - the pipeline
+            # writes it on every release - so the bump applies to it exactly
+            # once. The tag is not scanned for a maximum: the CLI's line starts
+            # at 3.0.0 and the old v4.12.x-v4.13.x tags (the orq API's numbering,
+            # not ours) would win that comparison for years.
             #
-            # VERSION is then a floor: a hand edit still forces a number the
-            # rules would not reach, and a tag left behind by a half-finished
-            # release cannot be walked backwards over.
-            last_stable="$(git tag --list 'v*' --sort=-v:refname | grep -v -e - | head -n 1 || true)"
-            released="${last_stable#v}"
-            released="${released:-0.0.0}"
-            major="${released%%.*}"; rest="${released#*.}"
-            minor="${rest%%.*}"; patch="${rest#*.}"
-            case "${BUMP:-patch}" in
-              major) base="$((major + 1)).0.0" ;;
-              minor) base="$major.$((minor + 1)).0" ;;
-              *)     base="$major.$minor.$((patch + 1))" ;;
-            esac
-            base="$(printf '%s\n%s\n' "$base" "$file_version" | sort -V | tail -n 1)"
+            # A VERSION with no tag of its own means the line has not started
+            # yet, or that a hand edit is forcing a number the rules would not
+            # reach: publish it as written, and bump only from there on.
+            if git rev-parse -q --verify "refs/tags/v$file_version" >/dev/null; then
+              major="${base%%.*}"; rest="${base#*.}"
+              minor="${rest%%.*}"; patch="${rest#*.}"
+              case "${BUMP:-patch}" in
+                major) base="$((major + 1)).0.0" ;;
+                minor) base="$major.$((minor + 1)).0" ;;
+                *)     base="$major.$minor.$((patch + 1))" ;;
+              esac
+            fi
             prefix="${base%.*}"
             version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
+            # Says so out loud: the number the rules asked for was taken, which
+            # after the 3.0.0 reset means this line walked into one of the orq
+            # API's old v4.12.x/v4.13.x tags. npm has those versions too, and it
+            # refuses a reused version outright, so the publish would fail next.
+            if [ "$version" != "$base" ]; then
+              echo "::warning::v$base is already tagged; publishing $version instead"
+            fi
             # Written back in the commit-back step below, so main always states
             # the version that was last released from it. Compared against the
             # file, not against $base, which the minor bump above rewrites.
