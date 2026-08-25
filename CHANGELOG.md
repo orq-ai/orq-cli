@@ -42,9 +42,9 @@ The CLI has its own semver, independent of the orq API line (RES-1434). It
 lives in `VERSION` at the repo root, and the release pipeline moves it: the
 same field the orq API version moved — their major is our major, their minor our
 minor — and any other change to `main` moves the patch. All of them take the
-next free tag; a feature or a break of our own is a hand edit to `VERSION`. The major is the only field a
-human edits. A pre-release build of the next minor is published on the `rc`
-line.
+next free tag; a feature or a break of our own is a hand edit to `VERSION`, in
+the PR that earns it. A pre-release build of the next minor is published on the
+`rc` line.
 
 The orq API version a build was generated against is recorded, not encoded:
 
