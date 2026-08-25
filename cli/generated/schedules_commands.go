@@ -146,7 +146,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete agent-key schedule-id",
 			Short:   "Delete schedule",
-			Long:    bartolocli.Markdown("Permanently removes a schedule from NATS, Mongo, and the Redis cache."),
+			Long:    bartolocli.Markdown("Permanently removes the schedule. It will not run again."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -248,7 +248,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "trigger agent-key schedule-id",
 			Short:   "Trigger schedule execution",
-			Long:    bartolocli.Markdown("Runs the schedule's payload immediately (≈10 seconds after the request, to stay above the NATS scheduler's minimum deliver-at margin). The schedule's regular cadence is unaffected. Inactive schedules return 400."),
+			Long:    bartolocli.Markdown("Runs the schedule's payload immediately (approximately 10 seconds after the request). The schedule's regular cadence is unaffected. Inactive schedules return 400."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -286,7 +286,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
 			Short:   "Update schedule",
-			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) re-publishes the NATS schedule and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) reschedules the next run and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -317,7 +317,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "is_active",
 							FlagName:    "is-active",
 							Type:        "bool",
-							Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
+							Description: "Activate or deactivate the schedule. Deactivating stops future executions; activating schedules future executions using the current values.",
 						},
 						{
 							Name:        "payload",
@@ -329,7 +329,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "type",
 							FlagName:    "type",
 							Type:        "enum-string",
-							Description: "Change the schedule type. Only cron is accepted. Changing type or expression resets the NATS schedule and bumps generation.",
+							Description: "Change the schedule type. Only cron is accepted. Changing the type or expression reschedules future executions and increments generation.",
 							Enum: []string{
 								"cron",
 							},
@@ -378,7 +378,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "is_active",
 					FlagName:    "is-active",
 					Type:        "bool",
-					Description: "Activate or deactivate the schedule. Deactivating removes the NATS entry; activating re-publishes with current values.",
+					Description: "Activate or deactivate the schedule. Deactivating stops future executions; activating schedules future executions using the current values.",
 				},
 				{
 					Name:        "payload",
@@ -390,7 +390,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "type",
 					FlagName:    "type",
 					Type:        "enum-string",
-					Description: "Change the schedule type. Only cron is accepted. Changing type or expression resets the NATS schedule and bumps generation.",
+					Description: "Change the schedule type. Only cron is accepted. Changing the type or expression reschedules future executions and increments generation.",
 					Enum: []string{
 						"cron",
 					},

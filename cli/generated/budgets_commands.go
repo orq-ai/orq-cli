@@ -14,7 +14,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 	budgetsCmd := &cobra.Command{
 		Use:   "budgets",
 		Short: "Budgets",
-		Long:  bartolocli.Markdown("Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, api-key, provider, and model. A budget is hierarchical and defense-in-depth — every applicable budget is a hard gate, and the most restrictive one wins per dimension (see ADR 0007)."),
+		Long:  bartolocli.Markdown("Budgets govern spend, token usage, and request rate across six scopes: workspace, project, identity, API key, provider, and model. Every applicable budget is enforced, and the most restrictive limit applies per dimension."),
 	}
 	root.AddCommand(budgetsCmd)
 
@@ -162,7 +162,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete budget-id",
 			Short:   "Delete a budget",
-			Long:    bartolocli.Markdown("Permanently deletes a budget. Consumption counters in Redis for this budget are cleared immediately. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes a budget. Its consumption counters are cleared immediately. The response body is empty on success."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -274,7 +274,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "reset-consumption budget-id",
 			Short:   "Reset budget consumption",
-			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved; only the Redis counters are reset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {

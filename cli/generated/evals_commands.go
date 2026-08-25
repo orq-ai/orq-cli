@@ -26,7 +26,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "all",
 			Short:   "Get all Evaluators",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("List all evaluators in the workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -69,11 +69,11 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default Project\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -339,7 +339,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete an Evaluator",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Delete an evaluator by its unique identifier."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -373,7 +373,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve an Evaluator",
-			Long:    bartolocli.Markdown("Retrieve a single evaluator by its unique identifier. Returns the evaluator exactly as stored, including its type-specific configuration — prompt and model for LLM evaluators, source code for Python and TypeScript evaluators, the JSON Schema for schema evaluators, and so on.\n\nUse this when you already know the evaluator id (for example to refresh the state of a resource you manage declaratively). To discover evaluator ids, list them with `GET /v2/evaluators`.\n\nThis endpoint returns the stored record, which carries more detail than the representation `GET /v2/evaluators` returns: `display_name` rather than `key`, `model` as an object rather than a provider-qualified string, plus the `owner`, `domain_id`, `metadata`, `enabled` and `output_type` fields."),
+			Long:    bartolocli.Markdown("Retrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata, enabled, and output_type."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -409,56 +409,62 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke id",
 			Short:   "Invoke a Custom Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n- `variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Runs an evaluator that already exists in the workspace. Accepts either a conversation or the structured input and output fields; when both are present the conversation wins.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `context` (object)\n- `messages` (array)\n- `model` (string)\n- `output` (string)\n- `query` (string)\n- `reference` (string)\n- `retrievals` (array)\n- `variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"variables\": {\n    \"locale\": \"en\",\n    \"profile\": {\n      \"active\": true,\n      \"tier\": \"gold\"\n    },\n    \"tags\": [\n      \"alpha\",\n      \"omega\"\n    ]\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"context\": {\n    \"input\": {\n      \"expected_output\": \"expected_output\",\n      \"retrievals\": [\n        \"retrievals\"\n      ],\n      \"system_instructions\": \"system_instructions\",\n      \"user_query\": \"user_query\"\n    },\n    \"messages\": [\n      {}\n    ],\n    \"output\": {\n      \"response\": \"response\",\n      \"tools_called\": [\n        {\n          \"arguments\": \"arguments\",\n          \"name\": \"name\",\n          \"output\": \"output\"\n        }\n      ]\n    },\n    \"variables\": {}\n  },\n  \"messages\": [\n    {}\n  ],\n  \"model\": \"model\",\n  \"output\": \"output\",\n  \"query\": \"query\",\n  \"reference\": \"reference\",\n  \"retrievals\": [\n    \"retrievals\"\n  ],\n  \"variables\": {}\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
 						{
+							Name:        "context",
+							FlagName:    "context",
+							Type:        "json",
+							Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+						},
+						{
 							Name:        "messages",
 							FlagName:    "messages",
 							Type:        "json",
-							Description: "The messages used to generate the output, without the last user message",
+							Description: "The conversation that produced the output. Folds into\n `context.messages`.",
 						},
 						{
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "Model to use for LLM-based evaluators (e.g. \"openai/gpt-4o\")",
+							Description: "Model to grade with, as a catalog id such as \"openai/gpt-4o\".\n\n Only meaningful for a hub template of type llm_eval or ragas, which has no\n model of its own. A stored evaluator uses the model on its own definition\n and ignores this.",
 						},
 						{
 							Name:        "output",
 							FlagName:    "output",
 							Type:        "string",
-							Description: "The generated response from the model",
+							Description: "The generated response from the model. Folds into\n `context.output.response`.",
 						},
 						{
 							Name:        "query",
 							FlagName:    "query",
 							Type:        "string",
-							Description: "Latest user message",
+							Description: "Latest user message. Folds into `context.input.user_query`.",
 						},
 						{
 							Name:        "reference",
 							FlagName:    "reference",
 							Type:        "string",
-							Description: "The reference used to compare the output",
+							Description: "The reference used to compare the output. Folds into\n `context.input.expected_output`.",
 						},
 						{
 							Name:        "retrievals",
 							FlagName:    "retrievals",
 							Type:        "string-slice",
-							Description: "Knowledge base retrievals",
+							Description: "Knowledge base retrievals. Folds into `context.input.retrievals`.",
 						},
 						{
 							Name:        "variables",
 							FlagName:    "variables",
-							Type:        "json",
-							Description: "Template variables for evaluator prompt substitution. Request values override evaluator defaults, including for nested arrays and objects.",
+							Type:        "string-map",
+							Description: "Template variables for evaluator prompt substitution. Folds into\n `context.variables`.",
 						},
 					},
 				)
@@ -483,46 +489,52 @@ func registerevalsCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "context",
+					FlagName:    "context",
+					Type:        "json",
+					Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+				},
+				{
 					Name:        "messages",
 					FlagName:    "messages",
 					Type:        "json",
-					Description: "The messages used to generate the output, without the last user message",
+					Description: "The conversation that produced the output. Folds into\n `context.messages`.",
 				},
 				{
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "Model to use for LLM-based evaluators (e.g. \"openai/gpt-4o\")",
+					Description: "Model to grade with, as a catalog id such as \"openai/gpt-4o\".\n\n Only meaningful for a hub template of type llm_eval or ragas, which has no\n model of its own. A stored evaluator uses the model on its own definition\n and ignores this.",
 				},
 				{
 					Name:        "output",
 					FlagName:    "output",
 					Type:        "string",
-					Description: "The generated response from the model",
+					Description: "The generated response from the model. Folds into\n `context.output.response`.",
 				},
 				{
 					Name:        "query",
 					FlagName:    "query",
 					Type:        "string",
-					Description: "Latest user message",
+					Description: "Latest user message. Folds into `context.input.user_query`.",
 				},
 				{
 					Name:        "reference",
 					FlagName:    "reference",
 					Type:        "string",
-					Description: "The reference used to compare the output",
+					Description: "The reference used to compare the output. Folds into\n `context.input.expected_output`.",
 				},
 				{
 					Name:        "retrievals",
 					FlagName:    "retrievals",
 					Type:        "string-slice",
-					Description: "Knowledge base retrievals",
+					Description: "Knowledge base retrievals. Folds into `context.input.retrievals`.",
 				},
 				{
 					Name:        "variables",
 					FlagName:    "variables",
-					Type:        "json",
-					Description: "Template variables for evaluator prompt substitution. Request values override evaluator defaults, including for nested arrays and objects.",
+					Type:        "string-map",
+					Description: "Template variables for evaluator prompt substitution. Folds into\n `context.variables`.",
 				},
 			},
 		)
@@ -583,11 +595,11 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"single\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"versionIncrement\": \"major\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"single\",\n  \"path\": \"Default Project\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"versionIncrement\": \"major\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

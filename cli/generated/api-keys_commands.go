@@ -14,7 +14,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 	apiKeysCmd := &cobra.Command{
 		Use:   "api-keys",
 		Short: "API keys",
-		Long:  bartolocli.Markdown("API keys authenticate programmatic access to the workspace. The unified key model exposes opaque tokens, per-domain access grants, and budget / rate-limit constraints (see ADR 0001 and ADR 0002)."),
+		Long:  bartolocli.Markdown("API keys authenticate programmatic access to the workspace. They expose opaque tokens, per-domain access grants, and budget and rate-limit constraints."),
 	}
 	root.AddCommand(apiKeysCmd)
 
@@ -40,7 +40,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
 						},
 						{
@@ -110,7 +110,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
 				},
 				{
@@ -174,7 +174,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete api-key-id",
 			Short:   "Delete an API key",
-			Long:    bartolocli.Markdown("Permanently deletes an API key. Cache entries in `API_KEYS_KV` are invalidated immediately so an in-flight token cannot ride out the TTL. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -336,7 +336,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "access",
 							FlagName:    "access",
-							Type:        "json",
+							Type:        "string-map",
 							Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
 						},
 						{
@@ -418,7 +418,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "access",
 					FlagName:    "access",
-					Type:        "json",
+					Type:        "string-map",
 					Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
 				},
 				{

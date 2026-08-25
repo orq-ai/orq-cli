@@ -173,6 +173,7 @@ func registerchunkingCommands(root *cobra.Command) {
 								"semantic",
 								"agentic",
 								"fast",
+								"late",
 							},
 						},
 						{
@@ -355,6 +356,7 @@ func registerchunkingCommands(root *cobra.Command) {
 						"semantic",
 						"agentic",
 						"fast",
+						"late",
 					},
 				},
 				{

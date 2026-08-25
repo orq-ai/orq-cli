@@ -50,112 +50,6 @@
       ]
     },
     {
-      "path": "orq activities",
-      "use": "activities"
-    },
-    {
-      "path": "orq activities create",
-      "use": "create entity-id",
-      "flags": [
-        {
-          "name": "checksum",
-          "type": "string"
-        },
-        {
-          "name": "content",
-          "type": "string"
-        },
-        {
-          "name": "data",
-          "type": "string"
-        },
-        {
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "name": "entity-type",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "mentions",
-          "type": "string"
-        },
-        {
-          "name": "parent-activity-id",
-          "type": "string"
-        },
-        {
-          "name": "project-id",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        },
-        {
-          "name": "type",
-          "type": "string"
-        },
-        {
-          "name": "version",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq activities list",
-      "use": "list entity-id",
-      "flags": [
-        {
-          "name": "ending-before",
-          "type": "string"
-        },
-        {
-          "name": "limit",
-          "type": "int64"
-        },
-        {
-          "name": "starting-after",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq activities update",
-      "use": "update entity-id activity-id",
-      "flags": [
-        {
-          "name": "content",
-          "type": "string"
-        },
-        {
-          "name": "environments",
-          "type": "string"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
       "path": "orq agents",
       "use": "agents"
     },
@@ -792,6 +686,10 @@
           "type": "string"
         },
         {
+          "name": "display",
+          "type": "string"
+        },
+        {
           "name": "display-name",
           "type": "string"
         },
@@ -905,6 +803,10 @@
         },
         {
           "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display",
           "type": "string"
         },
         {
@@ -1123,7 +1025,7 @@
       "flags": [
         {
           "name": "access",
-          "type": "string"
+          "type": "stringToString"
         },
         {
           "name": "example",
@@ -1229,7 +1131,7 @@
       "flags": [
         {
           "name": "access",
-          "type": "string"
+          "type": "stringToString"
         },
         {
           "name": "clear-expires-at",
@@ -2627,6 +2529,10 @@
       "use": "invoke id",
       "flags": [
         {
+          "name": "context",
+          "type": "string"
+        },
+        {
           "name": "example",
           "type": "bool"
         },
@@ -2664,7 +2570,7 @@
         },
         {
           "name": "variables",
-          "type": "string"
+          "type": "stringToString"
         }
       ]
     },
@@ -2793,38 +2699,6 @@
         {
           "name": "version-increment",
           "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq feature-previews",
-      "use": "feature-previews"
-    },
-    {
-      "path": "orq feature-previews list",
-      "use": "list",
-      "hidden": true
-    },
-    {
-      "path": "orq feature-previews toggle",
-      "use": "toggle slug",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "enabled",
-          "type": "bool"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
         }
       ]
     },
@@ -3138,16 +3012,16 @@
           "type": "string"
         },
         {
+          "name": "plugins",
+          "type": "string"
+        },
+        {
           "name": "project-id",
           "type": "string"
         },
         {
           "name": "stdin",
           "type": "bool"
-        },
-        {
-          "name": "timeout",
-          "type": "int64"
         }
       ]
     },
@@ -3198,7 +3072,13 @@
     {
       "path": "orq guardrail-rules list-used-guardrails",
       "use": "list-used-guardrails",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "project-id",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq guardrail-rules retrieve",
@@ -3239,12 +3119,12 @@
           "type": "string"
         },
         {
-          "name": "stdin",
-          "type": "bool"
+          "name": "plugins",
+          "type": "string"
         },
         {
-          "name": "timeout",
-          "type": "int64"
+          "name": "stdin",
+          "type": "bool"
         }
       ]
     },
@@ -3830,6 +3710,10 @@
       "use": "create-datasource knowledge-id",
       "flags": [
         {
+          "name": "attachment",
+          "type": "string"
+        },
+        {
           "name": "chunking-options",
           "type": "string"
         },
@@ -3854,8 +3738,12 @@
           "type": "string"
         },
         {
+          "name": "id",
+          "type": "string"
+        },
+        {
           "name": "metadata",
-          "type": "stringToString"
+          "type": "string"
         },
         {
           "name": "stdin",
@@ -3869,7 +3757,7 @@
     },
     {
       "path": "orq knowledge-bases delete-chunk",
-      "use": "delete-chunk chunk-id datasource-id knowledge-id"
+      "use": "delete-chunk knowledge-id datasource-id chunk-id"
     },
     {
       "path": "orq knowledge-bases delete-chunks",
@@ -3900,7 +3788,6 @@
     {
       "path": "orq knowledge-bases get-chunks-count",
       "use": "get-chunks-count knowledge-id datasource-id",
-      "hidden": true,
       "flags": [
         {
           "name": "enabled",
@@ -4039,10 +3926,6 @@
           "type": "float64"
         },
         {
-          "name": "metadata",
-          "type": "string"
-        },
-        {
           "name": "q",
           "type": "string"
         },
@@ -4062,11 +3945,19 @@
     },
     {
       "path": "orq knowledge-bases retrieve-chunk",
-      "use": "retrieve-chunk chunk-id datasource-id knowledge-id"
+      "use": "retrieve-chunk knowledge-id datasource-id chunk-id"
     },
     {
       "path": "orq knowledge-bases retrieve-datasource",
       "use": "retrieve-datasource knowledge-id datasource-id"
+    },
+    {
+      "path": "orq knowledge-bases retrieve-file-url",
+      "use": "retrieve-file-url knowledge-id file-name content-type datasource-id"
+    },
+    {
+      "path": "orq knowledge-bases retrieve-processing-status",
+      "use": "retrieve-processing-status knowledge-id datasource-id"
     },
     {
       "path": "orq knowledge-bases search",
@@ -4097,6 +3988,10 @@
           "type": "string"
         },
         {
+          "name": "retrieval-config",
+          "type": "string"
+        },
+        {
           "name": "search-options",
           "type": "string"
         },
@@ -4119,11 +4014,37 @@
       ]
     },
     {
+      "path": "orq knowledge-bases toggle-chunk",
+      "use": "toggle-chunk knowledge-id datasource-id chunk-id",
+      "flags": [
+        {
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq knowledge-bases update",
       "use": "update knowledge-id",
       "flags": [
         {
           "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "domain-id",
           "type": "string"
         },
         {
@@ -4151,6 +4072,10 @@
           "type": "string"
         },
         {
+          "name": "settings",
+          "type": "string"
+        },
+        {
           "name": "stdin",
           "type": "bool"
         },
@@ -4162,7 +4087,7 @@
     },
     {
       "path": "orq knowledge-bases update-chunk",
-      "use": "update-chunk chunk-id datasource-id knowledge-id",
+      "use": "update-chunk knowledge-id datasource-id chunk-id",
       "flags": [
         {
           "name": "embedding",
@@ -4194,6 +4119,10 @@
       "path": "orq knowledge-bases update-datasource",
       "use": "update-datasource knowledge-id datasource-id",
       "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
         {
           "name": "display-name",
           "type": "string"
@@ -4591,7 +4520,7 @@
       "flags": [
         {
           "name": "access",
-          "type": "string"
+          "type": "stringToString"
         },
         {
           "name": "example",
@@ -4667,7 +4596,7 @@
       "flags": [
         {
           "name": "access",
-          "type": "string"
+          "type": "stringToString"
         },
         {
           "name": "clear-expires-at",
@@ -4695,6 +4624,344 @@
         },
         {
           "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-gateways",
+      "use": "mcp-gateways"
+    },
+    {
+      "path": "orq mcp-gateways create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "server-links",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "tool-naming",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-gateways delete",
+      "use": "delete id"
+    },
+    {
+      "path": "orq mcp-gateways list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-gateways list-tools",
+      "use": "list-tools gateway-id",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "mcp-server-id",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-gateways retrieve",
+      "use": "retrieve id"
+    },
+    {
+      "path": "orq mcp-gateways update",
+      "use": "update id",
+      "flags": [
+        {
+          "name": "clear-server-links",
+          "type": "bool"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "server-links",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "tool-naming",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-servers",
+      "use": "mcp-servers"
+    },
+    {
+      "path": "orq mcp-servers create",
+      "use": "create",
+      "flags": [
+        {
+          "name": "auth",
+          "type": "string"
+        },
+        {
+          "name": "connection",
+          "type": "string"
+        },
+        {
+          "name": "default-tool-exposure",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-servers delete",
+      "use": "delete id"
+    },
+    {
+      "path": "orq mcp-servers list",
+      "use": "list",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "search",
+          "type": "string"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-servers retrieve",
+      "use": "retrieve id"
+    },
+    {
+      "path": "orq mcp-servers sync",
+      "use": "sync id",
+      "flags": [
+        {
+          "name": "discovery-variables",
+          "type": "stringToString"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-servers test-tool",
+      "use": "test-tool id",
+      "flags": [
+        {
+          "name": "arguments",
+          "type": "string"
+        },
+        {
+          "name": "discovery-variables",
+          "type": "stringToString"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "tool-name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq mcp-servers update",
+      "use": "update id",
+      "flags": [
+        {
+          "name": "auth",
+          "type": "string"
+        },
+        {
+          "name": "connection",
+          "type": "string"
+        },
+        {
+          "name": "default-tool-exposure",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "sharing",
           "type": "string"
         },
         {
@@ -6087,114 +6354,6 @@
       ]
     },
     {
-      "path": "orq people",
-      "use": "people"
-    },
-    {
-      "path": "orq people person-create",
-      "use": "person-create",
-      "flags": [
-        {
-          "name": "emails",
-          "type": "stringSlice"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "groups",
-          "type": "stringSlice"
-        },
-        {
-          "name": "roles",
-          "type": "stringSlice"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq people person-delete",
-      "use": "person-delete person-id"
-    },
-    {
-      "path": "orq people person-get",
-      "use": "person-get person-id"
-    },
-    {
-      "path": "orq people person-list",
-      "use": "person-list",
-      "flags": [
-        {
-          "name": "ending-before",
-          "type": "string"
-        },
-        {
-          "name": "limit",
-          "type": "int64"
-        },
-        {
-          "name": "starting-after",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq people person-resend-invitation",
-      "use": "person-resend-invitation person-id",
-      "flags": [
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq people person-update",
-      "use": "person-update person-id",
-      "flags": [
-        {
-          "name": "clear-groups",
-          "type": "bool"
-        },
-        {
-          "name": "clear-roles",
-          "type": "bool"
-        },
-        {
-          "name": "example",
-          "type": "bool"
-        },
-        {
-          "name": "from-file",
-          "type": "string"
-        },
-        {
-          "name": "groups",
-          "type": "stringSlice"
-        },
-        {
-          "name": "roles",
-          "type": "stringSlice"
-        },
-        {
-          "name": "stdin",
-          "type": "bool"
-        }
-      ]
-    },
-    {
       "path": "orq pii",
       "use": "pii"
     },
@@ -6826,6 +6985,10 @@
           "type": "string"
         },
         {
+          "name": "return-documents",
+          "type": "bool"
+        },
+        {
           "name": "stdin",
           "type": "bool"
         },
@@ -6835,7 +6998,7 @@
         },
         {
           "name": "top-n",
-          "type": "float64"
+          "type": "int64"
         }
       ]
     },
@@ -7051,6 +7214,10 @@
       "hidden": true,
       "flags": [
         {
+          "name": "cache-config",
+          "type": "string"
+        },
+        {
           "name": "description",
           "type": "string"
         },
@@ -7076,6 +7243,10 @@
         },
         {
           "name": "models-config",
+          "type": "string"
+        },
+        {
+          "name": "plugins",
           "type": "string"
         },
         {
@@ -7135,7 +7306,13 @@
     {
       "path": "orq routing-rules list-used-models",
       "use": "list-used-models",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "project-id",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq routing-rules retrieve",
@@ -7147,6 +7324,10 @@
       "use": "update routing-rule-id",
       "hidden": true,
       "flags": [
+        {
+          "name": "cache-config",
+          "type": "string"
+        },
         {
           "name": "description",
           "type": "string"
@@ -7173,6 +7354,10 @@
         },
         {
           "name": "models-config",
+          "type": "string"
+        },
+        {
+          "name": "plugins",
           "type": "string"
         },
         {
@@ -7624,10 +7809,6 @@
           "type": "string"
         },
         {
-          "name": "discovery-variables",
-          "type": "stringToString"
-        },
-        {
           "name": "display-name",
           "type": "string"
         },
@@ -7653,10 +7834,6 @@
         },
         {
           "name": "key",
-          "type": "string"
-        },
-        {
-          "name": "mcp",
           "type": "string"
         },
         {
@@ -7738,10 +7915,6 @@
           "type": "string"
         },
         {
-          "name": "discovery-variables",
-          "type": "stringToString"
-        },
-        {
           "name": "display-name",
           "type": "string"
         },
@@ -7767,10 +7940,6 @@
         },
         {
           "name": "key",
-          "type": "string"
-        },
-        {
-          "name": "mcp",
           "type": "string"
         },
         {
@@ -7912,6 +8081,354 @@
     {
       "path": "orq traces get-span",
       "use": "get-span trace-id span-id"
+    },
+    {
+      "path": "orq traces insights-service-cancel-run",
+      "use": "insights-service-cancel-run insight-id run-id",
+      "flags": [
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-create-insight",
+      "use": "insights-service-create-insight",
+      "flags": [
+        {
+          "name": "body-profile",
+          "type": "int64"
+        },
+        {
+          "name": "conversation-pass-mode",
+          "type": "int64"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "filter-operator",
+          "type": "string"
+        },
+        {
+          "name": "filters",
+          "type": "string"
+        },
+        {
+          "name": "first-pass-method",
+          "type": "int64"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "max-cost-per-run",
+          "type": "float64"
+        },
+        {
+          "name": "max-traces",
+          "type": "int64"
+        },
+        {
+          "name": "models",
+          "type": "string"
+        },
+        {
+          "name": "sampling-percentage",
+          "type": "float64"
+        },
+        {
+          "name": "schedule",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "window",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-delete-run",
+      "use": "insights-service-delete-run insight-id run-id"
+    },
+    {
+      "path": "orq traces insights-service-get-cluster",
+      "use": "insights-service-get-cluster insight-id run-id cluster-id"
+    },
+    {
+      "path": "orq traces insights-service-get-insight",
+      "use": "insights-service-get-insight insight-id"
+    },
+    {
+      "path": "orq traces insights-service-get-run",
+      "use": "insights-service-get-run insight-id run-id"
+    },
+    {
+      "path": "orq traces insights-service-get-run-artifacts",
+      "use": "insights-service-get-run-artifacts insight-id run-id"
+    },
+    {
+      "path": "orq traces insights-service-list-cluster-conversations",
+      "use": "insights-service-list-cluster-conversations insight-id run-id cluster-id",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-list-clusters",
+      "use": "insights-service-list-clusters insight-id run-id",
+      "flags": [
+        {
+          "name": "dimension",
+          "type": "int64"
+        },
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "level",
+          "type": "int64"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-list-insights",
+      "use": "insights-service-list-insights",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-list-runs",
+      "use": "insights-service-list-runs insight-id",
+      "flags": [
+        {
+          "name": "ending-before",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "int64"
+        },
+        {
+          "name": "starting-after",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "int64"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-preview-insight-candidates",
+      "use": "insights-service-preview-insight-candidates",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "filter-operator",
+          "type": "string"
+        },
+        {
+          "name": "filters",
+          "type": "string"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "max-traces",
+          "type": "int64"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "window",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-re-evaluate-run",
+      "use": "insights-service-re-evaluate-run insight-id run-id",
+      "flags": [
+        {
+          "name": "dimension",
+          "type": "int64"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "judge-model",
+          "type": "string"
+        },
+        {
+          "name": "judge-version",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-run-analysis",
+      "use": "insights-service-run-analysis insight-id",
+      "flags": [
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "time-range",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq traces insights-service-update-insight",
+      "use": "insights-service-update-insight insight-id",
+      "flags": [
+        {
+          "name": "body-profile",
+          "type": "int64"
+        },
+        {
+          "name": "conversation-pass-mode",
+          "type": "int64"
+        },
+        {
+          "name": "display-name",
+          "type": "string"
+        },
+        {
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "filter-operator",
+          "type": "string"
+        },
+        {
+          "name": "filters",
+          "type": "string"
+        },
+        {
+          "name": "first-pass-method",
+          "type": "int64"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "max-cost-per-run",
+          "type": "float64"
+        },
+        {
+          "name": "max-traces",
+          "type": "int64"
+        },
+        {
+          "name": "models",
+          "type": "string"
+        },
+        {
+          "name": "sampling-percentage",
+          "type": "float64"
+        },
+        {
+          "name": "schedule",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        },
+        {
+          "name": "update-mask",
+          "type": "string"
+        },
+        {
+          "name": "window",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq traces list-facet-values",
@@ -8417,6 +8934,100 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "path": "orq workspace-security",
+      "use": "workspace-security"
+    },
+    {
+      "path": "orq workspace-security add-ip-range",
+      "use": "add-ip-range workspace-key",
+      "flags": [
+        {
+          "name": "cidr",
+          "type": "string"
+        },
+        {
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq workspace-security create-domain",
+      "use": "create-domain workspace-key",
+      "flags": [
+        {
+          "name": "domain",
+          "type": "string"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq workspace-security delete-domain",
+      "use": "delete-domain workspace-key domain-id"
+    },
+    {
+      "path": "orq workspace-security delete-ip-range",
+      "use": "delete-ip-range workspace-key range-id"
+    },
+    {
+      "path": "orq workspace-security get-ip-allowlist",
+      "use": "get-ip-allowlist workspace-key"
+    },
+    {
+      "path": "orq workspace-security list-domains",
+      "use": "list-domains workspace-key"
+    },
+    {
+      "path": "orq workspace-security update-ip-allowlist",
+      "use": "update-ip-allowlist workspace-key",
+      "flags": [
+        {
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "name": "example",
+          "type": "bool"
+        },
+        {
+          "name": "from-file",
+          "type": "string"
+        },
+        {
+          "name": "stdin",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "orq workspace-security verify-domain",
+      "use": "verify-domain workspace-key domain-id"
     },
     {
       "path": "orq workspace-settings",

@@ -392,6 +392,1045 @@ func registertracesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
+			Use:     "insights-service-cancel-run insight-id run-id",
+			Short:   "Insights Service Cancel Run",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
+					[]bartolocli.BodyField{},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServiceCancelRun(args[0], args[1], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + tracesCmd.CommandPath() + " insights-service-create-insight --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-create-insight",
+			Short:   "Insights Service Create Insight",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `conversation_pass_mode` (integer)\n- `display_name` (string)\n- `enabled` (boolean)\n- `filter_operator` (string)\n- `filters` (array)\n- `first_pass_method` (integer)\n- `max_cost_per_run` (number)\n- `max_traces` (integer)\n- ... and 5 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"conversation_pass_mode\": 0,\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"first_pass_method\": 0,\n  \"max_cost_per_run\": 0,\n  \"max_traces\": 0,\n  \"models\": {\n    \"chat\": [\n      {\n        \"id\": \"id\"\n      }\n    ],\n    \"embeddings\": [\n      {\n        \"id\": \"id\"\n      }\n    ],\n    \"judges\": [\n      {\n        \"id\": \"id\"\n      }\n    ]\n  },\n  \"profile\": 0,\n  \"sampling_percentage\": 0,\n  \"schedule\": {\n    \"cron\": \"cron\"\n  },\n  \"window\": \"window\"\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "conversation_pass_mode",
+							FlagName:    "conversation-pass-mode",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "enabled",
+							FlagName:    "enabled",
+							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "filter_operator",
+							FlagName:    "filter-operator",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "filters",
+							FlagName:    "filters",
+							Type:        "json",
+							Description: "Uses the same canonical field/op/values filter dialect as traces, logs,\n and unified telemetry queries.",
+						},
+						{
+							Name:        "first_pass_method",
+							FlagName:    "first-pass-method",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "max_cost_per_run",
+							FlagName:    "max-cost-per-run",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "max_traces",
+							FlagName:    "max-traces",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "models",
+							FlagName:    "models",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "profile",
+							FlagName:    "body-profile",
+							Type:        "int64",
+							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+						},
+						{
+							Name:        "sampling_percentage",
+							FlagName:    "sampling-percentage",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "schedule",
+							FlagName:    "schedule",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "window",
+							FlagName:    "window",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServiceCreateInsight(params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "conversation_pass_mode",
+					FlagName:    "conversation-pass-mode",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "enabled",
+					FlagName:    "enabled",
+					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "filter_operator",
+					FlagName:    "filter-operator",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "filters",
+					FlagName:    "filters",
+					Type:        "json",
+					Description: "Uses the same canonical field/op/values filter dialect as traces, logs,\n and unified telemetry queries.",
+				},
+				{
+					Name:        "first_pass_method",
+					FlagName:    "first-pass-method",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "max_cost_per_run",
+					FlagName:    "max-cost-per-run",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "max_traces",
+					FlagName:    "max-traces",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "models",
+					FlagName:    "models",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "profile",
+					FlagName:    "body-profile",
+					Type:        "int64",
+					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+				},
+				{
+					Name:        "sampling_percentage",
+					FlagName:    "sampling-percentage",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "schedule",
+					FlagName:    "schedule",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "window",
+					FlagName:    "window",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-delete-run insight-id run-id",
+			Short:   "Insights Service Delete Run",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceDeleteRun(args[0], args[1], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-get-cluster insight-id run-id cluster-id",
+			Short:   "Insights Service Get Cluster",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(3),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceGetCluster(args[0], args[1], args[2], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-get-insight insight-id",
+			Short:   "Insights Service Get Insight",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceGetInsight(args[0], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-get-run insight-id run-id",
+			Short:   "Insights Service Get Run",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceGetRun(args[0], args[1], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-get-run-artifacts insight-id run-id",
+			Short:   "Insights Service Get Run Artifacts",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceGetRunArtifacts(args[0], args[1], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-list-cluster-conversations insight-id run-id cluster-id",
+			Short:   "Insights Service List Cluster Conversations",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(3),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceListClusterConversations(args[0], args[1], args[2], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-list-clusters insight-id run-id",
+			Short:   "Insights Service List Clusters",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceListClusters(args[0], args[1], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("dimension", 0, "UNSPECIFIED returns all dimensions.")
+		cmd.Flags().Int64("level", 0, "UNSPECIFIED returns both base and meta clusters.")
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-list-insights",
+			Short:   "Insights Service List Insights",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceListInsights(params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the id of the last item from the\n previous page. Cannot be combined with ending_before.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the id of the first item from the\n previous page. Cannot be combined with starting_after.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-list-runs insight-id",
+			Short:   "Insights Service List Runs",
+			Long:    bartolocli.Markdown(""),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+
+				_, decoded, err := OpenapiInsightsServiceListRuns(args[0], params)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("status", 0, "")
+		cmd.Flags().Int64("limit", 0, "")
+		cmd.Flags().String("starting-after", "", "")
+		cmd.Flags().String("ending-before", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + tracesCmd.CommandPath() + " insights-service-preview-insight-candidates --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-preview-insight-candidates",
+			Short:   "Insights Service Preview Insight Candidates",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `max_traces` (integer)\n- `window` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"max_traces\": 0,\n  \"window\": \"window\"\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "filter_operator",
+							FlagName:    "filter-operator",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "filters",
+							FlagName:    "filters",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "max_traces",
+							FlagName:    "max-traces",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "window",
+							FlagName:    "window",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServicePreviewInsightCandidates(params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "filter_operator",
+					FlagName:    "filter-operator",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "filters",
+					FlagName:    "filters",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "max_traces",
+					FlagName:    "max-traces",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "window",
+					FlagName:    "window",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + tracesCmd.CommandPath() + " insights-service-re-evaluate-run insight-id run-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-re-evaluate-run insight-id run-id",
+			Short:   "Insights Service Re Evaluate Run",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `dimension` (integer)\n- `judge_model` (string)\n- `judge_version` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(2),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"dimension\": 0,\n  \"judge_model\": \"judge_model\",\n  \"judge_version\": \"judge_version\"\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "dimension",
+							FlagName:    "dimension",
+							Type:        "int64",
+							Description: "UNSPECIFIED evaluates every dimension present in the run.",
+						},
+						{
+							Name:        "judge_model",
+							FlagName:    "judge-model",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "judge_version",
+							FlagName:    "judge-version",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServiceReEvaluateRun(args[0], args[1], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "dimension",
+					FlagName:    "dimension",
+					Type:        "int64",
+					Description: "UNSPECIFIED evaluates every dimension present in the run.",
+				},
+				{
+					Name:        "judge_model",
+					FlagName:    "judge-model",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "judge_version",
+					FlagName:    "judge-version",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + tracesCmd.CommandPath() + " insights-service-run-analysis insight-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-run-analysis insight-id",
+			Short:   "Insights Service Run Analysis",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `time_range` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"time_range\": {\n    \"end\": \"2024-01-01T00:00:00Z\",\n    \"start\": \"2024-01-01T00:00:00Z\"\n  }\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "time_range",
+							FlagName:    "time-range",
+							Type:        "json",
+							Description: "When omitted, the configured rolling window is used.",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServiceRunAnalysis(args[0], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "time_range",
+					FlagName:    "time-range",
+					Type:        "json",
+					Description: "When omitted, the configured rolling window is used.",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + tracesCmd.CommandPath() + " insights-service-update-insight insight-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "insights-service-update-insight insight-id",
+			Short:   "Insights Service Update Insight",
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `conversation_pass_mode` (integer)\n- `display_name` (string)\n- `enabled` (boolean)\n- `filter_operator` (string)\n- `filters` (array)\n- `first_pass_method` (integer)\n- `max_cost_per_run` (number)\n- `max_traces` (integer)\n- ... and 5 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"conversation_pass_mode\": 0,\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"first_pass_method\": 0,\n  \"max_cost_per_run\": 0,\n  \"max_traces\": 0,\n  \"models\": {\n    \"chat\": [\n      {\n        \"id\": \"id\"\n      }\n    ],\n    \"embeddings\": [\n      {\n        \"id\": \"id\"\n      }\n    ],\n    \"judges\": [\n      {\n        \"id\": \"id\"\n      }\n    ]\n  },\n  \"profile\": 0,\n  \"sampling_percentage\": 0,\n  \"schedule\": {\n    \"cron\": \"cron\"\n  },\n  \"window\": \"window\"\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "conversation_pass_mode",
+							FlagName:    "conversation-pass-mode",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "display_name",
+							FlagName:    "display-name",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "enabled",
+							FlagName:    "enabled",
+							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "filter_operator",
+							FlagName:    "filter-operator",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "filters",
+							FlagName:    "filters",
+							Type:        "json",
+							Description: "Uses the same canonical field/op/values filter dialect as traces, logs,\n and unified telemetry queries.",
+						},
+						{
+							Name:        "first_pass_method",
+							FlagName:    "first-pass-method",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "max_cost_per_run",
+							FlagName:    "max-cost-per-run",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "max_traces",
+							FlagName:    "max-traces",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "models",
+							FlagName:    "models",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "profile",
+							FlagName:    "body-profile",
+							Type:        "int64",
+							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+						},
+						{
+							Name:        "sampling_percentage",
+							FlagName:    "sampling-percentage",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "schedule",
+							FlagName:    "schedule",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "window",
+							FlagName:    "window",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiInsightsServiceUpdateInsight(args[0], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		tracesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "conversation_pass_mode",
+					FlagName:    "conversation-pass-mode",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "display_name",
+					FlagName:    "display-name",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "enabled",
+					FlagName:    "enabled",
+					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "filter_operator",
+					FlagName:    "filter-operator",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "filters",
+					FlagName:    "filters",
+					Type:        "json",
+					Description: "Uses the same canonical field/op/values filter dialect as traces, logs,\n and unified telemetry queries.",
+				},
+				{
+					Name:        "first_pass_method",
+					FlagName:    "first-pass-method",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "max_cost_per_run",
+					FlagName:    "max-cost-per-run",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "max_traces",
+					FlagName:    "max-traces",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "models",
+					FlagName:    "models",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "profile",
+					FlagName:    "body-profile",
+					Type:        "int64",
+					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+				},
+				{
+					Name:        "sampling_percentage",
+					FlagName:    "sampling-percentage",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "schedule",
+					FlagName:    "schedule",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "window",
+					FlagName:    "window",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		cmd.Flags().String("update-mask", "", "")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
 			Use:     "list-facet-values field",
 			Short:   "List trace facet values",
 			Long:    bartolocli.Markdown("List values and counts for one trace facet field."),
