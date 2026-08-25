@@ -22,21 +22,25 @@ to a flag's meaning is `feat!`.
 ## Versioning
 
 Full rules, and how the pipeline resolves a number, are in `CHANGELOG.md` under
-[Versioning](CHANGELOG.md#versioning). What you need while writing a PR:
+[Versioning](CHANGELOG.md#versioning). What you need while writing a PR: the
+commit type is the version.
 
-| Commit type | CLI version | You edit `VERSION` |
-|---|---|---|
-| `feat!`, `BREAKING CHANGE:` | major | yes — `X+1.0.0` |
-| `feat` | minor | yes — `X.Y+1.0` |
-| `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci` | patch | no |
+| Commit type | CLI version |
+|---|---|
+| `feat!`, any `type!:`, `BREAKING CHANGE:` footer | major |
+| `feat` | minor |
+| `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci` | patch |
 
-The pipeline takes the next free tag from whatever `VERSION` says, so the number
-you write is a floor, not a promise. It also applies the orq API's own bump on
-top when a new schema lands in the same release — that part is automatic and is
-never a reason to edit `VERSION`.
+The release pipeline reads the commits since the last release, takes the largest
+bump they earn, and compares it with the field the orq API version moved —
+whichever is larger wins. **You do not edit `VERSION` and you do not tag.** That
+file records what was last released; the pipeline writes it.
 
-Do not edit `VERSION` for a release, only for a change of our own that earns a
-major or a minor. Never edit it to "the version I am releasing".
+**Never write a breaking commit without asking first.** A single `!` or
+`BREAKING CHANGE:` footer anywhere in the range cuts a major release, and it
+cannot be walked back once published. If a change is genuinely breaking, say so
+in the PR and get a decision; otherwise land it as `feat:`/`fix:` and describe
+the break in the PR body and the changelog entry.
 
 ## Changelog
 

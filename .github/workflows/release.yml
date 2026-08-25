@@ -101,8 +101,34 @@ jobs:
               bump=minor
             fi
           fi
+
+          # ...and our own changes speak through their conventional-commit type,
+          # so nobody edits VERSION for an ordinary feature: `feat:` earns a
+          # minor, a `!` or a BREAKING CHANGE footer a major, everything else a
+          # patch. The two sources are combined by taking the larger - an orq
+          # patch release carrying a `feat:` of ours is still a minor.
+          #
+          # Here-strings, not `printf | grep -q`: grep -q exits at the first
+          # match and closes the pipe, printf dies of SIGPIPE, and pipefail
+          # reads that 141 as "no match" - silently, and only once the input
+          # outgrows the pipe buffer.
+          commits="$(git log --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD")"
+          commit_bump=patch
+          if grep -qE '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:' <<< "$commits"; then
+            commit_bump=major
+          elif grep -qE '^feat(\([^)]*\))?:' <<< "$commits"; then
+            commit_bump=minor
+          fi
+          rank() { case "$1" in major) echo 3 ;; minor) echo 2 ;; *) echo 1 ;; esac; }
+          api_bump="$bump"
+          if [ "$(rank "$commit_bump")" -gt "$(rank "$bump")" ]; then
+            bump="$commit_bump"
+          fi
+          if [ "$bump" = major ]; then
+            echo "::warning::Releasing a MAJOR (orq API says $api_bump, commits say $commit_bump). A breaking change of ours needs a deliberate \`!\` or BREAKING CHANGE footer - if that was not deliberate, fix the commit before this reaches main."
+          fi
           echo "bump=$bump" >> "$GITHUB_OUTPUT"
-          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API ${api_released:-none} -> $api_now, bump=$bump"
+          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API ${api_released:-none} -> $api_now (api=$api_bump, commits=$commit_bump), bump=$bump"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$TARGET" in
@@ -119,10 +145,10 @@ jobs:
 
             stable=false
             prerelease=false
-            if printf '%s\n' "$CHANGED_STABLE" | grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED"; then
+            if grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED" <<< "$CHANGED_STABLE"; then
               stable=true
             fi
-            if printf '%s\n' "$CHANGED_RC" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/)|$SHARED"; then
+            if grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/)|$SHARED" <<< "$CHANGED_RC"; then
               prerelease=true
             fi
           fi

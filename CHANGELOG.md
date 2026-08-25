@@ -38,37 +38,43 @@ What you may depend on, and what you may not:
 
 ## Versioning
 
-The CLI has its own semver, independent of the orq API line (RES-1434). It
-lives in `VERSION` at the repo root, and the release pipeline moves it: the
-same field the orq API version moved — their major is our major, their minor our
-minor — and any other change to `main` moves the patch. All of them take the
-next free tag; a feature or a break of our own is a hand edit to `VERSION`, in
-the PR that earns it. A pre-release build of the next minor is published on the
-`rc` line.
+The CLI has its own semver, independent of the orq API line (RES-1434). It lives
+in `VERSION` at the repo root and the release pipeline moves it — nobody edits
+that file and nobody tags. A pre-release build of the next minor is published on
+the `rc` line.
 
-### Bumping the CLI's own version
+### What moves the version
 
-The pipeline handles every release number on its own. The only reason to touch
-`VERSION` by hand is a change in what this CLI promises, and it goes in the PR
-that makes the change, not in a release PR:
+Every release takes the larger of two answers:
 
-- **Major** (`X.0.0`) — a command or flag is removed or renamed, the shape of
-  `--json`/`--toon` output changes, or an existing config, profile or session
-  file stops being read. Anything that breaks a script someone already wrote.
-- **Minor** (`X.Y+1.0`) — a new command, a new flag, a new output format, or new
-  behaviour behind an opt-in. Nothing existing changes meaning.
-- **Patch** — nothing to do. Fixes, refactors, docs, dependency bumps and the
-  regenerated tree all take the next free patch automatically.
+- **What the orq API did** — the CLI moves the same field the orq API version
+  moved: their major is our major, their minor our minor, their patch our patch.
+  The API is the contract these commands are generated from, so the size of
+  their change is the size of ours. A schema republished at the same
+  `app_version` moves nothing.
+- **What our own commits did** — read from their conventional-commit types since
+  the last release: a `!` or a `BREAKING CHANGE:` footer earns a major, `feat:` a
+  minor, everything else a patch. The type table is in `CLAUDE.md`, next to the
+  commit rules, so it is read while the commit is being written.
 
-Which of the three a change earns is decided by its conventional-commit type;
-the table is in `CLAUDE.md`, next to the commit rules, so it is read while the
-commit is being written rather than at release time.
+So an orq patch release carrying a `feat:` of ours is a minor, and a `fix:` on
+its own is a patch.
 
-Write the number you want as a floor, not as a promise: the pipeline still takes
-the next free tag from it, so `5.1.0` becomes `5.1.1` if `v5.1.0` already exists.
-If an orq API bump lands in the same release, its field is applied on top of the
-number in the file — a hand-written `5.1.0` released alongside an orq minor comes
-out as `5.2.0`.
+`VERSION` is the record of what was last released, written back by the pipeline.
+Editing it by hand is for one case only: releasing a number the rules would not
+reach on their own. The pipeline then takes the next free tag from it, so what
+you write is a floor rather than a promise.
+
+### Release notes
+
+The `## Unreleased` section below is the release notes. At release time the
+pipeline renames it to the version being cut, opens a fresh empty one, commits
+that back to `main`, and puts the section at the top of the GitHub release —
+above the generated commit list, under the orq API line. An empty section is
+left alone, and that release carries the generated list alone.
+
+That is the whole reason entries are written per PR: nobody writes release notes
+at release time, so they have to already exist.
 
 The orq API version a build was generated against is recorded, not encoded:
 

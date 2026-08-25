@@ -132,10 +132,13 @@ jobs:
           # blip - every error looks like "tag is free" - and hand back a
           # version that already exists.
           # first_free <prefix> <start>: smallest n >= start with no v<prefix><n> tag
+          # A here-string, not `printf | grep -q`: grep -q closes the pipe on
+          # its first match, printf takes a SIGPIPE, and pipefail reads that as
+          # "not taken" - handing back a version that already exists.
           first_free() {
             taken="$(git tag --list "v$1*")"
             n="$2"
-            while printf '%s\n' "$taken" | grep -qx "v$1$n"; do
+            while grep -qx "v$1$n" <<< "$taken"; do
               n=$((n + 1))
             done
             printf '%s' "$n"
@@ -189,6 +192,22 @@ jobs:
             go run ./cmd/surface-dump -write
           fi
 
+      - name: Stamp the changelog
+        # Stable only: an rc is a preview of the same entries, and stamping them
+        # under an rc number would leave the stable release with nothing to say.
+        if: ${{ inputs.module_dir == '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # CHANGELOG.md's "## Unreleased" section is written by hand, one entry
+          # per PR, and is the only description of a release anyone wrote on
+          # purpose. Here it is renamed to the version being cut and becomes the
+          # release notes; a fresh empty Unreleased takes its place.
+          python3 scripts/stamp-changelog.py "$VERSION" "$(date -u +%Y-%m-%d)" > release-notes-changelog.md
+          echo "--- changelog section for $VERSION ---"
+          cat release-notes-changelog.md
+
       - name: Commit regenerated code to main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -200,7 +219,7 @@ jobs:
           # Per path, because a single `git add a b c || true` cannot tell a
           # missing optional path (rc has no surface.json) from a real failure,
           # and swallowing the latter releases the previous generated tree.
-          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION; do
+          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION CHANGELOG.md; do
             if [ -e "$path" ]; then git add "$path"; fi
           done
           if git diff --cached --quiet; then
@@ -267,6 +286,13 @@ jobs:
           target="$(git rev-parse HEAD)"
           {
             printf 'Built against **orq API %s**.\n\n' "$API_VERSION"
+            # The hand-written changelog section first - what changed, in the
+            # words of whoever changed it - then the generated commit/PR list
+            # under it as the detail nobody writes by hand.
+            if [ -s release-notes-changelog.md ]; then
+              cat release-notes-changelog.md
+              printf '\n'
+            fi
             gh api --method POST "repos/$REPO/releases/generate-notes" \
               -f tag_name="$TAG" -f target_commitish="$target" --jq .body
           } > release-notes.md
