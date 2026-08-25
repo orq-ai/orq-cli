@@ -5,22 +5,30 @@ name: Release
 # this, a CLI-only fix sat on main until orquesta-web happened to publish a
 # schema, because that push was the only release trigger.
 #
-# The paths deliberately exclude everything the release pipeline itself writes
-# back to main (cli/generated, examples, README.md, go.mod, go.sum,
-# surface.json, VERSION), so a release cannot trigger the next one.
+# A release cannot trigger the next one: the pipeline's commit-back is made with
+# GITHUB_TOKEN, and GitHub does not start workflow runs for those. The
+# bot-authored guard in detect-changes is the second line of defence, for the
+# day someone swaps that credential for a PAT. Neither is a path filter, so the
+# paths below can list every file a human edits to change what ships —
+# VERSION and go.mod included.
 on:
   push:
     branches: [main]
     paths:
+      - VERSION
       - openapi.yaml
       - .bartolo.json
+      - go.mod
+      - go.sum
       - cli/custom/**
-      - cmd/**
+      - cmd/orq/**
       - npm/**
       - scripts/**
       - install.sh
       - packages/orq-rc/openapi.yaml
       - packages/orq-rc/.bartolo.json
+      - packages/orq-rc/go.mod
+      - packages/orq-rc/go.sum
       - packages/orq-rc/cmd/**
   workflow_dispatch:
     inputs:
@@ -44,7 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 2
+          # 0, not 2: the range below spans the whole push, which can be more
+          # than one commit.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Detect changed files
@@ -52,6 +62,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           TARGET: ${{ inputs.target }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             # Manual trigger - use input
@@ -70,21 +82,46 @@ jobs:
                 ;;
             esac
           else
-            # Push event - detect from changed files
-            CHANGED=$(git diff --name-only HEAD~1 HEAD)
+            # Push event - detect from changed files.
+            #
+            # The whole push range, not HEAD~1..HEAD: a merge that lands four
+            # commits would otherwise be judged on the last one alone, and a
+            # CLI fix in an earlier commit would go unreleased - the exact
+            # failure this workflow exists to prevent. `before` is all-zeros on
+            # a branch's first push, where the parent is the only range there is.
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              RANGE="$BEFORE..$AFTER"
+            else
+              RANGE="HEAD~1 HEAD"
+            fi
+            # shellcheck disable=SC2086
+            CHANGED=$(git diff --name-only $RANGE)
 
-            # Shared paths (cli/custom, scripts, npm, install.sh) go into both
-            # binaries — packages/orq-rc builds the same hand-written commands
-            # against the staging schema — so they release both lines.
-            SHARED='^(cli/custom/|cmd/|npm/|scripts/|install\.sh$)'
+            # The release pipeline commits its regenerated code and version
+            # bump back to main. Releasing that commit would release the
+            # release, forever. Matched on github-actions[bot], the identity
+            # the Git Data API attributes a GITHUB_TOKEN commit to - NOT on
+            # admin@orq.ai, which is also orquesta-web's schema-publish commit
+            # and must keep triggering releases.
+            if git log -1 --format=%an "$AFTER" | grep -q '^github-actions\[bot\]$'; then
+              echo "stable=false" >> "$GITHUB_OUTPUT"
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
 
-            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json)$|$SHARED"; then
+            # Shared: built into both binaries (packages/orq-rc compiles the
+            # root's hand-written commands against the staging schema), or
+            # shared by both releases. Each module's own cmd/ is NOT shared,
+            # and cmd/surface-dump ships to nobody.
+            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
+
+            if echo "$CHANGED" | grep -qE "^(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/orq/)|$SHARED"; then
               echo "stable=true" >> "$GITHUB_OUTPUT"
             else
               echo "stable=false" >> "$GITHUB_OUTPUT"
             fi
 
-            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|cmd/)|$SHARED"; then
+            if echo "$CHANGED" | grep -qE "^packages/orq-rc/(openapi\.yaml|\.bartolo\.json|go\.mod|go\.sum|cmd/)|$SHARED"; then
               echo "prerelease=true" >> "$GITHUB_OUTPUT"
             else
               echo "prerelease=false" >> "$GITHUB_OUTPUT"

@@ -227,10 +227,12 @@ if [ -z "$VERSION" ]; then
     # `orq update` uses, so the two never disagree about what "rc" means.
     api_url="https://registry.npmjs.org/-/package/@orq-ai/cli/dist-tags"
     # One JSON object on one line: walk the quoted fields and take the value
-    # after the "rc" key. No `exit` in the body - that closes the pipe
-    # mid-stream and curl then reports a write failure on every retry.
+    # after the "rc" KEY. The next field must start with a colon, or a dist-tag
+    # whose *value* is the string "rc" would match and install "vrc". No `exit`
+    # in the body - that closes the pipe mid-stream and curl then reports a
+    # write failure on every retry.
     VERSION="$(fetch -fsS "$api_url" \
-      | awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && !v) v = $(i + 2)} END {if (v != "") print "v" v}')"
+      | awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && $(i + 1) ~ /^:/ && !v) v = $(i + 2)} END {if (v != "") print "v" v}')"
   else
     # GitHub's latest-release API returns JSON; awk out the tag_name field
     # without requiring jq. Pre-releases are excluded by the endpoint itself.
@@ -268,11 +270,14 @@ expected_version="${VERSION#v}"
 if [ -x "$target" ]; then
   # Exit status required, and the version token compared whole: a substring
   # match reports 4.13.10 as satisfying a pinned 4.13.1 and installs nothing.
-  # First line only: `orq --version` prints the semver line and then the orq
-  # API line under it, and flattening both would compare against the API
-  # version instead. Older binaries print the one line; head is happy either way.
-  if current="$("$target" --version 2>/dev/null | head -n 1)"; then
-    current="$(printf '%s' "$current" | tr -d '\n')"
+  # Not piped into `head`: this sh has no pipefail, so the pipeline's status
+  # would be head's, and a binary that prints a version and then exits non-zero
+  # would be read as healthy and current. Capture first, trim after.
+  if current="$("$target" --version 2>/dev/null)"; then
+    # First line only: `orq --version` prints the semver line and then the orq
+    # API line under it, and flattening both would compare against the API
+    # version instead. Older binaries print the one line either way.
+    current="$(printf '%s\n' "$current" | head -n 1 | tr -d '\n')"
     current_version="$(printf '%s' "$current" | awk '{print $NF}')"
   else
     current=""
