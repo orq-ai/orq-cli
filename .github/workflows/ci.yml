@@ -78,16 +78,19 @@ jobs:
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
       - name: install the rc channel
-        # The rc line is a GitHub pre-release, so it resolves through the npm
-        # dist-tag rather than /releases/latest - a separate branch, and the
-        # one that silently returns the stable release when it breaks.
+        # The rc line is a GitHub pre-release, which /releases/latest never
+        # returns, so --channel rc resolves the version from the npm rc
+        # dist-tag instead - a separate code path with its own failure modes.
         run: |
           set -eu
           export HOME="$RUNNER_TEMP/rc-home"
           mkdir -p "$HOME"
           SHELL=/bin/bash setsid dash install.sh --channel rc \
             --no-setup --no-modify-path --install-dir "$HOME/orq" < /dev/null
-          "$HOME/orq/orq" --version | head -n 1 | grep -q -- '-rc\.'
+          # Captured, not piped: sh has no pipefail, so a binary that printed a
+          # version and then failed would be judged by head's exit status.
+          rc_version="$("$HOME/orq/orq" --version)"
+          printf '%s\n' "$rc_version" | head -n 1 | grep -q -- '-rc\.'
       - name: upgrade over an existing install
         # The first job installs into a fresh dir, so `previous` stays empty and
         # the whole upgrade/rollback block never runs. This one exercises it.

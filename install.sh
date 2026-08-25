@@ -35,6 +35,8 @@ REPO="orq-ai/orq-cli"
 INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
 CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
+CHANNEL_EXPLICIT=0
+[ -n "${ORQ_CLI_CHANNEL:-}" ] && CHANNEL_EXPLICIT=1
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
@@ -102,6 +104,18 @@ require_cmd() {
   fi
 }
 
+# binary_version <path> [stderr-file]: the version line a binary reports, or
+# non-zero if it cannot run. `orq --version` prints the semver line and then the
+# orq API line under it, so only the first line is the version - anything that
+# flattens both compares against, or prints, the two glued together. Not piped
+# into `head` at the call site: this sh has no pipefail, so the pipeline status
+# would be head's and a binary that prints a version and then exits non-zero
+# would read as healthy. Capture first, trim after.
+binary_version() {
+  _bv_out="$("$1" --version 2>"${2:-/dev/null}")" || return 1
+  printf '%s\n' "$_bv_out" | head -n 1 | tr -d '\n'
+}
+
 # --- Parse arguments -------------------------------------------------------
 
 while [ $# -gt 0 ]; do
@@ -113,9 +127,9 @@ while [ $# -gt 0 ]; do
       VERSION="${1#*=}"; shift ;;
     --channel)
       [ $# -ge 2 ] || { err "--channel needs a value"; exit 1; }
-      CHANNEL="$2"; shift 2 ;;
+      CHANNEL="$2"; CHANNEL_EXPLICIT=1; shift 2 ;;
     --channel=*)
-      CHANNEL="${1#*=}"; shift ;;
+      CHANNEL="${1#*=}"; CHANNEL_EXPLICIT=1; shift ;;
     --install-dir)
       [ $# -ge 2 ] || { err "--install-dir needs a value"; exit 1; }
       INSTALL_DIR="$2"; shift 2 ;;
@@ -138,6 +152,15 @@ case "$CHANNEL" in
   stable|rc) ;;
   *) err "unknown channel: $CHANNEL (expected 'stable' or 'rc')"; exit 1 ;;
 esac
+
+# A pinned version names one exact release, so the channel has nothing left to
+# resolve. Refusing beats silently ignoring one of the two flags the caller
+# passed - `--channel rc --version v5.0.0` would otherwise install a stable
+# release and report success.
+if [ -n "$VERSION" ] && [ "$CHANNEL_EXPLICIT" = "1" ]; then
+  err "--channel and --version cannot be combined: --version already names a release"
+  exit 1
+fi
 
 require_cmd curl
 require_cmd uname
@@ -268,16 +291,9 @@ printf '\n'
 # The binary reports a bare semver; release tags carry a leading v.
 expected_version="${VERSION#v}"
 if [ -x "$target" ]; then
-  # Exit status required, and the version token compared whole: a substring
-  # match reports 4.13.10 as satisfying a pinned 4.13.1 and installs nothing.
-  # Not piped into `head`: this sh has no pipefail, so the pipeline's status
-  # would be head's, and a binary that prints a version and then exits non-zero
-  # would be read as healthy and current. Capture first, trim after.
-  if current="$("$target" --version 2>/dev/null)"; then
-    # First line only: `orq --version` prints the semver line and then the orq
-    # API line under it, and flattening both would compare against the API
-    # version instead. Older binaries print the one line either way.
-    current="$(printf '%s\n' "$current" | head -n 1 | tr -d '\n')"
+  # The version token is compared whole: a substring match reports 4.13.10 as
+  # satisfying a pinned 4.13.1 and installs nothing.
+  if current="$(binary_version "$target")"; then
     current_version="$(printf '%s' "$current" | awk '{print $NF}')"
   else
     current=""
@@ -436,9 +452,7 @@ if [ "${already_current:-0}" != "1" ]; then
   # non-zero is broken, and `|| echo ''` accepted it. Stderr is kept so the
   # failure branches can quote the real reason instead of guessing at it.
   probe_err="$(mktemp -t orq-probe.XXXXXX)"
-  if installed_version="$("$target" --version 2>"$probe_err")"; then
-    installed_version="$(printf '%s' "$installed_version" | tr -d '\n')"
-  else
+  if ! installed_version="$(binary_version "$target" "$probe_err")"; then
     installed_version=""
   fi
   probe_reason="$(tr -d '\r' < "$probe_err" | head -3)"

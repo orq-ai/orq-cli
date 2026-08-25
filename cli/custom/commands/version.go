@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strings"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
@@ -13,25 +12,26 @@ import (
 // that was not produced by the release pipeline.
 var apiVersion = "unknown"
 
-// SetAPIVersion is called once from custom.Run, before any command runs.
-//
-// The value is scrubbed to the characters a version can contain: it ends up
-// inside the cobra version TEMPLATE, which is parsed with template.Must, so a
-// stray "{{" arriving from .bartolo.json would panic every `orq --version`
-// rather than print a strange string.
-func SetAPIVersion(v string) {
-	v = strings.Map(func(r rune) rune {
-		switch {
-		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
-			return r
-		case r == '.', r == '-', r == '+', r == '_':
-			return r
-		}
-		return -1
-	}, v)
+// apiVersionAnnotation carries APIVersionLine() to the cobra version template
+// as template DATA. Concatenating the value into the template string instead
+// would parse it: .bartolo.json is written by another repo's workflow, and a
+// stray "{{" arriving from there would panic template.Must on every
+// `orq --version`.
+const apiVersionAnnotation = "orqApiVersionLine"
+
+// SetAPIVersion is called once from custom.Run, before any command runs, and
+// installs the `orq --version` template alongside the value so the flag and the
+// `orq version` command can only ever render the same sentence.
+func SetAPIVersion(root *cobra.Command, v string) {
 	if v != "" {
 		apiVersion = v
 	}
+	if root.Annotations == nil {
+		root.Annotations = map[string]string{}
+	}
+	root.Annotations[apiVersionAnnotation] = APIVersionLine()
+	root.SetVersionTemplate(
+		"{{.Name}} version {{.Version}}\n{{index .Annotations \"" + apiVersionAnnotation + "\"}}\n")
 }
 
 // APIVersionLine is the single rendering of which orq API this build speaks,

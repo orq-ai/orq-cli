@@ -1,14 +1,15 @@
 name: Release Pipeline
 
-# Reusable release pipeline, called by release-stable.yml (prod, root module)
-# and release-pre-release.yml (rc, packages/orq-rc module). It regenerates the
+# Reusable release pipeline, called twice by release.yml: once for prod (root
+# module, npm dist-tag latest) and once for rc (packages/orq-rc, dist-tag rc).
+# It regenerates the
 # CLI from the OpenAPI schema that orquesta-web committed, syncs the generated
 # code back to main, tags + publishes a GitHub release, cross-compiles every
 # platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
 #
 # The CLI version is the repo's own and comes from ./VERSION: major and minor
 # are edited by hand, the patch is taken as the next free tag, and rc builds
-# become <next-minor>.0-rc.<run-number> prereleases. It is independent of the
+# become <next-minor>.0-rc.<n> prereleases, with n likewise the next free one. It is independent of the
 # orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
 # recorded instead — in the release notes, in the binary (orq version), and in
 # package.json's orqApiVersion.
@@ -86,8 +87,6 @@ jobs:
 
       - name: Resolve version
         id: version
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
@@ -114,29 +113,38 @@ jobs:
             exit 1
           fi
 
+          # Both lines number themselves off the tags that exist, so a re-run
+          # after a mid-release failure allocates the NEXT free number instead
+          # of colliding with the tag the failed attempt already created.
+          #
+          # Read from the local tag set (checkout is fetch-depth 0 with tags, so
+          # it is complete) rather than probing the API tag by tag: one round of
+          # per-number requests would fail OPEN on a rate limit or a network
+          # blip - every error looks like "tag is free" - and hand back a
+          # version that already exists.
+          # first_free <prefix> <start>: smallest n >= start with no v<prefix><n> tag
+          first_free() {
+            taken="$(git tag --list "v$1*")"
+            n="$2"
+            while printf '%s\n' "$taken" | grep -qx "v$1$n"; do
+              n=$((n + 1))
+            done
+            printf '%s' "$n"
+          }
+
           if [ -n "${MODULE_DIR:-}" ]; then
             # An rc is the prerelease of the NEXT minor, so it always sorts
-            # above the stable release it will succeed. run_number only has to
-            # be monotonic, which it is.
+            # above the stable release it will succeed.
             major="${base%%.*}"; rest="${base#*.}"; minor="${rest%%.*}"
-            version="$major.$((minor + 1)).0-rc.$RUN_NUMBER"
+            next="$major.$((minor + 1)).0"
+            version="$next-rc.$(first_free "$next-rc." 1)"
             prerelease=true
           else
-            # Patch releases are automatic: take the next free tag, so a
-            # CLI-only fix ships without anyone hand-editing VERSION. Major and
-            # minor stay manual — a human decides those, in VERSION.
-            #
-            # Read from the local tag set (checkout is fetch-depth 0, so it is
-            # complete) rather than probing the API tag by tag: one round of
-            # per-patch requests would fail OPEN on a rate limit or a network
-            # blip - every error looks like "tag is free" - and hand back a
-            # version that already exists.
-            prefix="${base%.*}"; patch="${base##*.}"
-            taken="$(git tag --list "v$prefix.*")"
-            while printf '%s\n' "$taken" | grep -qx "v$prefix.$patch"; do
-              patch=$((patch + 1))
-            done
-            version="$prefix.$patch"
+            # Patch releases are automatic, so a CLI-only fix ships without
+            # anyone hand-editing VERSION. Major and minor stay manual — a human
+            # decides those, in VERSION.
+            prefix="${base%.*}"
+            version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
             # Written back in the commit-back step below, so main always states
             # the version that was last released from it.
@@ -172,7 +180,12 @@ jobs:
         run: |
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION 2>/dev/null || true
+          # Per path, because a single `git add a b c || true` cannot tell a
+          # missing optional path (rc has no surface.json) from a real failure,
+          # and swallowing the latter releases the previous generated tree.
+          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION; do
+            if [ -e "$path" ]; then git add "$path"; fi
+          done
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
             exit 0
@@ -225,9 +238,10 @@ jobs:
           API_VERSION: ${{ steps.version.outputs.api_version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          # gh creates the tag itself (at the current HEAD, already pushed to main
-          # by the commit-back step) and publishes the release — no separate
-          # `git tag`/`git push` needed.
+          # gh creates the tag itself, at the current HEAD (already pushed to
+          # main by the commit-back step) — no separate `git tag`/`git push`
+          # needed. For a draft the tag appears when the release is published,
+          # in the last step.
           #
           # Notes are generated through the API rather than with
           # `--generate-notes` so the API line can be prepended to them: which
@@ -239,7 +253,12 @@ jobs:
             gh api --method POST "repos/$REPO/releases/generate-notes" \
               -f tag_name="$TAG" -f target_commitish="$target" --jq .body
           } > release-notes.md
-          flags=(--title "$TAG" --target "$target" --notes-file release-notes.md)
+          #
+          # Created as a draft: a draft has no tag and does not answer
+          # /releases/latest, so the window between "release exists" and "assets
+          # uploaded" cannot serve an installer a release it cannot download
+          # from. The last step publishes it.
+          flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$TAG" "${flags[@]}"
 
@@ -248,24 +267,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           API_VERSION: ${{ steps.version.outputs.api_version }}
         run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}" "$API_VERSION"
-
-      - name: Publish platform packages to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          set -e
-          for pkgdir in npm/cli-*/; do
-            echo "=== Publishing $(basename "$pkgdir") @ dist-tag $DIST_TAG ==="
-            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
-          done
-
-      - name: Publish wrapper package to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          cd npm/cli
-          echo "=== Publishing @orq-ai/cli @ dist-tag $DIST_TAG ==="
-          npm publish --access public --tag "$DIST_TAG"
 
       - name: Stage raw binaries for GitHub Release
         run: |
@@ -327,3 +328,34 @@ jobs:
           # cd first: shasum records the path as written, so `shasum -c` from elsewhere would look for dist/.
           ( cd dist && shasum -a 256 install.sh > install.sh.sha256 )
           gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --clobber
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # Undrafting is what creates the tag and makes the release visible, so
+          # it happens once every asset is attached.
+          gh release edit "$TAG" --draft=false
+
+      # npm last, and only after the GitHub release is published: the npm
+      # dist-tags are what `install.sh --channel rc` resolves a version from, so
+      # publishing them earlier advertises a release whose assets do not exist
+      # yet.
+      - name: Publish platform packages to npm
+        env:
+          DIST_TAG: ${{ inputs.npm_dist_tag }}
+        run: |
+          set -e
+          for pkgdir in npm/cli-*/; do
+            echo "=== Publishing $(basename "$pkgdir") @ dist-tag $DIST_TAG ==="
+            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
+          done
+
+      - name: Publish wrapper package to npm
+        env:
+          DIST_TAG: ${{ inputs.npm_dist_tag }}
+        run: |
+          cd npm/cli
+          echo "=== Publishing @orq-ai/cli @ dist-tag $DIST_TAG ==="
+          npm publish --access public --tag "$DIST_TAG"

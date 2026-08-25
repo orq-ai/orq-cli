@@ -5,31 +5,18 @@ name: Release
 # this, a CLI-only fix sat on main until orquesta-web happened to publish a
 # schema, because that push was the only release trigger.
 #
+# There is deliberately no `paths:` filter: detect-changes below already decides
+# what ships, per release line, and a second copy of that list in the trigger
+# would be one more thing to keep in sync — silently dropping releases when it
+# drifted.
+#
 # A release cannot trigger the next one: the pipeline's commit-back is made with
 # GITHUB_TOKEN, and GitHub does not start workflow runs for those. The
 # bot-authored guard in detect-changes is the second line of defence, for the
-# day someone swaps that credential for a PAT. Neither is a path filter, so the
-# paths below can list every file a human edits to change what ships —
-# VERSION and go.mod included.
+# day someone swaps that credential for a PAT.
 on:
   push:
     branches: [main]
-    paths:
-      - VERSION
-      - openapi.yaml
-      - .bartolo.json
-      - go.mod
-      - go.sum
-      - cli/custom/**
-      - cmd/orq/**
-      - npm/**
-      - scripts/**
-      - install.sh
-      - packages/orq-rc/openapi.yaml
-      - packages/orq-rc/.bartolo.json
-      - packages/orq-rc/go.mod
-      - packages/orq-rc/go.sum
-      - packages/orq-rc/cmd/**
   workflow_dispatch:
     inputs:
       target:
@@ -87,27 +74,46 @@ jobs:
             # The whole push range, not HEAD~1..HEAD: a merge that lands four
             # commits would otherwise be judged on the last one alone, and a
             # CLI fix in an earlier commit would go unreleased - the exact
-            # failure this workflow exists to prevent. `before` is all-zeros on
-            # a branch's first push, where the parent is the only range there is.
-            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-              RANGE="$BEFORE..$AFTER"
+            # failure this workflow exists to prevent.
+            #
+            # `before` is all-zeros on a branch's first push, and points at a
+            # commit that no longer exists after a force-push; in both cases the
+            # parent of the tip is the only range there is.
+            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              START="$BEFORE"
+            elif START="$(git rev-parse -q --verify "$AFTER^")"; then
+              echo "note: $BEFORE is not reachable, judging the tip commit alone" >&2
             else
-              RANGE="HEAD~1 HEAD"
+              # No range at all: release both rather than skip, because a missed
+              # release is the failure this workflow exists to prevent.
+              echo "stable=true" >> "$GITHUB_OUTPUT"
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            # shellcheck disable=SC2086
-            CHANGED=$(git diff --name-only $RANGE)
 
             # The release pipeline commits its regenerated code and version
             # bump back to main. Releasing that commit would release the
             # release, forever. Matched on github-actions[bot], the identity
             # the Git Data API attributes a GITHUB_TOKEN commit to - NOT on
             # admin@orq.ai, which is also orquesta-web's schema-publish commit
-            # and must keep triggering releases.
-            if git log -1 --format=%an "$AFTER" | grep -q '^github-actions\[bot\]$'; then
+            # and must keep triggering releases. Judged over the whole range,
+            # like the file list: a human commit anywhere in the push must still
+            # release. A git failure here aborts rather than releasing blind.
+            if ! AUTHORS="$(git log --format=%an "$START..$AFTER")"; then
+              echo "error: cannot read commit authors for $START..$AFTER" >&2
+              exit 1
+            fi
+            if ! printf '%s\n' "$AUTHORS" | grep -qvx 'github-actions\[bot\]'; then
+              echo "push is the release pipeline's own commit-back; nothing to release"
               echo "stable=false" >> "$GITHUB_OUTPUT"
               echo "prerelease=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+
+            # Test files are excluded: they change no shipped byte, and cutting
+            # a release for one publishes an identical binary under a new
+            # number.
+            CHANGED="$(git diff --name-only "$START" "$AFTER" | grep -v '_test\.go$' || true)"
 
             # Shared: built into both binaries (packages/orq-rc compiles the
             # root's hand-written commands against the staging schema), or
