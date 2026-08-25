@@ -46,6 +46,26 @@ next free tag; a feature or a break of our own is a hand edit to `VERSION`, in
 the PR that earns it. A pre-release build of the next minor is published on the
 `rc` line.
 
+### Bumping the CLI's own version
+
+The pipeline handles every release number on its own. The only reason to touch
+`VERSION` by hand is a change in what this CLI promises, and it goes in the PR
+that makes the change, not in a release PR:
+
+- **Major** (`X.0.0`) — a command or flag is removed or renamed, the shape of
+  `--json`/`--toon` output changes, or an existing config, profile or session
+  file stops being read. Anything that breaks a script someone already wrote.
+- **Minor** (`X.Y+1.0`) — a new command, a new flag, a new output format, or new
+  behaviour behind an opt-in. Nothing existing changes meaning.
+- **Patch** — nothing to do. Fixes, refactors, docs, dependency bumps and the
+  regenerated tree all take the next free patch automatically.
+
+Write the number you want as a floor, not as a promise: the pipeline still takes
+the next free tag from it, so `5.1.0` becomes `5.1.1` if `v5.1.0` already exists.
+If an orq API bump lands in the same release, its field is applied on top of the
+number in the file — a hand-written `5.1.0` released alongside an orq minor comes
+out as `5.2.0`.
+
 The orq API version a build was generated against is recorded, not encoded:
 
 - `orq --version` prints it under the CLI version, and `orq version` reports
