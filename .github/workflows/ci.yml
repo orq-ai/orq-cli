@@ -41,6 +41,8 @@ jobs:
         run: go test ./...
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
+      - name: changelog stamping
+        run: python3 scripts/stamp-changelog.py --self-test
 
   windows:
     name: skills on windows
@@ -77,9 +79,6 @@ jobs:
           SHELL=/bin/bash setsid dash install.sh \
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
-      - name: changelog stamping
-        run: python3 scripts/stamp-changelog.py --self-test
-
       - name: install the rc channel
         # The rc line is a GitHub pre-release, which /releases/latest never
         # returns, so --channel rc resolves the version from the npm rc
