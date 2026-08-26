@@ -883,10 +883,14 @@ func TestConnectCommandShape(t *testing.T) {
 			t.Errorf("disconnect missing flag --%s", flag)
 		}
 	}
+	// Both verbs carry the scope pair, declared once for every capability that
+	// has two scopes: naming it on one verb and not the other would leave a
+	// project-scoped wire that connect could write and disconnect could not
+	// narrow.
 	for _, cmd := range []*cobra.Command{c, d} {
 		for _, flag := range []string{"global", "local"} {
-			if cmd.Flags().Lookup(flag) != nil {
-				t.Errorf("%s still has --%s", cmd.Name(), flag)
+			if cmd.Flags().Lookup(flag) == nil {
+				t.Errorf("%s missing flag --%s", cmd.Name(), flag)
 			}
 		}
 	}

@@ -49,6 +49,13 @@ type setupOptions struct {
 	// wire per agent. The per-agent progress lines are that same report, so the
 	// two together printed each wire twice; only 'orq setup' sets it.
 	finalScreen bool
+	// scopeGlobal and scopeLocal are --global and --local, the scope a write
+	// lands in for the capabilities that have two (mcp today, skills next).
+	// Kept as the two raw flags rather than one boolean because "neither named"
+	// is a third state: it means global for a write and both scopes for a
+	// removal, and collapsing it early loses that.
+	scopeGlobal bool
+	scopeLocal  bool
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.

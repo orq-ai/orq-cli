@@ -87,10 +87,22 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 	plan.AddCleanup(release)
 }
 
+// MCPURLFor is the single derivation of the orq MCP endpoint: the explicit
+// override first, then a non-default API base (self-hosted / regional) carrying
+// the endpoint with it, then the hosted default. `orq connect` writes persistent
+// entries against it rather than repeating the order, so a session launched by
+// `orq launch` and a persisted entry can never point at two different servers.
+func MCPURLFor(apiBase string) string {
+	return firstNonEmpty(
+		strings.TrimSpace(os.Getenv("ORQ_MCP_URL")),
+		deriveFromAPIBase(apiBase, "/v2/mcp"),
+		DefaultMCPURL,
+	)
+}
+
 // mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.
-// A non-default ORQ_API_BASE_URL (self-hosted / regional)
-// carries the MCP endpoint with it. The API key is never embedded — each
-// harness references the ORQ_API_KEY env var through its own mechanism.
+// The API key is never embedded — each harness references the ORQ_API_KEY env
+// var through its own mechanism.
 func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
 		return ""
@@ -106,11 +118,9 @@ func mcpURL(ctx *AgentContext) string {
 	if ctx.Creds != nil {
 		apiBase = ctx.Creds.APIBaseURL
 	}
-	return firstNonEmpty(
-		ctx.Getenv("ORQ_MCP_URL"),
-		deriveFromAPIBase(apiBase, "/v2/mcp"),
-		DefaultMCPURL,
-	)
+	// ctx.Getenv first, then the shared resolver: the context's environment is
+	// the seam tests inject through, and MCPURLFor reads the real one.
+	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), MCPURLFor(apiBase))
 }
 
 // claudeMCPConfig is the --mcp-config file payload; claude expands

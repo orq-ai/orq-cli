@@ -376,10 +376,12 @@ func TestDisconnectOnAnUnwiredMachineIsQuiet(t *testing.T) {
 	}
 }
 
-// MCP support was removed, including its removal path, so an entry wired by
-// v4.13.10 stays until the user deletes it. What the CLI must not do is corrupt
-// it: connect and disconnect share config files with those entries.
-func TestStaleMCPEntriesAreLeftUntouched(t *testing.T) {
+// An MCP entry this CLI did not write — an old "orq" key from v4.13.10, or a
+// server the user added themselves — is not ours to touch. connect and
+// disconnect share those config files, and both must leave every key but
+// orq-workspace exactly as they found it. An agent that was never named is not
+// touched at all.
+func TestForeignMCPEntriesSurviveConnectAndDisconnect(t *testing.T) {
 	srv := emptyCatalogueServer(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -396,30 +398,56 @@ func TestStaleMCPEntriesAreLeftUntouched(t *testing.T) {
 	}
 	resetSetupMemos(t)
 
-	stale := map[string]string{
-		filepath.Join(home, ".claude.json"):           `{"mcpServers":{"orq":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`,
-		filepath.Join(home, ".kimi-code", "mcp.json"): `{"mcpServers":{"orq":{"url":"https://api.orq.ai/v2/mcp","bearerTokenEnvVar":"ORQ_API_KEY"}}}`,
+	claudeConfig := filepath.Join(home, ".claude.json")
+	kimiConfig := filepath.Join(home, ".kimi-code", "mcp.json")
+	untouched := `{"mcpServers":{"orq":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`
+	if err := os.WriteFile(claudeConfig, []byte(untouched), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	for path, body := range stale {
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(kimiConfig, []byte(`{"mcpServers":{"orq":{"url":"https://api.orq.ai/v2/mcp","bearerTokenEnvVar":"ORQ_API_KEY"}}}`), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, args := range [][]string{{"kimi"}, {"kimi"}} {
+	// Twice: the second write must be idempotent, not a second entry.
+	for range 2 {
 		cmd := NewConnectCommand()
-		cmd.SetArgs(args)
-		_ = cmd.Execute() // the catalogue is empty, so the wire may fail; the files must not change
+		cmd.SetArgs([]string{"kimi"})
+		_ = cmd.Execute() // the catalogue is empty, so the gateway leg fails; the MCP leg must not
 	}
+	if servers := mcpServersIn(t, kimiConfig); servers[launch.MCPServerName] == nil {
+		t.Errorf("connect did not write %s: %v", launch.MCPServerName, servers)
+	} else if servers["orq"] == nil {
+		t.Errorf("connect dropped the foreign entry: %v", servers)
+	}
+
 	d := NewDisconnectCommand()
 	d.SetArgs([]string{"kimi"})
 	_ = d.Execute()
 
-	for path, body := range stale {
-		if got := string(mustRead(t, path)); got != body {
-			t.Errorf("%s changed:\n got: %s\nwant: %s", path, got, body)
-		}
+	servers := mcpServersIn(t, kimiConfig)
+	if servers[launch.MCPServerName] != nil {
+		t.Errorf("disconnect left %s behind: %v", launch.MCPServerName, servers)
 	}
+	if servers["orq"] == nil {
+		t.Errorf("disconnect removed the foreign entry: %v", servers)
+	}
+	// claude was never named, so nothing in this run may have opened its config.
+	if got := string(mustRead(t, claudeConfig)); got != untouched {
+		t.Errorf("claude config changed:\n got: %s\nwant: %s", got, untouched)
+	}
+}
+
+// mcpServersIn reads the mcpServers map out of a JSON config, so a test can ask
+// which entries survived rather than compare bytes a rewrite reformats.
+func mcpServersIn(t *testing.T, path string) map[string]any {
+	t.Helper()
+	var cfg struct {
+		MCPServers map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(mustRead(t, path), &cfg); err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return cfg.MCPServers
 }
 
 // claude has no gateway provider config — it reads the endpoint from its
@@ -739,7 +767,7 @@ func TestRemovalNamesOrqAsTheThingRemoved(t *testing.T) {
 	}
 
 	var out strings.Builder
-	removeWiring(&reporter{w: &out}, []string{"kimi"}, []string{capGateway}, false)
+	removeWiring(&reporter{w: &out}, []string{"kimi"}, []string{capGateway}, &setupOptions{}, false)
 	got := out.String()
 	if !strings.HasPrefix(strings.TrimSpace(got), "✓ orq removed from") {
 		t.Errorf("the agent reads as the thing removed:\n%s", got)
@@ -1548,5 +1576,217 @@ func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(home, ".claude", "skills"))
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("no skills installed: %d entries, err = %v", len(entries), err)
+	}
+}
+
+// mcpMachine is a machine with one agent's directory and nothing else, ready
+// for a run that needs no credential: an MCP entry is a URL, so nothing in
+// these tests may reach for a key.
+func mcpMachine(t *testing.T, dirs ...string) (home, project string) {
+	t.Helper()
+	home = t.TempDir()
+	project = t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(project)
+	for _, d := range dirs {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ensureCreds(t)
+	ensureFormatter(t)
+	resetSetupMemos(t)
+	return home, project
+}
+
+// claude has no gateway provider config, so a set selected on writeProvider
+// alone is empty on the most common machine there is — and `orq connect mcp`
+// would report no agents on a machine that plainly has one.
+func TestBareMCPRunSelectsClaude(t *testing.T) {
+	mcpMachine(t, ".claude")
+
+	if got := agentsToConnect([]string{capMCP}); len(got) != 1 || got[0] != "claude" {
+		t.Errorf("agentsToConnect(mcp) = %v, want [claude]", got)
+	}
+	// The gateway question is unchanged by this: claude still cannot receive one.
+	if got := agentsToConnect([]string{capGateway}); len(got) != 0 {
+		t.Errorf("agentsToConnect(gateway) = %v, want none", got)
+	}
+}
+
+// pi is detected for the gateway and has no MCP support at all. Saying nothing
+// would read as an entry that was written.
+func TestConnectPiMCPReportsUnsupportedAndWritesNothing(t *testing.T) {
+	home, project := mcpMachine(t, filepath.Join(".pi", "agent"))
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"pi", "mcp"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "no MCP support") {
+		t.Errorf("pi's lack of MCP support was not reported:\n%s", out)
+	}
+	for _, path := range []string{
+		filepath.Join(project, ".mcp.json"),
+		filepath.Join(home, ".pi", "agent", "models.json"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s was written", path)
+		}
+	}
+}
+
+// The scope flags decide where a write lands, and only where: the scope not
+// chosen must come out of the run exactly as it went in.
+func TestMCPScopeFlagsChooseOneFileEach(t *testing.T) {
+	for _, tc := range []struct {
+		flag         string
+		wants, spare func(home, project string) string
+	}{
+		{
+			flag:  "--local",
+			wants: func(_, project string) string { return filepath.Join(project, ".mcp.json") },
+			spare: func(home, _ string) string { return filepath.Join(home, ".claude.json") },
+		},
+		{
+			flag:  "--global",
+			wants: func(home, _ string) string { return filepath.Join(home, ".claude.json") },
+			spare: func(_, project string) string { return filepath.Join(project, ".mcp.json") },
+		},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			home, project := mcpMachine(t, ".claude")
+
+			c := NewConnectCommand()
+			c.SetArgs([]string{"claude", "mcp", tc.flag})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+			if servers := mcpServersIn(t, tc.wants(home, project)); servers[launch.MCPServerName] == nil {
+				t.Errorf("%s wrote no entry: %v", tc.flag, servers)
+			}
+			if _, err := os.Stat(tc.spare(home, project)); !os.IsNotExist(err) {
+				t.Errorf("%s also touched the other scope", tc.flag)
+			}
+		})
+	}
+}
+
+// The pair is mutually exclusive with a message rather than a silent precedence
+// rule, and --local from $HOME is refused: the ~/.mcp.json it would produce is
+// not project config, and Claude never reads it.
+func TestScopeFlagsRejectWhatTheyCannotMean(t *testing.T) {
+	t.Run("both named", func(t *testing.T) {
+		mcpMachine(t, ".claude")
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "mcp", "--local", "--global"})
+		err := c.Execute()
+		if err == nil || !strings.Contains(err.Error(), "opposite") {
+			t.Fatalf("err = %v, want the mutually-exclusive message", err)
+		}
+	})
+	t.Run("local from home", func(t *testing.T) {
+		home, _ := mcpMachine(t, ".claude")
+		t.Chdir(home)
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "mcp", "--local"})
+		err := c.Execute()
+		if err == nil || !strings.Contains(err.Error(), "home directory") {
+			t.Fatalf("err = %v, want the refusal naming the home directory", err)
+		}
+		if _, serr := os.Stat(filepath.Join(home, ".mcp.json")); !os.IsNotExist(serr) {
+			t.Error("the refused run still wrote ~/.mcp.json")
+		}
+	})
+}
+
+// A removal that took only the global scope would leave a project entry that
+// nobody can remove without remembering which scope it landed in. --status
+// finds either scope and says which.
+func TestDisconnectRemovesMCPFromBothScopes(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
+
+	for _, scope := range []string{"--local", "--global"} {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "mcp", scope})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %s: %v", scope, err)
+		}
+	}
+	local := filepath.Join(project, ".mcp.json")
+	global := filepath.Join(home, ".claude.json")
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "mcp", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	for _, want := range []string{"local", "global"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status did not name the %s scope:\n%s", want, out)
+		}
+	}
+
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"claude", "mcp"})
+	if err := d.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	for _, path := range []string{local, global} {
+		// A config with nothing left in it is removed outright, so an absent
+		// file is the strongest form of "the entry is gone".
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		if servers := mcpServersIn(t, path); servers[launch.MCPServerName] != nil {
+			t.Errorf("%s still holds the entry: %v", path, servers)
+		}
+	}
+}
+
+// A self-hosted or regional install points ORQ_API_BASE_URL somewhere else, and
+// the entry must follow it rather than silently staying on production. One
+// derivation, shared with `orq launch`.
+func TestMCPEntryFollowsTheAPIBase(t *testing.T) {
+	_, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_BASE_URL", "https://eu.example.internal")
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "mcp", "--local"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	entry, _ := mcpServersIn(t, filepath.Join(project, ".mcp.json"))[launch.MCPServerName].(map[string]any)
+	if entry["url"] != "https://eu.example.internal/v2/mcp" {
+		t.Errorf("url = %v, want the derived endpoint", entry["url"])
+	}
+}
+
+// codex, opencode and kilo read MCP config from one place. --local against one
+// of them is a warning and a machine-wide write, not a failure: the entry the
+// user asked for still lands, in the only file that agent reads.
+func TestLocalScopeAgainstAGlobalOnlyAgentWarnsAndWritesGlobal(t *testing.T) {
+	home, project := mcpMachine(t, ".codex")
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"codex", "mcp", "--local"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "one place only") {
+		t.Errorf("the scope was silently ignored:\n%s", out)
+	}
+	if !strings.Contains(string(mustRead(t, filepath.Join(home, ".codex", "config.toml"))), launch.MCPServerName) {
+		t.Error("the entry did not land in codex's machine-wide config")
+	}
+	if _, err := os.Stat(filepath.Join(project, ".codex")); !os.IsNotExist(err) {
+		t.Error("--local created a project config codex would never read")
 	}
 }

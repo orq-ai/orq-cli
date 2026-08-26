@@ -3,25 +3,29 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/launch"
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const (
 	capGateway = "gateway"
 	capTracing = "tracing"
 	capSkills  = "skills"
+	capMCP     = "mcp"
 )
 
-var connectCapabilities = []string{capGateway, capTracing, capSkills}
+var connectCapabilities = []string{capGateway, capTracing, capSkills, capMCP}
 
 // partitionConnectArgs splits positional args into agent IDs and capability
 // names. The registry owns the agent namespace, so the two sets cannot collide.
@@ -64,7 +68,7 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 // Tracing is excluded for the same reason defaultCapabilities excludes it:
 // dropUnavailableCaps would strip it and print "not available yet" on every
 // bare invocation.
-func availableCapabilities() []string { return []string{capGateway, capSkills} }
+func availableCapabilities() []string { return []string{capGateway, capSkills, capMCP} }
 
 func capAvailable(c string) bool { return slices.Contains(availableCapabilities(), c) }
 
@@ -84,18 +88,19 @@ func detectedAgents() []string {
 
 // agentsToConnect is the agent set a bare command writes to. "Which agents can
 // receive this?" is a different question per capability: the gateway needs a
-// provider config to write, skills need a directory the agent reads. Filtering
-// both on writeProvider left claude — the one agent that receives skills and
-// has no provider config, and the most common machine there is — out of every
-// bare skills run.
+// provider config to write, skills need a directory the agent reads, mcp needs
+// an entry writer. Filtering all three on writeProvider left claude — the one
+// agent that receives skills and an MCP entry but has no provider config, and
+// the most common machine there is — out of every bare skills or mcp run.
 func agentsToConnect(caps []string) []string {
 	wantSkills := hasCap(caps, capSkills)
+	wantMCP := hasCap(caps, capMCP)
 	var out []string
 	for _, spec := range agentRegistry() {
 		if !spec.detect() {
 			continue
 		}
-		if spec.writeProvider != nil || (wantSkills && skills.Receives(spec.ID)) {
+		if spec.writeProvider != nil || (wantSkills && skills.Receives(spec.ID)) || (wantMCP && spec.writeMCP != nil) {
 			out = append(out, spec.ID)
 		}
 	}
@@ -169,22 +174,26 @@ func manifestSkillAgents() []string {
 // Skills are embedded in this binary and unpack onto the local filesystem, so
 // asking for a credential before installing them stands a network prompt in
 // front of an operation that is pure file I/O — and makes the offline install
-// the spec promises impossible.
+// the spec promises impossible. An MCP entry is credential-free for a different
+// reason: it is a URL and nothing else, and the agent logs in to that server
+// itself over OAuth, so nothing this command writes needs a key either.
 // credentialFreeCaps is what is left of a request once the credential is known
 // to be unavailable: everything this binary can still do from its own contents.
 func credentialFreeCaps(caps []string) []string {
 	var out []string
 	for _, c := range caps {
-		if c == capSkills {
+		if credentialFreeCap(c) {
 			out = append(out, c)
 		}
 	}
 	return out
 }
 
+func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP }
+
 func capsNeedCredential(caps []string) bool {
 	for _, c := range caps {
-		if c != capSkills {
+		if !credentialFreeCap(c) {
 			return true
 		}
 	}
@@ -223,32 +232,45 @@ func nothingWired(named bool, agents []string) string {
 	return "nothing wired for " + strings.Join(agents, ", ")
 }
 
-// reportUnwirableAgents warns about the named agents that have no provider
-// config, so a request never says nothing and never falls through to
-// "detected but not wired" for a gateway wire that cannot exist. The same
-// message runConnect prints, for the same reason.
+// reportUnwirableAgents warns about the named agents that cannot receive a
+// requested capability — claude has no provider config, pi has no MCP support —
+// so a request never says nothing and never falls through to "detected but not
+// wired" for a wire that cannot exist. The same messages runConnect prints, for
+// the same reason.
 //
-// It only drops the agent from the returned set when gateway is the sole
-// requested capability: a gateway-only request has nothing left to do for
-// that agent, so dropping it is the whole story. A request combining gateway
-// with anything else — skills, most concretely — must keep the agent in
-// play; an agent with no provider config can still carry skills, and every
-// other capability's own per-agent logic already no-ops cleanly on a nil
-// provider config (see wiredPath). Dropping the agent there would silently
-// discard those other capabilities along with the gateway leg.
+// It only drops the agent from the returned set when every requested capability
+// is one that agent cannot receive: then there is nothing left to do for it, so
+// dropping it is the whole story. A request combining an unreachable capability
+// with a reachable one — claude with gateway and skills, most concretely — must
+// keep the agent in play; each capability's own per-agent logic already no-ops
+// cleanly on a nil writer (see wiredPath). Dropping the agent there would
+// silently discard the capabilities it can receive along with the one it cannot.
 func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
-	if !hasCap(caps, capGateway) {
+	wantGateway := hasCap(caps, capGateway)
+	wantMCP := hasCap(caps, capMCP)
+	if !wantGateway && !wantMCP {
 		return agents
 	}
-	onlyGateway := len(caps) == 1
 	var out []string
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
-		if ok && spec.writeProvider == nil {
+		if !ok {
+			out = append(out, id)
+			continue
+		}
+		unreachable := 0
+		if wantGateway && spec.writeProvider == nil {
 			rep.info("%-8s no gateway provider config for this agent — nothing to configure", id)
-			if onlyGateway {
-				continue
-			}
+			unreachable++
+		}
+		if wantMCP && spec.writeMCP == nil {
+			rep.info("%-8s no MCP support in this agent — nothing to configure", id)
+			unreachable++
+		}
+		// Each count above implies its capability was requested, so an
+		// unreachable count equal to the whole request means nothing is left.
+		if unreachable == len(caps) {
+			continue
 		}
 		out = append(out, id)
 	}
@@ -274,7 +296,14 @@ Capabilities:
             use orq — into the skills directory that agent reads (~/.claude/skills
             and the equivalents). They ship inside this binary, so this needs no
             credential and works offline.
+  mcp       Registers the orq MCP server in the agent's own MCP config, so every
+            session can reach your workspace's tools. The entry is a URL and
+            nothing else: the agent logs in to the server itself, over OAuth, so
+            this needs no credential either.
   tracing   Parses, but is not available yet.
+
+` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
+instead, for the agents that read a project config (Claude Code and Kimi Code).
 
 ` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
 orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
@@ -299,7 +328,16 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.BoolVar(&dryRun, "dry-run", false, "Show the files that would change, write nothing")
 	f.BoolVar(&status, "status", false, "Show what is wired on this machine, change nothing")
+	addScopeFlags(f, &opts)
 	return cmd
+}
+
+// addScopeFlags declares --global/--local once for both verbs. The mcp
+// capability writes into the scope they name today, and RES-1437 gives skills
+// the same treatment through these same flags rather than a second pair.
+func addScopeFlags(f *pflag.FlagSet, opts *setupOptions) {
+	f.BoolVar(&opts.scopeGlobal, "global", false, "Write to the machine-wide config (the default)")
+	f.BoolVar(&opts.scopeLocal, "local", false, "Write to this project only")
 }
 
 // runConnectStatus is the read-only view of on-disk wiring. It never prompts and
@@ -351,6 +389,13 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	for _, agent := range order {
 		rep.info("%s", agent)
 		for _, w := range byAgent[agent] {
+			// Naming the scope where there are two: "~/.claude.json" and
+			// "./.mcp.json" are the same capability wired two different ways,
+			// and the path alone leaves the reader to work out which.
+			if w.scope != "" {
+				rep.info("  %-9s %-6s %s", w.capability, w.scope, tilde(w.path))
+				continue
+			}
 			rep.info("  %-9s %s", w.capability, tilde(w.path))
 		}
 	}
@@ -394,6 +439,9 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	}
 	if len(caps) == 0 {
 		caps = availableCapabilities()
+	}
+	if err := checkScopeFlags(rep, opts, caps); err != nil {
+		return err
 	}
 	// Naming an agent is the intent; leaving it bare is not, so ask rather than
 	// act on every agent the machine happens to have.
@@ -451,7 +499,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		var err error
 		state, client, err = resolveConnectAuth(cmd, rep, opts)
 		switch {
-		case err != nil && hasCap(caps, capSkills):
+		case err != nil && len(credentialFreeCaps(caps)) > 0:
 			// A missing credential costs this run the gateway, not everything
 			// it could still do. Losing the offline skills install because the
 			// gateway leg — which may have nothing to do anyway, claude has no
@@ -478,6 +526,14 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	if err != nil {
 		return err
 	}
+	// After the gateway, not before: the credential branch above can still drop
+	// capabilities from this run, and an MCP entry written against a caps list
+	// that no longer holds mcp would be a wire nobody asked for.
+	var mcpResults []mcpResult
+	mcpFailed := false
+	if hasCap(caps, capMCP) {
+		mcpResults, mcpFailed = connectMCP(rep, opts, agents)
+	}
 	if !wantsHumanView(cmd) {
 		payload := map[string]any{"coding_agents": agentResults}
 		// The skills leg reports itself through rep.ok, which quiet mode (and
@@ -488,6 +544,11 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		if hasCap(caps, capSkills) {
 			payload[capSkills] = skillsPayload(agents)
 		}
+		// Same reason: rep.ok is invisible to a script, so without this the MCP
+		// entries this run wrote cannot be observed at all.
+		if hasCap(caps, capMCP) {
+			payload[capMCP] = mcpResults
+		}
 		if err := emit(payload); err != nil {
 			return err
 		}
@@ -497,7 +558,106 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 			return errAgentFailed
 		}
 	}
+	if mcpFailed {
+		return errAgentFailed
+	}
 	return nil
+}
+
+// mcpResult is one agent's MCP outcome for --json. It is not folded into
+// agentResult: that struct describes the gateway wire, and an MCP entry has no
+// credential, no model count, and a scope of its own.
+type mcpResult struct {
+	Agent string `json:"agent"`
+	Path  string `json:"path,omitempty"`
+	Scope string `json:"scope,omitempty"`
+	Error string `json:"error,omitempty"`
+	// Skipped is the entry that was never attempted — pi has no MCP support —
+	// as opposed to Error's entry that was attempted and failed.
+	Skipped string `json:"skipped,omitempty"`
+}
+
+// connectMCP registers the orq MCP server for each selected agent, in the scope
+// this run chose. No credential is passed, and none is available: writeMCP takes
+// a URL and nothing else, and each agent authenticates to that server itself,
+// which is what the login line after every write is for.
+func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []mcpResult, failed bool) {
+	url := launch.MCPURLFor(apiBaseFromEnv())
+	global := mcpWriteScope(opts)
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			continue
+		}
+		if spec.writeMCP == nil || spec.mcpConfig == nil {
+			// Same shape as the gateway's "nothing to configure": silence here
+			// would read as a wire that happened.
+			rep.info("%-8s %-9s no MCP support in this agent — nothing to configure", id, capMCP)
+			results = append(results, mcpResult{Agent: id, Skipped: "no MCP support in this agent"})
+			continue
+		}
+		scopeAware := mcpScopeAware(spec)
+		if !global && !scopeAware {
+			// A warning, not a refusal: the entry the user asked for still
+			// lands, it just lands in the only file this agent reads.
+			rep.warn("%-8s %-9s reads MCP config from one place only — writing the machine-wide file", id, capMCP)
+		}
+		path, err := spec.mcpConfig(global)
+		switch {
+		case err != nil:
+			rep.fail("%-8s %-9s %v", id, capMCP, err)
+			results = append(results, mcpResult{Agent: id, Error: err.Error()})
+			failed = true
+		case path == "":
+			rep.fail("%-8s %-9s no MCP config path for this agent", id, capMCP)
+			results = append(results, mcpResult{Agent: id, Error: "mcp config path resolved empty"})
+			failed = true
+		default:
+			if werr := spec.writeMCP(path, url); werr != nil {
+				rep.fail("%-8s %-9s %v", id, capMCP, werr)
+				results = append(results, mcpResult{Agent: id, Error: werr.Error()})
+				failed = true
+				continue
+			}
+			rep.ok("%-8s %-9s %s", id, capMCP, tilde(path))
+			if line := mcpLoginLine(id); line != "" {
+				rep.info("%-8s %-9s %s", id, capMCP, line)
+			}
+			results = append(results, mcpResult{Agent: id, Path: path, Scope: scopeLabel(global || !scopeAware)})
+		}
+	}
+	return results, failed
+}
+
+// mcpScopeAware reports whether the agent has a project scope at all. The
+// global-only resolvers return the same path for both answers, so asking the
+// resolver is the test — a second registry field could disagree with it.
+func mcpScopeAware(spec agentSpec) bool {
+	if spec.mcpConfig == nil {
+		return false
+	}
+	local, lerr := spec.mcpConfig(false)
+	global, gerr := spec.mcpConfig(true)
+	return lerr == nil && gerr == nil && local != global
+}
+
+// mcpLoginLine names the one manual step an entry leaves behind. The entry
+// carries no credential, so the agent logs in to the server itself; this says
+// how, per agent, without shelling out to a program that may not be running.
+func mcpLoginLine(id string) string {
+	switch id {
+	case "claude":
+		return "run /mcp in Claude Code, or 'claude mcp login " + launch.MCPServerName + "'"
+	case "codex":
+		return "run 'codex mcp login " + launch.MCPServerName + "'"
+	case "opencode":
+		return "opencode prompts for the login on first use"
+	case "kilo":
+		return "run 'kilo mcp auth " + launch.MCPServerName + "'"
+	case "kimi":
+		return "run 'kimi mcp auth " + launch.MCPServerName + "'"
+	}
+	return ""
 }
 
 // skillsPayload is the machine-readable view of an install: the directories
@@ -573,6 +733,16 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 			default:
 				if path, err := spec.providerConfig(false); err == nil && path != "" {
 					rep.info("%-8s gateway   %s", id, tilde(path))
+				}
+			}
+		}
+		if hasCap(caps, capMCP) {
+			switch {
+			case spec.writeMCP == nil || spec.mcpConfig == nil:
+				rep.info("%-8s mcp       no MCP support in this agent", id)
+			default:
+				if path, err := spec.mcpConfig(mcpWriteScope(opts)); err == nil && path != "" {
+					rep.info("%-8s mcp       %s", id, tilde(path))
 				}
 			}
 		}
@@ -660,9 +830,14 @@ func NewDisconnectCommand() *cobra.Command {
 		Short: "Remove what orq connect wrote",
 		Long: bartolocli.Markdown(`Removes what ` + "`orq connect`" + ` (or ` + "`orq setup`" + `) ` +
 			`wrote, and nothing else: the ` + "`gateway`" + ` provider entries in your agents' own ` +
-			`config files, and the ` + "`skills`" + ` this CLI installed into your agents' skills ` +
-			`directories. Only paths this CLI recorded are ever touched — a skill you installed ` +
+			`config files, the ` + "`skills`" + ` this CLI installed into your agents' skills ` +
+			`directories, and the ` + "`mcp`" + ` server entry named ` + "`" + launch.MCPServerName + "`" + `. ` +
+			`Only paths this CLI recorded are ever touched — a skill you installed ` +
 			`yourself, or one of ours you have since replaced, is reported and left alone.
+
+The ` + "`mcp`" + ` entry is removed from both scopes — machine-wide and this project — unless ` +
+			"`--global`" + ` or ` + "`--local`" + ` names one, because a project-scoped entry would ` +
+			`otherwise be unremovable by anyone who does not remember which scope it landed in.
 
 ` + "`orq skills`" + `, the platform skill entities, is a different noun and is not affected.
 
@@ -678,6 +853,7 @@ Naming agents removes from those; naming a capability (` + strings.Join(availabl
 	f := cmd.Flags()
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Remove without confirming")
 	f.BoolVar(&dryRun, "dry-run", false, "Show what would be removed, remove nothing")
+	addScopeFlags(f, &opts)
 	return cmd
 }
 
@@ -700,6 +876,9 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	}
 	if len(caps) == 0 {
 		caps = availableCapabilities()
+	}
+	if err := checkScopeFlags(rep, opts, caps); err != nil {
+		return err
 	}
 	namedAgents := len(agents) > 0
 	if !namedAgents {
@@ -738,7 +917,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 		}
 	}
 
-	rows, skillsRemoved, failed := removeWiring(rep, agents, caps, previewed)
+	rows, skillsRemoved, failed := removeWiring(rep, agents, caps, opts, previewed)
 	reportCredentialSurvives(rep)
 
 	if !wantsHumanView(cmd) {
@@ -767,8 +946,33 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	return nil
 }
 
-// wiredTarget is one agent's capability and the file holding it.
-type wiredTarget struct{ agent, capability, path string }
+// wiredTarget is one agent's capability and the file holding it. scope is set
+// only for the capabilities that have two, so a report can say which of them an
+// entry was found in; the file alone does not always say.
+type wiredTarget struct{ agent, capability, path, scope string }
+
+// wiredMCPTargets lists every scope holding this agent's MCP entry. wiredPath
+// answers "is it wired at all" and stops at the first hit, which is right for
+// the gateway; disconnect removes an MCP entry from both scopes, and a preview
+// that named only the first would understate what it is about to do.
+func wiredMCPTargets(id string, spec agentSpec) []wiredTarget {
+	if spec.mcpConfig == nil || spec.mcpPresent == nil {
+		return nil
+	}
+	var out []wiredTarget
+	seen := map[string]bool{}
+	// Global first: the global-only agents resolve both scopes to one file, and
+	// probing local first would label that shared file "local".
+	for _, global := range []bool{true, false} {
+		path, err := spec.mcpConfig(global)
+		if err != nil || path == "" || seen[path] || !spec.mcpPresent(path) {
+			continue
+		}
+		seen[path] = true
+		out = append(out, wiredTarget{agent: id, capability: capMCP, path: path, scope: scopeLabel(global)})
+	}
+	return out
+}
 
 // wiredTargets is what disconnect would act on: only capabilities actually
 // present on disk, so the preview never lists a file it will not touch.
@@ -781,8 +985,11 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 		if hasCap(caps, capGateway) {
 			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
-				out = append(out, wiredTarget{id, capGateway, path})
+				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path})
 			}
+		}
+		if hasCap(caps, capMCP) {
+			out = append(out, wiredMCPTargets(id, spec)...)
 		}
 	}
 	if hasCap(caps, capSkills) {
@@ -807,7 +1014,7 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 					continue
 				}
 				seen[dir] = true
-				out = append(out, wiredTarget{l.Agent, capSkills, dir})
+				out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir})
 			}
 		}
 	}
@@ -887,7 +1094,7 @@ type disconnectRow struct {
 //
 // pathShown says a preview already listed the files, so the result names the
 // agent instead of repeating the path the user just read and approved.
-func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []disconnectRow, skillsRemoved []string, failed bool) {
+func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, pathShown bool) (rows []disconnectRow, skillsRemoved []string, failed bool) {
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
 		if !ok {
@@ -899,7 +1106,7 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 			if resolve == nil || remover == nil {
 				return
 			}
-			for _, path := range bothScopePaths(resolve) {
+			for _, path := range scopedPaths(resolve, opts) {
 				removed, err := remover(path)
 				switch {
 				case err != nil:
@@ -912,12 +1119,19 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 						where = id
 					}
 					rep.ok("orq removed from %s", where)
-					removedFrom = append(removedFrom, cap)
+					// Once per capability, not once per scope: an entry
+					// removed from both scopes is still one capability gone.
+					if !slices.Contains(removedFrom, cap) {
+						removedFrom = append(removedFrom, cap)
+					}
 				}
 			}
 		}
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
+		}
+		if hasCap(caps, capMCP) {
+			remove(capMCP, spec.mcpConfig, spec.removeMCP)
 		}
 		r.Removed = removedFrom
 		rows = append(rows, r)
@@ -958,7 +1172,10 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 // opts in.
 func disconnectOnLogout(opts *setupOptions, assumeYes bool) ([]disconnectRow, bool) {
 	wired := detectedAgents()
-	caps := []string{capGateway}
+	// Every capability this binary writes, not just the gateway: a logout that
+	// removes the provider entry and leaves the MCP server and the skills behind
+	// undoes half of what `orq connect` wrote.
+	caps := availableCapabilities()
 	targets := wiredTargets(wired, caps, opts)
 	if len(targets) == 0 {
 		return nil, false
@@ -980,7 +1197,7 @@ func disconnectOnLogout(opts *setupOptions, assumeYes bool) ([]disconnectRow, bo
 			return nil, false
 		}
 	}
-	rows, _, failed := removeWiring(rep, wired, caps, false)
+	rows, _, failed := removeWiring(rep, wired, caps, opts, false)
 	return rows, failed
 }
 
@@ -1000,6 +1217,61 @@ func reportCredentialSurvives(rep *reporter) {
 		return
 	}
 	rep.info("not revoked: the key still works wherever else it was copied")
+}
+
+// checkScopeFlags rejects the two things --local can mean that the user cannot
+// have. The pair is mutually exclusive with a message rather than a silent
+// precedence rule, and --local from $HOME is refused outright: it would write a
+// ~/.mcp.json, which is not project config and which Claude never reads, so the
+// run would report a wire that does nothing.
+//
+// A --local run that scopes nothing is a warning, not a failure: the gateway is
+// machine-wide for every agent (every provider resolver is home- or env-rooted),
+// so the flag is ignorable rather than wrong.
+func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
+	if opts.scopeGlobal && opts.scopeLocal {
+		return errors.New("--global and --local ask for opposite things — name one")
+	}
+	if !opts.scopeLocal {
+		return nil
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if cwd, cerr := os.Getwd(); cerr == nil && sameDir(cwd, home) {
+			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — the ~/.mcp.json that would produce is not read as project config", tilde(home))
+		}
+	}
+	if !hasCap(caps, capMCP) && !hasCap(caps, capSkills) {
+		rep.warn("--local has nothing to scope here: the gateway is machine-wide for every agent")
+	}
+	return nil
+}
+
+// mcpWriteScope is the scope a write lands in: the flag when one was named,
+// global otherwise. checkScopeFlags has already rejected naming both.
+func mcpWriteScope(opts *setupOptions) bool { return !opts.scopeLocal }
+
+// scopeLabel names a scope for the reader. "local" rather than "project"
+// because that is the flag the user types to reach it.
+func scopeLabel(global bool) string {
+	if global {
+		return "global"
+	}
+	return "local"
+}
+
+// scopedPaths is removeWiring's view of bothScopePaths: naming a scope removes
+// from that one, naming none removes from both. Both is the default because a
+// project-scoped entry would otherwise survive every `orq disconnect` run by
+// anyone who does not remember which scope it landed in.
+func scopedPaths(resolve func(bool) (string, error), opts *setupOptions) []string {
+	if !opts.scopeGlobal && !opts.scopeLocal {
+		return bothScopePaths(resolve)
+	}
+	path, err := resolve(opts.scopeGlobal)
+	if err != nil || path == "" {
+		return nil
+	}
+	return []string{path}
 }
 
 // bothScopePaths resolves the project and global paths, deduplicated: many
