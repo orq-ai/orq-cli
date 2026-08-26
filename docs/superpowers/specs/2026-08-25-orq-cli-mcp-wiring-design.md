@@ -3,7 +3,9 @@
 Date: 2026-08-25
 Status: verified design, ready for an implementation plan
 Ticket: RES-1435
-Branch base: `Baukebrenninkmeijer/cli-mcp-support` (on `origin/main` + `arianpasquali/skills-safety-fixes`)
+Branch base: `Baukebrenninkmeijer/cli-mcp-support-pr` (on `origin/main`). Section 1 assumes
+`arianpasquali/skills-safety-fixes` (`69e05ba`) has landed, since that is what makes
+`skills` a live capability.
 
 ## Problem
 
