@@ -81,7 +81,7 @@ func resolveKimi(ctx *AgentContext) (*LaunchPlan, error) {
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			// The provider credential lives in config.toml (kimi has no env
-			// fallback); this env var only feeds mcp.json's bearerTokenEnvVar.
+			// fallback); MCP authentication is handled by Kimi's OAuth flow.
 			"ORQ_API_KEY":    ctx.Creds.APIKey,
 			"KIMI_CODE_HOME": home,
 		},

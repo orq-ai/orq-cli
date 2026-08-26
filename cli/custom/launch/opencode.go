@@ -95,7 +95,11 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 		return nil, err
 	}
 
-	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpURL(ctx))
+	mcpServerURL := mcpURL(ctx)
+	if mcpServerURL != "" && (family.name == "opencode" || family.name == "kilo") && persistedMCPConfigured(family.name) {
+		mcpServerURL = ""
+	}
+	configJSON, err := BuildOpenCodeConfigContent(resolved.BaseURL, resolved.GatewayModel, resolved.GatewayModels, resolved.Infos, mcpServerURL)
 	if err != nil {
 		return nil, err
 	}

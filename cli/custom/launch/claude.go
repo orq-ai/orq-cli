@@ -78,13 +78,11 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		Warnings: warnings,
 	}
 
-	if url := mcpURL(ctx); url != "" {
+	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
 		path, cleanup, err := writeClaudeMCPConfig(url)
 		if err != nil {
 			return nil, err
 		}
-		// claude expands ${ORQ_API_KEY} from env when loading the config file.
-		plan.Env["ORQ_API_KEY"] = ctx.Creds.APIKey
 		plan.PreArgs = []string{"--mcp-config", path}
 		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
 		plan.AddCleanup(cleanup)

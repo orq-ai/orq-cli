@@ -123,15 +123,68 @@ func mcpURL(ctx *AgentContext) string {
 	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), MCPURLFor(apiBase))
 }
 
-// claudeMCPConfig is the --mcp-config file payload; claude expands
-// ${ORQ_API_KEY} from the environment at load time.
+// persistedMCPConfigured checks the configs that the agent reads alongside a
+// launch-owned session override. A persisted OAuth entry is authoritative, so
+// adding a second entry under the same name would only shadow it.
+func persistedMCPConfigured(agent string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	paths := []string{}
+	switch agent {
+	case "claude":
+		if cwd, err := os.Getwd(); err == nil {
+			paths = append(paths, filepath.Join(cwd, ".mcp.json"))
+		}
+		paths = append(paths, filepath.Join(home, ".claude.json"))
+	case "codex":
+		root := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+		if root == "" {
+			root = filepath.Join(home, ".codex")
+		}
+		paths = append(paths, filepath.Join(root, "config.toml"))
+	case "opencode":
+		paths = append(paths, filepath.Join(home, ".config/opencode/opencode.json"))
+	case "kilo":
+		paths = append(paths, filepath.Join(home, ".config/kilo/kilo.json"), filepath.Join(home, ".config/kilo/kilo.jsonc"))
+	default:
+		return false
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if strings.HasSuffix(path, ".toml") {
+			if strings.Contains(string(data), "[mcp_servers."+MCPServerName+"]") || strings.Contains(string(data), "[mcp_servers.\""+MCPServerName+"\"]") {
+				return true
+			}
+			continue
+		}
+		var raw map[string]any
+		if json.Unmarshal(data, &raw) != nil {
+			continue
+		}
+		for _, key := range []string{"mcpServers", "mcp"} {
+			if section, ok := raw[key].(map[string]any); ok {
+				if _, exists := section[MCPServerName]; exists {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// claudeMCPConfig is the --mcp-config file payload. Claude authenticates the
+// remote through its own OAuth flow.
 func claudeMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			MCPServerName: map[string]any{
-				"type":    "http",
-				"url":     url,
-				"headers": map[string]string{"Authorization": "Bearer ${ORQ_API_KEY}"},
+				"type": "http",
+				"url":  url,
 			},
 		},
 	})
@@ -151,24 +204,22 @@ func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
 	return path, func() { os.RemoveAll(dir) }, nil
 }
 
-// codexMCPArgs wires the orq MCP server via -c TOML overrides using codex's
-// native streamable-HTTP transport with bearer_token_env_var.
+// codexMCPArgs wires the orq MCP server via -c TOML overrides. Codex performs
+// OAuth for the named server when the user runs its login command.
 func codexMCPArgs(url string) []string {
 	return []string{
 		"-c", tomlOverride("mcp_servers."+MCPServerName+".url", url),
-		"-c", tomlOverride("mcp_servers."+MCPServerName+".bearer_token_env_var", "ORQ_API_KEY"),
 	}
 }
 
-// openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config;
-// {env:ORQ_API_KEY} keeps the key out of the file.
+// openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config.
+// OAuth is owned by the agent, not by this CLI.
 func openCodeMCPBlock(url string) map[string]any {
 	return map[string]any{
 		MCPServerName: map[string]any{
-			"type":    "remote",
-			"url":     url,
-			"oauth":   false,
-			"headers": map[string]string{"Authorization": "Bearer {env:ORQ_API_KEY}"},
+			"type":  "remote",
+			"url":   url,
+			"oauth": true,
 		},
 	}
 }
@@ -236,14 +287,13 @@ func maybeWriteSessionSkills(ctx *AgentContext, plan *LaunchPlan, dir string) {
 	}
 }
 
-// kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME; kimi resolves
-// the bearer token from ORQ_API_KEY via bearerTokenEnvVar.
+// kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME. Kimi authenticates
+// this remote through its own OAuth flow.
 func kimiMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			MCPServerName: map[string]any{
-				"url":               url,
-				"bearerTokenEnvVar": "ORQ_API_KEY",
+				"url": url,
 			},
 		},
 	})

@@ -59,8 +59,7 @@ func TestClaudeMCPWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(data)
-	if !strings.Contains(content, DefaultMCPURL) ||
-		!strings.Contains(content, "Bearer ${ORQ_API_KEY}") {
+	if !strings.Contains(content, DefaultMCPURL) {
 		t.Fatalf("mcp config: %s", content)
 	}
 	// claude skips servers with a url but no transport type.
@@ -70,8 +69,8 @@ func TestClaudeMCPWiring(t *testing.T) {
 	if strings.Contains(content, "orq-key") {
 		t.Fatal("key leaked into mcp config file")
 	}
-	if plan.Env["ORQ_API_KEY"] != "orq-key" {
-		t.Fatal("ORQ_API_KEY env missing for ${VAR} expansion")
+	if strings.Contains(content, "Authorization") || strings.Contains(content, "ORQ_API_KEY") {
+		t.Fatalf("credential reference leaked into mcp config: %s", content)
 	}
 }
 
@@ -88,6 +87,24 @@ func TestClaudeBareLaunchWiresNoArgs(t *testing.T) {
 	}
 	if len(plan.PreArgs) != 0 {
 		t.Fatalf("bare launch should put nothing on the argv: %v", plan.PreArgs)
+	}
+}
+
+func TestClaudeLaunchSkipsPersistedMCP(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{MCP: true, NoSkills: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if len(plan.PreArgs) != 0 {
+		t.Fatalf("persisted MCP should suppress session injection: %v", plan.PreArgs)
 	}
 }
 
@@ -118,8 +135,31 @@ func TestCodexMCPArgs(t *testing.T) {
 	}
 	joined := strings.Join(plan.PreArgs, " ")
 	if !strings.Contains(joined, `mcp_servers.`+MCPServerName+`.url="`+DefaultMCPURL+`"`) ||
-		!strings.Contains(joined, `mcp_servers.`+MCPServerName+`.bearer_token_env_var="ORQ_API_KEY"`) {
+		strings.Contains(joined, "bearer_token_env_var") {
 		t.Fatalf("mcp overrides missing: %s", joined)
+	}
+}
+
+func TestCodexLaunchSkipsPersistedMCP(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	codexHome := filepath.Join(home, ".codex")
+	t.Setenv("CODEX_HOME", codexHome)
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte("[mcp_servers.\"orq-workspace\"]\nurl = \"https://api.orq.ai/v2/mcp\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{MCP: true, NoSkills: true}, okProbe))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if strings.Contains(strings.Join(plan.PreArgs, " "), "mcp_servers.orq-workspace.url") {
+		t.Fatalf("persisted MCP should suppress session override: %v", plan.PreArgs)
 	}
 }
 
@@ -142,9 +182,11 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	orq := parsed.MCP[MCPServerName]
-	if orq.Type != "remote" || orq.URL != DefaultMCPURL ||
-		orq.Headers["Authorization"] != "Bearer {env:ORQ_API_KEY}" {
+	if orq.Type != "remote" || orq.URL != DefaultMCPURL {
 		t.Fatalf("mcp block: %+v", orq)
+	}
+	if len(orq.Headers) != 0 {
+		t.Fatalf("mcp block contains headers: %+v", orq.Headers)
 	}
 }
 
@@ -166,8 +208,7 @@ func TestKimiMCPFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(data)
-	if !strings.Contains(content, DefaultMCPURL) ||
-		!strings.Contains(content, `"bearerTokenEnvVar":"ORQ_API_KEY"`) {
+	if !strings.Contains(content, DefaultMCPURL) || strings.Contains(content, "bearerTokenEnvVar") {
 		t.Fatalf("kimi mcp.json: %s", content)
 	}
 	if strings.Contains(content, "sk-test") {

@@ -67,7 +67,7 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	plan.PreArgs = BuildCodexOverrideArgs(resolved.GatewayModel, resolved.BaseURL, catalogPath)
-	if url := mcpURL(ctx); url != "" {
+	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("codex") {
 		plan.PreArgs = append(plan.PreArgs, codexMCPArgs(url)...)
 	}
 	maybeInstallSessionSkills(ctx, plan, "codex")
