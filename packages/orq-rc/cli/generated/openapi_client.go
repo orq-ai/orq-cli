@@ -2337,47 +2337,6 @@ func OpenapiDeploymentGetConfig(params *viper.Viper, body string) (*gentleman.Re
 	return resp, decoded, nil
 }
 
-// OpenapiDeploymentInvoke Invoke
-func OpenapiDeploymentInvoke(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "deployments invoke"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
-
-	url := server + "/v2/deployments/invoke"
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after.(map[string]interface{})
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiDeployments List all deployments
 func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "deployments list"
@@ -2401,47 +2360,6 @@ func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]in
 	paramEndingBefore := params.GetString("ending-before")
 	if paramEndingBefore != "" {
 		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		decoded = after.(map[string]interface{})
-	}
-
-	return resp, decoded, nil
-}
-
-// OpenapiDeploymentStream Stream
-func OpenapiDeploymentStream(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "deployments stream"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
-
-	url := server + "/v2/deployments/stream"
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
