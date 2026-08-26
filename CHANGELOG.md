@@ -494,8 +494,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ### Known gap in the surface gate
 
-`orq launch` sets `DisableFlagParsing` so that everything after the agent name
-reaches the agent untouched. Its flags are therefore parsed by hand and do not
+`orq launch` sets `DisableFlagParsing` so that agent arguments can be forwarded
+without collisions. Global `orq` flags must appear before the agent name; its
+launcher-specific flags are parsed by hand at the start of the agent arguments
+and therefore do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
 `--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or

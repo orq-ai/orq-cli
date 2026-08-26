@@ -288,7 +288,7 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
+Pass launcher-specific flags after the agent name, for example `orq launch claude --mcp --dry-run`, to wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
 
 With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
@@ -305,7 +305,7 @@ With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-a
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim, so agent flags stay reachable. Everything after `--` is passed to the agent untouched:
+There are two layers of flags. Global `orq` flags such as `--profile` and `--server` must appear between `launch` and the agent name, so `orq launch --profile acme --server https://orq.acme.internal kimi` selects the profile and host. Once the agent name appears, those global flags belong to the agent and are forwarded verbatim. Launcher-specific flags in the table above (`--model`, `--mcp`, `--dry-run`, etc.) are recognized at the start of the agent's arguments; after the first agent-owned argument, everything goes to the agent untouched. A leading `--` ends launcher-specific parsing explicitly:
 
 ```sh
 orq launch claude -- --resume
