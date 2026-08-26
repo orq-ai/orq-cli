@@ -1,7 +1,7 @@
 # orq CLI: MCP wiring for coding agents
 
 Date: 2026-08-25
-Status: design under verification — three gates remain (see "Verify before implementing")
+Status: verified design, ready for an implementation plan
 Ticket: RES-1435
 Branch base: `Baukebrenninkmeijer/cli-mcp-support` (on `origin/main` + `arianpasquali/skills-safety-fixes`)
 
@@ -115,18 +115,21 @@ guarantee that replaces `e44c747`'s hand-checking.
 content against the live catalogue"* — so rendering MCP content in dry-run alone would
 make one command behave two ways.
 
-Per-agent entry shapes (see gate G1 for the two unverified paths):
+Per-agent entry shapes, all verified against the shipped product (see "Verified"):
 
-- **claude** — `./.mcp.json` or `~/.claude.json`, key `mcpServers`:
+- **claude** — `./.mcp.json` (project) or `~/.claude.json` (global), key `mcpServers`:
   `{"type": "http", "url": "…"}`
 - **codex** — `~/.codex/config.toml`: `[mcp_servers.orq-workspace]` with `url` only
 - **opencode** — `~/.config/opencode/opencode.json`, key `mcp`:
-  `{"type": "remote", "url": "…", "enabled": true, "oauth": {}}`
-- **kilo** — `~/.config/kilo/kilo.jsonc`, same shape as opencode
-- **kimi** — `~/.kimi/mcp.json`, key `mcpServers`: `{"url": "…"}`. Note the path: the
-  pre-`e44c747` writer used `~/.kimi-code/mcp.json`, which the current docs contradict
+  `{"type": "remote", "url": "…", "enabled": true}`
+- **kilo** — `~/.config/kilo/kilo.json`, same shape as opencode
+- **kimi** — `./.kimi-code/mcp.json` (project) or `~/.kimi-code/mcp.json` (global),
+  key `mcpServers`: `{"url": "…"}`
 - **pi** — no MCP entry. `detect()` still finds pi for the gateway; MCP reports
   "not supported by this agent", the same way claude reports no gateway config today
+
+**Two agents have two scopes, not one:** claude and kimi. Everything in section 3 that
+says "today: claude" covers kimi as well.
 
 No manifest. Unlike skills — where a symlink on disk cannot say who created it, which
 is why `skills.LoadManifest()` exists — an MCP entry is self-describing: it is the
@@ -300,32 +303,55 @@ Per agent, one line naming the login command — no shelling out, no blocking:
 - Pi: `orq connect pi mcp` reports unsupported and writes nothing.
 - URL derivation for a non-default `ORQ_API_BASE_URL`.
 
-## Verify before implementing
+## Verified
 
-The two agent-capability gates an earlier draft carried are closed — the survey in "Why
-that is now possible" answered both, and the key-scoping gate died with header mode.
-Three remain, none of which can invalidate the design; they set details.
+All gates are resolved. Evidence, 2026-08-26:
 
-**G1 — Kilo and Kimi config paths and shapes.** Neither is installed on this machine, so
-both entries above are from docs. Kimi in particular contradicts the code we are
-restoring: docs say `~/.kimi/mcp.json`, the old writer said `~/.kimi-code/mcp.json`.
-Kilo's is `.jsonc`, where the old writer said `.json`. Install both, or verify against
-their current docs, before writing either writer.
+**Kilo and Kimi config paths.** Neither is installed here, so both were checked by
+downloading the published package and reading the shipped binary rather than trusting
+docs.
 
-**G2 — Local and global file writes, for real, per agent.** `./.mcp.json` created and
-merged in a project; `~/.claude.json` merged in place without disturbing Claude's own
-contents (it owns that file aggressively and keeps far more than MCP servers in it);
-and a `disconnect` that leaves each file functionally clean. Note that
-`writeJSONConfig` chmods every JSON config it touches to `0600` — inherited behaviour,
-not chosen here, and worth confirming it does not fight Claude's own writes to
-`~/.claude.json`.
+*Kimi Code* is `@moonshot-ai/kimi-code` 0.38.0 — the product this registry already
+targets, whose installer defaults `KIMI_INSTALL_DIR=$HOME/.kimi-code`. Its bundle has
+108 references to `KIMI_CODE_HOME` and 109 to `.kimi-code` against 3 to `.kimi/`, and
+`mcpServers` is the key (143 references). So the pre-`e44c747` writer's
+`.kimi-code/mcp.json` was right and an earlier draft of this spec was wrong to
+"correct" it to `~/.kimi/mcp.json`: that path belongs to **Kimi CLI**
+(`moonshotai.github.io/kimi-cli`), a different Moonshot product this registry does not
+target. The bundle also documents a project scope — *"Project-local MCP:
+`<cwd>/.kimi-code/mcp.json`"* — which is why kimi joins claude as a two-scope agent
+above.
 
-**G3 — Does the opencode family see its persisted config when launched?**
-`OPENCODE_CONFIG_CONTENT` supplies a whole config document inline. If opencode merges
-it with `~/.config/opencode/opencode.json`, the launch no-op from section 4 applies to
-opencode and kilo too; if it replaces it, they must keep receiving a session entry.
-Same question for kimi's `KIMI_CODE_HOME`, where the answer is almost certainly
-"replaces".
+*Kilo* ships both: the `@kilocode/cli-darwin-arm64` 7.4.23 binary references
+`kilo.json` 72 times and `kilo.jsonc` 39, alongside `.config/kilo` and
+`KILO_CONFIG_CONTENT`. `.json` is the more common form and what the old writer used;
+keep it, and have the reader accept either.
+
+**Local and global file writes.** `claude mcp add --transport http … -s project` in a
+scratch repo creates `./.mcp.json` containing exactly
+`{"mcpServers": {"<name>": {"type": "http", "url": "…"}}}` — the shape section 2
+specifies, confirmed rather than assumed. `~/.claude.json` on this machine is already
+`0600`, so `writeJSONConfig`'s blanket chmod matches what Claude itself does and there
+is nothing to reconcile. One wrinkle: Claude creates the *project* `.mcp.json` as
+`0644`, and `.mcp.json` is meant to be committed and shared with a team, so narrowing
+it to `0600` is unnecessary. Harmless — git tracks only the exec bit — but the project
+writer should leave `0644` rather than inherit the global path's permissions.
+
+**The opencode family merges its inline config.** With four MCP servers in
+`~/.config/opencode/opencode.json`, running `opencode mcp list` under
+`OPENCODE_CONFIG_CONTENT='{"mcp":{"g3-probe":…}}'` reported **five** servers — the four
+persisted plus the injected one. So `OPENCODE_CONFIG_CONTENT` merges, and the
+section-4 launch no-op applies to opencode and kilo. Kimi does not merge: launch points
+`KIMI_CODE_HOME` at a fresh temp dir (`kimi.go:75`), so the persisted file is not on
+kimi's search path at all and launch must keep writing there.
+
+Two things fell out of that check worth recording. `opencode mcp auth <name>` is the
+OAuth login verb, upgrading section 6's opencode row from "prompts on first use" to a
+named command. And the machine already carried a persisted `orq-workspace` entry with
+`"Authorization": "Bearer {env:ORQ_API_KEY}"` — a real v4.13.10 leftover. The writers
+assign the whole `orq-workspace` value rather than merging into it, so they upgrade
+such an entry to the headerless shape on the next `orq connect`, which is the desired
+behaviour and should have a test.
 
 ## Out of scope
 
