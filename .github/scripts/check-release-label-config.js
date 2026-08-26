@@ -203,9 +203,71 @@ function findWorkflowBlock(scriptSource, headerPattern, description) {
   throw new Error(`label workflow ${description} has no closing block`);
 }
 
+function stripCommentsAndStrings(source) {
+  const characters = [];
+  let quote;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  function appendBlank(character) {
+    characters.push(character === '\n' ? '\n' : ' ');
+  }
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (inLineComment) {
+      appendBlank(character);
+      if (character === '\n') inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      appendBlank(character);
+      if (character === '*' && nextCharacter === '/') {
+        index += 1;
+        appendBlank(nextCharacter);
+        inBlockComment = false;
+      }
+      continue;
+    }
+    if (quote) {
+      appendBlank(character);
+      if (character === '\\') {
+        index += 1;
+        appendBlank(source[index]);
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === '/' && nextCharacter === '/') {
+      appendBlank(character);
+      index += 1;
+      appendBlank(nextCharacter);
+      inLineComment = true;
+      continue;
+    }
+    if (character === '/' && nextCharacter === '*') {
+      appendBlank(character);
+      index += 1;
+      appendBlank(nextCharacter);
+      inBlockComment = true;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      appendBlank(character);
+      quote = character;
+      continue;
+    }
+    characters.push(character);
+  }
+  return characters.join('');
+}
+
 function requireWorkflowReturnBlock(scriptSource, headerPattern, description) {
   const block = findWorkflowBlock(scriptSource, headerPattern, description);
-  if (!/\breturn\s*;/.test(block.contents)) {
+  if (!/\breturn\s*;/.test(stripCommentsAndStrings(block.contents))) {
     throw new Error(`label workflow ${description}`);
   }
   return block;
@@ -359,6 +421,48 @@ function runFixtureChecks(transition) {
   );
 }
 
+function replaceUnmappedGuardReturn(workflowSource, replacement) {
+  const guardStart = workflowSource.indexOf('if (!label) {');
+  if (guardStart === -1) {
+    throw new Error('mutation harness could not find the unmapped-title guard');
+  }
+  const returnStart = workflowSource.indexOf('return;', guardStart);
+  if (returnStart === -1) {
+    throw new Error('mutation harness could not find the unmapped-title return');
+  }
+  return workflowSource.slice(0, returnStart) + replacement +
+    workflowSource.slice(returnStart + 'return;'.length);
+}
+
+function runMutationHarness(workflowSource) {
+  const mutations = [
+    ['conventional-title parser', (source) => source.replace(
+      'const m = title.match', 'const match = title.match',
+    )],
+    ['owned-label cleanup predicate', (source) => source.replace(
+      'owned.has(name) && name !== label', 'owned.has(name)',
+    )],
+    ['unmapped-title return', (source) => replaceUnmappedGuardReturn(source, 'core.info("no return");')],
+    ['unmapped-title comment return false positive', (source) => replaceUnmappedGuardReturn(source, '// return;')],
+    ['unmapped-title string return false positive', (source) => replaceUnmappedGuardReturn(source, "core.info('return;');")],
+    ['target-label provisioning', (source) => source.replace(
+      'await provisionLabel(label);', 'await provisionLabel();',
+    )],
+    ['target-label addition', (source) => source.replace(
+      'await github.rest.issues.addLabels({ ...issue, labels: [label] });',
+      'await github.rest.issues.setLabels({ ...issue, labels: [label] });',
+    )],
+  ];
+
+  for (const [description, mutate] of mutations) {
+    assert.throws(
+      () => parseWorkflowTransition(mutate(workflowSource)),
+      Error,
+      `${description} mutation is accepted`,
+    );
+  }
+}
+
 function main() {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const workflowSource = fs.readFileSync(path.join(repositoryRoot, '.github/workflows/label-pr.yml'), 'utf8');
@@ -372,7 +476,14 @@ function main() {
 
 if (require.main === module) {
   try {
-    main();
+    if (process.argv.includes('--mutation-test')) {
+      const repositoryRoot = path.resolve(__dirname, '..', '..');
+      const workflowSource = fs.readFileSync(path.join(repositoryRoot, '.github/workflows/label-pr.yml'), 'utf8');
+      runMutationHarness(workflowSource);
+      console.log('Workflow transition mutations are rejected.');
+    } else {
+      main();
+    }
   } catch (error) {
     console.error(`Release-label configuration check failed: ${error.message}`);
     process.exitCode = 1;
@@ -385,6 +496,8 @@ module.exports = {
   parseMap,
   parseReleaseCategories,
   parseWorkflowTransition,
+  runMutationHarness,
   runFixtureChecks,
+  stripCommentsAndStrings,
   verifyMappingCategories,
 };
