@@ -399,11 +399,20 @@ func attachAuthSubcommands(root *cobra.Command) {
 	// Bartolo's `auth setup` command ships with a `login` alias for the
 	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
 	// one cobra resolves.
+	//
+	// Its `list-profiles` prints the stored API key in full and ignores
+	// --json (BACK-2113), so that one is removed outright and replaced with
+	// ours below; the fix cannot come from a bartolo bump because upstream
+	// still has the same command.
 	for _, c := range authParent.Commands() {
 		if c.Name() == "setup" {
 			c.Aliases = removeString(c.Aliases, "login")
 		}
+		if c.Name() == "list-profiles" {
+			authParent.RemoveCommand(c)
+		}
 	}
+	authParent.AddCommand(commands.NewListProfilesCommand())
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())

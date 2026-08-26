@@ -48,6 +48,13 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Fixed:** `orq auth list-profiles` no longer prints stored API keys in full,
+  and honors `--json`/`-o`. It used to render a table of every stored profile
+  field verbatim — including `sk-orq-...` — on any output format, so a key
+  leaked into terminal logs, CI output and screen recordings. Secret-looking
+  fields (`*key*`, `*token*`, `*secret*`, `*password*`) are now masked to a
+  fingerprint; other fields are unchanged. The structured payload is
+  `{"profiles": [{"name": ..., "api_key": "sk-orq-abcde…", ...}]}`.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
