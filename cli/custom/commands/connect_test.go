@@ -1867,3 +1867,78 @@ func TestLocalWarnsWhenNothingInTheRunHasAScope(t *testing.T) {
 		t.Errorf("--local was silently ignored for a skills-only run:\n%s", out)
 	}
 }
+
+// A failed MCP write used to render under the gateway's label, because
+// printFinalScreen hardcoded capGateway for any agentResult.Error and
+// applyMCPResults' predecessor wrote the MCP failure into that field. The row
+// must name the capability that actually failed, or the screen sends the user
+// to fix the wrong file.
+func TestFinalScreenNamesTheCapabilityThatFailed(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+	failed := []agentResult{{Agent: "claude", MCPError: "permission denied"}}
+
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out}, failed, map[string]string{},
+		setupComplete(true, failed), &setupOptions{})
+	screen := out.String()
+
+	if !strings.Contains(screen, capMCP) || !strings.Contains(screen, "permission denied") {
+		t.Errorf("the MCP failure was not reported under its own label:\n%s", screen)
+	}
+	if strings.Contains(screen, capGateway) {
+		t.Errorf("an MCP-only failure was labelled gateway:\n%s", screen)
+	}
+	if setupComplete(true, failed) {
+		t.Error("a run that lost the MCP entry claimed completion")
+	}
+}
+
+// One agent can lose both wires in one run. Folding both into agentResult.Error
+// dropped the second one from the screen and from the JSON, so the user was
+// never told the MCP write had failed at all.
+func TestFinalScreenReportsBothFailuresOnOneAgent(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ORQ_API_KEY", "sk-orq-set")
+
+	results := applyMCPResults(
+		[]agentResult{{Agent: "kimi", Error: "gateway is unreachable"}},
+		[]mcpResult{{Agent: "kimi", Error: "mcp config is read-only"}},
+	)
+	if len(results) != 1 {
+		t.Fatalf("results = %v, want the one agent's row", results)
+	}
+	if results[0].Error != "gateway is unreachable" {
+		t.Errorf("the gateway failure was overwritten: %q", results[0].Error)
+	}
+	if results[0].MCPError != "mcp config is read-only" {
+		t.Errorf("the MCP failure was dropped: %q", results[0].MCPError)
+	}
+
+	var out strings.Builder
+	printFinalScreen(&reporter{w: &out}, results, map[string]string{},
+		setupComplete(true, results), &setupOptions{})
+	screen := out.String()
+	for _, want := range []string{"gateway is unreachable", "mcp config is read-only", capGateway, capMCP} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("the screen never mentioned %q:\n%s", want, screen)
+		}
+	}
+}
+
+// An agent the gateway leg produced no row for — claude has no provider config —
+// must still carry its MCP outcome, or the entry reaches neither the screen nor
+// setup_complete.
+func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
+	results := applyMCPResults(nil, []mcpResult{{Agent: "claude", Path: "/tmp/.mcp.json"}})
+	if len(results) != 1 || results[0].Agent != "claude" || results[0].MCP != "/tmp/.mcp.json" {
+		t.Fatalf("results = %v, want claude's MCP row", results)
+	}
+	if !setupComplete(true, results) {
+		t.Error("a successful MCP write was counted as a failure")
+	}
+	// A skipped entry — pi has no MCP support — is neither, and adds no row.
+	if got := applyMCPResults(nil, []mcpResult{{Agent: "pi", Skipped: "no MCP support in this agent"}}); len(got) != 0 {
+		t.Errorf("an unsupported agent got a row: %v", got)
+	}
+}

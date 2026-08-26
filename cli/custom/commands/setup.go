@@ -90,7 +90,7 @@ func setupComplete(verified bool, agents []agentResult) bool {
 		return false
 	}
 	for _, a := range agents {
-		if a.Error != "" || a.Skipped != "" {
+		if a.Error != "" || a.Skipped != "" || a.MCPError != "" {
 			return false
 		}
 	}
@@ -105,7 +105,19 @@ type agentResult struct {
 	// capability was not requested. The final screen reports per agent, so a
 	// skills-only run has something to show even with no gateway wire.
 	Skills string `json:"skills,omitempty"`
-	Error  string `json:"error,omitempty"`
+	// MCP is the config file the orq-workspace entry landed in, empty when the
+	// capability was not requested. One field per capability, like Skills: the
+	// final screen labels each row with the capability that produced it, so a
+	// shared field would make it name the wrong one.
+	MCP   string `json:"mcp,omitempty"`
+	Error string `json:"error,omitempty"`
+	// MCPError is an MCP write that was attempted and failed. Separate from
+	// Error because Error is the gateway's — the final screen renders it under
+	// that label — and one agent can lose both wires in the same run. Folding
+	// them together printed the MCP failure as a gateway one, or, when the
+	// gateway had already failed, dropped it from the screen and the JSON
+	// entirely.
+	MCPError string `json:"mcp_error,omitempty"`
 	// Skipped is the wire that was never attempted, as opposed to Error's wire
 	// that was attempted and failed. Set only when nothing on disk wires the
 	// agent afterwards: an earlier run's provider block surviving is not a skip.
@@ -1453,7 +1465,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		type capRow struct{ mark, label, detail string }
 		rows := []capRow{}
 		// One gateway row per agent, whichever way the wire went: a failure
-		// that prints nothing reads as an agent nobody asked about.
+		// that prints nothing reads as an agent nobody asked about. Error and
+		// Skipped are the gateway's own; the MCP leg has its own pair below.
 		switch {
 		// Error before Provider: a failed wire can still carry the path it was
 		// writing to, and reporting that path with a tick is the claim the
@@ -1473,6 +1486,14 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		if a.Skills != "" {
 			rows = append(rows, capRow{paint(ansiOK, "✓"), capSkills, tilde(a.Skills)})
+		}
+		// Its own row, under its own label: an MCP failure rendered under the
+		// gateway's told the user to go and fix the wrong file.
+		switch {
+		case a.MCPError != "":
+			rows = append(rows, capRow{paint(ansiRed, "✗"), capMCP, a.MCPError})
+		case a.MCP != "":
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capMCP, tilde(a.MCP)})
 		}
 		if len(rows) == 0 {
 			continue

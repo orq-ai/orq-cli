@@ -619,7 +619,12 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 				failed = true
 				continue
 			}
-			rep.ok("%-8s %-9s %s", id, capMCP, tilde(path))
+			// setup ends on the final screen, which lists this same wire per
+			// agent; connect has no screen and keeps the line. Same split
+			// instrumentAgents makes for skills.
+			if !opts.finalScreen {
+				rep.ok("%-8s %-9s %s", id, capMCP, tilde(path))
+			}
 			if line := mcpLoginLine(id); line != "" {
 				rep.info("%-8s %-9s %s", id, capMCP, line)
 			}
@@ -1359,19 +1364,22 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 	// promises a wire it never made.
 	if hasCap(caps, capMCP) {
 		mcpResults, _ := connectMCP(rep, opts, agents)
-		results = applyMCPFailures(results, mcpResults)
+		results = applyMCPResults(results, mcpResults)
 	}
 	return results, nil
 }
 
-// applyMCPFailures folds a failed MCP write into setup's per-agent results, so
-// the final screen and setup_complete agree with the terminal: an entry the user
-// asked for and did not get is not a complete setup. An agent with no row of its
-// own — a gateway-less agent in a run that wrote nothing else for it — gets one,
-// or the failure would reach the screen and not the verdict.
-func applyMCPFailures(results []agentResult, mcp []mcpResult) []agentResult {
+// applyMCPResults folds the MCP leg into setup's per-agent results, so the final
+// screen and setup_complete agree with the terminal: an entry the user asked for
+// and did not get is not a complete setup.
+//
+// It writes MCP and MCPError, never Error: Error is the gateway's, and an agent
+// that lost both wires in one run has two things to say. An agent with no row of
+// its own — a gateway-less agent in a run that wrote nothing else for it — gets
+// one, or its outcome would reach neither the screen nor the verdict.
+func applyMCPResults(results []agentResult, mcp []mcpResult) []agentResult {
 	for _, m := range mcp {
-		if m.Error == "" {
+		if m.Error == "" && m.Path == "" {
 			continue
 		}
 		found := false
@@ -1380,12 +1388,10 @@ func applyMCPFailures(results []agentResult, mcp []mcpResult) []agentResult {
 				continue
 			}
 			found = true
-			if results[i].Error == "" {
-				results[i].Error = m.Error
-			}
+			results[i].MCP, results[i].MCPError = m.Path, m.Error
 		}
 		if !found {
-			results = append(results, agentResult{Agent: m.Agent, Error: m.Error})
+			results = append(results, agentResult{Agent: m.Agent, MCP: m.Path, MCPError: m.Error})
 		}
 	}
 	return results
