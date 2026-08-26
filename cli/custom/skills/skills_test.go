@@ -1092,13 +1092,7 @@ func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 	}
 	names, _ := Names()
 	for _, n := range names {
-		target, err := os.Readlink(filepath.Join(dir, n))
-		if err != nil {
-			t.Fatalf("readlink %s: %v", n, err)
-		}
-		if !strings.Contains(target, "gen-bbbbbbbbbbbbbbbb") {
-			t.Errorf("adopted orphan still points at the old generation: %s", target)
-		}
+		assertProjectedFrom(t, filepath.Join(dir, n), "gen-bbbbbbbbbbbbbbbb")
 	}
 }
 
@@ -1215,13 +1209,7 @@ func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 		t.Fatalf("claude's links were abandoned by codex's failure: %v (%d entries)", err, len(entries))
 	}
 	for _, name := range names {
-		target, err := os.Readlink(filepath.Join(claudeDir, name))
-		if err != nil {
-			t.Fatalf("Readlink %s: %v", name, err)
-		}
-		if !strings.Contains(target, "next-release-partial") {
-			t.Errorf("%s still points at the old generation: %s", name, target)
-		}
+		assertProjectedFrom(t, filepath.Join(claudeDir, name), "next-release-partial")
 	}
 
 	// The failure must not be absorbed. Advancing the fingerprint past it
@@ -1653,4 +1641,33 @@ func setHome(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
+}
+
+// assertProjectedFrom checks a projected skill came from the named
+// generation. A symlink records that in its target. A copy does not — nothing
+// in the copied tree names its source — so there the marker proves it is ours
+// and the manifest's generation is the record of which one it came from,
+// which is the same fact the refresh and deletion paths rely on on Windows.
+func assertProjectedFrom(t *testing.T, path, wantGen string) {
+	t.Helper()
+	if symlinkSupported() {
+		target, err := os.Readlink(path)
+		if err != nil {
+			t.Fatalf("readlink %s: %v", path, err)
+		}
+		if !strings.Contains(target, wantGen) {
+			t.Errorf("%s points at %s, want a link into %s", path, target, wantGen)
+		}
+		return
+	}
+	if !ownsCopy(path) {
+		t.Fatalf("%s carries no owner marker: it is not a projection of ours", path)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if !strings.Contains(m.Generation, wantGen) {
+		t.Errorf("manifest generation is %s, want %s", m.Generation, wantGen)
+	}
 }
