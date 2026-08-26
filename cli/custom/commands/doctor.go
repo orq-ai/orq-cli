@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -98,8 +99,8 @@ func NewDoctorCommand() *cobra.Command {
 			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
 				checks = append(checks, expiry)
 			}
-			checks = append(checks, probeURL(cmd.Context(), "api_base_url", client.URLs.APIBaseURL, ""))
-			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", client.URLs.AuthBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "api_base_url", http.MethodGet, client.URLs.APIBaseURL, ""))
+			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", http.MethodGet, client.URLs.AuthBaseURL, ""))
 
 			// Only meaningful for a login session: the profile endpoint answers
 			// "who is this user", and a workspace API key is not a user — it
@@ -107,7 +108,7 @@ func NewDoctorCommand() *cobra.Command {
 			// useless (a guaranteed 401 reported as a green "Reachable"), and
 			// probing it with a key would fail every API-key setup.
 			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
-				checks = append(checks, probeURL(cmd.Context(), "profile_base_url",
+				checks = append(checks, probeURL(cmd.Context(), "profile_base_url", http.MethodPost,
 					client.URLs.ProfileBaseURL, inspect.Session.BootstrapToken.Token))
 			}
 
@@ -326,14 +327,20 @@ func isTokenExpired(expiresAt string) bool {
 
 // probeURL checks reachability with a 5s budget, parented on the command
 // context so Ctrl+C cancels an in-flight probe instead of waiting it out.
-func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
+// method matters for the profile RPC: Connect unary calls only answer POST, so
+// probing it with a GET reports a 404/405 that says nothing about reachability.
+func probeURL(parent context.Context, id, method, url, bearer string) doctorCheck {
 	authenticated := bearer != ""
 	if parent == nil {
 		parent = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	var body io.Reader
+	if method == http.MethodPost {
+		body = strings.NewReader("{}")
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return doctorCheck{
 			ID:      id,
@@ -341,6 +348,9 @@ func probeURL(parent context.Context, id, url, bearer string) doctorCheck {
 			Message: err.Error(),
 			Details: map[string]any{"url": url},
 		}
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)

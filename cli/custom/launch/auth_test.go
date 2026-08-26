@@ -33,11 +33,11 @@ func TestResolveCredentialsSession(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer bootstrap-token" {
 			t.Errorf("profile fetch auth header: %s", got)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
 			"id":         "u1",
 			"email":      "user@example.com",
 			"workspaces": []map[string]any{{"key": "ws1"}},
-		})
+		}})
 	}))
 	defer srv.Close()
 
