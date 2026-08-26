@@ -68,14 +68,13 @@ remote HTTP entry with `url` and nothing else is the OAuth shape.
 
 `cli/custom/commands/connect.go` models capabilities as `capGateway`, `capTracing`,
 `capSkills` in `connectCapabilities`, with `availableCapabilities()` gating which are
-actually built. Add `capMCP = "mcp"` to both. `capSkills` stays excluded from
-`availableCapabilities()` — it is disabled deliberately (`d210a98`) pending its own
-review — so after this change a bare `orq connect` writes **gateway + mcp**, not
-skills.
+actually built. Add `capMCP = "mcp"` to both. As of `69e05ba` on this branch's base,
+`availableCapabilities()` returns `{capGateway, capSkills}`, so after this change a
+bare `orq connect` writes **gateway + skills + mcp**.
 
 | Command | Behaviour |
 | --- | --- |
-| `orq connect` | writes gateway + mcp for detected agents |
+| `orq connect` | writes gateway + skills + mcp for detected agents |
 | `orq connect codex mcp` | writes only the MCP entry, only for codex |
 | `orq disconnect claude mcp` | removes only Claude's MCP entry |
 | `orq connect --status` | reports MCP wiring alongside gateway |
@@ -136,9 +135,11 @@ state model.
 
 ### 3. Scope: a wizard step and two flags
 
-`--global` and `--local` return to `orq connect` and `orq disconnect`, meaningful for
-`mcp` only. Naming a scope on a gateway-only run warns rather than silently doing
-nothing.
+`--global` and `--local` return to `orq connect` and `orq disconnect`. RES-1437 adds
+the same two flags for the skills capability on the same two commands, so whichever
+lands first owns the flag definitions and the other consumes them; they must not be
+declared twice. Scope is meaningful for `mcp` and `skills`; naming one on a
+gateway-only run warns rather than silently doing nothing.
 
 Only Claude Code has two scopes: `./.mcp.json` (project) and `~/.claude.json` (global).
 Codex, opencode, kilo and kimi read MCP config from a fixed location, so `--local`
