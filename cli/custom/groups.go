@@ -51,6 +51,8 @@ var commandGroup = map[string]string{
 	"ocr":             groupGateway,
 	"rerank":          groupGateway,
 	"chunking":        groupGateway,
+	"mcp-servers":     groupGateway,
+	"mcp-gateways":    groupGateway,
 	"smart-routers":   groupGateway,
 	"routing-rules":   groupGateway,
 	"guardrail-rules": groupGateway,

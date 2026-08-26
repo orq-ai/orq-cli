@@ -222,6 +222,10 @@ controls on surface changes, whichever side they originate from.
   can collide with a version npm already holds (npm never allows a version
   string to be reused, and a collision fails the publish mid-release). Nothing
   about a version number tells you the API line any more — `orq version` does.
+- **Added:** `orq mcp-servers` and `orq mcp-gateways`, from the orq API 4.14.0
+  schema — manage MCP servers and the gateways that bundle them behind one
+  endpoint. Both appear under **AI Gateway** in `orq --help`, where the docs put
+  them.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the channel it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
