@@ -107,13 +107,6 @@ func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
 		return ""
 	}
-	// A credential that cannot pass MCP auth (session token from a login
-	// made before the CLI requested mcp:* scopes) would make every MCP call
-	// fail with insufficient_scope. Skip the wiring instead of shipping a
-	// broken server; run.go prints the note.
-	if ctx.Creds != nil && !ctx.Creds.SupportsMCP() {
-		return ""
-	}
 	apiBase := ""
 	if ctx.Creds != nil {
 		apiBase = ctx.Creds.APIBaseURL

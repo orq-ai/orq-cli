@@ -367,13 +367,21 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	if len(caps) == 0 {
 		caps = availableCapabilities()
 	}
+	if err := checkScopeFlags(rep, opts, caps); err != nil {
+		return err
+	}
 	named := len(agents) > 0
 	if !named {
 		agents = agentsToInspect(caps)
 	} else if agents = reportUnwirableAgents(rep, agents, caps); len(agents) == 0 {
 		return nil
 	}
-	wired := wiredTargets(agents, caps, opts)
+	// Status is a read operation: report entries from both scopes regardless of
+	// which write scope flags the caller supplied. The flags are still validated
+	// above so contradictory input cannot silently win by precedence.
+	statusOpts := *opts
+	statusOpts.scopeGlobal, statusOpts.scopeLocal = false, false
+	wired := wiredTargets(agents, caps, &statusOpts)
 	if len(wired) == 0 {
 		rep.info(nothingWired(named, agents))
 	}
@@ -1327,6 +1335,40 @@ func bothScopePaths(resolve func(bool) (string, error)) []string {
 	return out
 }
 
+// runCredentialFreeSetup handles an explicitly selected skills/MCP setup
+// without authentication. It keeps the interactive onboarding order identical
+// to the authenticated path: agents, functionality, then scope.
+func runCredentialFreeSetup(cmd *cobra.Command, opts *setupOptions) error {
+	rep := newReporter(opts.noInput)
+	agents, err := promptForAgents(rep, availableCapabilities())
+	if err != nil {
+		return fmt.Errorf("setup cancelled at the agent selection: %w", err)
+	}
+	if len(agents) == 0 {
+		rep.info("nothing selected — orq connect wires an agent anytime")
+		return nil
+	}
+	caps, err := resolveCapabilities(rep, opts)
+	if err != nil {
+		return fmt.Errorf("setup cancelled at the capability selection: %w", err)
+	}
+	if len(caps) == 0 {
+		rep.info("nothing selected — orq connect wires an agent anytime")
+		return nil
+	}
+	if err := checkScopeFlags(rep, opts, caps); err != nil {
+		return err
+	}
+	if err := resolveScope(rep, opts, caps); err != nil {
+		return fmt.Errorf("setup cancelled at the scope selection: %w", err)
+	}
+	args := append(append([]string{}, agents...), caps...)
+	wireOpts := *opts
+	wireOpts.noInput = true
+	wireOpts.yes = true
+	return runConnect(cmd, &wireOpts, args, false)
+}
+
 // setupConnectStep is setup's step 3: a consent gate, then connect's
 // interactive selection. Non-interactive runs wire nothing and point at
 // `orq connect`, which composes with setup in CI.
@@ -1340,10 +1382,18 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		rep.info("Next: orq connect — anytime, same credential")
 		return nil, nil
 	}
-	// Capabilities first, then scope, then agents. The scope question belongs
-	// immediately after the capability picker that raises it, and the agent
-	// picker cannot run before either: which agents can receive anything is a
-	// question about the capabilities this run selected (see agentReceives).
+	// The onboarding order is deliberate: choose the agents first, then what
+	// they should receive, then where scope-capable configuration is installed.
+	// The agent picker considers every available capability so the user can
+	// make that choice without the capability question constraining it first.
+	agents, err := promptForAgents(rep, availableCapabilities())
+	if err != nil {
+		return nil, fmt.Errorf("setup cancelled at the agent selection: %w", err)
+	}
+	if len(agents) == 0 {
+		rep.info("nothing selected — orq connect wires an agent anytime")
+		return nil, nil
+	}
 	caps, err := resolveCapabilities(rep, opts)
 	if err != nil {
 		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
@@ -1360,15 +1410,6 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 	}
 	if err := resolveScope(rep, opts, caps); err != nil {
 		return nil, fmt.Errorf("setup cancelled at the scope selection: %w", err)
-	}
-
-	agents, err := promptForAgents(rep, caps)
-	if err != nil {
-		return nil, fmt.Errorf("setup cancelled at the agent selection: %w", err)
-	}
-	if len(agents) == 0 {
-		rep.info("nothing selected — orq connect wires an agent anytime")
-		return nil, nil
 	}
 	opts.agents = agents
 	// setup ends on the final screen, which lists every wire per agent. The

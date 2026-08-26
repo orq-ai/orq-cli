@@ -204,6 +204,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// credential gate and all, so hand it over rather than growing a second
 	// credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
+		if !opts.noInput {
+			return runCredentialFreeSetup(cmd, opts)
+		}
 		return runConnect(cmd, opts, opts.caps, false)
 	}
 
@@ -1294,8 +1297,10 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 	return models[0], true
 }
 
-// promptForAgents offers the agents that can receive one of the capabilities
-// this run selected. Filtering on writeProvider alone — which it used to do —
+// promptForAgents offers agents that can receive one of the available
+// capabilities. The setup wizard asks this before functionality, so it cannot
+// filter from the user's not-yet-selected capability set. Filtering on
+// writeProvider alone — which it used to do —
 // hid claude, the one agent with no gateway provider config and the most common
 // MCP agent there is, from every picker; agentReceives is the same question
 // agentsToConnect asks for the bare-connect path.
