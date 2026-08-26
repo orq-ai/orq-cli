@@ -4,8 +4,10 @@ Guidance for humans and coding agents working in this repo.
 
 ## Pull request titles
 
-**Every PR title must be a conventional commit.** CI enforces it — the `pr title is
-a conventional commit` job in `.github/workflows/ci.yml` fails otherwise.
+**Every PR title must be a conventional commit.** The `pr title is a conventional
+commit` job in `.github/workflows/pr-title.yml` fails CI otherwise. It runs when a
+PR is opened, edited, reopened, or synchronized, so changing a title is validated
+immediately.
 
 ```
 <type>[optional scope][!]: <description>
@@ -18,24 +20,27 @@ chore(release): cut cli 4.15.0-rc.4
 Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
 `ci`, `chore`, `revert`.
 
-The title is not cosmetic. `.github/workflows/label-pr.yml` maps its type to a label,
-and `gh release create --generate-notes` groups the release body by that label:
+The title is not cosmetic. `.github/workflows/label-pr.yml` maps its type to a
+dedicated `release:*` automation label, and `gh release create --generate-notes`
+groups the release body by that label:
 
-| Type                          | Label           | Release-notes section |
-| ----------------------------- | --------------- | --------------------- |
-| `feat`                        | `enhancement`   | 🚀 Features           |
-| `fix`, `perf`, `revert`       | `bug`           | 🐛 Bug Fixes          |
-| `docs`                        | `documentation` | 📚 Documentation      |
-| `chore`, `build`, `test`, `style` | `chore`     | 🧰 Maintenance        |
-| `ci`                          | `ci`            | 🧰 Maintenance        |
-| `refactor`                    | `refactor`      | 🧰 Maintenance        |
+| Type                                      | Label                    | Release-notes section |
+| ----------------------------------------- | ------------------------ | --------------------- |
+| `feat`                                    | `release:features`       | 🚀 Features           |
+| `fix`, `perf`, `revert`                   | `release:bug-fixes`      | 🐛 Bug Fixes          |
+| `docs`                                    | `release:documentation`  | 📚 Documentation      |
+| `chore`, `build`, `test`, `style`, `ci`, `refactor` | `release:maintenance` | 🧰 Maintenance        |
 
-Retitling a PR relabels it; the old label is removed, so a PR lands in exactly one
-section. Labels added by hand are left alone.
+The `release:*` namespace is reserved for this automation. On PR open, edit, or
+reopen, the labeler provisions a missing release label explicitly, then adds it.
+Retitling a mapped PR replaces its previous automation label; an invalid or unmapped
+title removes all automation labels. Ordinary, human-applied labels are preserved.
+Invalid titles also fail title-validation CI and are not intentionally routed to
+`Other Changes`.
 
-Adding a type or renaming a label means editing both `label-pr.yml` and
-`.github/release.yml` — a category whose label nothing applies silently matches
-nothing.
+Adding a type or renaming a label means keeping `label-pr.yml`, `pr-title.yml`, and
+`.github/release.yml` synchronized — a category whose label nothing applies silently
+matches nothing.
 
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.

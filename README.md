@@ -442,10 +442,13 @@ make doctor             # run the doctor command
 
 ### Contributing
 
-PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`) — CI fails
-otherwise. The title drives the label a PR gets and therefore which section of the
-generated release notes it lands in. See [AGENTS.md](AGENTS.md) for the full type →
-label table and the rest of the repo conventions.
+PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`). Title
+validation runs when a PR is opened, edited, reopened, or synchronized, so invalid
+titles fail CI. A valid title receives a dedicated `release:*` automation label;
+these labels are provisioned explicitly and do not replace ordinary human labels.
+Invalid titles receive no automation label and are not intentionally routed to
+`Other Changes`. See [AGENTS.md](AGENTS.md) for the full type → label table and the
+rest of the repo conventions.
 
 ### Regenerating from OpenAPI
 
