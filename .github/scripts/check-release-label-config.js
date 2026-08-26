@@ -116,14 +116,112 @@ function verifyMappingCategories(map, categories) {
   }
 }
 
-function mappedLabelForTitle(title, map) {
-  const match = title.match(/^(\w+)(\([^)]*\))?!?:/);
-  return match && map[match[1].toLowerCase()];
+function extractLabelScript(workflowSource) {
+  const scriptStart = workflowSource.indexOf('          script: |\n');
+  if (scriptStart === -1) {
+    throw new Error('label workflow does not contain an indented github-script body');
+  }
+  const lines = workflowSource.slice(scriptStart + '          script: |\n'.length).split(/\r?\n/);
+  const scriptLines = [];
+  for (const line of lines) {
+    if (line === '') {
+      scriptLines.push(line);
+    } else if (line.startsWith('            ')) {
+      scriptLines.push(line.slice(12));
+    } else {
+      break;
+    }
+  }
+  if (scriptLines.length === 0) {
+    throw new Error('label workflow github-script body is empty');
+  }
+  return scriptLines.join('\n');
 }
 
-function transitionLabels({ map, title, currentLabels, existingRepositoryLabels }) {
-  const owned = new Set(Object.values(map));
-  const target = mappedLabelForTitle(title, map);
+function requireWorkflowStatement(scriptSource, pattern, description) {
+  const match = scriptSource.match(pattern);
+  if (!match) {
+    throw new Error(`label workflow ${description}`);
+  }
+  return match;
+}
+
+function parseWorkflowTransition(workflowSource) {
+  const scriptSource = extractLabelScript(workflowSource);
+  const map = parseMap(scriptSource);
+  const titleMatch = requireWorkflowStatement(
+    scriptSource,
+    /const m = title\.match\(\/((?:\\.|[^/])*)\/\);/,
+    'does not use the expected conventional-title parser',
+  );
+  if (titleMatch[1] !== String.raw`^(\w+)(\([^)]*\))?!?:`) {
+    throw new Error('label workflow uses a different conventional-title parser');
+  }
+  const titlePattern = new RegExp(titleMatch[1]);
+
+  requireWorkflowStatement(
+    scriptSource,
+    /const owned = new Set\(Object\.values\(MAP\)\);/,
+    'does not derive its owned-label set from MAP',
+  );
+  requireWorkflowStatement(
+    scriptSource,
+    /const current = await github\.paginate\(\s*github\.rest\.issues\.listLabelsOnIssue,\s*issue,\s*\);/s,
+    'does not fetch the current issue labels before transitioning them',
+  );
+  requireWorkflowStatement(
+    scriptSource,
+    /const label = m && MAP\[m\[1\]\.toLowerCase\(\)\];/,
+    'does not derive the target label from the parsed title and MAP',
+  );
+  const cleanup = requireWorkflowStatement(
+    scriptSource,
+    /for \(const stale of current\s*\.map\(\(currentLabel\) => currentLabel\.name\)\s*\.filter\(\(name\) => owned\.has\(name\) && name !== label\)\) \{\s*await github\.rest\.issues\.removeLabel\(\{ \.\.\.issue, name: stale \}\);/s,
+    'does not remove exactly stale owned labels',
+  );
+  const invalid = requireWorkflowStatement(
+    scriptSource,
+    /if \(!m\) \{[\s\S]*?return;\s*\}/,
+    'does not return after cleaning up an invalid title',
+  );
+  const unmapped = requireWorkflowStatement(
+    scriptSource,
+    /if \(!label\) \{[\s\S]*?return;\s*\}/,
+    'does not return after cleaning up an unmapped title',
+  );
+  const provision = requireWorkflowStatement(
+    scriptSource,
+    /await provisionLabel\(label\);/,
+    'does not provision the target label',
+  );
+  requireWorkflowStatement(
+    scriptSource,
+    /await github\.rest\.issues\.createLabel\(\{[\s\S]*?name,[\s\S]*?\.\.\.labelDetails\[name\],[\s\S]*?\}\);/,
+    'does not create a missing target label from its label details',
+  );
+  const alreadyApplied = requireWorkflowStatement(
+    scriptSource,
+    /if \(current\.some\(\(currentLabel\) => currentLabel\.name === label\)\) \{[\s\S]*?return;\s*\}/,
+    'does not avoid adding an already-applied target label',
+  );
+  const add = requireWorkflowStatement(
+    scriptSource,
+    /await github\.rest\.issues\.addLabels\(\{ \.\.\.issue, labels: \[label\] \}\);/,
+    'does not add the missing target label',
+  );
+
+  if (!(cleanup.index < invalid.index && invalid.index < unmapped.index &&
+        unmapped.index < provision.index && provision.index < alreadyApplied.index &&
+        alreadyApplied.index < add.index)) {
+    throw new Error('performs release-label transition operations in the wrong order');
+  }
+  return { map, titlePattern };
+}
+
+function applyWorkflowTransition({ transition, title, currentLabels, existingRepositoryLabels }) {
+  const owned = new Set(Object.values(transition.map));
+  const match = transition.titlePattern.exec(title);
+  const target = match && transition.map[match[1].toLowerCase()];
   const labels = [];
   const operations = [];
 
@@ -148,41 +246,13 @@ function transitionLabels({ map, title, currentLabels, existingRepositoryLabels 
   return { labels, operations };
 }
 
-function verifyWorkflowTransitionGuards(workflowSource) {
-  const owned = workflowSource.indexOf('const owned = new Set(Object.values(MAP));');
-  const current = workflowSource.indexOf('github.paginate(');
-  const cleanup = workflowSource.indexOf('await github.rest.issues.removeLabel');
-  const invalid = workflowSource.indexOf('if (!m)');
-  const unmapped = workflowSource.indexOf('if (!label)');
-  const provision = workflowSource.indexOf('await provisionLabel(label);');
-  const add = workflowSource.indexOf('await github.rest.issues.addLabels');
-
-  if (owned === -1 || current === -1 || cleanup === -1 || invalid === -1 || unmapped === -1 || provision === -1 || add === -1) {
-    throw new Error('label workflow is missing a required owned-label transition guard');
-  }
-  if (!/\.filter\(\(name\)\s*=>\s*owned\.has\(name\)\s*&&\s*name\s*!==\s*label\)/.test(workflowSource)) {
-    throw new Error('label workflow cleanup does not remove only stale owned labels');
-  }
-  if (!workflowSource.includes('github.rest.issues.createLabel')) {
-    throw new Error('label workflow does not provision missing release labels');
-  }
-  if (!(owned < current && current < cleanup && cleanup < invalid && cleanup < unmapped && provision < add)) {
-    throw new Error('label workflow transition operations are ordered incorrectly');
-  }
-}
-
-function runFixtureChecks() {
-  const map = {
-    feat: 'release:features',
-    fix: 'release:bug-fixes',
-  };
-
+function runFixtureChecks(transition) {
   assert.deepEqual(
-    transitionLabels({
-      map,
+    applyWorkflowTransition({
+      transition,
       title: 'feat(cli): add release labels',
       currentLabels: ['bug', 'release:bug-fixes'],
-      existingRepositoryLabels: new Set(Object.values(map)),
+      existingRepositoryLabels: new Set(Object.values(transition.map)),
     }),
     {
       labels: ['bug', 'release:features'],
@@ -191,30 +261,30 @@ function runFixtureChecks() {
     'a mapped title leaves one owned label and preserves unrelated labels',
   );
   assert.deepEqual(
-    transitionLabels({
-      map,
+    applyWorkflowTransition({
+      transition,
       title: 'fix: rename command',
       currentLabels: ['enhancement', 'release:features'],
-      existingRepositoryLabels: new Set(Object.values(map)),
+      existingRepositoryLabels: new Set(Object.values(transition.map)),
     }).labels,
     ['enhancement', 'release:bug-fixes'],
     'retitling between mapped types removes the old owned label',
   );
   for (const title of ['rename command', 'unknown: rename command']) {
     assert.deepEqual(
-      transitionLabels({
-        map,
+      applyWorkflowTransition({
+        transition,
         title,
         currentLabels: ['documentation', 'release:features'],
-        existingRepositoryLabels: new Set(Object.values(map)),
+        existingRepositoryLabels: new Set(Object.values(transition.map)),
       }).labels,
       ['documentation'],
       `${title} removes all owned labels and preserves unrelated labels`,
     );
   }
   assert.deepEqual(
-    transitionLabels({
-      map,
+    applyWorkflowTransition({
+      transition,
       title: 'feat: add release labels',
       currentLabels: [],
       existingRepositoryLabels: new Set(),
@@ -228,11 +298,10 @@ function main() {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const workflowSource = fs.readFileSync(path.join(repositoryRoot, '.github/workflows/label-pr.yml'), 'utf8');
   const releaseSource = fs.readFileSync(path.join(repositoryRoot, '.github/release.yml'), 'utf8');
-  const map = parseMap(workflowSource);
+  const transition = parseWorkflowTransition(workflowSource);
 
-  verifyMappingCategories(map, parseReleaseCategories(releaseSource));
-  verifyWorkflowTransitionGuards(workflowSource);
-  runFixtureChecks();
+  verifyMappingCategories(transition.map, parseReleaseCategories(releaseSource));
+  runFixtureChecks(transition);
   console.log('Release-label configuration verified.');
 }
 
@@ -246,11 +315,11 @@ if (require.main === module) {
 }
 
 module.exports = {
-  mappedLabelForTitle,
+  applyWorkflowTransition,
+  extractLabelScript,
   parseMap,
   parseReleaseCategories,
+  parseWorkflowTransition,
   runFixtureChecks,
-  transitionLabels,
   verifyMappingCategories,
-  verifyWorkflowTransitionGuards,
 };
