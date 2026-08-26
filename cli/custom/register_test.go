@@ -14,12 +14,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// A machine that never ran `orq connect` has no manifest. registerCommands
-// wires the skills refresh/sweep hook onto every command, and both
-// skills.Refresh and skills.SweepDeadSessions return before touching the
-// filesystem when there is nothing recorded — this proves the wiring
-// preserves that, rather than just proving the functions do (skills_test.go
-// already covers that in isolation).
+// A machine that never ran `orq connect` has no manifest. The sweep half of
+// the hook runs on every command, including this one, and must still leave
+// nothing behind: SweepDeadSessions reads the manifest and returns before
+// locking when there is no dead session to collect. That pre-lock check is
+// load-bearing, because acquireLock creates ~/.orq/lock on the way past — so
+// without it, `orq man-pages` on a fresh machine would create skills state
+// for a user who has never asked for skills. This proves the wiring keeps the
+// property, not just that the function does (skills_test.go covers that in
+// isolation).
 func TestSkillsRefreshHookTouchesNothingOnANeverConnectedMachine(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -43,6 +46,11 @@ func TestSkillsRefreshHookTouchesNothingOnANeverConnectedMachine(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".orq", "snapshot")); !os.IsNotExist(err) {
 		t.Errorf("skills generation snapshot exists after a command on a never-connected machine: %v", err)
+	}
+	// The lock file is what acquireLock creates, so its absence is what proves
+	// the sweep returned before reaching for the lock at all.
+	if _, err := os.Stat(filepath.Join(home, ".orq", "materialized-skills.json.lock")); !os.IsNotExist(err) {
+		t.Errorf("skills manifest lock exists after a command on a never-connected machine: %v", err)
 	}
 }
 

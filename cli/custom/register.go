@@ -291,14 +291,24 @@ func registerCommands(root *cobra.Command) {
 // binary, and reclaims links left behind by launches that died without
 // cleaning up after themselves.
 //
-// Scoped to the commands that actually touch skills (see skillsCommand). It
-// used to run on every `orq` invocation, on the reasoning that someone who
-// updates the CLI and then opens their agent directly should not be left on
-// the old set. That put a manifest read, a lock acquisition and a directory
+// The two halves are scoped differently, because they cost and risk
+// different things.
+//
+// Refresh is scoped to the commands that actually touch skills (see
+// skillsCommand). It used to run on every `orq` invocation, on the reasoning
+// that someone who updates the CLI and then opens their agent directly should
+// not be left on the old set. That put a lock acquisition and a directory
 // walk in front of `orq --help`, and made every bug in this path — a wedged
 // lock, a bad prune — reachable from a command that has nothing to do with
 // skills. The convergence it bought back is now doctor's job: it reports a
 // stale or incomplete install and names the one command that fixes it.
+//
+// The sweep runs everywhere. It is neither expensive nor destructive: it
+// reads the manifest, checks whether any recorded session PID is gone, and
+// returns before taking the lock when none is. Scoping it too was collateral
+// damage — links leaked by a killed `orq launch` were left for four commands
+// to collect, and doctor excludes session links by design, so nothing
+// reported them in the meantime.
 //
 // root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
 // root.PersistentPreRunE to a function that, after its own housekeeping,
@@ -326,21 +336,31 @@ func installSkillsRefreshPreRun() {
 				return err
 			}
 		}
+		// The sweep runs everywhere, the refresh does not. A dead PID in the
+		// manifest is an unambiguous fact and collecting it is one file read
+		// plus one liveness check — SweepDeadSessions returns before locking
+		// when nothing is dead. Scoping it to the skills commands left links
+		// from a killed `orq launch` converged by four commands and reported
+		// by none, since doctor excludes session links by design. Refresh is
+		// the expensive, destructive half, and it stays behind the gate.
+		if err := skills.SweepDeadSessions(); err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)
+			// The sweep and Refresh each wait out the same lock (lockTimeout
+			// in lock.go) before giving up, and a lock held a moment ago is
+			// very likely held now: running the refresh anyway would make an
+			// already-contended command wait out that timeout a second time
+			// for almost no chance of success. Returning here caps the worst
+			// case at one timeout instead of two.
+			if errors.Is(err, skills.ErrManifestLocked) {
+				return nil
+			}
+		}
 		if !skillsCommand(cmd) {
 			return nil
 		}
 		res, err := skills.Refresh()
 		if err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Warning: could not refresh orq skills: %v\n", err)
-			// Refresh and SweepDeadSessions each wait out the same lock
-			// (lockTimeout in lock.go) before giving up, and a lock a moment
-			// ago is still very likely held now: trying the sweep anyway
-			// would make an already-contended command wait out that same
-			// timeout a second time for essentially no chance of success.
-			// Skipping it caps the worst case at one timeout instead of two.
-			if errors.Is(err, skills.ErrManifestLocked) {
-				return nil
-			}
 		} else {
 			if len(res.Added) > 0 || len(res.Removed) > 0 {
 				fmt.Fprintf(bartolocli.Stderr, "orq skills updated to match this CLI version (%d installed, %d removed)\n",
@@ -372,9 +392,6 @@ func installSkillsRefreshPreRun() {
 				fmt.Fprintf(bartolocli.Stderr, "Warning: orq did not update %d path(s) in your skills directory because something else now occupies them — run 'orq doctor' for the list\n",
 					len(skipped))
 			}
-		}
-		if err := skills.SweepDeadSessions(); err != nil {
-			fmt.Fprintf(bartolocli.Stderr, "Warning: could not clean up stale session skills: %v\n", err)
 		}
 		return nil
 	}
