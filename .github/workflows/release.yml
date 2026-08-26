@@ -1,16 +1,9 @@
 name: Release
 
-# A release is cut for any change that reaches a user's binary — hand-written
-# CLI code and the installer included, not only an API schema bump. Before
-# this, a CLI-only fix sat on main until orquesta-web happened to publish a
-# schema, because that push was the only release trigger.
-#
-# detect-changes judges each release line on everything since that line's last
-# tag rather than on the contents of the triggering push, so a release cannot be
-# lost by a run that GitHub cancels, by a pipeline that dies before tagging, or
-# by a push whose own diff looks innocent. That is also why there is no `paths:`
-# filter and no bot-author guard: the pipeline's commit-back is the commit the
-# tag points at, so the range behind it is empty and it releases nothing.
+# A release is cut for any change that reaches a user's binary, not only an API
+# schema bump. detect-changes judges each line on what is unreleased since that
+# line's last tag, so nothing is lost to a run GitHub cancels or a pipeline that
+# dies before tagging, and the pipeline's own commit-back releases nothing.
 on:
   push:
     branches: [main]
@@ -52,33 +45,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Judged on what is UNRELEASED on each line - everything since that
-          # line's last tag - not on what this one push contained. GitHub keeps
-          # at most one run waiting per concurrency group and cancels the older
-          # one when a newer arrives, so a push-scoped run that loses its slot
-          # would take its commits' release with it. Measured from the last tag,
-          # the next run to survive picks up everything that has not shipped,
-          # whatever happened to the runs before it.
-          #
-          # It also means the pipeline's own commit-back cannot trigger a
-          # release: the tag is created AT that commit, so the range behind it
-          # is empty. And a release that died before tagging is retried by the
-          # next push instead of being lost.
-          # Anchored on VERSION rather than on the highest tag in the repo:
-          # VERSION is what the pipeline wrote at the last release, so v$VERSION
-          # is this line's last tag by construction, and the v4.12.x-v4.14.x
-          # tags of the orq API's old numbering are never mistaken for it. No
-          # tag yet means the line has not started and everything is unreleased.
+          # Judged on what is unreleased on each line, not on this push: GitHub
+          # cancels the older waiting run per concurrency group, and a
+          # push-scoped range would die with it. Anchored on VERSION rather than
+          # the highest tag, so the orq API's old v4.12.x-v4.14.x numbering is
+          # never mistaken for this line's last release. No tag yet means the
+          # line has not started.
           file_version="$(tr -d '[:space:]' < VERSION)"
           tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
           stable_tag=""
           if tag_exists "v$file_version"; then stable_tag="v$file_version"; fi
 
-          # The rc line runs ahead of stable at <next-minor>.0-rc.<n>, so its
-          # last tag is the highest rc of that minor, or the stable release it
-          # branched from if none has been cut yet.
-          # `|| true`: with pipefail set, an empty tag list makes head SIGPIPE
-          # git, and "no rc yet" is a valid answer.
+          # The rc line runs ahead at <next-minor>.0-rc.<n>, so its last tag is
+          # the highest rc of that minor, else the stable release it branched
+          # from. `|| true`: an empty tag list SIGPIPEs git under pipefail.
           rc_major="${file_version%%.*}"; rc_rest="${file_version#*.}"
           rc_next="$rc_major.$((${rc_rest%%.*} + 1)).0"
           rc_tag="$(git tag --list "v$rc_next-rc.*" --sort=-v:refname | head -n 1 || true)"
@@ -93,14 +73,9 @@ jobs:
           CHANGED_STABLE="$(changed_since "$stable_tag" | grep -v '_test\.go$' || true)"
           CHANGED_RC="$(changed_since "$rc_tag" | grep -v '_test\.go$' || true)"
 
-          # The stable release moves the same field the orq API moved: their
-          # major is our major, their minor our minor. The CLI has its own
-          # number, but the API is the contract our commands are generated
-          # from, so the size of their change is the size of ours.
-          #
-          # Compared value-to-value rather than by file: a schema republished at
-          # the same app_version is not a new API. What this repo does to itself
-          # is read from the commit types below, not from this comparison.
+          # The stable release moves the same field the orq API moved: it is the
+          # contract these commands are generated from. Compared value to value,
+          # so a schema republished at the same app_version is not a new API.
           field() { v="${1#*.}"; case "$2" in 1) printf '%s' "${1%%.*}" ;; 2) printf '%s' "${v%%.*}" ;; esac; }
           bump=patch
           # Same validation the pipeline does: jq prints "null" for a missing
@@ -124,22 +99,12 @@ jobs:
             fi
           fi
 
-          # ...and our own changes speak through their conventional-commit type,
-          # so nobody edits VERSION for an ordinary feature: `feat:` earns a
-          # minor, a `!` or a BREAKING CHANGE footer a major, everything else a
-          # patch. The two sources are combined by taking the larger - an orq
-          # patch release carrying a `feat:` of ours is still a minor.
-          #
-          # Here-strings, not `printf | grep -q`: grep -q exits at the first
-          # match and closes the pipe, printf dies of SIGPIPE, and pipefail
-          # reads that 141 as "no match" - silently, and only once the input
-          # outgrows the pipe buffer.
-          #
-          # Scoped to the paths the stable binary is built from, the same way
-          # CHANGED_STABLE is: an rc-only `feat:` ships to nobody on this line,
-          # so it must not decide this line's version. --full-history keeps
-          # merge commits that touch those paths, whose subject is where a
-          # squash-merged `feat:` usually lives.
+          # ...and our own changes speak through their commit type; the two
+          # sources combine by taking the larger. Here-strings, not
+          # `printf | grep -q`: pipefail reads the SIGPIPE that grep -q causes as
+          # "no match", and only once the input outgrows the pipe buffer. Scoped
+          # to the stable binary's paths, like CHANGED_STABLE, so an rc-only
+          # `feat:` cannot decide this line's version.
           commits="$(git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
             VERSION cli/custom npm scripts install.sh \
             openapi.yaml .bartolo.json go.mod go.sum cmd/orq)"
@@ -167,10 +132,9 @@ jobs:
               both)       stable=true;  prerelease=true  ;;
             esac
           else
-            # Shared: built into both binaries (packages/orq-rc compiles the
-            # root's hand-written commands against the staging schema), or
-            # shared by both releases. Each module's own cmd/ is NOT shared,
-            # and cmd/surface-dump ships to nobody.
+            # Shared: compiled into both binaries, or shipped by both
+            # releases. Each module's own cmd/ is not, and cmd/surface-dump
+            # ships to nobody.
             SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
 
             stable=false

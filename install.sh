@@ -104,13 +104,10 @@ require_cmd() {
   fi
 }
 
-# binary_version <path> [stderr-file]: the version line a binary reports, or
-# non-zero if it cannot run. `orq --version` prints the semver line and then the
-# orq API line under it, so only the first line is the version - anything that
-# flattens both compares against, or prints, the two glued together. Not piped
-# into `head` at the call site: this sh has no pipefail, so the pipeline status
-# would be head's and a binary that prints a version and then exits non-zero
-# would read as healthy. Capture first, trim after.
+# binary_version <path> [stderr-file]: the first line of `orq --version`, which
+# is the semver - the orq API line sits under it. Captured, not piped into head:
+# this sh has no pipefail, so a binary that prints a version and then exits
+# non-zero would read as healthy.
 binary_version() {
   _bv_out="$("$1" --version 2>"${2:-/dev/null}")" || return 1
   printf '%s\n' "$_bv_out" | head -n 1 | tr -d '\n'
@@ -153,10 +150,9 @@ case "$CHANNEL" in
   *) err "unknown channel: $CHANNEL (expected 'stable' or 'rc')"; exit 1 ;;
 esac
 
-# A pinned version names one exact release, so the channel has nothing left to
+# A pinned version names one exact release, leaving the channel nothing to
 # resolve. Refusing beats silently ignoring one of the two flags the caller
-# passed - `--channel rc --version v5.0.0` would otherwise install a stable
-# release and report success.
+# passed.
 if [ -n "$VERSION" ] && [ "$CHANNEL_EXPLICIT" = "1" ]; then
   err "--channel and --version cannot be combined: --version already names a release"
   exit 1
@@ -249,18 +245,15 @@ if [ -z "$VERSION" ]; then
     # skips, so it is resolved from the npm dist-tag instead - the same source
     # `orq update` uses, so the two never disagree about what "rc" means.
     api_url="https://registry.npmjs.org/-/package/@orq-ai/cli/dist-tags"
-    # One JSON object on one line: walk the quoted fields and take the value
-    # after the "rc" KEY. The next field must start with a colon, or a dist-tag
-    # whose *value* is the string "rc" would match and install "vrc". No `exit`
-    # in the body - that closes the pipe mid-stream and curl then reports a
-    # write failure on every retry.
+    # Take the value after the "rc" KEY, requiring the next field to start with
+    # a colon, or a dist-tag whose *value* is "rc" matches and installs "vrc".
+    # No `exit` in the body: it closes the pipe and curl fails on every retry.
     VERSION="$(fetch -fsS "$api_url" \
       | awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && $(i + 1) ~ /^:/ && !v) v = $(i + 2)} END {if (v != "") print "v" v}')"
   else
-    # GitHub's latest-release API returns JSON; awk out the tag_name field
-    # without requiring jq. Pre-releases are excluded by the endpoint itself.
-    # awk drains the stream: exiting on the match closes the pipe mid-body and
-    # curl reports a write failure per retry.
+    # awk out tag_name without requiring jq; the endpoint excludes prereleases.
+    # awk drains the stream, because exiting on the match closes the pipe
+    # mid-body and curl reports a write failure per retry.
     api_url="https://api.github.com/repos/$REPO/releases/latest"
     VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
   fi
