@@ -152,7 +152,7 @@ orq --profile ci agents list
 
 ## Profiles
 
-Every command accepts `--profile <name>` (or the `ORQ_PROFILE` env var). Each profile has its own session file at `~/.orq/sessions/<name>.json` and its own API key credentials in `~/.orq/credentials.json`. The default profile is `default`.
+Every command accepts `--profile <name>` (or the `ORQ_PROFILE` env var); `orq launch` is the exception — it forwards everything to the agent, so use `ORQ_PROFILE` there. Each profile has its own session file at `~/.orq/sessions/<name>.json` and its own API key credentials in `~/.orq/credentials.json`. The default profile is `default`.
 
 ```sh
 # personal account against SaaS
@@ -386,7 +386,7 @@ orq --profile acme prompts list            # talks to acme's backend
 orq --profile default prompts list         # talks to my.orq.ai
 ```
 
-That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. Use `ORQ_SERVER` for `orq launch`: `launch` hands every argument after the agent name to the agent itself, so a global flag written before it is forwarded rather than parsed.
+That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. Use `ORQ_SERVER` and `ORQ_PROFILE` for `orq launch`: `launch` hands every argument to the agent itself so flags like `--resume` reach it, which means a global flag written before it is forwarded rather than parsed.
 
 | Derived from `--server` | Used by |
 |---|---|
@@ -397,7 +397,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 ```sh
 orq --profile acme auth login --server https://orq.acme.internal
 orq --profile acme setup                   # writes acme's URLs into the agent's config
-orq --profile acme launch kimi             # model calls stay on acme's network
+ORQ_PROFILE=acme orq launch kimi           # model calls stay on acme's network
 ```
 
 Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no session and no override.
