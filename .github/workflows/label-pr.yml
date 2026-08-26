@@ -6,7 +6,8 @@ name: Label PR
 # categories, so a correctly-prefixed PR title is all a change needs.
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened]
+    # No `synchronize`: pushes cannot change the title, only `edited` can.
+    types: [opened, edited, reopened]
 
 permissions:
   pull-requests: write
@@ -15,7 +16,9 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v9
+      # SHA-pinned like the other privileged workflows (release.yml,
+      # release-pipeline.yml): this runs as `pull_request_target` with write scope.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             // conventional-commit type -> release-notes label
