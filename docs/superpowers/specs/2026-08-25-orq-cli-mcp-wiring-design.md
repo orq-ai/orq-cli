@@ -145,6 +145,35 @@ Only Claude Code has two scopes: `./.mcp.json` (project) and `~/.claude.json` (g
 Codex, opencode, kilo and kimi read MCP config from a fixed location, so `--local`
 against them warns and writes the global path.
 
+**Gateway is global-only, verified.** Every provider resolver in the registry is
+home- or env-rooted with no project variant: `alwaysGlobalPath` (opencode, kilo, kimi),
+`codexPath` (`$CODEX_HOME`, else `~/.codex`), `piPath` (`$PI_CODING_AGENT_DIR`, else
+`~/.pi/agent`), and claude has no provider config at all. The `alwaysGlobalPath` call
+sites carry the reason: opencode and kilo *"reject `{env:...}` references in a project
+config"*, and the rest read only from their own home directory. So `--local` with
+gateway warns; it is not a gap to close later.
+
+**Every path that must understand scope**, not just the two that take the flag:
+
+| Path | Requirement |
+| --- | --- |
+| `orq setup` | wizard step + the flags, defaulting global |
+| `orq connect` | the flags; writes the chosen scope only |
+| `orq disconnect` | with no flag, removes from **both** scopes — otherwise a project-scoped wire becomes unremovable without the user knowing which scope it landed in |
+| `orq connect --status` | reports both scopes, and says which |
+| `orq doctor` | reads both scopes. `edf338b` already fixed exactly this class of bug once ("doctor was blind to project-scoped wiring") |
+| `orq launch` | the section-4 no-op check reads both scopes; a project `./.mcp.json` counts as wired |
+| `disconnectOnLogout` (`connect.go:958`) | its capability list is hardcoded to `{capGateway}` and must grow `capMCP` (and `capSkills`), each removed from both scopes |
+| `install.sh` → `orq setup` | non-interactive, so it takes the global default and never prompts |
+
+The read/write asymmetry is the rule: **writes take the chosen scope, reads probe
+both.** `wiredPath` (`agents.go:652`) and `bothScopePaths` (`connect.go:1006`) already
+implement the read half.
+
+`--local` from a directory that is not a project — most obviously `$HOME`, where it
+would produce a `~/.mcp.json` that Claude does not read as project config — is refused
+with the reason, not silently written.
+
 The two-scope resolver is **new code**. `alwaysGlobalPath` exists (`agents.go:144`) but
 `pathFor(project, global)` does not — it went out with `e44c747` and an earlier draft
 of this spec wrongly claimed it was still there. Restoring it also means deciding how
@@ -159,14 +188,16 @@ routed through `promptStdio()` — which `promptForCapabilities` currently omits
 as well gain):
 
 ```
-Where should the MCP entry go?
-  > global    every project on this machine (~/.claude.json)
-    local     this project only (./.mcp.json)
+Where should MCP and skills go?
+  > global    every project on this machine
+    local     this project only
 ```
 
-Asked only when `mcp` is among the chosen capabilities, the run is interactive, and a
-scope-capable agent (today: claude) is detected. `--global` / `--local` / `--yes` /
-`--no-input` all pre-answer it.
+One question for both scope-capable capabilities, not one each — the answer is the
+same kind of answer, and asking twice in a four-question wizard buys nothing. Asked
+only when `mcp` or `skills` is among the chosen capabilities, the run is interactive,
+and a scope-capable agent is detected. `--global` / `--local` / `--yes` / `--no-input`
+all pre-answer it. Gateway is unaffected either way.
 
 **Default is global**, changed from the pre-`e44c747` behaviour, which defaulted to the
 cwd. Every other artifact `orq setup` writes is machine-global — `~/.orq/env`, the
