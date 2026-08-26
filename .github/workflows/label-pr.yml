@@ -14,6 +14,10 @@ on:
 permissions:
   pull-requests: write
 
+concurrency:
+  group: label-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   label:
     runs-on: ubuntu-latest
@@ -29,31 +33,80 @@ jobs:
               chore: 'release:maintenance', ci: 'release:maintenance', refactor: 'release:maintenance',
               build: 'release:maintenance', test: 'release:maintenance', style: 'release:maintenance',
             };
-            const title = context.payload.pull_request.title || '';
-            const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
-            if (!m) {
-              core.info(`Title not conventional, no label: "${title}"`);
-              return;
-            }
-            const label = MAP[m[1].toLowerCase()];
-            if (!label) {
-              core.info(`No mapping for type "${m[1]}"`);
-              return;
-            }
             const issue = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
             };
-            // A retitled PR must end up in exactly one release-notes category, so
-            // drop any stale release:* label this workflow owns. Human-applied
-            // labels, including similarly named non-release labels, survive.
             const owned = new Set(Object.values(MAP));
-            const current = context.payload.pull_request.labels.map((l) => l.name);
-            for (const stale of current.filter((n) => owned.has(n) && n !== label)) {
+            const labelDetails = {
+              'release:features': {
+                color: '0E8A16',
+                description: 'Automated release-notes label for features.',
+              },
+              'release:bug-fixes': {
+                color: 'D73A4A',
+                description: 'Automated release-notes label for bug fixes.',
+              },
+              'release:documentation': {
+                color: '0075CA',
+                description: 'Automated release-notes label for documentation.',
+              },
+              'release:maintenance': {
+                color: '6F42C1',
+                description: 'Automated release-notes label for maintenance.',
+              },
+            };
+            const provisionLabel = async (name) => {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  ...labelDetails[name],
+                });
+                core.info(`Provisioned release label: ${name}`);
+              } catch (error) {
+                const errors = error.response?.data?.errors || [];
+                const alreadyExists = error.status === 422 && (
+                  errors.some((detail) => detail.code === 'already_exists') ||
+                  /already exists/i.test(error.message)
+                );
+                if (!alreadyExists) throw error;
+                core.info(`Release label already exists: ${name}`);
+              }
+            };
+
+            // Fetch current state rather than trusting the event payload, then
+            // remove only labels this workflow owns. This also clears stale
+            // automation labels when a title becomes invalid or unmapped.
+            const current = await github.paginate(
+              github.rest.issues.listLabelsOnIssue,
+              issue,
+            );
+            const title = context.payload.pull_request.title || '';
+            const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
+            const label = m && MAP[m[1].toLowerCase()];
+            for (const stale of current
+              .map((currentLabel) => currentLabel.name)
+              .filter((name) => owned.has(name) && name !== label)) {
               await github.rest.issues.removeLabel({ ...issue, name: stale });
               core.info(`Removed stale label: ${stale}`);
             }
-            // addLabels creates the label if it does not exist yet.
+
+            if (!m) {
+              core.info(`Title not conventional, no label: "${title}"`);
+              return;
+            }
+            if (!label) {
+              core.info(`No mapping for type "${m[1]}"`);
+              return;
+            }
+
+            await provisionLabel(label);
+            if (current.some((currentLabel) => currentLabel.name === label)) {
+              core.info(`Release label already applied: ${label}`);
+              return;
+            }
             await github.rest.issues.addLabels({ ...issue, labels: [label] });
             core.info(`Applied label: ${label}`);
