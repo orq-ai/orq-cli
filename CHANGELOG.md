@@ -80,6 +80,27 @@ the version and this changelog as the source of truth for breaking changes.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
+- **Removed (breaking):** the `--api-base-url` flag on `orq auth login`, `orq
+  auth logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
+  doctor`. The CLI had two names for one value: those six commands took
+  `--api-base-url` and rejected `--server`, while every generated command took
+  the global `--server` and rejected `--api-base-url`. There is now one name —
+  the global `--server <url>` (env: `ORQ_SERVER`), which works on every command,
+  including `orq auth login --server https://orq.acme.internal`. Replace
+  `--api-base-url <url>` with `--server <url>`; it is the same root URL.
+- **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` and `orq launch`,
+  and `orq doctor` reports where the host came from (`flag`, `env`, `config`,
+  `session`, `default`) from the point the value was decided rather than by
+  comparing it against the session. `setup` and `launch` previously read only
+  `ORQ_API_BASE_URL`, so `--server` was silently ignored on both, and a coding
+  agent could be wired to a different host than the one the CLI was talking to.
+  Note `orq launch` takes the env var, not the flag: it forwards every argument
+  after the agent name to the agent.
+- **Deprecated:** `ORQ_API_BASE_URL`. It still resolves, now as a spelling of
+  `ORQ_SERVER`, and prints a warning on stderr; it will be removed in a future
+  release. It also reaches the generated API commands for the first time, which
+  never honored it. Set `ORQ_SERVER` instead.
+
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`

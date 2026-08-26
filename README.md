@@ -164,7 +164,7 @@ orq --profile work workspace use marketing
 orq --profile work prompts list
 
 # self-hosted customer
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 orq --profile acme prompts list
 ```
 
@@ -339,8 +339,8 @@ Sandboxed execution is not available in this version.
 |---|---|
 | `ORQ_API_KEY` | API key for headless/CI auth |
 | `ORQ_PROFILE` | Default profile (same effect as `--profile`) |
-| `ORQ_SERVER` | Override generated-command base URL (same as `--server`) |
-| `ORQ_API_BASE_URL` | Override the orq host. Drives auth (`auth login`, `whoami`, `workspace`) **and** the URLs `orq setup` writes and `orq launch` injects — router, anthropic and MCP |
+| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
+| `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
@@ -376,33 +376,33 @@ format, or when the check fails.
 ## Self-hosted orq.ai
 
 ```sh
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 ```
 
-The host is stored in the session and reused for every subsequent command on that profile. No configuration files, no per-command flag, no env vars. Switch back and forth between profiles without logging out of either:
+The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No configuration files, no per-command flag. Switch back and forth between profiles without logging out of either:
 
 ```sh
 orq --profile acme prompts list            # talks to acme's backend
 orq --profile default prompts list         # talks to api.orq.ai
 ```
 
-That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway:
+That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. Use `ORQ_SERVER` for `orq launch`: `launch` hands every argument after the agent name to the agent itself, so a global flag written before it is forwarded rather than parsed.
 
-| Derived from `--api-base-url` | Used by |
+| Derived from `--server` | Used by |
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
 | `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch --mcp` |
 
 ```sh
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 orq --profile acme setup                   # writes acme's URLs into the agent's config
 orq --profile acme launch kimi             # model calls stay on acme's network
 ```
 
 Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://api.orq.ai` is only the fallback when there is no session and no override.
 
-Without a session — CI, or an API key alone — set `ORQ_API_BASE_URL` instead, which resolves the same three URLs.
+Without a session — CI, or an API key alone — set `ORQ_SERVER` (or pass `--server`) instead, which resolves the same three URLs.
 
 If a deployment serves the AI gateway from a different hostname than the platform API, override just that one with `ORQ_GATEWAY_URL` (all agents) or `--base-url` (one command) — see [per-agent environment overrides](#per-agent-environment-overrides). Both take precedence over the derived value.
 

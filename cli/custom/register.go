@@ -143,6 +143,7 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
+		resolveServer(cmd)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -153,8 +154,13 @@ func installSessionPreRun() {
 		if err != nil || session == nil {
 			return nil
 		}
-		if viper.GetString("server") == "" && session.APIBaseURL != "" {
-			viper.Set("server", session.APIBaseURL)
+		// The session's host is the last resort, below every explicit source.
+		// TODO(orq-ai/bartolo#22): once a profile can carry its own server and
+		// the regenerated clients read it (ResolveServerFor), this bridge and
+		// the mirror above both go away — the profile becomes the one store.
+		if auth.Server() == "" && session.APIBaseURL != "" {
+			auth.SetServer(session.APIBaseURL, "session")
+			mirrorServerToViper()
 		}
 		if apiKeyConfigured() {
 			return nil
@@ -172,6 +178,43 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
+	}
+}
+
+// resolveServer decides the one host this invocation talks to, and records
+// where it came from. Every layer used to read its own env var — auth read
+// ORQ_API_BASE_URL, the generated commands read viper's `server`, launch read
+// the env directly — so the same run could reach two hosts. One decision here,
+// mirrored into viper for the generated commands and into auth for everything
+// else, is what makes --server mean the same thing everywhere.
+//
+// The session's own host is layered on afterwards by the caller: it loses to
+// every explicit source, so it cannot be decided until they are ruled out.
+func resolveServer(cmd *cobra.Command) {
+	switch {
+	case cmd.Root().PersistentFlags().Changed("server"):
+		// Read the flag, not viper's key: an explicitly typed --server has to
+		// win over anything else that lands on the same key.
+		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), "flag")
+	case os.Getenv("ORQ_SERVER") != "":
+		auth.SetServer(os.Getenv("ORQ_SERVER"), "env")
+	case os.Getenv("ORQ_API_BASE_URL") != "":
+		// ORQ_API_BASE_URL is the pre-4.15 spelling, honored for one release.
+		commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
+		auth.SetServer(os.Getenv("ORQ_API_BASE_URL"), "env")
+	case viper.GetString("server") != "":
+		auth.SetServer(viper.GetString("server"), "config") // persisted `orq server set`
+	}
+	mirrorServerToViper()
+}
+
+// mirrorServerToViper hands the resolved host to the generated commands, which
+// read viper's `server` key directly (bartolo cli.ResolveServer). Their own
+// default is the OpenAPI server list, a different host from auth's default, so
+// without this an unflagged run splits across two backends.
+func mirrorServerToViper() {
+	if s := auth.Server(); s != "" && viper.GetString("server") != s {
+		viper.Set("server", s)
 	}
 }
 

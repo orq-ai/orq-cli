@@ -24,7 +24,38 @@ func trimTrailingSlash(s string) string {
 	return strings.TrimRight(s, "/")
 }
 
+// The active server and where it came from, decided once by the root PreRun
+// (see custom.resolveServer) and read by everything downstream. Provenance is
+// recorded at the moment of the decision rather than re-derived later: the
+// resolved URL alone cannot say whether it came from --server, an env var or
+// the session, because those values are usually identical.
+var (
+	server       string
+	serverSource = "default"
+)
+
+// SetServer records the resolved host and its origin ("flag", "env", "config",
+// "session"). Called once per invocation, before any command runs.
+func SetServer(url, source string) {
+	server = strings.TrimSpace(url)
+	serverSource = source
+}
+
+// Server is the resolved host, or "" when nothing overrode the default.
+func Server() string { return server }
+
+// ServerSource names where Server() came from, for `orq doctor`.
+func ServerSource() string { return serverSource }
+
 func envDefaultAPIBase() string {
+	if server != "" {
+		return server
+	}
+	// Direct env reads remain for callers that run without the PreRun — tests,
+	// and `orq launch` resolving credentials on its own.
+	if v := strings.TrimSpace(os.Getenv("ORQ_SERVER")); v != "" {
+		return v
+	}
 	if v := strings.TrimSpace(os.Getenv("ORQ_API_BASE_URL")); v != "" {
 		return v
 	}

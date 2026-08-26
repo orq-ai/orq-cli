@@ -41,7 +41,6 @@ type doctorReport struct {
 }
 
 func NewDoctorCommand() *cobra.Command {
-	var apiBase string
 	var bugReport bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -52,17 +51,13 @@ func NewDoctorCommand() *cobra.Command {
 			}
 			inspect := auth.InspectSession()
 
-			apiBaseSource := "default"
-			switch {
-			case apiBase != "":
-				apiBaseSource = "flag"
-			case inspect.Status == auth.StatusOK:
-				apiBaseSource = "session"
-			case os.Getenv("ORQ_API_BASE_URL") != "":
-				apiBaseSource = "env"
-			}
+			// Provenance comes from where the value was decided, not from
+			// comparing it afterwards: ORQ_SERVER usually holds exactly the
+			// host the session was authenticated against, and string equality
+			// would report that as the session's doing.
+			apiBaseSource := auth.ServerSource()
 
-			resolvedAPIBase := apiBase
+			resolvedAPIBase := serverURL()
 			if resolvedAPIBase == "" && inspect.Status == auth.StatusOK {
 				resolvedAPIBase = inspect.Session.APIBaseURL
 			}
@@ -188,7 +183,6 @@ func NewDoctorCommand() *cobra.Command {
 			return emit(report)
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
 	return cmd
 }

@@ -13,7 +13,6 @@ import (
 )
 
 func NewLoginCommand() *cobra.Command {
-	var apiBase string
 	var workspace string
 	var noOpen bool
 	var apiKey string
@@ -38,15 +37,15 @@ func NewLoginCommand() *cobra.Command {
 			}
 
 			if method == "API key" {
-				return apiKeyLogin(cmd, apiBase, apiKey)
+				return apiKeyLogin(cmd, apiKey)
 			}
 
-			result, err := runDeviceLogin(cmd.Context(), newReporter(false), apiBase, workspace, !noOpen)
+			result, err := runDeviceLogin(cmd.Context(), newReporter(false), serverURL(), workspace, !noOpen)
 			if err != nil {
 				return err
 			}
 
-			report := BuildIdentityReport(result.Session, &auth.NewClient(apiBase).URLs)
+			report := BuildIdentityReport(result.Session, &auth.NewClient(serverURL()).URLs)
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
 				return nil
@@ -59,7 +58,6 @@ func NewLoginCommand() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Preselect a workspace key")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not try to open the browser automatically")
 	cmd.Flags().StringVar(&apiKey, "api-key", "", "Sign in with this API key instead of the browser")
@@ -69,7 +67,7 @@ func NewLoginCommand() *cobra.Command {
 // apiKeyLogin verifies a pasted or flag-supplied key with one real API call,
 // then persists it to the credentials profile — the same store `orq setup
 // --api-key` writes, so every command resolves it afterwards.
-func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
+func apiKeyLogin(cmd *cobra.Command, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		if err := survey.AskOne(&survey.Password{
@@ -82,7 +80,7 @@ func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
 
 	// Verify before saving: persisting a bad key would leave every later
 	// command failing with a 401 the user has to trace back here.
-	client := auth.NewClient(apiBase).WithContext(cmd.Context())
+	client := auth.NewClient(serverURL()).WithContext(cmd.Context())
 	projects, err := client.ListProjects(key)
 	if err != nil {
 		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
@@ -105,7 +103,6 @@ func apiKeyLogin(cmd *cobra.Command, apiBase, key string) error {
 }
 
 func NewLogoutCommand() *cobra.Command {
-	var apiBase string
 	var yes bool
 	var force bool
 	var disconnect bool
@@ -189,7 +186,7 @@ func NewLogoutCommand() *cobra.Command {
 				}
 			}
 
-			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
+			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			revokeErr := client.Logout(session.RefreshToken)
 			if revokeErr != nil && !force {
 				// Deleting local credentials while the refresh token is still
@@ -241,7 +238,6 @@ func NewLogoutCommand() *cobra.Command {
 			return removalError(removeFailed)
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
 	cmd.Flags().BoolVar(&disconnect, "disconnect", false, "Also remove orq from this machine's coding agents, without asking")
@@ -267,8 +263,6 @@ func reportSurvivingGatewayKey() {
 }
 
 func NewWhoAmICommand() *cobra.Command {
-	var apiBase string
-
 	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Show the current authenticated user and workspace",
@@ -280,7 +274,7 @@ func NewWhoAmICommand() *cobra.Command {
 			if session == nil {
 				return errors.New("you are not logged in")
 			}
-			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
+			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
 			if err != nil {
 				return err
@@ -293,7 +287,6 @@ func NewWhoAmICommand() *cobra.Command {
 			return emit(report)
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	return cmd
 }
 

@@ -30,7 +30,6 @@ func NewWorkspaceCommand() *cobra.Command {
 }
 
 func newWorkspaceListCommand() *cobra.Command {
-	var apiBase string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List available workspaces",
@@ -42,7 +41,7 @@ func newWorkspaceListCommand() *cobra.Command {
 			if session == nil {
 				return errors.New("you are not logged in")
 			}
-			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
+			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
 			if err != nil {
 				return err
@@ -76,12 +75,10 @@ func newWorkspaceListCommand() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	return cmd
 }
 
 func newWorkspaceUseCommand() *cobra.Command {
-	var apiBase string
 	cmd := &cobra.Command{
 		Use:   "use [key]",
 		Short: "Switch the active workspace",
@@ -94,7 +91,7 @@ func newWorkspaceUseCommand() *cobra.Command {
 			if session == nil {
 				return errors.New("you are not logged in")
 			}
-			client := auth.NewClient(sessionAPIBase(apiBase, session)).WithContext(cmd.Context())
+			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
 			if err != nil {
 				return err
@@ -149,7 +146,6 @@ func newWorkspaceUseCommand() *cobra.Command {
 			return emit(report)
 		},
 	}
-	cmd.Flags().StringVar(&apiBase, "api-base-url", "", "Override API base URL")
 	return cmd
 }
 
