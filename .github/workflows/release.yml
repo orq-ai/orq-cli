@@ -99,9 +99,8 @@ jobs:
           # from, so the size of their change is the size of ours.
           #
           # Compared value-to-value rather than by file: a schema republished at
-          # the same app_version is not a new API. Changes this repo makes to
-          # itself take a patch; a feature or a break of OUR own is a hand edit
-          # to VERSION in the PR that earns it, like any other semver project.
+          # the same app_version is not a new API. What this repo does to itself
+          # is read from the commit types below, not from this comparison.
           field() { v="${1#*.}"; case "$2" in 1) printf '%s' "${1%%.*}" ;; 2) printf '%s' "${v%%.*}" ;; esac; }
           bump=patch
           # Same validation the pipeline does: jq prints "null" for a missing
