@@ -15,9 +15,8 @@
 # same @orq-ai/cli package, differing only by npm dist-tag.
 #
 # <api-version> is the orq API version the generated commands came from
-# (.bartolo.json app_version). It is stamped into the binary and into every
-# package.json as `orqApiVersion`, because the CLI version no longer encodes
-# it. Defaults to "unknown" for a local build.
+# (.bartolo.json app_version), stamped into the binary and every package.json as
+# `orqApiVersion`. Defaults to "unknown" for a local build.
 #
 # Example:
 #   scripts/release-build.sh 0.1.0

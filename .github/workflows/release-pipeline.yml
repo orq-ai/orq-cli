@@ -1,21 +1,10 @@
 name: Release Pipeline
 
-# Reusable release pipeline, called twice by release.yml: once for prod (root
-# module, npm dist-tag latest) and once for rc (packages/orq-rc, dist-tag rc).
-# It regenerates the
-# CLI from the OpenAPI schema that orquesta-web committed, syncs the generated
-# code back to main, tags + publishes a GitHub release, cross-compiles every
-# platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
-#
-# The CLI version is the repo's own and is recorded in ./VERSION. The bump is the
-# larger of the field the orq API version moved and what our own conventional
-# commits earn - `feat:` a minor, a `!` or a BREAKING CHANGE footer a major,
-# anything else a patch - applied to VERSION, which is what this line last
-# released. rc builds become <next-minor>.0-rc.<n> prereleases, with n likewise
-# the next free one. It is independent of the
-# orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
-# recorded instead — in the release notes, in the binary (orq version), and in
-# package.json's orqApiVersion.
+# Reusable release pipeline, called twice by release.yml: the root module under
+# npm dist-tag latest, packages/orq-rc under rc. It regenerates from the schema,
+# commits that back to main, tags and publishes a GitHub release with every
+# platform binary, then publishes @orq-ai/cli. Version rules, and what the orq
+# API version means here: CHANGELOG.md#versioning.
 on:
   workflow_call:
     inputs:
@@ -100,10 +89,9 @@ jobs:
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
 
-          # The CLI version is the repo's own, and lives in ./VERSION — one file
-          # for both modules. Deliberately NOT in .bartolo.json: `bartolo
-          # generate` rewrites that file from its own struct, so any field it
-          # does not know about is silently dropped on the next regen.
+          # The CLI version lives in ./VERSION, not .bartolo.json: `bartolo
+          # generate` rewrites that file from its own struct and drops fields it
+          # does not know about.
           file_version="$(tr -d '[:space:]' < VERSION)"
           base="$file_version"
           # Leading zeros are rejected along with the obvious garbage: "5.08.0"
@@ -123,19 +111,11 @@ jobs:
             exit 1
           fi
 
-          # Both lines number themselves off the tags that exist, so a re-run
-          # after a mid-release failure allocates the NEXT free number instead
-          # of colliding with the tag the failed attempt already created.
-          #
-          # Read from the local tag set (checkout is fetch-depth 0 with tags, so
-          # it is complete) rather than probing the API tag by tag: one round of
-          # per-number requests would fail OPEN on a rate limit or a network
-          # blip - every error looks like "tag is free" - and hand back a
-          # version that already exists.
-          # first_free <prefix> <start>: smallest n >= start with no v<prefix><n> tag
-          # A here-string, not `printf | grep -q`: grep -q closes the pipe on
-          # its first match, printf takes a SIGPIPE, and pipefail reads that as
-          # "not taken" - handing back a version that already exists.
+          # first_free <prefix> <start>: smallest n >= start with no v<prefix><n>
+          # tag, so a re-run after a mid-release failure cannot collide with the
+          # tag it left behind. Local tags, not the API, which fails OPEN on a
+          # rate limit. Here-string, not `printf | grep -q`: pipefail reads the
+          # SIGPIPE that grep -q causes as "not taken".
           first_free() {
             taken="$(git tag --list "v$1*")"
             n="$2"
@@ -153,18 +133,11 @@ jobs:
             version="$next-rc.$(first_free "$next-rc." 1)"
             prerelease=true
           else
-            # Which field to move is decided by release.yml, from the larger of
-            # the field the orq API version moved and what our own commits since
-            # the last release earn.
-            #
-            # VERSION is the last released version of this line - the pipeline
-            # writes it on every release - so the bump applies to it exactly
-            # once. Applying it to a tag range the bump was itself derived from
-            # is what counts the same commits twice.
-            #
-            # A VERSION with no tag of its own means the line has not started
-            # yet, or that a hand edit is forcing a number the rules would not
-            # reach: publish it as written, and bump only from there on.
+            # Applied to VERSION, this line's last released version, exactly
+            # once: applying it to the tag range the bump was derived from
+            # counts the same commits twice. No tag for VERSION means the line
+            # has not started, or a hand edit is forcing a number the rules
+            # would not reach; publish it as written.
             if git rev-parse -q --verify "refs/tags/v$file_version" >/dev/null; then
               major="${base%%.*}"; rest="${base#*.}"
               minor="${rest%%.*}"; patch="${rest#*.}"
@@ -177,10 +150,9 @@ jobs:
             prefix="${base%.*}"
             version="$prefix.$(first_free "$prefix." "${base##*.}")"
             prerelease=false
-            # Says so out loud rather than silently shipping a different
-            # number. The line starts above every tag the old orq API numbering
-            # left behind, so the only way here is a tag from a half-finished
-            # release of our own.
+            # Out loud, rather than silently shipping a different number: the
+            # only tag that can be in the way is one a half-finished release of
+            # ours left behind.
             if [ "$version" != "$base" ]; then
               echo "::warning::v$base is already tagged; publishing $version instead"
             fi
@@ -219,10 +191,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          # CHANGELOG.md's "## Unreleased" section is written by hand, one entry
-          # per PR, and is the only description of a release anyone wrote on
-          # purpose. Here it is renamed to the version being cut and becomes the
-          # release notes; a fresh empty Unreleased takes its place.
+          # "## Unreleased" is written by hand, one entry per PR, and is the only
+          # description of a release anyone writes on purpose. Here it is renamed
+          # to the version being cut and becomes the notes.
           python3 scripts/stamp-changelog.py "$VERSION" "$(date -u +%Y-%m-%d)" > release-notes-changelog.md
           echo "--- changelog section for $VERSION ---"
           cat release-notes-changelog.md
@@ -293,15 +264,9 @@ jobs:
           API_VERSION: ${{ steps.version.outputs.api_version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          # gh creates the tag itself, at the current HEAD (already pushed to
-          # main by the commit-back step) — no separate `git tag`/`git push`
-          # needed. For a draft the tag appears when the release is published,
-          # in the last step.
-          #
-          # Notes are generated through the API rather than with
-          # `--generate-notes` so the API line can be prepended to them: which
-          # orq API a build speaks is the first thing a reader needs, and it is
-          # no longer inferable from the version number.
+          # gh creates the tag itself, at the commit-back HEAD. Notes go through
+          # the API rather than --generate-notes so the orq API line can be
+          # prepended: it is no longer inferable from the version number.
           target="$(git rev-parse HEAD)"
           {
             printf 'Built against **orq API %s**.\n\n' "$API_VERSION"
@@ -316,10 +281,9 @@ jobs:
               -f tag_name="$TAG" -f target_commitish="$target" --jq .body
           } > release-notes.md
           #
-          # Created as a draft: a draft has no tag and does not answer
-          # /releases/latest, so the window between "release exists" and "assets
-          # uploaded" cannot serve an installer a release it cannot download
-          # from. The last step publishes it.
+          # A draft has no tag and does not answer /releases/latest, so nothing
+          # can install a release before its assets are up. Published in the
+          # last step.
           flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$TAG" "${flags[@]}"
@@ -400,10 +364,9 @@ jobs:
           # it happens once every asset is attached.
           gh release edit "$TAG" --draft=false
 
-      # npm last, and only after the GitHub release is published: the npm
-      # dist-tags are what `install.sh --channel rc` resolves a version from, so
-      # publishing them earlier advertises a release whose assets do not exist
-      # yet.
+      # npm last, after the GitHub release is published: its dist-tags are what
+      # `install.sh --channel rc` resolves from, so publishing earlier advertises
+      # a release whose assets do not exist yet.
       - name: Publish platform packages to npm
         env:
           DIST_TAG: ${{ inputs.npm_dist_tag }}

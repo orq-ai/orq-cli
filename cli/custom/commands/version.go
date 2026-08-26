@@ -12,11 +12,10 @@ import (
 // that was not produced by the release pipeline.
 var apiVersion = "unknown"
 
-// apiVersionAnnotation carries APIVersionLine() to the cobra version template
-// as template DATA. Concatenating the value into the template string instead
-// would parse it: .bartolo.json is written by another repo's workflow, and a
-// stray "{{" arriving from there would panic template.Must on every
-// `orq --version`.
+// apiVersionAnnotation passes the value to the cobra version template as
+// template DATA. Concatenated into the template string it would be parsed, and
+// .bartolo.json comes from another repo's workflow: a stray "{{" would panic
+// template.Must on every `orq --version`.
 const apiVersionAnnotation = "orqApiVersionLine"
 
 // SetAPIVersion is called once from custom.Run, before any command runs, and
@@ -42,9 +41,8 @@ func APIVersionLine() string {
 }
 
 // NewVersionCommand reports the CLI version and the orq API version it was
-// generated against. Since the two version lines were split apart, the tag
-// alone no longer says which API a binary speaks, and support questions start
-// with exactly that — so it has to be printable, and machine-readable.
+// generated against. The tag alone no longer says which API a binary speaks,
+// and support questions start with exactly that.
 func NewVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
