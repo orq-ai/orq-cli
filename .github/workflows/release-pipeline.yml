@@ -10,9 +10,9 @@ name: Release Pipeline
 # The CLI version is the repo's own and is recorded in ./VERSION. The bump is the
 # larger of the field the orq API version moved and what our own conventional
 # commits earn - `feat:` a minor, a `!` or a BREAKING CHANGE footer a major,
-# anything else a patch - applied to the last released tag, with VERSION as a
-# floor. rc builds become <next-minor>.0-rc.<n> prereleases, with n likewise the
-# next free one. It is independent of the
+# anything else a patch - applied to VERSION, which is what this line last
+# released. rc builds become <next-minor>.0-rc.<n> prereleases, with n likewise
+# the next free one. It is independent of the
 # orq API version (.bartolo.json app_version, bumped by orquesta-web), which is
 # recorded instead — in the release notes, in the binary (orq version), and in
 # package.json's orqApiVersion.
