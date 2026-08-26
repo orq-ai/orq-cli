@@ -83,26 +83,7 @@ func TestNoGroupRendersEmpty(t *testing.T) {
 
 // The runtime fallback launders an unmapped command into a registered group, so no other test here fails when a new OpenAPI tag adds a top-level command.
 func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
-	deliberate := map[string]bool{
-		"help":           true, // cobra's own, grouped via SetHelpCommandGroupID
-		"completion":     true, // cobra's own, grouped via SetCompletionCommandGroupID
-		"help-config":    true, // bartolo's config help page
-		"help-input":     true, // bartolo's input help page
-		"request":        true, // raw-HTTP escape hatch — a utility by definition
-		"server":         true, // inspects/persists server-URL defaults
-		"default-format": true, // persists the default output format
-	}
-
-	root := buildRoot(t)
-	for _, cmd := range root.Commands() {
-		// IsAvailableCommand, not just Hidden: a parent whose subcommands are all hidden never renders.
-		if cmd.Hidden || !cmd.IsAvailableCommand() {
-			continue
-		}
-		name := cmd.Name()
-		if _, mapped := commandGroup[name]; mapped || deliberate[name] {
-			continue
-		}
+	for _, name := range UngroupedCommands(buildRoot(t)) {
 		t.Errorf("visible command %q is not in commandGroup and not deliberately Utilities — it renders in Utilities by fallback, which is a wrong section until someone chooses one", name)
 	}
 }
