@@ -31,6 +31,7 @@ func Register(root *cobra.Command) {
 	registerdocumentationCommands(root)
 	registerevalsCommands(root)
 	registerfeedbackCommands(root)
+	registerfileSystemsCommands(root)
 	registerfilesCommands(root)
 	registerfinderCommands(root)
 	registerguardrailRulesCommands(root)
