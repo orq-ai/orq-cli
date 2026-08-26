@@ -979,7 +979,7 @@ func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	if !strings.Contains(out, "recorded but missing") {
+	if !strings.Contains(out, "recorded but not installed") {
 		t.Errorf("status did not warn about the missing link:\n%s", out)
 	}
 	if !strings.Contains(out, "orq connect skills") {
@@ -1019,7 +1019,7 @@ func TestConnectStatusIgnoresMissingSessionLinks(t *testing.T) {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	if strings.Contains(out, "recorded but missing") {
+	if strings.Contains(out, "recorded but not installed") {
 		t.Errorf("status warned about a session-scoped link:\n%s", out)
 	}
 }
@@ -1076,7 +1076,7 @@ func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
 			t.Fatalf("status kimi: %v", err)
 		}
 	})
-	if strings.Contains(out, "recorded but missing") || strings.Contains(out, "recorded skills are missing") {
+	if strings.Contains(out, "recorded but not installed") || strings.Contains(out, "recorded skills are not installed") {
 		t.Errorf("status kimi (gateway only) reported skills breakage that was never asked about:\n%s", out)
 	}
 }
@@ -1110,10 +1110,10 @@ func TestConnectStatusCollapsesMissingLinksPerDirectory(t *testing.T) {
 			t.Fatalf("status: %v", err)
 		}
 	})
-	if n := strings.Count(out, "recorded but missing"); n != 0 {
+	if n := strings.Count(out, "recorded but not installed"); n != 0 {
 		t.Errorf("expected the per-file phrasing to be collapsed, got %d occurrences:\n%s", n, out)
 	}
-	if !strings.Contains(out, "3 recorded skills are missing") {
+	if !strings.Contains(out, "3 recorded skills are not installed") {
 		t.Errorf("expected a single proportionate line naming the directory and a count of 3:\n%s", out)
 	}
 	if !strings.Contains(out, "orq connect skills") {

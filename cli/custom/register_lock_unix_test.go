@@ -18,11 +18,17 @@ import (
 )
 
 // A contended manifest lock must not turn a skills command into a
-// multi-second stall: skills.Refresh and skills.SweepDeadSessions each wait
+// multi-second stall: skills.SweepDeadSessions and skills.Refresh each wait
 // out lock.go's lockTimeout on their own, and calling both unconditionally
-// would make a single contended command pay that timeout twice. This pins
-// that the hook skips the sweep once Refresh has already reported the
-// manifest locked, so the command pays it at most once.
+// would make a single contended command pay that timeout twice. The sweep
+// runs first (it runs on every command; the refresh does not), so this pins
+// that the hook skips the refresh once the sweep has already reported the
+// manifest locked, and the command pays the timeout at most once.
+//
+// Both halves have to actually reach the lock for that to be under test: the
+// sweep returns before locking unless a dead session is recorded, and Refresh
+// returns before locking unless the fingerprint is stale. The setup arranges
+// both.
 //
 // unix-only, and in its own file rather than behind a runtime skip: the lock
 // is the kernel's, so the only way to be a competing holder is to take it
@@ -44,6 +50,9 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 	// already on this version never reaches the lock. Age it, or the hook has
 	// no reason to contend and this test proves nothing.
 	stale(t, filepath.Join(home, ".orq", "materialized-skills.json"))
+	// Same for the sweep: with no dead session it returns before locking, and
+	// the refresh below would never be the one that got skipped.
+	recordDeadSession(t, home)
 
 	// Hold the lock on our own descriptor. flock is held per open file
 	// description, not per process, so this contends with the hook's
@@ -86,11 +95,82 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 		t.Errorf("command took %s with a contended lock; want at most one lockTimeout wait, not two", elapsed)
 	}
 	out := stderr.String()
-	if !strings.Contains(out, "could not refresh orq skills") {
-		t.Errorf("expected a refresh warning, got:\n%s", out)
+	if !strings.Contains(out, "could not clean up stale session skills") {
+		t.Errorf("expected a sweep warning, got:\n%s", out)
 	}
-	if strings.Contains(out, "could not clean up stale session skills") {
-		t.Errorf("sweep ran despite the lock already being reported as held, doubling the wait:\n%s", out)
+	if strings.Contains(out, "could not refresh orq skills") {
+		t.Errorf("refresh ran despite the lock already being reported as held, doubling the wait:\n%s", out)
+	}
+}
+
+// The sweep is the half that runs everywhere. A launch killed without
+// releasing its claim leaves links in the user's real skills directory, and
+// nothing else collects them — doctor excludes session links by design — so
+// an unrelated command has to be enough.
+func TestSkillsSweepRunsOnACommandThatHasNothingToDoWithSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	// A real symlink into a real snapshot, because the sweep only removes what
+	// it can still prove is ours.
+	orq, err := skills.Home()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(orq, "snapshot", "gen-test", "orq-leaked")
+	leaked := filepath.Join(home, ".claude", "skills", "orq-leaked")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(leaked), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(src, leaked); err != nil {
+		t.Fatal(err)
+	}
+	m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint()}
+	m.AddLink(skills.Link{Path: leaked, Skill: "orq-leaked", Agent: "claude", Mode: skills.ModeSymlink, Session: true})
+	m.Sessions = append(m.Sessions, skills.Session{ID: "dead", PID: 999999, Paths: []string{leaked}})
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	root := buildRoot(t)
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"man-pages", "--dir", filepath.Join(t.TempDir(), "man")})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("man-pages: %v", err)
+	}
+
+	after, err := skills.LoadManifest()
+	if err != nil || after == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if len(after.Sessions) != 0 {
+		t.Errorf("a dead session survived an unrelated command: %d left", len(after.Sessions))
+	}
+	if _, err := os.Stat(leaked); !os.IsNotExist(err) {
+		t.Errorf("the dead session's link was left on disk: %v", err)
+	}
+}
+
+// recordDeadSession gives the sweep something to collect, so it reaches the
+// lock instead of returning on its pre-lock check.
+func recordDeadSession(t *testing.T, home string) {
+	t.Helper()
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v %v", m, err)
+	}
+	m.Sessions = append(m.Sessions, skills.Session{
+		ID:    "dead",
+		PID:   999999,
+		Paths: []string{filepath.Join(home, ".claude", "skills", "orq-gone")},
+	})
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
 	}
 }
 

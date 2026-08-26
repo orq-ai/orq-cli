@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // manifestVersion is bumped when the schema changes incompatibly. A manifest
@@ -118,7 +119,7 @@ func SaveManifest(m *Manifest) error {
 		return err
 	}
 	// Rename atomically; on success, clear tmpName so defer does not delete it.
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := replaceFile(tmpName, path); err != nil {
 		return err
 	}
 	tmpName = ""
@@ -135,16 +136,16 @@ func (m *Manifest) OwnedPaths() []string {
 	return out
 }
 
+// AddLink records a link, replacing any record of the same path. It records
+// what the caller decided and nothing more: whether a path may be claimed
+// session-scoped is InstallSession's switch to make, and whether a recorded
+// link may be deleted is releaseLocked's. A third copy of that rule here
+// would be a rule nobody reads, silently correcting the two that they do.
 func (m *Manifest) AddLink(l Link) {
 	// Normalize the path to prevent duplicates from formatting variations.
 	l.Path = filepath.Clean(l.Path)
 	for i, existing := range m.Links {
 		if existing.Path == l.Path {
-			// A permanent install never becomes session-scoped; the session
-			// would take it with it on exit.
-			if !existing.Session {
-				l.Session = false
-			}
 			m.Links[i] = l
 			return
 		}
@@ -165,4 +166,25 @@ func (m *Manifest) RemoveLinks(paths []string) {
 		}
 	}
 	m.Links = kept
+}
+
+// replaceFile is os.Rename with a bounded retry, for one Windows behaviour:
+// replacing a file that any other handle has open without FILE_SHARE_DELETE
+// fails with ERROR_ACCESS_DENIED instead of waiting. Concurrent writers hit
+// it, and so does an antivirus scanner or the search indexer reading the
+// manifest at the wrong moment — the single-process case, which no lock can
+// prevent. The holders are all momentary, so a short retry is the whole fix.
+// On unix the first attempt always succeeds and this costs nothing.
+//
+// ponytail: fixed schedule, ~250ms total. Long enough for a scanner's read,
+// short enough that a genuinely stuck file still reports rather than hangs.
+func replaceFile(from, to string) error {
+	var err error
+	for i := 0; i < 10; i++ {
+		if err = os.Rename(from, to); err == nil {
+			return nil
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return err
 }

@@ -9,18 +9,17 @@ import (
 )
 
 // Result is what a projection did, for the caller to report. Skipped holds
-// paths the manifest claims but that something else now occupies; those are
-// reported and left untouched rather than overwritten.
+// paths the manifest claims but that something else now occupies; the files
+// there are always left untouched, whether or not the record survives.
 type Result struct {
 	Added   []string
 	Removed []string
 	Skipped []string
-	// Disowned holds paths that were skipped AND dropped from the manifest,
-	// because the skill left the shipped set and we could not prove we still
-	// own what sits at the path. Separate from Skipped because the user has
-	// to hear about it once: nothing tracks those paths any more, so a later
-	// `orq disconnect skills` will not mention them and they are the user's
-	// to remove by hand.
+	// Disowned is the subset of Skipped whose manifest record was also
+	// dropped. It exists because that is the one outcome the user cannot
+	// discover afterwards: nothing tracks the path any more, so no later
+	// command will mention it and it is theirs to remove by hand. Every
+	// producer that drops a record must fill this, or the fact is lost.
 	Disowned []string
 	// Failed holds paths a refresh could not reproject. One agent's broken
 	// directory must not abandon every other agent's links, so refresh records
@@ -47,7 +46,7 @@ func linkMode() string {
 // The lock is what keeps a concurrent `orq launch` from losing this install's
 // records (see lock.go); the work itself is in install.
 func Install(agents []string) (*Result, error) {
-	var res *Result
+	res := &Result{}
 	err := withManifestLock(func() error {
 		var err error
 		res, err = install(agents)
@@ -140,8 +139,13 @@ func install(agents []string) (*Result, error) {
 // Targets): it belongs to the request whenever any named agent is one of the
 // shared readers, the same membership Targets uses to decide whether to
 // write there in the first place.
+//
+// The Result is never nil, including when the lock could not be taken and the
+// closure never ran: callers report the error and then still range over the
+// result, and a nil here crashed `orq disconnect skills` against a live
+// `orq launch`.
 func Remove(agents []string) (*Result, error) {
-	var res *Result
+	res := &Result{}
 	err := withManifestLock(func() error {
 		var err error
 		res, err = remove(agents)
@@ -177,6 +181,7 @@ func remove(agents []string) (*Result, error) {
 			// skill also leaves the shipped set, and every later connect and
 			// disconnect would skip it again in silence.
 			res.Skipped = append(res.Skipped, l.Path)
+			res.Disowned = append(res.Disowned, l.Path)
 			gone = append(gone, l.Path)
 			continue
 		}
@@ -210,7 +215,7 @@ func Refresh() (*Result, error) {
 	if m.Fingerprint == Fingerprint() {
 		return &Result{}, nil
 	}
-	var res *Result
+	res := &Result{}
 	err = withManifestLock(func() error {
 		var err error
 		res, err = refresh()
@@ -287,7 +292,22 @@ func refresh() (*Result, error) {
 		res.Added = append(res.Added, l.Path)
 	}
 	m.RemoveLinks(pruned)
-	m.Fingerprint = Fingerprint()
+	// The fingerprint is what Refresh compares to decide there is nothing to
+	// do, so advancing it past a failed link makes that failure permanent: the
+	// link is never retried and the warning naming it is printed once, ever.
+	// A failure here is transient by nature — a directory the user replaced
+	// with a file, a permission change — so leaving the fingerprint stale is
+	// what retries it, and what keeps warning until the user repairs it.
+	//
+	// A skipped link is the opposite: the path is not ours, which is a
+	// standing state, not drift. Retrying would reproject every healthy link
+	// on every skills command to no purpose, so the fingerprint advances and
+	// the state is reported instead — by the pre-run and by `orq doctor`.
+	// Recording the generation is right either way: the links that did land
+	// point into it.
+	if len(res.Failed) == 0 {
+		m.Fingerprint = Fingerprint()
+	}
 	m.Generation = gen
 	if err := SaveManifest(m); err != nil {
 		return &Result{}, err
@@ -341,9 +361,12 @@ func projectCopy(src, dest, parent string) error {
 // and without a marker the only available check is "is a directory here",
 // which every directory passes — including one the user put there.
 //
-// A dotfile, so it stays out of the skill's own contents, and it says plainly
-// what it is: the directory is replaced wholesale on every update, so
-// anything the user writes into it is lost on the next `orq` command that
+// It lives inside the skill directory — that is what makes it land with the
+// rename and survive a wholesale replace — so an agent enumerating the
+// directory does see it; the leading dot only keeps it out of a casual
+// listing. It says plainly what it is: the directory is replaced wholesale on
+// every update, so anything the user writes into it is lost the next time a
+// command that touches skills (`launch`, `connect`, `disconnect`, `setup`)
 // sees a new skill set.
 const (
 	ownerMarker     = ".orq-owned"

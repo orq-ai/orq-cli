@@ -3,7 +3,6 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -831,8 +830,8 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 // missing entry keeps the original, more specific phrasing — a count of one
 // reads worse than naming the thing that is actually missing.
 func reportMissingSkillLinks(rep *reporter, agents []string) {
-	m, err := skills.LoadManifest()
-	if err != nil || m == nil {
+	status, err := skills.ReadStatus()
+	if err != nil || status == nil {
 		return
 	}
 	wanted := map[string]bool{}
@@ -843,10 +842,7 @@ func reportMissingSkillLinks(rep *reporter, agents []string) {
 	}
 	missingByDir := map[string][]string{}
 	var dirOrder []string
-	for _, l := range m.Links {
-		if l.Session {
-			continue
-		}
+	for _, l := range status.Links {
 		if l.Agent == "" {
 			if !sharedWanted {
 				continue
@@ -854,7 +850,7 @@ func reportMissingSkillLinks(rep *reporter, agents []string) {
 		} else if !wanted[l.Agent] {
 			continue
 		}
-		if _, statErr := os.Lstat(l.Path); statErr == nil {
+		if l.State != skills.LinkMissing {
 			continue
 		}
 		dir := filepath.Dir(l.Path)
@@ -866,10 +862,13 @@ func reportMissingSkillLinks(rep *reporter, agents []string) {
 	for _, dir := range dirOrder {
 		missing := missingByDir[dir]
 		if len(missing) == 1 {
-			rep.warn("skills   %s is recorded but missing — run 'orq connect skills' to restore it", tilde(missing[0]))
+			// Not "restore": refresh does not respect a deletion, it
+			// reprojects every recorded link on the next fingerprint change.
+			// Saying restore promises the file stays gone until asked for.
+			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(missing[0]))
 			continue
 		}
-		rep.warn("skills   %s: %d recorded skills are missing — run 'orq connect skills' to restore them", tilde(dir), len(missing))
+		rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(missing))
 	}
 }
 
@@ -935,8 +934,10 @@ func removeWiring(rep *reporter, agents, caps []string, pathShown bool) (rows []
 			rep.ok("orq skills removed (%d entries)", len(res.Removed))
 		}
 		skillsRemoved = res.Removed
+		// "Stopped tracking", not "skipped": the record is gone too, so this
+		// is the last time any orq command names the path.
 		for _, path := range res.Skipped {
-			rep.warn("%s is no longer ours — left alone", tilde(path))
+			rep.warn("%s is no longer ours — left in place, and orq has stopped tracking it", tilde(path))
 		}
 	}
 	return rows, skillsRemoved, failed

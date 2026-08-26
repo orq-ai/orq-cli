@@ -72,19 +72,42 @@ func TestCodingAgentsSummaryStates(t *testing.T) {
 // hand stays deleted, because silently recreating it on the next `orq --help`
 // would fight the user. doctor is where that state gets named.
 func TestSkillsCheck(t *testing.T) {
-	newManifest := func(t *testing.T, dir string, present, absent int) {
+	// A present link is a real symlink into a real snapshot, because that is
+	// what ownership means. A bare directory at the path is what a user who
+	// took the path over leaves behind, and doctor has to tell the two apart.
+	newManifest := func(t *testing.T, dir string, present, absent, foreign int) {
 		t.Helper()
+		orq, err := skills.Home()
+		if err != nil {
+			t.Fatal(err)
+		}
+		gen := filepath.Join(orq, "snapshot", "gen-test")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
 		m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint()}
 		for i := 0; i < present; i++ {
-			p := filepath.Join(dir, fmt.Sprintf("orq-present-%d", i))
-			if err := os.MkdirAll(p, 0o755); err != nil {
+			name := fmt.Sprintf("orq-present-%d", i)
+			src := filepath.Join(gen, name)
+			if err := os.MkdirAll(src, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p)})
+			p := filepath.Join(dir, name)
+			if err := os.Symlink(src, p); err != nil {
+				t.Fatal(err)
+			}
+			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: name, Mode: skills.ModeSymlink})
 		}
 		for i := 0; i < absent; i++ {
 			p := filepath.Join(dir, fmt.Sprintf("orq-absent-%d", i))
-			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p)})
+			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p), Mode: skills.ModeSymlink})
+		}
+		for i := 0; i < foreign; i++ {
+			p := filepath.Join(dir, fmt.Sprintf("orq-foreign-%d", i))
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			m.AddLink(skills.Link{Path: p, Agent: "claude", Skill: filepath.Base(p), Mode: skills.ModeSymlink})
 		}
 		if err := skills.SaveManifest(m); err != nil {
 			t.Fatal(err)
@@ -102,7 +125,7 @@ func TestSkillsCheck(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		dir := filepath.Join(home, ".claude", "skills")
-		newManifest(t, dir, 2, 0)
+		newManifest(t, dir, 2, 0, 0)
 		check, ok := skillsCheck()
 		if !ok || check.Status != "pass" {
 			t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
@@ -113,7 +136,7 @@ func TestSkillsCheck(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		dir := filepath.Join(home, ".claude", "skills")
-		newManifest(t, dir, 1, 2)
+		newManifest(t, dir, 1, 2, 0)
 		check, ok := skillsCheck()
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
@@ -130,7 +153,7 @@ func TestSkillsCheck(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		dir := filepath.Join(home, ".claude", "skills")
-		newManifest(t, dir, 2, 0)
+		newManifest(t, dir, 2, 0, 0)
 		m, err := skills.LoadManifest()
 		if err != nil || m == nil {
 			t.Fatal(err)
@@ -145,6 +168,44 @@ func TestSkillsCheck(t *testing.T) {
 		}
 		if !strings.Contains(check.Message, "older CLI version") {
 			t.Errorf("message does not say the install is stale: %q", check.Message)
+		}
+	})
+
+	// The state that used to read as healthy: the path exists, so an
+	// existence check passes it, but refresh will never touch it again.
+	t.Run("a path taken over by the user is not installed", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir := filepath.Join(home, ".claude", "skills")
+		newManifest(t, dir, 1, 0, 2)
+		check, ok := skillsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if check.Details["foreign"] != 2 {
+			t.Errorf("details = %v, want foreign=2", check.Details)
+		}
+		if !strings.Contains(check.Message, "no longer ours") {
+			t.Errorf("message does not say the paths are not ours: %q", check.Message)
+		}
+	})
+
+	// A manifest that will not load breaks every skills command. doctor is
+	// where the user comes to find out why, so it is the one place that must
+	// not answer by saying nothing at all.
+	t.Run("an unreadable manifest is reported, not swallowed", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		orq, err := skills.Home()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(orq, "materialized-skills.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := skillsCheck()
+		if !ok || check.Status != "fail" {
+			t.Fatalf("got ok=%v status=%q, want a fail", ok, check.Status)
 		}
 	})
 

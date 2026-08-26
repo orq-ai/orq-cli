@@ -113,6 +113,19 @@ func dump() ([]byte, error) {
 	generated.Register(bartolocli.Root)
 	custom.Register(bartolocli.Root)
 
+	// Reported here because this is the tool a regeneration forces you to run:
+	// a new openapi.yaml tag becomes a top-level command with no topic, and
+	// help then files it under Utilities, which is a wrong section rather than
+	// a missing one. Not fatal — the manifest still has to be written — but it
+	// names the edit while the person making the change is still looking at it.
+	if ungrouped := custom.UngroupedCommands(bartolocli.Root); len(ungrouped) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"surface-dump: %d new command(s) have no help group: %s\n"+
+				"Add them to commandGroup in cli/custom/groups.go, or to\n"+
+				"deliberateUtilities if Utilities is genuinely where they belong.\n",
+			len(ungrouped), strings.Join(ungrouped, ", "))
+	}
+
 	var commands []commandSpec
 	walk(bartolocli.Root, "", &commands)
 	sort.Slice(commands, func(i, j int) bool { return commands[i].Path < commands[j].Path })

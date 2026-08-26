@@ -53,7 +53,7 @@ func TestSetFingerprintForTestOverridesAndRestores(t *testing.T) {
 }
 
 func TestEnsureGenerationIsIdempotentAndComplete(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 
 	first, err := EnsureGeneration()
 	if err != nil {
@@ -79,7 +79,7 @@ func TestEnsureGenerationIsIdempotentAndComplete(t *testing.T) {
 }
 
 func TestGenerationCollectionKeepsCurrentAndOnePrevious(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 
 	for _, fp := range []string{"aaa", "bbb", "ccc"} {
 		SetFingerprintForTest(t, fp)
@@ -104,7 +104,7 @@ func TestGenerationCollectionKeepsCurrentAndOnePrevious(t *testing.T) {
 }
 
 func TestManifestRoundTrip(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 
 	if m, err := LoadManifest(); err != nil {
 		t.Fatalf("LoadManifest on a clean machine: %v", err)
@@ -129,7 +129,7 @@ func TestManifestRoundTrip(t *testing.T) {
 
 func TestManifestOfAnUnknownVersionIsTreatedAsForeign(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	orqHome := filepath.Join(home, ".orq")
 	if err := os.MkdirAll(orqHome, 0o755); err != nil {
 		t.Fatal(err)
@@ -168,12 +168,15 @@ func TestAddLinkReplacesExistingByNormalizedPath(t *testing.T) {
 
 func TestRemoveLinksFiltersOutSpecifiedPaths(t *testing.T) {
 	m := &Manifest{Version: manifestVersion}
+	// Native separators: RemoveLinks cleans what it is given, so a fixture
+	// built with forward slashes would never match its own paths on Windows.
+	a, b, c := filepath.FromSlash("/path/a"), filepath.FromSlash("/path/b"), filepath.FromSlash("/path/c")
 	m.Links = []Link{
-		{Path: "/path/a", Skill: "skill-a", Mode: ModeSymlink},
-		{Path: "/path/b", Skill: "skill-b", Mode: ModeSymlink},
-		{Path: "/path/c", Skill: "skill-c", Mode: ModeSymlink},
+		{Path: a, Skill: "skill-a", Mode: ModeSymlink},
+		{Path: b, Skill: "skill-b", Mode: ModeSymlink},
+		{Path: c, Skill: "skill-c", Mode: ModeSymlink},
 	}
-	m.RemoveLinks([]string{"/path/b"})
+	m.RemoveLinks([]string{b})
 	if len(m.Links) != 2 {
 		t.Errorf("after RemoveLinks: got %d links, want 2", len(m.Links))
 	}
@@ -208,7 +211,7 @@ func TestOwnedPathsReturnsAllLinkPaths(t *testing.T) {
 }
 
 func TestConcurrentSaveManifestSucceeds(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	const numWriters = 16
 	errs := make(chan error, numWriters)
 	for i := 0; i < numWriters; i++ {
@@ -248,7 +251,7 @@ func TestConcurrentSaveManifestSucceeds(t *testing.T) {
 
 func TestTargets(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("KIMI_CODE_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
@@ -260,7 +263,8 @@ func TestTargets(t *testing.T) {
 		}
 		var out []string
 		for _, tg := range got {
-			out = append(out, strings.TrimPrefix(tg.Dir, home))
+			// Slash form so the expectations below read the same on Windows.
+			out = append(out, filepath.ToSlash(strings.TrimPrefix(tg.Dir, home)))
 		}
 		sort.Strings(out)
 		return out
@@ -291,7 +295,7 @@ func TestTargets(t *testing.T) {
 }
 
 func TestTargetsHonorAgentHomeEnvironmentVariables(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	codexHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
@@ -314,7 +318,7 @@ func TestTargetsHonorAgentHomeEnvironmentVariables(t *testing.T) {
 
 func TestInstallCreatesOneLinkPerSkillPerTarget(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	res, err := Install([]string{"claude"})
 	if err != nil {
@@ -334,7 +338,7 @@ func TestInstallCreatesOneLinkPerSkillPerTarget(t *testing.T) {
 
 func TestInstallLeavesForeignEntriesAlone(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 	if err := os.MkdirAll(filepath.Join(dir, "my-own-skill"), 0o755); err != nil {
 		t.Fatal(err)
@@ -361,7 +365,7 @@ func TestInstallLeavesForeignEntriesAlone(t *testing.T) {
 
 func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -397,7 +401,7 @@ func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 
 func TestRefreshOnANeverConnectedMachineTouchesNothing(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Refresh(); err != nil {
 		t.Fatalf("Refresh: %v", err)
@@ -412,7 +416,7 @@ func TestRefreshOnANeverConnectedMachineTouchesNothing(t *testing.T) {
 
 func TestInstallSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -456,7 +460,7 @@ func TestInstallSkipsAPathTakenOverByTheUser(t *testing.T) {
 
 func TestRemoveSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -495,7 +499,7 @@ func TestRemoveSkipsAPathTakenOverByTheUser(t *testing.T) {
 
 func TestRefreshSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -535,7 +539,7 @@ func TestRefreshSkipsAPathTakenOverByTheUser(t *testing.T) {
 
 func TestRefreshSkipsALinkReplacedWithAForeignSymlink(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -586,7 +590,7 @@ func TestRefreshSkipsALinkReplacedWithAForeignSymlink(t *testing.T) {
 // not just an opencode-specific directory that does not exist.
 func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"opencode"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -617,7 +621,7 @@ func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
 
 func TestSessionLinksAreReferenceCounted(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
 	releaseA, err := InstallSession("claude")
@@ -644,7 +648,7 @@ func TestSessionLinksAreReferenceCounted(t *testing.T) {
 // session exits first may not take the links the other is still using.
 func TestSessionsForSharedReadersRefcountTheSharedDirectory(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".agents", "skills")
 
 	releaseOpencode, err := InstallSession("opencode")
@@ -674,7 +678,7 @@ func TestSessionsForSharedReadersRefcountTheSharedDirectory(t *testing.T) {
 
 func TestSessionLinksSurviveAPermanentInstall(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -693,7 +697,7 @@ func TestSessionLinksSurviveAPermanentInstall(t *testing.T) {
 
 func TestSweepRemovesLinksOwnedByDeadProcesses(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
 	if _, err := InstallSession("claude"); err != nil {
@@ -723,7 +727,7 @@ func TestSweepRemovesLinksOwnedByDeadProcesses(t *testing.T) {
 // leave the permanent install alone whatever it finds.
 func TestSweepLeavesLiveSessionsAndPermanentLinks(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"codex"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -752,7 +756,7 @@ func TestSweepLeavesLiveSessionsAndPermanentLinks(t *testing.T) {
 // there and never removes it: only paths the CLI created are ever deleted.
 func TestSessionLeavesForeignSkillsAlone(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 	names, err := Names()
 	if err != nil || len(names) == 0 {
@@ -782,7 +786,7 @@ func TestSessionLeavesForeignSkillsAlone(t *testing.T) {
 // manifest's lost-update race real rather than theoretical.
 func TestConcurrentSessionsKeepEveryClaim(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	// Unpack up front: the point of the test is the manifest write, not the
 	// generation race, which EnsureGeneration already handles.
 	if _, err := EnsureGeneration(); err != nil {
@@ -835,7 +839,7 @@ func TestConcurrentSessionsKeepEveryClaim(t *testing.T) {
 // manifest does not record can never be removed by anything again.
 func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	if _, err := EnsureGeneration(); err != nil {
 		t.Fatal(err)
 	}
@@ -861,9 +865,14 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if entries, readErr := os.ReadDir(filepath.Join(home, ".claude", "skills")); readErr == nil && len(entries) != 0 {
 		t.Errorf("a locked-out writer left %d unrecorded links on disk", len(entries))
 	}
-	// The other manifest writers must refuse for the same reason.
-	if _, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) {
-		t.Errorf("Install under a held lock: %v", err)
+	// The other manifest writers must refuse for the same reason, and must
+	// still hand back a Result: their callers report the error and then read
+	// the result anyway, so a nil here is a crash rather than a refusal.
+	if res, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+		t.Errorf("Install under a held lock: res=%v err=%v", res, err)
+	}
+	if res, err := Remove([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+		t.Errorf("Remove under a held lock: res=%v err=%v", res, err)
 	}
 }
 
@@ -873,7 +882,7 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 // is what keeps an uncontended command from waiting on a busy one.
 func TestSweepUnderAHeldLockKeepsTheDeadSession(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint()}
 	m.Sessions = append(m.Sessions, Session{ID: "dead", PID: 999999, Paths: []string{filepath.Join(home, ".claude", "skills", "orq-gone")}})
@@ -900,7 +909,7 @@ func TestSweepUnderAHeldLockKeepsTheDeadSession(t *testing.T) {
 // both write the manifest and lose one another's links.
 func TestAFirstRunWriterCreatesTheStateDirectoryAndLocksIt(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	lock := filepath.Join(home, ".orq", "materialized-skills.json.lock")
 	err := withManifestLock(func() error {
@@ -920,7 +929,7 @@ func TestAFirstRunWriterCreatesTheStateDirectoryAndLocksIt(t *testing.T) {
 // later connect and disconnect would skip this one again in silence.
 func TestDisconnectDropsTheRecordForAPathWeNoLongerOwn(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -969,7 +978,7 @@ func TestDisconnectDropsTheRecordForAPathWeNoLongerOwn(t *testing.T) {
 // recorded and the sweep can still collect them later.
 func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	release, err := InstallSession("claude")
 	if err != nil {
@@ -1011,7 +1020,7 @@ func TestReleaseUnderAHeldLockKeepsTheClaim(t *testing.T) {
 // symlinks in their real home.
 func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
 	if _, err := Install([]string{"claude"}); err != nil {
@@ -1065,7 +1074,7 @@ func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
 // snapshot the crashed run happened to be using.
 func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
 	SetFingerprintForTest(t, "aaaaaaaaaaaaaaaa")
@@ -1083,13 +1092,7 @@ func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 	}
 	names, _ := Names()
 	for _, n := range names {
-		target, err := os.Readlink(filepath.Join(dir, n))
-		if err != nil {
-			t.Fatalf("readlink %s: %v", n, err)
-		}
-		if !strings.Contains(target, "gen-bbbbbbbbbbbbbbbb") {
-			t.Errorf("adopted orphan still points at the old generation: %s", target)
-		}
+		assertProjectedFrom(t, filepath.Join(dir, n), "gen-bbbbbbbbbbbbbbbb")
 	}
 }
 
@@ -1098,7 +1101,7 @@ func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 // riding on it instead would leave it behind forever.
 func TestSessionAdoptsAnOrphanOfOurs(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
 	release, err := InstallSession("claude")
@@ -1129,23 +1132,13 @@ func TestSessionAdoptsAnOrphanOfOurs(t *testing.T) {
 	}
 }
 
-// kill(pid, 0) answers EPERM for a live process owned by another user, and
-// reading that as "dead" is the direction that pulls skills out from under a
-// running agent. PID 1 is always alive and (unless the test runs as root)
-// always somebody else's.
-func TestProcessAliveTreatsAnotherUsersProcessAsAlive(t *testing.T) {
-	if !processAlive(1) {
-		t.Error("pid 1 reported dead; a live process owned by another user would lose its links")
-	}
-}
-
 // I1. The spec promises the installed skills are safe to delete. Deleting the
 // whole directory used to wedge refresh permanently: project() only created
 // the parent on the copy branch, so every later `orq` command repeated a raw
 // symlink error and never advanced the fingerprint.
 func TestRefreshRecreatesADeletedSkillsDirectory(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -1183,7 +1176,7 @@ func TestRefreshRecreatesADeletedSkillsDirectory(t *testing.T) {
 // set persisted silently everywhere else.
 func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	if _, err := Install([]string{"claude", "codex"}); err != nil {
 		t.Fatalf("Install: %v", err)
@@ -1216,13 +1209,34 @@ func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 		t.Fatalf("claude's links were abandoned by codex's failure: %v (%d entries)", err, len(entries))
 	}
 	for _, name := range names {
-		target, err := os.Readlink(filepath.Join(claudeDir, name))
-		if err != nil {
-			t.Fatalf("Readlink %s: %v", name, err)
-		}
-		if !strings.Contains(target, "next-release-partial") {
-			t.Errorf("%s still points at the old generation: %s", name, target)
-		}
+		assertProjectedFrom(t, filepath.Join(claudeDir, name), "next-release-partial")
+	}
+
+	// The failure must not be absorbed. Advancing the fingerprint past it
+	// would make the next Refresh a no-op, so codex would stay broken forever
+	// and the warning naming it would have been printed exactly once.
+	again, err := Refresh()
+	if err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if len(again.Failed) != len(names) {
+		t.Errorf("second Refresh reported %d failures, want %d: a failed link was never retried", len(again.Failed), len(names))
+	}
+
+	// Once the user repairs the directory, the retry lands and the state
+	// converges — the nagging is bounded by the repair, not by a counter.
+	if err := os.Remove(codexDir); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh after repair: %v", err)
+	}
+	if len(repaired.Failed) != 0 {
+		t.Errorf("Failed = %d after the directory was repaired, want 0", len(repaired.Failed))
+	}
+	if m, err := LoadManifest(); err != nil || m == nil || m.Fingerprint != Fingerprint() {
+		t.Errorf("a converged refresh did not record the fingerprint: %v %v", m, err)
 	}
 }
 
@@ -1234,7 +1248,7 @@ func TestGenerationPermissionsMatchItsContents(t *testing.T) {
 		t.Skip("POSIX permission bits")
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 
 	gen, err := EnsureGeneration()
 	if err != nil {
@@ -1261,7 +1275,7 @@ func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
 	for _, mode := range []string{ModeSymlink, ModeCopy} {
 		t.Run(mode, func(t *testing.T) {
 			home := t.TempDir()
-			t.Setenv("HOME", home)
+			setHome(t, home)
 			dir := filepath.Join(home, ".claude", "skills")
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
@@ -1314,39 +1328,9 @@ func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
 // mistake is expensive: the session takes the user's install with it on exit.
 // AddLink is the last place that can refuse, so pin all four combinations
 // rather than only the end-to-end path through InstallSession.
-func TestAddLinkNeverDemotesAPermanentLink(t *testing.T) {
-	cases := []struct {
-		name              string
-		existing, added   bool
-		wantSessionScoped bool
-	}{
-		{"permanent stays permanent", false, true, false},
-		{"permanent is not re-marked", false, false, false},
-		{"session is promoted", true, false, false},
-		{"session stays session", true, true, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			m := &Manifest{Version: manifestVersion}
-			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.existing})
-			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.added})
-			if len(m.Links) != 1 {
-				t.Fatalf("got %d links, want 1: the second AddLink should replace the first", len(m.Links))
-			}
-			if m.Links[0].Session != c.wantSessionScoped {
-				t.Errorf("Session = %v, want %v", m.Links[0].Session, c.wantSessionScoped)
-			}
-		})
-	}
-}
-
-// A launch must never inherit a permanent install. Deleting the skills
-// directory is documented as safe, so the repair path has to leave the record
-// permanent, or the next session exit takes the user's `orq connect` install
-// with it.
 func TestALaunchDoesNotInheritAPermanentInstall(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -1407,7 +1391,7 @@ func countEntries(t *testing.T, dir string) int {
 // remove.
 func TestASecondAcquireWaitsThenReportsTheHolder(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1452,7 +1436,7 @@ func TestASecondAcquireWaitsThenReportsTheHolder(t *testing.T) {
 // (liveness, an age bound, a heartbeat) to undo.
 func TestALockDiesWithItsHolder(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1618,7 +1602,7 @@ func TestACopyProvesOwnershipWithItsMarker(t *testing.T) {
 // agent's index forever.
 func TestPruneRemovesACopyThatIsStillOurs(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -1646,5 +1630,44 @@ func TestPruneRemovesACopyThatIsStillOurs(t *testing.T) {
 	}
 	if len(res.Disowned) != 0 {
 		t.Errorf("Disowned = %v, want empty: we owned this one and removed it", res.Disowned)
+	}
+}
+
+// setHome points the whole package at a scratch directory. HOME alone is not
+// enough: os.UserHomeDir reads USERPROFILE on Windows, so a test that set only
+// HOME there ran against the real user profile — writing skills into it and
+// then failing to find them in its own temp dir.
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
+// assertProjectedFrom checks a projected skill came from the named
+// generation. A symlink records that in its target. A copy does not — nothing
+// in the copied tree names its source — so there the marker proves it is ours
+// and the manifest's generation is the record of which one it came from,
+// which is the same fact the refresh and deletion paths rely on on Windows.
+func assertProjectedFrom(t *testing.T, path, wantGen string) {
+	t.Helper()
+	if symlinkSupported() {
+		target, err := os.Readlink(path)
+		if err != nil {
+			t.Fatalf("readlink %s: %v", path, err)
+		}
+		if !strings.Contains(target, wantGen) {
+			t.Errorf("%s points at %s, want a link into %s", path, target, wantGen)
+		}
+		return
+	}
+	if !ownsCopy(path) {
+		t.Fatalf("%s carries no owner marker: it is not a projection of ours", path)
+	}
+	m, err := LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if !strings.Contains(m.Generation, wantGen) {
+		t.Errorf("manifest generation is %s, want %s", m.Generation, wantGen)
 	}
 }

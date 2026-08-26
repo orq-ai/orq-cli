@@ -42,6 +42,23 @@ jobs:
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
 
+  windows:
+    name: skills on windows
+    # cli/custom/skills has a Windows-only half — LockFileEx in flock_windows.go,
+    # copies instead of symlinks, and the .orq-owned marker that stands in for
+    # resolving one. None of it is compiled by the Linux job, so before this
+    # existed the first Windows user was the first execution. Only the skills
+    # package runs here: it is the part with an OS-specific implementation, and
+    # the rest of the CLI is covered by the stable job.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go test
+        run: go test ./cli/custom/skills/
+
   installer:
     name: install.sh runs under dash
     # ubuntu-latest: dash is preinstalled there; the macOS release runner has none.
