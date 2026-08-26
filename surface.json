@@ -1198,6 +1198,10 @@
       "use": "login",
       "flags": [
         {
+          "name": "api-base-url",
+          "type": "string"
+        },
+        {
           "name": "api-key",
           "type": "string"
         },
@@ -1215,6 +1219,10 @@
       "path": "orq auth logout",
       "use": "logout",
       "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        },
         {
           "name": "disconnect",
           "type": "bool"
@@ -1245,7 +1253,13 @@
     },
     {
       "path": "orq auth whoami",
-      "use": "whoami"
+      "use": "whoami",
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq budgets",
@@ -2287,6 +2301,10 @@
       "path": "orq doctor",
       "use": "doctor",
       "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        },
         {
           "name": "report",
           "type": "bool"
@@ -4173,6 +4191,10 @@
       "hidden": true,
       "flags": [
         {
+          "name": "api-base-url",
+          "type": "string"
+        },
+        {
           "name": "api-key",
           "type": "string"
         },
@@ -4191,6 +4213,10 @@
       "use": "logout",
       "hidden": true,
       "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        },
         {
           "name": "disconnect",
           "type": "bool"
@@ -8901,7 +8927,13 @@
     {
       "path": "orq whoami",
       "use": "whoami",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq workspace",
@@ -8909,11 +8941,23 @@
     },
     {
       "path": "orq workspace list",
-      "use": "list"
+      "use": "list",
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq workspace use",
-      "use": "use [key]"
+      "use": "use [key]",
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
     },
     {
       "path": "orq workspace-security",

@@ -80,14 +80,24 @@ the version and this changelog as the source of truth for breaking changes.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
-- **Removed (breaking):** the `--api-base-url` flag on `orq auth login`, `orq
-  auth logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
+- **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
+  logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
   doctor`. The CLI had two names for one value: those six commands took
   `--api-base-url` and rejected `--server`, while every generated command took
   the global `--server` and rejected `--api-base-url`. There is now one name —
   the global `--server <url>` (env: `ORQ_SERVER`), which works on every command,
   including `orq auth login --server https://orq.acme.internal`. Replace
-  `--api-base-url <url>` with `--server <url>`; it is the same root URL.
+  `--api-base-url <url>` with `--server <url>`; it is the same root URL. The old
+  flag still works for one release: it is hidden from help and warns on stderr,
+  and it will be removed in a following minor.
+- **Changed:** the default host is `https://my.orq.ai`, the `servers[0]` entry
+  of the API spec and already the fallback the generated commands used. Auth,
+  `whoami`, `workspace` and `doctor` defaulted to `https://api.orq.ai` instead,
+  so a run with no session and no override could reach two hosts at once. Both
+  names answer the same routes from the same origin, so nothing moves for users
+  on either. `orq launch`'s gateway defaults (`/v3/router`, `/v3/anthropic`,
+  `/v2/mcp`) still name `api.orq.ai`; they are reached through the resolved
+  server whenever there is one.
 - **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` and `orq launch`,
   and `orq doctor` reports where the host came from (`flag`, `env`, `config`,
   `session`, `default`) from the point the value was decided rather than by

@@ -9,8 +9,9 @@ import (
 )
 
 // The user-visible contract of ENG-2852: one name for the host on every
-// command. `--api-base-url` is gone from the six commands that had it, and
-// `--server` reaches all of them.
+// command. `--server` reaches all six commands that used to own
+// `--api-base-url`, and that flag survives one release as a deprecated,
+// help-hidden alias rather than breaking scripts on upgrade.
 func TestServerFlagReplacesAPIBaseURL(t *testing.T) {
 	root := buildRoot(t)
 	for _, path := range [][]string{
@@ -21,12 +22,43 @@ func TestServerFlagReplacesAPIBaseURL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: %v", path, err)
 		}
-		if f := cmd.Flags().Lookup("api-base-url"); f != nil {
-			t.Errorf("%v still registers --api-base-url", path)
-		}
 		if f := cmd.InheritedFlags().Lookup("server"); f == nil {
 			t.Errorf("%v does not inherit --server", path)
 		}
+		f := cmd.Flags().Lookup("api-base-url")
+		if f == nil {
+			t.Errorf("%v dropped --api-base-url with no deprecation release", path)
+			continue
+		}
+		// Hidden, and NOT cobra-deprecated: pflag's own notice goes to stdout
+		// and would corrupt --json. resolveServer warns on stderr instead.
+		if !f.Hidden {
+			t.Errorf("%v: --api-base-url must be hidden from help", path)
+		}
+		if f.Deprecated != "" {
+			t.Errorf("%v: cobra's deprecation notice prints to stdout; warn from resolveServer instead", path)
+		}
+	}
+}
+
+// The deprecated flag still routes, below an explicit --server.
+func TestDeprecatedAPIBaseFlagResolves(t *testing.T) {
+	root := buildRoot(t)
+	t.Cleanup(func() { auth.SetServer("", "default") })
+	cmd, _, err := root.Find([]string{"whoami"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("api-base-url", "https://legacy-flag.example"); err != nil {
+		t.Fatal(err)
+	}
+	auth.SetServer("", "default")
+	resolveServer(cmd)
+	if got := auth.Server(); got != "https://legacy-flag.example" {
+		t.Fatalf("server: got %q", got)
+	}
+	if got := auth.ServerSource(); got != "flag" {
+		t.Fatalf("source: got %q", got)
 	}
 }
 

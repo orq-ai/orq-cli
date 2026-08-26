@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"orq/cli/custom/auth"
-
 	survey "github.com/AlecAivazis/survey/v2"
 	isatty "github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
@@ -96,21 +94,4 @@ func selectWorkspace(workspaces []map[string]any, message string) (string, error
 		}
 	}
 	return "", errors.New("no workspace selected")
-}
-
-// serverURL is the host the root PreRun resolved for this invocation (see
-// custom.resolveServer). Empty means nothing overrode the default, which
-// auth.ResolveURLs then supplies.
-func serverURL() string { return auth.Server() }
-
-// sessionAPIBase prefers the resolved server over the host the session was
-// authenticated against, so --server still diverts a single call.
-func sessionAPIBase(session *auth.Session) string {
-	if v := serverURL(); v != "" {
-		return v
-	}
-	if session != nil {
-		return session.APIBaseURL
-	}
-	return ""
 }

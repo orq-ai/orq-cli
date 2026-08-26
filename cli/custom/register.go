@@ -196,6 +196,14 @@ func resolveServer(cmd *cobra.Command) {
 		// Read the flag, not viper's key: an explicitly typed --server has to
 		// win over anything else that lands on the same key.
 		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), "flag")
+	case cmd.Flags().Changed("api-base-url"):
+		// The pre-4.15 flag on the six auth/workspace/doctor commands, kept for
+		// one release (commands.DeprecatedAPIBaseFlag).
+		legacy, err := cmd.Flags().GetString("api-base-url")
+		if err == nil {
+			commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
+			auth.SetServer(legacy, "flag")
+		}
 	case os.Getenv("ORQ_SERVER") != "":
 		auth.SetServer(os.Getenv("ORQ_SERVER"), "env")
 	case os.Getenv("ORQ_API_BASE_URL") != "":

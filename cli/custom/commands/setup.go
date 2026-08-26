@@ -1547,7 +1547,7 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 // webBaseFor derives the dashboard host, shared with doctor.
 func webBaseFor(apiBase string) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
-	if webBase == "" && apiBase == auth.DefaultAPIBaseURL {
+	if webBase == "" && auth.IsHostedAPIBase(apiBase) {
 		webBase = defaultWebBaseURL
 	}
 	return webBase

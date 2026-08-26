@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"orq/cli/custom/auth"
 )
 
 const (
@@ -199,7 +201,10 @@ func ShouldWarnMissingProviderPrefix(model string, normalize NormalizeModel) boo
 // follow the override instead of silently staying on production. Returns ""
 // on the default base — the hardcoded per-endpoint defaults win there.
 func deriveFromAPIBase(apiBase, path string) string {
-	if apiBase == "" || apiBase == DefaultGatewayAPIBaseURL {
+	// Both SaaS hostnames count as default: the CLI's own default moved from
+	// api.orq.ai to my.orq.ai, and deriving from the new one would rewrite
+	// every agent's gateway URL for a host change that is only cosmetic.
+	if apiBase == "" || auth.IsHostedAPIBase(apiBase) {
 		return ""
 	}
 	return strings.TrimSuffix(apiBase, "/") + path

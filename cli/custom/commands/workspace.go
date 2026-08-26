@@ -75,6 +75,7 @@ func newWorkspaceListCommand() *cobra.Command {
 			})
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	return cmd
 }
 
@@ -146,6 +147,7 @@ func newWorkspaceUseCommand() *cobra.Command {
 			return emit(report)
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	return cmd
 }
 

@@ -183,6 +183,7 @@ func NewDoctorCommand() *cobra.Command {
 			return emit(report)
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
 	return cmd
 }

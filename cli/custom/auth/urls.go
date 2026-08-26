@@ -6,7 +6,29 @@ import (
 	"strings"
 )
 
-const DefaultAPIBaseURL = "https://api.orq.ai"
+// DefaultAPIBaseURL is the host every URL hangs off when nothing overrides it.
+// It is the `servers[0]` entry of openapi.yaml, which is also what the
+// generated commands fall back to — one binary, one default. api.orq.ai
+// answers the same routes from the same origin and stays valid; it simply is
+// not the spec's own value, and two defaults meant one unflagged run could
+// straddle both.
+const DefaultAPIBaseURL = "https://my.orq.ai"
+
+// LegacyDefaultAPIBaseURL is what the CLI defaulted to before 4.15 and what
+// every session written by an older build still stores. Same origin, same
+// routes, different name — so it is not an override, and code deciding "is
+// this the hosted service or a self-hosted deployment?" must accept both.
+const LegacyDefaultAPIBaseURL = "https://api.orq.ai"
+
+// IsHostedAPIBase reports whether apiBase names orq's own SaaS under either of
+// its two interchangeable hostnames.
+func IsHostedAPIBase(apiBase string) bool {
+	switch trimTrailingSlash(strings.TrimSpace(apiBase)) {
+	case DefaultAPIBaseURL, LegacyDefaultAPIBaseURL:
+		return true
+	}
+	return false
+}
 
 // ProfileRPCPath is the Connect RPC that replaced the REST profile endpoint.
 // The old GET /v2/api/me was deleted when profiles moved to identity-api, so

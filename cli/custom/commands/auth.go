@@ -58,6 +58,7 @@ func NewLoginCommand() *cobra.Command {
 			})
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Preselect a workspace key")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "Do not try to open the browser automatically")
 	cmd.Flags().StringVar(&apiKey, "api-key", "", "Sign in with this API key instead of the browser")
@@ -238,6 +239,7 @@ func NewLogoutCommand() *cobra.Command {
 			return removalError(removeFailed)
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&force, "force", false, "Clear local credentials even if the server-side token revoke fails (implies --yes)")
 	cmd.Flags().BoolVar(&disconnect, "disconnect", false, "Also remove orq from this machine's coding agents, without asking")
@@ -287,6 +289,7 @@ func NewWhoAmICommand() *cobra.Command {
 			return emit(report)
 		},
 	}
+	DeprecatedAPIBaseFlag(cmd)
 	return cmd
 }
 
