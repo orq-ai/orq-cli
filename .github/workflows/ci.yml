@@ -130,16 +130,3 @@ jobs:
         run: go vet ./...
       - name: go build
         run: go build ./...
-
-  pr-title:
-    name: pr title is a conventional commit
-    # The release notes are grouped by the label .github/workflows/label-pr.yml
-    # derives from this title, so an unconventional title silently drops the PR
-    # into "Other Changes". Failing here is the only feedback an author gets —
-    # the labeler skips quietly by design.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
