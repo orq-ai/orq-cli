@@ -6,7 +6,7 @@
 
 **Architecture:** The skills tree is vendored from `orq-ai/assistant-plugins` at release time and embedded with `go:embed`. A new `cli/custom/skills` package materializes that tree into a content-addressed generation directory under the orq home, then projects it into each agent's skills directory as per-skill symlinks (copies where symlinks are unavailable), recording every link in a manifest. `orq connect skills` / `orq disconnect skills` drive it, the commands that touch skills (`launch`, `connect`, `disconnect`, `setup`) refresh stale views the manifest already records, `orq doctor` names what does not converge on its own, and `orq launch` gets skills for the session only.
 
-**Tech Stack:** Go 1.25, module `orq`, cobra commands under `cli/custom/commands`, launch plans under `cli/custom/launch`, stdlib only for the new package (`embed`, `crypto/sha256`, `encoding/json`, `os`, `path/filepath`).
+**Tech Stack:** Go 1.25, module `orq`, cobra commands under `cli/custom/commands`, launch plans under `cli/custom/launch`, stdlib for the new package (`embed`, `crypto/sha256`, `encoding/json`, `os`, `path/filepath`), plus `golang.org/x/sys` for the Windows file lock — `LockFileEx` has no stdlib binding, and the module was already an indirect dependency.
 
 **Spec:** `.context/RES-1409-spec.md` (Linear RES-1409)
 
@@ -1684,10 +1684,20 @@ git commit -m "feat(connect): group --status output by agent"
 
 ---
 
-### Task 8: Refresh on every command
+### Task 8: Refresh on the commands that touch skills
+
+> **Superseded.** This task was implemented as an unconditional
+> `PersistentPreRun`, and that put the whole skills path — a manifest read, a
+> lock, a directory walk — in front of every `orq` invocation, including
+> `orq --help`. Every data-loss bug in the package was reachable from a command
+> with nothing to do with skills. The refresh now runs for `launch`, `connect`,
+> `disconnect` and `setup` only (see `skillsCommand` in `cli/custom/register.go`),
+> and `orq doctor` names the drift that scoping leaves behind. Read the steps
+> below for the refresh logic, not for where it is wired.
 
 **Files:**
-- Modify: `cli/custom/run.go`
+- Modify: `cli/custom/register.go` (not `run.go`: the hook lives in
+  `installSkillsRefreshPreRun`)
 - Modify: `cli/custom/commands/connect_test.go`
 
 **Interfaces:**
@@ -2446,7 +2456,7 @@ git commit -m "feat(setup): capability picker with skills on by default"
 
 ## Self-Review
 
-**Spec coverage.** Every section of `.context/RES-1409-spec.md` maps to a task: source and embedding to Task 1, generation and collection to Task 2, manifest to Task 3, targets and environment variables to Task 4, projection, pruning and ownership to Task 5, the connect capability and dry run to Task 6, status to Task 7, refresh-on-any-call to Task 8, launch to Tasks 9 and 10, and the wizard to Task 11. Two spec items are deliberately absent as tasks: the `--purge` flag on disconnect, which the spec mentions once and which is a one-line addition to Task 6 if wanted, and the verification question about a per-harness "read skills from here" flag, which is research rather than implementation and would only remove work from Task 10.
+**Spec coverage.** Every section of `.context/RES-1409-spec.md` maps to a task: source and embedding to Task 1, generation and collection to Task 2, manifest to Task 3, targets and environment variables to Task 4, projection, pruning and ownership to Task 5, the connect capability and dry run to Task 6, status to Task 7, refresh to Task 8 (scoped to the skills commands rather than every call — see the note on that task), launch to Tasks 9 and 10, and the wizard to Task 11. Two spec items are deliberately absent as tasks: the `--purge` flag on disconnect, which the spec mentions once and which is a one-line addition to Task 6 if wanted, and the verification question about a per-harness "read skills from here" flag, which is research rather than implementation and would only remove work from Task 10.
 
 **Placeholder scan.** Two steps knowingly defer to the reader rather than showing final code: Task 11 Step 3 says to mirror `promptForAgents`'s existing selection widget rather than guessing its type names, and Task 9 Step 3 offers exporting the skills package's copier as the preferred alternative to duplicating it. Both are cases where the plan cannot know a name it has not read; the implementer must read the named function first. Everything else carries the code to write.
 

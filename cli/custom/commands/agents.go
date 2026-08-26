@@ -872,70 +872,80 @@ func dropDanglingKimiDefault(content string) string {
 	return out.String()
 }
 
-// skillsCheck reports two states nothing else converges on its own: recorded
-// links whose path is gone, and an install left behind by a CLI update.
+// skillsCheck reports the states nothing else converges on its own: a
+// recorded link whose path is gone, one whose path something else has taken
+// over, an install left behind by a CLI update, and a manifest that cannot be
+// read at all. Each is real, persistent, and otherwise invisible — refresh
+// acts on none of them between fingerprint changes, and on a foreign path it
+// never acts at all.
 //
-// A missing link is reported as not installed, not as damage: refresh only
-// reprojects a recorded link when the fingerprint moves, so between CLI
-// updates nothing puts it back, and nothing else says it is gone.
-// A stale install is repaired by refresh, but only on the commands that
-// touch skills (see skillsCommand in register.go), so someone who updates the
-// CLI and opens their agent directly stays on the old set until they run one.
-// Both are real, persistent, and invisible; naming them is doctor's job.
-//
-// Session links are excluded: they are created and destroyed by a live
-// `orq launch`, and their absence between sessions is not breakage.
+// The states come from skills.ReadStatus, not from a local os.Lstat: a path
+// existing is not a path being ours, and doctor calling a user-replaced
+// directory "installed" is exactly the gap that made the difference matter.
 //
 // Collapsed per directory, like connect --status's version: deleting a
 // skills directory records a dozen missing links, and a dozen lines pointing
 // at one remedy say nothing a count would not.
 func skillsCheck() (doctorCheck, bool) {
-	m, err := skills.LoadManifest()
-	if err != nil || m == nil {
+	status, err := skills.ReadStatus()
+	if err != nil {
+		// A manifest that exists and will not load is the one thing here the
+		// user cannot see any other way: every skills command fails against
+		// it, and doctor is where they come to find out why. Reporting no
+		// check at all would hide it precisely when there is something to
+		// report. A machine that never connected returns nil, nil instead.
+		return doctorCheck{
+			ID:      "skills",
+			Status:  "fail",
+			Message: fmt.Sprintf("the orq skills manifest could not be read: %v", err),
+		}, true
+	}
+	if status == nil || len(status.Links) == 0 {
 		return doctorCheck{}, false
 	}
-	recorded, missing := 0, 0
-	dirs := map[string]bool{}
-	for _, l := range m.Links {
-		if l.Session {
-			continue
-		}
-		recorded++
-		if _, statErr := os.Lstat(l.Path); statErr == nil {
-			continue
-		}
-		missing++
-		dirs[filepath.Dir(l.Path)] = true
-	}
-	if recorded == 0 {
-		return doctorCheck{}, false
-	}
+	recorded := len(status.Links)
+	missing := status.Count(skills.LinkMissing)
+	foreign := status.Count(skills.LinkForeign)
 	check := doctorCheck{
-		ID:      "skills",
-		Details: map[string]any{"recorded": recorded, "missing": missing},
+		ID: "skills",
+		Details: map[string]any{
+			"recorded": recorded,
+			"missing":  missing,
+			"foreign":  foreign,
+			"stale":    status.Stale,
+		},
 	}
-	stale := m.Fingerprint != skills.Fingerprint()
-	check.Details["stale"] = stale
-	if missing == 0 && !stale {
+	switch {
+	case missing == 0 && foreign == 0 && !status.Stale:
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
-		return check, true
-	}
-	if missing == 0 {
+	case missing > 0:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
+			missing, recorded, strings.Join(skillDirsIn(status, skills.LinkMissing), ", "))
+	case foreign > 0:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d of %d recorded orq skills are no longer ours — %s holds something orq did not put there, and orq will not update or delete it. Run 'orq disconnect skills' to stop tracking it",
+			foreign, recorded, strings.Join(skillDirsIn(status, skills.LinkForeign), ", "))
+	default:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d orq skills are from an older CLI version — run 'orq connect skills' to update them", recorded)
-		return check, true
 	}
-	check.Status = "warn"
-	check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
-		missing, recorded, strings.Join(sortedKeys(dirs), ", "))
 	return check, true
 }
 
-func sortedKeys(set map[string]bool) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, tilde(k))
+// skillDirsIn names the directories holding links in the given state, sorted
+// and home-abbreviated for display.
+func skillDirsIn(status *skills.Status, state skills.LinkState) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range status.Links {
+		dir := filepath.Dir(l.Path)
+		if l.State != state || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		out = append(out, tilde(dir))
 	}
 	sort.Strings(out)
 	return out

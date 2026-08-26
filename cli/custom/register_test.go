@@ -48,10 +48,10 @@ func TestSkillsRefreshHookTouchesNothingOnANeverConnectedMachine(t *testing.T) {
 
 // The hook makes an update take effect on the commands whose job involves
 // skills, and stays out of the way everywhere else. Simulating "an older
-// binary installed this" by staling the manifest'"'"'s recorded fingerprint proves
+// binary installed this" by staling the manifest's recorded fingerprint proves
 // the pre-run hook itself calls Refresh before the command body runs
 // (skills.SetFingerprintForTest, the seam skills_test.go uses to move the
-// *real* fingerprint, lives in that package'"'"'s own test scope and cannot drive
+// *real* fingerprint, lives in that package's own test scope and cannot drive
 // this from here).
 func TestSkillsRefreshHookFixesAStaleManifestBeforeTheCommandRuns(t *testing.T) {
 	home := t.TempDir()

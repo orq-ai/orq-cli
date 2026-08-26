@@ -297,7 +297,7 @@ func registerCommands(root *cobra.Command) {
 // the old set. That put a manifest read, a lock acquisition and a directory
 // walk in front of `orq --help`, and made every bug in this path — a wedged
 // lock, a bad prune — reachable from a command that has nothing to do with
-// skills. The convergence it bought back is now doctor'"'"'s job: it reports a
+// skills. The convergence it bought back is now doctor's job: it reports a
 // stale or incomplete install and names the one command that fixes it.
 //
 // root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
@@ -347,10 +347,11 @@ func installSkillsRefreshPreRun() {
 					len(res.Added), len(res.Removed))
 			}
 			// One line naming the remedy, not one raw Go error per broken
-			// link on every command for the rest of time. Refresh already
-			// advanced past them, so this stops as soon as the user repairs
-			// the directory — or on the next `orq connect skills`, which
-			// creates what is missing.
+			// link. Refresh leaves the fingerprint stale while any link is
+			// failing, so this repeats on every skills command until the user
+			// repairs the directory — which is the point: a warning printed
+			// once, about a link that stays broken, is a warning the user
+			// will miss.
 			if len(res.Failed) > 0 {
 				fmt.Fprintf(bartolocli.Stderr, "Warning: %d orq skill link(s) could not be updated — run 'orq connect skills' to repair them\n",
 					len(res.Failed))
@@ -362,6 +363,14 @@ func installSkillsRefreshPreRun() {
 			if len(res.Disowned) > 0 {
 				fmt.Fprintf(bartolocli.Stderr, "orq no longer manages %d path(s) in your skills directory and left them in place — remove them by hand if you no longer want them: %s\n",
 					len(res.Disowned), strings.Join(res.Disowned, ", "))
+			}
+			// A path we skipped but still record is inert: refresh will refuse
+			// to touch it on every future update, so the user's skills quietly
+			// stop tracking this CLI and nothing says so. Disowned paths are
+			// named above and are not repeated here.
+			if skipped := stillRecorded(res); len(skipped) > 0 {
+				fmt.Fprintf(bartolocli.Stderr, "Warning: orq did not update %d path(s) in your skills directory because something else now occupies them — run 'orq doctor' for the list\n",
+					len(skipped))
 			}
 		}
 		if err := skills.SweepDeadSessions(); err != nil {
@@ -431,6 +440,23 @@ func addHiddenAuthAliases(root *cobra.Command) {
 	}
 }
 
+// stillRecorded returns the skipped paths whose manifest record survived, so
+// the pre-run never names a path twice: Disowned is the subset that was
+// skipped and dropped, and it gets its own, more final, message.
+func stillRecorded(res *skills.Result) []string {
+	dropped := map[string]bool{}
+	for _, p := range res.Disowned {
+		dropped[p] = true
+	}
+	var out []string
+	for _, p := range res.Skipped {
+		if !dropped[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // skillsCommand reports whether cmd is one whose job involves the skills on
 // this machine, and therefore one that should converge them first.
 //
@@ -447,7 +473,8 @@ func skillsCommand(cmd *cobra.Command) bool {
 	}
 	switch top.Name() {
 	// launch installs session links; connect and disconnect are the whole
-	// point; setup runs connect. doctor is deliberately absent: it reports
+	// point; setup installs skills itself (see instrumentAgents in
+	// setup.go). doctor is deliberately absent: it reports
 	// what is on disk, and a diagnostic that repairs the thing it is
 	// diagnosing can never show you the state you called it about.
 	case "launch", "connect", "disconnect", "setup":

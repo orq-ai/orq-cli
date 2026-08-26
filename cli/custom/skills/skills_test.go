@@ -861,9 +861,14 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	if entries, readErr := os.ReadDir(filepath.Join(home, ".claude", "skills")); readErr == nil && len(entries) != 0 {
 		t.Errorf("a locked-out writer left %d unrecorded links on disk", len(entries))
 	}
-	// The other manifest writers must refuse for the same reason.
-	if _, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) {
-		t.Errorf("Install under a held lock: %v", err)
+	// The other manifest writers must refuse for the same reason, and must
+	// still hand back a Result: their callers report the error and then read
+	// the result anyway, so a nil here is a crash rather than a refusal.
+	if res, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+		t.Errorf("Install under a held lock: res=%v err=%v", res, err)
+	}
+	if res, err := Remove([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+		t.Errorf("Remove under a held lock: res=%v err=%v", res, err)
 	}
 }
 
@@ -1223,6 +1228,33 @@ func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 		if !strings.Contains(target, "next-release-partial") {
 			t.Errorf("%s still points at the old generation: %s", name, target)
 		}
+	}
+
+	// The failure must not be absorbed. Advancing the fingerprint past it
+	// would make the next Refresh a no-op, so codex would stay broken forever
+	// and the warning naming it would have been printed exactly once.
+	again, err := Refresh()
+	if err != nil {
+		t.Fatalf("second Refresh: %v", err)
+	}
+	if len(again.Failed) != len(names) {
+		t.Errorf("second Refresh reported %d failures, want %d: a failed link was never retried", len(again.Failed), len(names))
+	}
+
+	// Once the user repairs the directory, the retry lands and the state
+	// converges — the nagging is bounded by the repair, not by a counter.
+	if err := os.Remove(codexDir); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := Refresh()
+	if err != nil {
+		t.Fatalf("Refresh after repair: %v", err)
+	}
+	if len(repaired.Failed) != 0 {
+		t.Errorf("Failed = %d after the directory was repaired, want 0", len(repaired.Failed))
+	}
+	if m, err := LoadManifest(); err != nil || m == nil || m.Fingerprint != Fingerprint() {
+		t.Errorf("a converged refresh did not record the fingerprint: %v %v", m, err)
 	}
 }
 
