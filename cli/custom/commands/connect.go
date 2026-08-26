@@ -600,7 +600,7 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 		if !global && !scopeAware {
 			// A warning, not a refusal: the entry the user asked for still
 			// lands, it just lands in the only file this agent reads.
-			rep.warn("%-8s %-9s reads MCP config from one place only — writing the machine-wide file", id, capMCP)
+			warnGlobalOnlyMCPScope(rep, id, "writing")
 		}
 		path, err := spec.mcpConfig(global)
 		switch {
@@ -629,6 +629,13 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 	return results, failed
 }
 
+// warnGlobalOnlyMCPScope says --local could not be honoured and what happened
+// instead. Both verbs say it: a removal that quietly took the machine-wide file
+// after being asked for the project one is the same surprise as a write that did.
+func warnGlobalOnlyMCPScope(rep *reporter, id, action string) {
+	rep.warn("%-8s %-9s reads MCP config from one place only — %s the machine-wide file", id, capMCP, action)
+}
+
 // mcpScopeAware reports whether the agent has a project scope at all. The
 // global-only resolvers return the same path for both answers, so asking the
 // resolver is the test — a second registry field could disagree with it.
@@ -644,6 +651,10 @@ func mcpScopeAware(spec agentSpec) bool {
 // mcpLoginLine names the one manual step an entry leaves behind. The entry
 // carries no credential, so the agent logs in to the server itself; this says
 // how, per agent, without shelling out to a program that may not be running.
+//
+// One table for the whole binary: doctor names the same command when it finds
+// an entry, and two copies of this would drift the moment an agent renames its
+// subcommand.
 func mcpLoginLine(id string) string {
 	switch id {
 	case "claude":
@@ -651,7 +662,7 @@ func mcpLoginLine(id string) string {
 	case "codex":
 		return "run 'codex mcp login " + launch.MCPServerName + "'"
 	case "opencode":
-		return "opencode prompts for the login on first use"
+		return "run 'opencode mcp auth " + launch.MCPServerName + "'"
 	case "kilo":
 		return "run 'kilo mcp auth " + launch.MCPServerName + "'"
 	case "kimi":
@@ -951,13 +962,22 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 // entry was found in; the file alone does not always say.
 type wiredTarget struct{ agent, capability, path, scope string }
 
-// wiredMCPTargets lists every scope holding this agent's MCP entry. wiredPath
+// wiredMCPTargets lists the scopes holding this agent's MCP entry. wiredPath
 // answers "is it wired at all" and stops at the first hit, which is right for
-// the gateway; disconnect removes an MCP entry from both scopes, and a preview
-// that named only the first would understate what it is about to do.
-func wiredMCPTargets(id string, spec agentSpec) []wiredTarget {
+// the gateway; a bare disconnect removes an MCP entry from both scopes, and a
+// preview that named only the first would understate what it is about to do.
+//
+// It is filtered through scopedPaths, the same resolution removeWiring uses, or
+// the destructive verb would list a file it is not going to touch: `orq
+// disconnect claude mcp --global` previewed the project entry too, asked
+// "Remove these?", and then removed only the global one.
+func wiredMCPTargets(id string, spec agentSpec, opts *setupOptions) []wiredTarget {
 	if spec.mcpConfig == nil || spec.mcpPresent == nil {
 		return nil
+	}
+	inScope := map[string]bool{}
+	for _, path := range scopedPaths(spec.mcpConfig, opts) {
+		inScope[path] = true
 	}
 	var out []wiredTarget
 	seen := map[string]bool{}
@@ -965,7 +985,7 @@ func wiredMCPTargets(id string, spec agentSpec) []wiredTarget {
 	// probing local first would label that shared file "local".
 	for _, global := range []bool{true, false} {
 		path, err := spec.mcpConfig(global)
-		if err != nil || path == "" || seen[path] || !spec.mcpPresent(path) {
+		if err != nil || path == "" || seen[path] || !inScope[path] || !spec.mcpPresent(path) {
 			continue
 		}
 		seen[path] = true
@@ -989,7 +1009,7 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 			}
 		}
 		if hasCap(caps, capMCP) {
-			out = append(out, wiredMCPTargets(id, spec)...)
+			out = append(out, wiredMCPTargets(id, spec, opts)...)
 		}
 	}
 	if hasCap(caps, capSkills) {
@@ -1131,6 +1151,9 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
 		}
 		if hasCap(caps, capMCP) {
+			if opts.scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {
+				warnGlobalOnlyMCPScope(rep, id, "removing from")
+			}
 			remove(capMCP, spec.mcpConfig, spec.removeMCP)
 		}
 		r.Removed = removedFrom
@@ -1171,11 +1194,13 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 // anyway would hang the scripts that pass it. --disconnect is how a script
 // opts in.
 func disconnectOnLogout(opts *setupOptions, assumeYes bool) ([]disconnectRow, bool) {
-	wired := detectedAgents()
 	// Every capability this binary writes, not just the gateway: a logout that
 	// removes the provider entry and leaves the MCP server and the skills behind
-	// undoes half of what `orq connect` wrote.
+	// undoes half of what `orq connect` wrote. The agent set has to widen with
+	// it — detectedAgents filters on writeProvider, which excludes claude, and
+	// claude is the agent most likely to be carrying both of the other two.
 	caps := availableCapabilities()
+	wired := agentsToInspect(caps)
 	targets := wiredTargets(wired, caps, opts)
 	if len(targets) == 0 {
 		return nil, false
@@ -1240,8 +1265,11 @@ func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
 			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — the ~/.mcp.json that would produce is not read as project config", tilde(home))
 		}
 	}
-	if !hasCap(caps, capMCP) && !hasCap(caps, capSkills) {
-		rep.warn("--local has nothing to scope here: the gateway is machine-wide for every agent")
+	// Only mcp reads the scope today. Suppressing this for skills as well would
+	// mean `orq connect skills --local` silently ignoring the flag until
+	// RES-1437 gives skills a project scope of its own.
+	if !hasCap(caps, capMCP) {
+		rep.warn("--local has nothing to scope here: only the mcp capability has a project scope")
 	}
 	return nil
 }
@@ -1322,5 +1350,43 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 	// per-agent progress lines say the same thing, so setup takes the screen
 	// and connect — which has no screen — keeps the lines.
 	opts.finalScreen = true
-	return instrumentAgents(rep, client, state, opts)
+	results, err := instrumentAgents(rep, client, state, opts)
+	if err != nil {
+		return nil, err
+	}
+	// The same leg connectSelected runs, for the same reason: setup offers mcp
+	// in its capability picker, so a setup that selected it and wrote no entry
+	// promises a wire it never made.
+	if hasCap(caps, capMCP) {
+		mcpResults, _ := connectMCP(rep, opts, agents)
+		results = applyMCPFailures(results, mcpResults)
+	}
+	return results, nil
+}
+
+// applyMCPFailures folds a failed MCP write into setup's per-agent results, so
+// the final screen and setup_complete agree with the terminal: an entry the user
+// asked for and did not get is not a complete setup. An agent with no row of its
+// own — a gateway-less agent in a run that wrote nothing else for it — gets one,
+// or the failure would reach the screen and not the verdict.
+func applyMCPFailures(results []agentResult, mcp []mcpResult) []agentResult {
+	for _, m := range mcp {
+		if m.Error == "" {
+			continue
+		}
+		found := false
+		for i := range results {
+			if results[i].Agent != m.Agent {
+				continue
+			}
+			found = true
+			if results[i].Error == "" {
+				results[i].Error = m.Error
+			}
+		}
+		if !found {
+			results = append(results, agentResult{Agent: m.Agent, Error: m.Error})
+		}
+	}
+	return results
 }

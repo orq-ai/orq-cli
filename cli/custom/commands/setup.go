@@ -1353,6 +1353,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
 		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
 		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
+		capMCP:     fmt.Sprintf("%-9s register the orq MCP server so the agent can reach your workspace", capMCP),
 	}
 	byOption := map[string]string{}
 	display := make([]string, 0, len(options))

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -407,6 +408,10 @@ func TestForeignMCPEntriesSurviveConnectAndDisconnect(t *testing.T) {
 	if err := os.WriteFile(kimiConfig, []byte(`{"mcpServers":{"orq":{"url":"https://api.orq.ai/v2/mcp","bearerTokenEnvVar":"ORQ_API_KEY"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Compared field by field, not just for presence: a write that kept the key
+	// and mangled the value inside it — dropping bearerTokenEnvVar, rewriting
+	// the url — is the corruption this test exists to catch.
+	foreign := mcpServersIn(t, kimiConfig)["orq"]
 
 	// Twice: the second write must be idempotent, not a second entry.
 	for range 2 {
@@ -416,8 +421,8 @@ func TestForeignMCPEntriesSurviveConnectAndDisconnect(t *testing.T) {
 	}
 	if servers := mcpServersIn(t, kimiConfig); servers[launch.MCPServerName] == nil {
 		t.Errorf("connect did not write %s: %v", launch.MCPServerName, servers)
-	} else if servers["orq"] == nil {
-		t.Errorf("connect dropped the foreign entry: %v", servers)
+	} else if !reflect.DeepEqual(servers["orq"], foreign) {
+		t.Errorf("connect changed the foreign entry:\n got: %v\nwant: %v", servers["orq"], foreign)
 	}
 
 	d := NewDisconnectCommand()
@@ -428,8 +433,8 @@ func TestForeignMCPEntriesSurviveConnectAndDisconnect(t *testing.T) {
 	if servers[launch.MCPServerName] != nil {
 		t.Errorf("disconnect left %s behind: %v", launch.MCPServerName, servers)
 	}
-	if servers["orq"] == nil {
-		t.Errorf("disconnect removed the foreign entry: %v", servers)
+	if !reflect.DeepEqual(servers["orq"], foreign) {
+		t.Errorf("disconnect changed the foreign entry:\n got: %v\nwant: %v", servers["orq"], foreign)
 	}
 	// claude was never named, so nothing in this run may have opened its config.
 	if got := string(mustRead(t, claudeConfig)); got != untouched {
@@ -1788,5 +1793,77 @@ func TestLocalScopeAgainstAGlobalOnlyAgentWarnsAndWritesGlobal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project, ".codex")); !os.IsNotExist(err) {
 		t.Error("--local created a project config codex would never read")
+	}
+}
+
+// The preview is a promise: wiredTargets says it "never lists a file it will
+// not touch", and on the destructive verb a scoped removal that listed both
+// scopes asked for consent to something it was not going to do.
+func TestScopedDisconnectPreviewsOnlyThatScope(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
+	for _, scope := range []string{"--local", "--global"} {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "mcp", scope})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %s: %v", scope, err)
+		}
+	}
+
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "mcp", "--global", "--dry-run"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, ".claude.json") {
+		t.Errorf("the global entry was not previewed:\n%s", out)
+	}
+	if strings.Contains(out, filepath.Join(project, ".mcp.json")) {
+		t.Errorf("--global previewed the project entry it will not remove:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude.json")); err != nil {
+		t.Errorf("the dry run removed something: %v", err)
+	}
+}
+
+// The removal side says the same thing the write side does: a --local removal
+// that quietly took the machine-wide file is the same surprise as a write that
+// did, and only the write side used to say so.
+func TestScopedDisconnectWarnsForAGlobalOnlyAgent(t *testing.T) {
+	mcpMachine(t, ".codex")
+	c := NewConnectCommand()
+	c.SetArgs([]string{"codex", "mcp"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"codex", "mcp", "--local"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "one place only") {
+		t.Errorf("the removal scope was silently ignored:\n%s", out)
+	}
+}
+
+// skills has no project scope until RES-1437, so --local on a run that asks for
+// nothing scope-capable must say the flag did nothing rather than imply it did.
+func TestLocalWarnsWhenNothingInTheRunHasAScope(t *testing.T) {
+	mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "skills", "--local"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "only the mcp capability has a project scope") {
+		t.Errorf("--local was silently ignored for a skills-only run:\n%s", out)
 	}
 }
