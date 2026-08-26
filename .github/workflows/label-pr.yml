@@ -4,9 +4,8 @@ name: Label PR
 # auto-generated release notes (.github/release.yml) categorize it. CI enforces
 # the title format, so the label always derives.
 #
-# Labels are the ones the repo already had (bug/documentation/enhancement) plus
-# chore/ci/refactor, rather than a parallel feature/fix/docs vocabulary that
-# would leave humans and this workflow labelling the same thing differently.
+# The release:* labels below are reserved for this workflow's automation. They
+# intentionally remain separate from repository and human-applied labels.
 on:
   pull_request_target:
     # No `synchronize`: pushes cannot change the title, only `edited` can.
@@ -24,10 +23,11 @@ jobs:
         with:
           script: |
             const MAP = {
-              feat: 'enhancement', fix: 'bug', perf: 'bug', revert: 'bug',
-              docs: 'documentation',
-              chore: 'chore', ci: 'ci', refactor: 'refactor',
-              build: 'chore', test: 'chore', style: 'chore',
+              feat: 'release:features',
+              fix: 'release:bug-fixes', perf: 'release:bug-fixes', revert: 'release:bug-fixes',
+              docs: 'release:documentation',
+              chore: 'release:maintenance', ci: 'release:maintenance', refactor: 'release:maintenance',
+              build: 'release:maintenance', test: 'release:maintenance', style: 'release:maintenance',
             };
             const title = context.payload.pull_request.title || '';
             const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
@@ -46,8 +46,8 @@ jobs:
               issue_number: context.payload.pull_request.number,
             };
             // A retitled PR must end up in exactly one release-notes category, so
-            // drop the label this workflow applied before. Only labels in MAP are
-            // touched — anything a human added by hand survives.
+            // drop any stale release:* label this workflow owns. Human-applied
+            // labels, including similarly named non-release labels, survive.
             const owned = new Set(Object.values(MAP));
             const current = context.payload.pull_request.labels.map((l) => l.name);
             for (const stale of current.filter((n) => owned.has(n) && n !== label)) {

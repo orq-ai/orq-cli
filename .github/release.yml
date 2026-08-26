@@ -4,29 +4,28 @@
 # attributions; CHANGELOG.md remains the hand-written source of truth for the
 # stability contract.
 #
-# Every label here is applied by .github/workflows/label-pr.yml — keep the two in
-# sync, or a category silently stops matching anything.
+# The release:* namespace is reserved for .github/workflows/label-pr.yml. Keep
+# these workflow-owned labels synchronized with that workflow's mapping.
 changelog:
   exclude:
     labels:
       - ignore-for-release
     authors:
+      - dependabot[bot]
       - dependabot
   categories:
     - title: 🚀 Features
       labels:
-        - enhancement
+        - release:features
     - title: 🐛 Bug Fixes
       labels:
-        - bug
+        - release:bug-fixes
     - title: 📚 Documentation
       labels:
-        - documentation
+        - release:documentation
     - title: 🧰 Maintenance
       labels:
-        - chore
-        - ci
-        - refactor
+        - release:maintenance
     - title: Other Changes
       labels:
         - "*"
