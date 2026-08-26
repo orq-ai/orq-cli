@@ -706,9 +706,43 @@ func writeCodexMCPTOML(path, url string) error {
 // codexOwnedMCPTable claims exactly the orq-workspace table (and any nested
 // under it), so stripping it for a rewrite leaves every other table in
 // config.toml — the user's own MCP servers included — byte-identical.
+//
+// Compares normalized segments, not the raw header string: TOML allows a
+// dotted key segment to be quoted (`[mcp_servers."orq-workspace"]` is the
+// same table as `[mcp_servers.orq-workspace]`), and a hand-written or
+// tool-written quoted header that a raw comparison failed to claim would be
+// left behind, then duplicated by the next write — a config.toml with two
+// `[mcp_servers.orq-workspace]` tables is not valid TOML and codex would
+// refuse to load it at all.
 func codexOwnedMCPTable(header string) bool {
-	return header == "[mcp_servers."+launch.MCPServerName+"]" ||
-		strings.HasPrefix(header, "[mcp_servers."+launch.MCPServerName+".")
+	segments := normalizeTOMLHeaderSegments(header)
+	want := []string{"mcp_servers", launch.MCPServerName}
+	if len(segments) < len(want) {
+		return false
+	}
+	for i, w := range want {
+		if segments[i] != w {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeTOMLHeaderSegments splits a table header into its dotted
+// segments, stripping the brackets and unquoting each segment so
+// `[a."b".c]`, `[a.b.c]`, and `[ a . b . c ]` all normalize the same way.
+func normalizeTOMLHeaderSegments(header string) []string {
+	trimmed := strings.TrimSpace(header)
+	trimmed = strings.TrimPrefix(trimmed, "[")
+	trimmed = strings.TrimSuffix(trimmed, "]")
+	parts := strings.Split(trimmed, ".")
+	segments := make([]string, len(parts))
+	for i, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.Trim(p, `"'`)
+		segments[i] = p
+	}
+	return segments
 }
 
 // ============================================================================
@@ -924,7 +958,10 @@ func removeJSONKeys(path, section string, keys ...string) (bool, error) {
 			return true, os.Remove(path)
 		}
 	}
-	return true, writeJSONConfig(path, cfg)
+	// writeJSONConfigMode, not writeJSONConfig: a project .mcp.json was written
+	// 0644 by writeMCPJSON, and rewriting it here through the 0600 default would
+	// narrow it right back — the mode discipline has to hold in both directions.
+	return true, writeJSONConfigMode(path, cfg, mcpFileMode(path))
 }
 
 // stripTOMLTables drops every table whose header the predicate claims,

@@ -83,6 +83,53 @@ func TestMCPCredentialCanary(t *testing.T) {
 	}
 }
 
+// TestMCPRegistryRoundTrip drives each MCP-capable registry row through its
+// own trio — spec.writeMCP, spec.mcpPresent, spec.removeMCP — rather than
+// calling the underlying helpers (jsonProviderPresentAt, removeJSONKeys, …)
+// directly with hand-written keys. The format-level tests elsewhere in this
+// file cover the shapes; this one is the guard against a registry row whose
+// writer, reader, and remover disagree with each other — e.g. a writeMCP
+// that writes "mcpServers" paired with a removeMCP still pointed at "mcp".
+// Such a row would satisfy every other test here and still leave a dangling
+// entry behind on every 'orq disconnect'.
+func TestMCPRegistryRoundTrip(t *testing.T) {
+	for _, spec := range mcpAgents(t) {
+		t.Run(spec.ID, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("CODEX_HOME", "")
+			chdirTemp(t)
+
+			path, err := spec.mcpConfig(true)
+			if err != nil {
+				t.Fatalf("resolving global path: %v", err)
+			}
+
+			if spec.mcpPresent(path) {
+				t.Fatalf("%s: mcpPresent true before any write", spec.ID)
+			}
+
+			if err := spec.writeMCP(path, "https://api.orq.ai/v2/mcp"); err != nil {
+				t.Fatalf("%s: writeMCP: %v", spec.ID, err)
+			}
+			if !spec.mcpPresent(path) {
+				t.Fatalf("%s: writeMCP → mcpPresent(%s) is false; writer and reader disagree on key/format", spec.ID, path)
+			}
+
+			removed, err := spec.removeMCP(path)
+			if err != nil {
+				t.Fatalf("%s: removeMCP: %v", spec.ID, err)
+			}
+			if !removed {
+				t.Fatalf("%s: removeMCP reported nothing removed, but mcpPresent said it was there", spec.ID)
+			}
+			if spec.mcpPresent(path) {
+				t.Fatalf("%s: still mcpPresent(%s) after removeMCP; writer/remover disagree on key/format", spec.ID, path)
+			}
+		})
+	}
+}
+
 // chdirTemp points cwd at a scratch directory for the length of the test, so
 // project-scoped resolvers (claude, kimi) do not touch the real repo. It
 // returns the directory as os.Getwd() will report it back — on macOS that is
@@ -468,6 +515,55 @@ func TestCodexMCPPreservesForeignTables(t *testing.T) {
 	}
 	if strings.Contains(string(data), launch.MCPServerName) {
 		t.Fatalf("orq-workspace table survived remove:\n%s", data)
+	}
+}
+
+// TestCodexOwnedMCPTableAcceptsQuotedHeader is legal TOML that a naive
+// string comparison misses: [mcp_servers."orq-workspace"] names the same
+// table as [mcp_servers.orq-workspace]. Failing to claim it means the next
+// write appends a second table with the same effective name, which codex
+// cannot parse at all — data loss, not a cosmetic mismatch.
+func TestCodexOwnedMCPTableAcceptsQuotedHeader(t *testing.T) {
+	quoted := `[mcp_servers."` + launch.MCPServerName + `"]`
+	if !codexOwnedMCPTable(quoted) {
+		t.Fatalf("codexOwnedMCPTable did not claim the quoted header %q", quoted)
+	}
+	spaced := `[ mcp_servers . "` + launch.MCPServerName + `" ]`
+	if !codexOwnedMCPTable(spaced) {
+		t.Fatalf("codexOwnedMCPTable did not claim the spaced/quoted header %q", spaced)
+	}
+	// A different server must still be left alone.
+	if codexOwnedMCPTable(`[mcp_servers."some-other-server"]`) {
+		t.Fatal("codexOwnedMCPTable claimed an unrelated quoted table")
+	}
+}
+
+// TestCodexMCPRewriteClaimsQuotedLegacyEntry is the end-to-end version: a
+// hand-written or third-party-written quoted header on disk must be claimed
+// (not duplicated) by the next writeCodexMCPTOML call.
+func TestCodexMCPRewriteClaimsQuotedLegacyEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	seed := `[mcp_servers."` + launch.MCPServerName + `"]` + "\n" +
+		`url = "https://stale.example/v2/mcp"` + "\n"
+	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+
+	if err := writeCodexMCPTOML(path, "https://api.orq.ai/v2/mcp"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading: %v", err)
+	}
+	if strings.Count(string(data), "mcp_servers") != 1 {
+		t.Fatalf("quoted legacy table was duplicated rather than claimed:\n%s", data)
+	}
+	if strings.Contains(string(data), "stale.example") {
+		t.Fatalf("stale URL survived the rewrite:\n%s", data)
+	}
+	if !tomlTablePresent("mcp_servers." + launch.MCPServerName)(path) {
+		t.Fatalf("rewritten table does not parse as mcp_servers.%s:\n%s", launch.MCPServerName, data)
 	}
 }
 
