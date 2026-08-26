@@ -1,9 +1,12 @@
 name: Label PR
 
 # Auto-label a PR from its conventional-commit title prefix so GitHub's
-# auto-generated release notes (.github/release.yml) categorize it. The release
-# pipeline publishes with `gh release create --generate-notes`, which reads those
-# categories, so a correctly-prefixed PR title is all a change needs.
+# auto-generated release notes (.github/release.yml) categorize it. CI enforces
+# the title format, so the label always derives.
+#
+# Labels are the ones the repo already had (bug/documentation/enhancement) plus
+# chore/ci/refactor, rather than a parallel feature/fix/docs vocabulary that
+# would leave humans and this workflow labelling the same thing differently.
 on:
   pull_request_target:
     # No `synchronize`: pushes cannot change the title, only `edited` can.
@@ -16,15 +19,13 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      # SHA-pinned like the other privileged workflows (release.yml,
-      # release-pipeline.yml): this runs as `pull_request_target` with write scope.
+      # SHA-pinned because this runs as `pull_request_target` with a write token.
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            // conventional-commit type -> release-notes label
             const MAP = {
-              feat: 'feature', fix: 'fix', perf: 'fix', revert: 'fix',
-              docs: 'docs',
+              feat: 'enhancement', fix: 'bug', perf: 'bug', revert: 'bug',
+              docs: 'documentation',
               chore: 'chore', ci: 'ci', refactor: 'refactor',
               build: 'chore', test: 'chore', style: 'chore',
             };
@@ -39,11 +40,20 @@ jobs:
               core.info(`No mapping for type "${m[1]}"`);
               return;
             }
-            // addLabels creates the label if it does not exist yet.
-            await github.rest.issues.addLabels({
+            const issue = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
-              labels: [label],
-            });
+            };
+            // A retitled PR must end up in exactly one release-notes category, so
+            // drop the label this workflow applied before. Only labels in MAP are
+            // touched — anything a human added by hand survives.
+            const owned = new Set(Object.values(MAP));
+            const current = context.payload.pull_request.labels.map((l) => l.name);
+            for (const stale of current.filter((n) => owned.has(n) && n !== label)) {
+              await github.rest.issues.removeLabel({ ...issue, name: stale });
+              core.info(`Removed stale label: ${stale}`);
+            }
+            // addLabels creates the label if it does not exist yet.
+            await github.rest.issues.addLabels({ ...issue, labels: [label] });
             core.info(`Applied label: ${label}`);

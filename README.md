@@ -440,6 +440,13 @@ make tidy               # go mod tidy
 make doctor             # run the doctor command
 ```
 
+### Contributing
+
+PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`) — CI fails
+otherwise. The title drives the label a PR gets and therefore which section of the
+generated release notes it lands in. See [AGENTS.md](AGENTS.md) for the full type →
+label table and the rest of the repo conventions.
+
 ### Regenerating from OpenAPI
 
 ```sh
