@@ -14,6 +14,7 @@ from pathlib import Path
 
 CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
 UNRELEASED = "## Unreleased"
+RELEASE_URL = "https://github.com/orq-ai/orq-cli/releases/tag/v{}"
 
 
 def stamp(text: str, version: str, date: str) -> tuple[str, str]:
@@ -27,7 +28,8 @@ def stamp(text: str, version: str, date: str) -> tuple[str, str]:
     body = text[body_start:body_end].strip("\n")
     if not body.strip():
         return text, ""
-    stamped = f"{UNRELEASED}\n\n## {version} — {date}\n"
+    heading = f"[{version}]({RELEASE_URL.format(version)})"
+    stamped = f"{UNRELEASED}\n\n## {heading} — {date}\n"
     return text[:start] + stamped + text[body_start:], body
 
 
@@ -35,7 +37,8 @@ def self_test() -> None:
     before = "# Changelog\n\n## Unreleased\n\n- **Added:** a thing.\n\n## Earlier\n\nold\n"
     after, body = stamp(before, "5.1.0", "2026-01-02")
     assert body == "- **Added:** a thing.", body
-    assert "## Unreleased\n\n## 5.1.0 — 2026-01-02\n\n- **Added:** a thing." in after, after
+    link = "## [5.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.0) — 2026-01-02"
+    assert f"## Unreleased\n\n{link}\n\n- **Added:** a thing." in after, after
     assert after.endswith("## Earlier\n\nold\n"), after
     # Stamping twice in a row must not invent an empty version section.
     again, body2 = stamp(after, "5.1.1", "2026-01-03")
