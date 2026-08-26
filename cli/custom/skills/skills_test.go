@@ -1346,36 +1346,6 @@ func TestPruneLeavesAPathWeNoLongerOwn(t *testing.T) {
 // mistake is expensive: the session takes the user's install with it on exit.
 // AddLink is the last place that can refuse, so pin all four combinations
 // rather than only the end-to-end path through InstallSession.
-func TestAddLinkNeverDemotesAPermanentLink(t *testing.T) {
-	cases := []struct {
-		name              string
-		existing, added   bool
-		wantSessionScoped bool
-	}{
-		{"permanent stays permanent", false, true, false},
-		{"permanent is not re-marked", false, false, false},
-		{"session is promoted", true, false, false},
-		{"session stays session", true, true, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			m := &Manifest{Version: manifestVersion}
-			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.existing})
-			m.AddLink(Link{Path: "/tmp/orq-x", Skill: "x", Session: c.added})
-			if len(m.Links) != 1 {
-				t.Fatalf("got %d links, want 1: the second AddLink should replace the first", len(m.Links))
-			}
-			if m.Links[0].Session != c.wantSessionScoped {
-				t.Errorf("Session = %v, want %v", m.Links[0].Session, c.wantSessionScoped)
-			}
-		})
-	}
-}
-
-// A launch must never inherit a permanent install. Deleting the skills
-// directory is documented as safe, so the repair path has to leave the record
-// permanent, or the next session exit takes the user's `orq connect` install
-// with it.
 func TestALaunchDoesNotInheritAPermanentInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

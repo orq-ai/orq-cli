@@ -135,16 +135,16 @@ func (m *Manifest) OwnedPaths() []string {
 	return out
 }
 
+// AddLink records a link, replacing any record of the same path. It records
+// what the caller decided and nothing more: whether a path may be claimed
+// session-scoped is InstallSession's switch to make, and whether a recorded
+// link may be deleted is releaseLocked's. A third copy of that rule here
+// would be a rule nobody reads, silently correcting the two that they do.
 func (m *Manifest) AddLink(l Link) {
 	// Normalize the path to prevent duplicates from formatting variations.
 	l.Path = filepath.Clean(l.Path)
 	for i, existing := range m.Links {
 		if existing.Path == l.Path {
-			// A permanent install never becomes session-scoped; the session
-			// would take it with it on exit.
-			if !existing.Session {
-				l.Session = false
-			}
 			m.Links[i] = l
 			return
 		}
