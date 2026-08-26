@@ -52,6 +52,16 @@ type agentSpec struct {
 	// providerKey reads back the embedded credential. A literal copy cannot follow
 	// a renewal, so only reading it can tell a wired agent from a dead one.
 	providerKey func(path string) string
+	// mcpConfig returns the file holding the agent's MCP servers; nil when the agent has no MCP support.
+	mcpConfig func(global bool) (string, error)
+	// writeMCP writes the orq-workspace entry. No credential argument, by design: every
+	// MCP-capable agent authenticates by OAuth, and a signature that cannot carry a secret is
+	// what keeps e44c747's regression from returning.
+	writeMCP func(path, url string) error
+	// mcpPresent is writeMCP's read-side pair; required whenever writeMCP is set.
+	mcpPresent func(path string) bool
+	// removeMCP is writeMCP's inverse; required whenever writeMCP is set.
+	removeMCP func(path string) (bool, error)
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in order.
@@ -65,9 +75,13 @@ var preferredCodingModels = []string{
 func agentRegistry() []agentSpec {
 	return []agentSpec{
 		{
-			ID:     "claude",
-			Label:  "Claude Code",
-			detect: detectAny(".claude", ".claude.json"),
+			ID:         "claude",
+			Label:      "Claude Code",
+			detect:     detectAny(".claude", ".claude.json"),
+			mcpConfig:  projectOrGlobalPath(".mcp.json", ".claude.json"),
+			writeMCP:   writeMCPJSON("mcpServers", claudeMCPEntry),
+			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 		},
 		{
 			ID:    "codex",
@@ -78,6 +92,14 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeCodexProviderTOML,
 			removeProvider:  removeCodexProfile,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
+			// The base config.toml, not the orq.config.toml profile: MCP servers are
+			// not profile-scoped in codex, and writeCodexProviderTOML owns the
+			// profile file outright and rewrites it wholesale, so an entry placed
+			// there would be destroyed on the next 'orq connect gateway'.
+			mcpConfig:  codexPath("config.toml"),
+			writeMCP:   writeCodexMCPTOML,
+			mcpPresent: tomlTablePresent("mcp_servers." + launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeTOMLTables(p, codexOwnedMCPTable) },
 		},
 		{
 			ID:    "opencode",
@@ -88,6 +110,10 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
+			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
+			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
+			mcpPresent:      jsonProviderPresentAt("mcp", launch.MCPServerName),
+			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", launch.MCPServerName) },
 		},
 		{
 			ID:     "kimi",
@@ -100,6 +126,11 @@ func agentRegistry() []agentSpec {
 			providerPresent:   tomlTablePresent("providers." + launch.KimiChatProvider),
 			providerEmbedsKey: true,
 			providerKey:       tomlStringAt("providers." + launch.KimiChatProvider + ".api_key"),
+			// Kimi's MCP config, unlike its provider TOML, has a project scope too.
+			mcpConfig:  projectOrGlobalPath(".kimi-code/mcp.json", ".kimi-code/mcp.json"),
+			writeMCP:   writeMCPJSON("mcpServers", kimiMCPEntry),
+			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 		},
 		{
 			ID:    "kilo",
@@ -110,6 +141,11 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
+			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
+			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
+			// The shipped kilo binary reads kilo.jsonc as well as kilo.json; writes still go to .json.
+			mcpPresent: kiloMCPPresent,
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcp", launch.MCPServerName) },
 		},
 		{
 			ID:     "pi",
@@ -148,6 +184,25 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, rel), nil
+	}
+}
+
+// projectOrGlobalPath resolves the project copy for global=false and the home copy for
+// global=true. Only claude and kimi have two scopes; everything else keeps alwaysGlobalPath.
+func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error) {
+	return func(global bool) (string, error) {
+		if !global {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(cwd, projectRel), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, globalRel), nil
 	}
 }
 
@@ -256,6 +311,13 @@ func readJSONConfig(path string) (map[string]any, error) {
 
 // writeJSONConfig writes atomically and backs the target up once: some of these files (~/.claude.json) hold the agent's entire user state.
 func writeJSONConfig(path string, cfg map[string]any) error {
+	return writeJSONConfigMode(path, cfg, 0o600)
+}
+
+// writeJSONConfigMode is writeJSONConfig with a caller-chosen file mode. A
+// project ./.mcp.json is meant to be committed, and Claude itself creates it
+// 0644 — narrowing it to writeJSONConfig's default 0600 would fight that.
+func writeJSONConfigMode(path string, cfg map[string]any, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -291,7 +353,7 @@ func writeJSONConfig(path string, cfg map[string]any) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpName, 0o600); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)
@@ -547,6 +609,106 @@ func orqOwnedKimiTable(header, body string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================================
+// MCP entry writers — the orq-workspace server, no credential ever included.
+// ============================================================================
+
+// claudeMCPEntry is claude's mcpServers value: a plain streamable-HTTP remote.
+// Claude authenticates it via 'claude mcp login', not a config field.
+func claudeMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "http", "url": url}
+}
+
+// kimiMCPEntry is kimi's mcpServers value — url only; kimi's own 'kimi mcp
+// auth' drives the OAuth flow, same as claude.
+func kimiMCPEntry(url string) map[string]any {
+	return map[string]any{"url": url}
+}
+
+// remoteMCPEntry is the opencode/kilo mcp value; both share the SDK-defined
+// McpRemoteConfig shape and start OAuth (including dynamic client
+// registration) automatically when no credential is configured.
+func remoteMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "remote", "url": url, "enabled": true}
+}
+
+// writeMCPJSON writes the orq-workspace entry into a JSON config under the
+// given section key ("mcpServers" for claude/kimi, "mcp" for opencode/kilo).
+// The whole entry is assigned rather than merged into, so a v4.13.10 leftover
+// carrying "Authorization": "Bearer {env:ORQ_API_KEY}" is upgraded to the
+// headerless shape in place.
+func writeMCPJSON(key string, entry func(url string) map[string]any) func(path, url string) error {
+	return func(path, url string) error {
+		cfg, err := readJSONConfig(path)
+		if err != nil {
+			return err
+		}
+		servers, err := nestedMap(cfg, key)
+		if err != nil {
+			return err
+		}
+		servers[launch.MCPServerName] = entry(url)
+		return writeJSONConfigMode(path, cfg, mcpFileMode(path))
+	}
+}
+
+// mcpFileMode preserves an existing file's mode so a write never narrows it,
+// and otherwise gives a project-scoped .mcp.json the 0644 Claude itself
+// creates it with — it is meant to be committed and shared with a team.
+// Every other MCP config keeps writeJSONConfig's default 0600.
+func mcpFileMode(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	if filepath.Base(path) == ".mcp.json" {
+		return 0o644
+	}
+	return 0o600
+}
+
+// kiloMCPPresent checks kilo.json, which is where we write, and kilo.jsonc,
+// which the shipped kilo binary also reads — an entry made directly against
+// the jsonc file must still read back as wired.
+func kiloMCPPresent(path string) bool {
+	check := jsonProviderPresentAt("mcp", launch.MCPServerName)
+	if check(path) {
+		return true
+	}
+	if strings.HasSuffix(path, ".json") {
+		return check(path + "c")
+	}
+	return false
+}
+
+// writeCodexMCPTOML merges the orq-workspace table into codex's base
+// config.toml, the file codex always reads. writeCodexProviderTOML owns the
+// profile file outright and rewrites it wholesale, so MCP — which codex does
+// not scope by profile — cannot live there without being destroyed on the
+// next 'orq connect gateway'.
+func writeCodexMCPTOML(path, url string) error {
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	kept, _ := stripTOMLTables(string(data), codexOwnedMCPTable)
+	if kept = strings.TrimRight(kept, "\n"); kept != "" {
+		kept += "\n\n"
+	}
+	block := fmt.Sprintf("[mcp_servers.%s]\nurl = %s\n", launch.MCPServerName, launch.TOMLString(url))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(kept+block), 0o600)
+}
+
+// codexOwnedMCPTable claims exactly the orq-workspace table (and any nested
+// under it), so stripping it for a rewrite leaves every other table in
+// config.toml — the user's own MCP servers included — byte-identical.
+func codexOwnedMCPTable(header string) bool {
+	return header == "[mcp_servers."+launch.MCPServerName+"]" ||
+		strings.HasPrefix(header, "[mcp_servers."+launch.MCPServerName+".")
 }
 
 // ============================================================================
