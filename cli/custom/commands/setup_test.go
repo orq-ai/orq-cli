@@ -675,6 +675,9 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "api-keys"):
 			fmt.Fprintf(w, `{"token":%q}`, minted)
 		case strings.Contains(r.URL.Path, "model"):
@@ -684,8 +687,7 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
 			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
 		default:
-			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
-			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}`)
+			fmt.Fprint(w, `{}`)
 		}
 	}))
 	defer srv.Close()
@@ -1111,6 +1113,9 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
 		case r.Method == http.MethodPost:
 			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
 		case strings.Contains(r.URL.Path, "model"):
@@ -1118,8 +1123,7 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
 			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
 		default:
-			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
-			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}`)
+			fmt.Fprint(w, `{}`)
 		}
 	}))
 	defer srv.Close()
@@ -1182,6 +1186,9 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","display_name":"A",
+			 "workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
 		case r.Method == http.MethodPost:
 			fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"}}]}`)
 		case strings.Contains(r.URL.Path, "model"):
@@ -1189,9 +1196,7 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
 			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
 		default:
-			fmt.Fprint(w, `{"id":"u1","email":"a@b.c","display_name":"A",
-			 "workspaces":[{"key":"acme","name":"Acme"}],
-			 "preferences":{"active_workspace":"acme"}}`)
+			fmt.Fprint(w, `{}`)
 		}
 	}))
 	defer srv.Close()

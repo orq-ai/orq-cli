@@ -181,16 +181,21 @@ type Profile struct {
 	} `json:"preferences"`
 }
 
+// FetchProfile calls the identity-api ProfileService.GetProfile Connect RPC.
+// Connect unary calls are POSTs with a JSON request message, and the profile
+// arrives wrapped in the GetProfileResponse envelope.
 func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
-	var profile Profile
-	err := c.jsonRequest(http.MethodGet, c.URLs.ProfileBaseURL, accessToken, nil, &profile)
+	var resp struct {
+		Profile Profile `json:"profile"`
+	}
+	err := c.jsonRequest(http.MethodPost, c.URLs.ProfileBaseURL, accessToken, map[string]any{}, &resp)
 	if err != nil {
 		return nil, err
 	}
-	if profile.Workspaces == nil {
+	if resp.Profile.Workspaces == nil {
 		return nil, fmt.Errorf("invalid profile response from %s", c.URLs.ProfileBaseURL)
 	}
-	return &profile, nil
+	return &resp.Profile, nil
 }
 
 // ============================================================================

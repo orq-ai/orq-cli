@@ -8,6 +8,11 @@ import (
 
 const DefaultAPIBaseURL = "https://api.orq.ai"
 
+// ProfileRPCPath is the Connect RPC that replaced the REST profile endpoint.
+// The old GET /v2/api/me was deleted when profiles moved to identity-api, so
+// the profile fetch is a POST to this path instead.
+const ProfileRPCPath = "/v3/rpc/identity/orq.identity.v1.ProfileService/GetProfile"
+
 type URLs struct {
 	APIBaseURL     string `json:"api_base_url"`
 	V1BaseURL      string `json:"v1_base_url"`
@@ -53,7 +58,7 @@ func ResolveURLs(apiBase string) URLs {
 	v1 := deriveV1BaseURL(apiBase)
 	profile := strings.TrimSpace(os.Getenv("ORQ_PROFILE_BASE_URL"))
 	if profile == "" {
-		profile = v1 + "/me"
+		profile = apiBase + ProfileRPCPath
 	} else {
 		profile = trimTrailingSlash(profile)
 	}
