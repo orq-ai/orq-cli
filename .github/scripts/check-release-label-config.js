@@ -146,6 +146,71 @@ function requireWorkflowStatement(scriptSource, pattern, description) {
   return match;
 }
 
+function findWorkflowBlock(scriptSource, headerPattern, description) {
+  const header = requireWorkflowStatement(scriptSource, headerPattern, description);
+  const openBrace = scriptSource.indexOf('{', header.index);
+  let depth = 0;
+  let quote;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = openBrace; index < scriptSource.length; index += 1) {
+    const character = scriptSource[index];
+    const nextCharacter = scriptSource[index + 1];
+
+    if (inLineComment) {
+      if (character === '\n') inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (character === '*' && nextCharacter === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+      } else if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (character === '/' && nextCharacter === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '/' && nextCharacter === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return { index: header.index, contents: scriptSource.slice(openBrace + 1, index) };
+      }
+    }
+  }
+  throw new Error(`label workflow ${description} has no closing block`);
+}
+
+function requireWorkflowReturnBlock(scriptSource, headerPattern, description) {
+  const block = findWorkflowBlock(scriptSource, headerPattern, description);
+  if (!/\breturn\s*;/.test(block.contents)) {
+    throw new Error(`label workflow ${description}`);
+  }
+  return block;
+}
+
 function parseWorkflowTransition(workflowSource) {
   const scriptSource = extractLabelScript(workflowSource);
   const map = parseMap(scriptSource);
@@ -179,14 +244,14 @@ function parseWorkflowTransition(workflowSource) {
     /for \(const stale of current\s*\.map\(\(currentLabel\) => currentLabel\.name\)\s*\.filter\(\(name\) => owned\.has\(name\) && name !== label\)\) \{\s*await github\.rest\.issues\.removeLabel\(\{ \.\.\.issue, name: stale \}\);/s,
     'does not remove exactly stale owned labels',
   );
-  const invalid = requireWorkflowStatement(
+  const invalid = requireWorkflowReturnBlock(
     scriptSource,
-    /if \(!m\) \{[\s\S]*?return;\s*\}/,
+    /if \(!m\) \{/,
     'does not return after cleaning up an invalid title',
   );
-  const unmapped = requireWorkflowStatement(
+  const unmapped = requireWorkflowReturnBlock(
     scriptSource,
-    /if \(!label\) \{[\s\S]*?return;\s*\}/,
+    /if \(!label\) \{/,
     'does not return after cleaning up an unmapped title',
   );
   const provision = requireWorkflowStatement(
