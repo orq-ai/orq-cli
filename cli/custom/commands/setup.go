@@ -157,6 +157,10 @@ wins over a key left exported in your shell.`),
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.StringSliceVar(&opts.caps, "capability", nil,
 		"Capabilities to connect ("+strings.Join(availableCapabilities(), ", ")+"); repeatable")
+	// The same pair connect and disconnect carry, for the same capabilities.
+	// On setup they pre-answer the wizard's scope question, which is how a
+	// non-interactive run — install.sh, CI — names a scope at all.
+	addScopeFlags(f, &opts)
 	return cmd
 }
 
@@ -1290,7 +1294,12 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 	return models[0], true
 }
 
-func promptForAgents(rep *reporter) ([]string, error) {
+// promptForAgents offers the agents that can receive one of the capabilities
+// this run selected. Filtering on writeProvider alone — which it used to do —
+// hid claude, the one agent with no gateway provider config and the most common
+// MCP agent there is, from every picker; agentReceives is the same question
+// agentsToConnect asks for the bare-connect path.
+func promptForAgents(rep *reporter, caps []string) ([]string, error) {
 	registry := agentRegistry()
 	options := make([]string, 0, len(registry))
 	byOption := map[string]string{}
@@ -1298,7 +1307,7 @@ func promptForAgents(rep *reporter) ([]string, error) {
 
 	detected := []string{}
 	for _, spec := range registry {
-		if spec.writeProvider == nil {
+		if !agentReceives(spec, caps) {
 			continue
 		}
 		label := fmt.Sprintf("%-9s %s", spec.ID, spec.Label)
@@ -1318,7 +1327,7 @@ func promptForAgents(rep *reporter) ([]string, error) {
 		Message: "Instrument which agents?",
 		Options: options,
 		Default: defaults,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(chosen))
@@ -1361,12 +1370,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 	// dropUnavailableCaps then stripped with "not available yet" — offering a
 	// choice and refusing it one keystroke later.
 	options := availableCapabilities()
-	labels := map[string]string{
-		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
-		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
-		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
-		capMCP:     fmt.Sprintf("%-9s register the orq MCP server so the agent can reach your workspace", capMCP),
-	}
+	labels := capabilityLabels()
 	byOption := map[string]string{}
 	display := make([]string, 0, len(options))
 	for _, c := range options {
@@ -1384,7 +1388,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 		Message: "What should orq connect?",
 		Options: display,
 		Default: defaults,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return nil, err
 	}
 	caps := make([]string, 0, len(chosen))
@@ -1392,6 +1396,82 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 		caps = append(caps, byOption[label])
 	}
 	return dropUnavailableCaps(rep, caps), nil
+}
+
+// capabilityLabels is the one-line description the picker shows per capability.
+// Its own function so a capability that reaches availableCapabilities without a
+// label here is a test failure rather than a blank row in the picker.
+//
+// mcp names the login because the entry carries no credential: the agent
+// authenticates to the server itself, and a user who expects the wire to be
+// finished when setup exits would otherwise meet that step unannounced.
+func capabilityLabels() map[string]string {
+	return map[string]string{
+		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
+		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
+		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
+		capMCP:     fmt.Sprintf("%-9s give the agent orq's MCP tools (the agent logs in itself)", capMCP),
+	}
+}
+
+// resolveScope settles where the scope-capable capabilities write, before
+// anything writes. A named flag is the answer; otherwise an interactive run
+// asks and everything else takes global.
+//
+// Global is the default because every other artifact `orq setup` writes is
+// machine-global, and install.sh runs setup non-interactively from wherever the
+// user happens to be — a local default would give that one directory MCP tools
+// and no other, silently. There is no inference: the working directory never
+// decides this, only the prompt or the flag.
+func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
+	if opts.scopeGlobal || opts.scopeLocal || opts.noInput || opts.yes {
+		return nil
+	}
+	if !scopeMatters(caps) {
+		return nil
+	}
+	global, err := promptForScope()
+	if err != nil {
+		return err
+	}
+	opts.scopeGlobal, opts.scopeLocal = global, !global
+	// The same refusal a typed --local gets: a project scope answered from a
+	// directory that is not a project writes a file the agent never reads.
+	return checkScopeFlags(rep, opts, caps)
+}
+
+// scopeMatters answers "would either answer change what this run writes?". Only
+// mcp reads the scope today — skills joins it in RES-1437 through these same
+// flags — and only an agent with two MCP config paths has anywhere else to put
+// the entry, so anyone else is asked a question whose answer nothing consults.
+func scopeMatters(caps []string) bool {
+	if !hasCap(caps, capMCP) {
+		return false
+	}
+	for _, spec := range agentRegistry() {
+		if spec.detect() && spec.writeMCP != nil && mcpScopeAware(spec) {
+			return true
+		}
+	}
+	return false
+}
+
+// promptForScope is one question for every scope-capable capability rather than
+// one each: the answer is the same kind of answer, and asking twice in a
+// four-question wizard buys nothing. Global leads because it is the default.
+func promptForScope() (bool, error) {
+	globalOption := fmt.Sprintf("%-9s every project on this machine", "global")
+	localOption := fmt.Sprintf("%-9s this project only", "local")
+
+	var chosen string
+	if err := survey.AskOne(&survey.Select{
+		Message: "Where should MCP and skills go?",
+		Options: []string{globalOption, localOption},
+		Default: globalOption,
+	}, &chosen, promptStdio()); err != nil {
+		return false, err
+	}
+	return chosen == globalOption, nil
 }
 
 // ============================================================================

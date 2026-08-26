@@ -86,21 +86,26 @@ func detectedAgents() []string {
 	return out
 }
 
-// agentsToConnect is the agent set a bare command writes to. "Which agents can
-// receive this?" is a different question per capability: the gateway needs a
-// provider config to write, skills need a directory the agent reads, mcp needs
-// an entry writer. Filtering all three on writeProvider left claude — the one
-// agent that receives skills and an MCP entry but has no provider config, and
-// the most common machine there is — out of every bare skills or mcp run.
+// agentReceives answers "can this agent receive one of these capabilities?",
+// which is a different question per capability: the gateway needs a provider
+// config to write, skills need a directory the agent reads, mcp needs an entry
+// writer. Filtering all three on writeProvider left claude — the one agent that
+// receives skills and an MCP entry but has no provider config, and the most
+// common machine there is — out of every bare skills or mcp run.
+//
+// Shared with setup's agent picker so the wizard and the bare command offer the
+// same set; two copies of this rule drifted into exactly the bug above.
+func agentReceives(spec agentSpec, caps []string) bool {
+	return (hasCap(caps, capGateway) && spec.writeProvider != nil) ||
+		(hasCap(caps, capSkills) && skills.Receives(spec.ID)) ||
+		(hasCap(caps, capMCP) && spec.writeMCP != nil)
+}
+
+// agentsToConnect is the agent set a bare command writes to.
 func agentsToConnect(caps []string) []string {
-	wantSkills := hasCap(caps, capSkills)
-	wantMCP := hasCap(caps, capMCP)
 	var out []string
 	for _, spec := range agentRegistry() {
-		if !spec.detect() {
-			continue
-		}
-		if spec.writeProvider != nil || (wantSkills && skills.Receives(spec.ID)) || (wantMCP && spec.writeMCP != nil) {
+		if spec.detect() && agentReceives(spec, caps) {
 			out = append(out, spec.ID)
 		}
 	}
@@ -465,7 +470,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 			if saved, _ := savedAPIKey(); capsNeedCredential(caps) && saved == "" && strings.TrimSpace(opts.apiKey) == "" && UserEnvAPIKey() == "" {
 				rep.info("no API key on this machine — you'll be asked to set one up before wiring")
 			}
-			agents, err = promptForAgents(rep)
+			agents, err = promptForAgents(rep, caps)
 			if err != nil {
 				return fmt.Errorf("cancelled at the agent selection: %w", err)
 			}
@@ -1335,7 +1340,29 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		rep.info("Next: orq connect — anytime, same credential")
 		return nil, nil
 	}
-	agents, err := promptForAgents(rep)
+	// Capabilities first, then scope, then agents. The scope question belongs
+	// immediately after the capability picker that raises it, and the agent
+	// picker cannot run before either: which agents can receive anything is a
+	// question about the capabilities this run selected (see agentReceives).
+	caps, err := resolveCapabilities(rep, opts)
+	if err != nil {
+		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
+	}
+	if len(caps) == 0 {
+		rep.info("nothing selected — orq connect wires an agent anytime")
+		return nil, nil
+	}
+	opts.caps = caps
+	opts.noGateway = !hasCap(caps, capGateway)
+
+	if err := checkScopeFlags(rep, opts, caps); err != nil {
+		return nil, err
+	}
+	if err := resolveScope(rep, opts, caps); err != nil {
+		return nil, fmt.Errorf("setup cancelled at the scope selection: %w", err)
+	}
+
+	agents, err := promptForAgents(rep, caps)
 	if err != nil {
 		return nil, fmt.Errorf("setup cancelled at the agent selection: %w", err)
 	}
@@ -1344,13 +1371,6 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 		return nil, nil
 	}
 	opts.agents = agents
-
-	caps, err := resolveCapabilities(rep, opts)
-	if err != nil {
-		return nil, fmt.Errorf("setup cancelled at the capability selection: %w", err)
-	}
-	opts.caps = caps
-	opts.noGateway = !hasCap(caps, capGateway)
 	// setup ends on the final screen, which lists every wire per agent. The
 	// per-agent progress lines say the same thing, so setup takes the screen
 	// and connect — which has no screen — keeps the lines.

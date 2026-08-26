@@ -900,11 +900,20 @@ func TestConnectCommandShape(t *testing.T) {
 // The v4.13 spellings and the interim --coding-agent must fail at parse time
 // rather than be silently ignored; agent selection lives on connect as
 // positional arguments.
+//
+// --global/--local are not on that list: they name a scope, not an agent, and
+// they are the only way a non-interactive setup answers the wizard's scope
+// question.
 func TestSetupHasNoAgentFlags(t *testing.T) {
 	f := NewSetupCommand().Flags()
-	for _, name := range []string{"agent", "no-agent", "coding-agent", "no-coding-agents", "no-gateway", "global", "local"} {
+	for _, name := range []string{"agent", "no-agent", "coding-agent", "no-coding-agents", "no-gateway"} {
 		if f.Lookup(name) != nil {
 			t.Errorf("setup still has --%s", name)
+		}
+	}
+	for _, name := range []string{"global", "local"} {
+		if f.Lookup(name) == nil {
+			t.Errorf("setup missing the scope flag --%s", name)
 		}
 	}
 	cmd := NewSetupCommand()
@@ -2578,5 +2587,132 @@ func TestSetupDoesNotReportEachWireTwice(t *testing.T) {
 	printFinalScreen(&reporter{w: &screen}, []agentResult{res}, map[string]string{}, true, &setupOptions{})
 	if !strings.Contains(screen.String(), "(137 models)") {
 		t.Errorf("the count has nowhere left to appear:\n%s", screen.String())
+	}
+}
+
+// ============================================================================
+// The scope question (Task 3)
+// ============================================================================
+
+// Every capability the picker offers needs a label: an option built from a
+// missing map entry renders as a blank row the user cannot tell apart.
+func TestCapabilityPickerLabelsEveryOfferedCapability(t *testing.T) {
+	labels := capabilityLabels()
+	for _, c := range availableCapabilities() {
+		if strings.TrimSpace(labels[c]) == "" {
+			t.Errorf("capability %q has no picker label", c)
+		}
+		if !strings.HasPrefix(labels[c], c) {
+			t.Errorf("label %q does not name %q first", labels[c], c)
+		}
+	}
+	if !hasCap(availableCapabilities(), capMCP) {
+		t.Error("the picker no longer offers mcp")
+	}
+}
+
+// The prompt is a prompt, not output: a non-interactive run takes global and
+// asks nothing. survey has no terminal here, so a prompt would fail the test
+// rather than pass it quietly.
+func TestSetupScopeDefaultsToGlobalWithoutAsking(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, opts := range []*setupOptions{{noInput: true}, {yes: true}} {
+		if err := resolveScope(newReporter(true), opts, []string{capMCP}); err != nil {
+			t.Fatalf("resolveScope: %v", err)
+		}
+		if opts.scopeLocal {
+			t.Errorf("opts %+v took a local scope nobody asked for", opts)
+		}
+		if !mcpWriteScope(opts) {
+			t.Errorf("opts %+v does not write globally", opts)
+		}
+	}
+}
+
+// A named flag is the answer, so the prompt never runs and --local survives it.
+func TestSetupScopeFlagPreAnswersThePrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &setupOptions{scopeLocal: true}
+	if err := resolveScope(newReporter(true), opts, []string{capMCP}); err != nil {
+		t.Fatalf("resolveScope: %v", err)
+	}
+	if !opts.scopeLocal || opts.scopeGlobal {
+		t.Errorf("--local was not preserved: %+v", opts)
+	}
+	if mcpWriteScope(opts) {
+		t.Error("--local still wrote globally")
+	}
+}
+
+// Nothing in a gateway-only run reads a scope, so asking would be asking a
+// question whose answer nothing consults.
+func TestSetupScopeIsNotAskedWhenNothingScopes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if scopeMatters([]string{capGateway, capSkills}) {
+		t.Error("a run without mcp asked about scope")
+	}
+	opts := &setupOptions{}
+	if err := resolveScope(newReporter(true), opts, []string{capGateway}); err != nil {
+		t.Fatalf("resolveScope: %v", err)
+	}
+	if opts.scopeGlobal || opts.scopeLocal {
+		t.Errorf("an unasked question still answered itself: %+v", opts)
+	}
+}
+
+// Only an agent with two MCP config paths has anywhere else to put the entry.
+func TestSetupScopeMattersOnlyForATwoScopeAgent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if scopeMatters([]string{capMCP}) {
+		t.Error("scope mattered on a machine with no agent at all")
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !scopeMatters([]string{capMCP}) {
+		t.Error("claude has two MCP scopes and was not asked about")
+	}
+}
+
+// setup's agent picker offered only agents with a gateway provider config,
+// which is every agent except claude — the one that receives an MCP entry and
+// the most common MCP agent there is. It asks the same question connect does.
+func TestSetupAgentPickerOffersClaudeForMCP(t *testing.T) {
+	claude, ok := lookupAgent("claude")
+	if !ok {
+		t.Fatal("no claude in the registry")
+	}
+	if !agentReceives(claude, []string{capMCP}) {
+		t.Error("claude cannot be offered an MCP entry it can receive")
+	}
+	if agentReceives(claude, []string{capGateway}) {
+		t.Error("claude was offered the gateway, which it has no config for")
+	}
+
+	pi, ok := lookupAgent("pi")
+	if !ok {
+		t.Fatal("no pi in the registry")
+	}
+	if agentReceives(pi, []string{capMCP}) {
+		t.Error("pi has no MCP writer and must not be offered for mcp")
+	}
+	if !agentReceives(pi, []string{capGateway}) {
+		t.Error("pi lost the gateway it does receive")
 	}
 }
