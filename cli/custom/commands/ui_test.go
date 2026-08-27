@@ -135,3 +135,58 @@ func TestPrintTableGoldens(t *testing.T) {
 		})
 	}
 }
+
+// printWiredTable's two pieces of display logic — the agent name printed once
+// per group, and the SCOPE column that appears only when a row has a scope —
+// are invisible to connect_test.go's substring assertions: dropping either
+// leaves that suite green.
+func TestPrintWiredTable(t *testing.T) {
+	rows := func(targets ...wiredTarget) (order []string, byAgent map[string][]wiredTarget) {
+		byAgent = map[string][]wiredTarget{}
+		for _, w := range targets {
+			if _, seen := byAgent[w.agent]; !seen {
+				order = append(order, w.agent)
+			}
+			byAgent[w.agent] = append(byAgent[w.agent], w)
+		}
+		return order, byAgent
+	}
+	cases := []struct {
+		name    string
+		targets []wiredTarget
+		want    string
+	}{
+		{
+			name: "name printed once per agent, no SCOPE column",
+			targets: []wiredTarget{
+				{agent: "opencode", capability: "gateway", path: "/a"},
+				{agent: "opencode", capability: "skills", path: "/b"},
+				{agent: "pi", capability: "gateway", path: "/c"},
+			},
+			want: "     AGENT     CAPABILITY  LOCATION\n" +
+				"  ✓  opencode  gateway     /a\n" +
+				"  ✓            skills      /b\n" +
+				"  ✓  pi        gateway     /c\n",
+		},
+		{
+			name: "SCOPE column appears when any row is scoped",
+			targets: []wiredTarget{
+				{agent: "claude", capability: "mcp", path: "/a", scope: "user"},
+				{agent: "claude", capability: "skills", path: "/b"},
+			},
+			want: "     AGENT   CAPABILITY  SCOPE  LOCATION\n" +
+				"  ✓  claude  mcp         user   /a\n" +
+				"  ✓          skills             /b\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			order, byAgent := rows(tc.targets...)
+			printWiredTable(&reporter{w: &buf}, order, byAgent)
+			if got := buf.String(); got != tc.want {
+				t.Errorf("printWiredTable output\n got: %q\nwant: %q", got, tc.want)
+			}
+		})
+	}
+}
