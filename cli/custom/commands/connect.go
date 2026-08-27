@@ -175,13 +175,6 @@ func manifestSkillAgents() []string {
 	return out
 }
 
-// capsNeedCredential reports whether any requested capability talks to orq.
-// Skills are embedded in this binary and unpack onto the local filesystem, so
-// asking for a credential before installing them stands a network prompt in
-// front of an operation that is pure file I/O — and makes the offline install
-// the spec promises impossible. An MCP entry is credential-free for a different
-// reason: it is a URL and nothing else, and the agent logs in to that server
-// itself over OAuth, so nothing this command writes needs a key either.
 // credentialFreeCaps is what is left of a request once the credential is known
 // to be unavailable: everything this binary can still do from its own contents.
 func credentialFreeCaps(caps []string) []string {
@@ -196,6 +189,13 @@ func credentialFreeCaps(caps []string) []string {
 
 func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP }
 
+// capsNeedCredential reports whether any requested capability talks to orq.
+// Skills are embedded in this binary and unpack onto the local filesystem, so
+// asking for a credential before installing them stands a network prompt in
+// front of an operation that is pure file I/O — and makes the offline install
+// the spec promises impossible. An MCP entry is credential-free for a different
+// reason: it is a URL and nothing else, and the agent logs in to that server
+// itself over OAuth, so nothing this command writes needs a key either.
 func capsNeedCredential(caps []string) bool {
 	for _, c := range caps {
 		if !credentialFreeCap(c) {
@@ -341,8 +341,14 @@ Agents: ` + strings.Join(agentIDs(), ", ") + `.`),
 // capability writes into the scope they name today, and RES-1437 gives skills
 // the same treatment through these same flags rather than a second pair.
 func addScopeFlags(f *pflag.FlagSet, opts *setupOptions) {
-	f.BoolVar(&opts.scopeGlobal, "global", false, "Write to the machine-wide config (the default)")
-	f.BoolVar(&opts.scopeLocal, "local", false, "Write to this project only")
+	// Var, not BoolVar: both flags drive one tri-state field, so "--global
+	// --local" fails at parse time and no reader downstream can observe a
+	// scope that is two things at once. NoOptDefVal keeps them boolean flags
+	// the user types bare.
+	f.Var(&scopeFlag{&opts.scope, scopeGlobal}, "global", "Write to the machine-wide config (the default)")
+	f.Var(&scopeFlag{&opts.scope, scopeLocal}, "local", "Write to this project only")
+	f.Lookup("global").NoOptDefVal = "true"
+	f.Lookup("local").NoOptDefVal = "true"
 }
 
 // runConnectStatus is the read-only view of on-disk wiring. It never prompts and
@@ -380,7 +386,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	// which write scope flags the caller supplied. The flags are still validated
 	// above so contradictory input cannot silently win by precedence.
 	statusOpts := *opts
-	statusOpts.scopeGlobal, statusOpts.scopeLocal = false, false
+	statusOpts.scope = scopeUnset
 	wired := wiredTargets(agents, caps, &statusOpts)
 	if len(wired) == 0 {
 		rep.info(nothingWired(named, agents))
@@ -595,7 +601,10 @@ type mcpResult struct {
 // a URL and nothing else, and each agent authenticates to that server itself,
 // which is what the login line after every write is for.
 func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []mcpResult, failed bool) {
-	url := launch.MCPURLFor(apiBaseFromEnv())
+	// launch.APIBaseFor, not apiBaseFromEnv: the entry has to name the same
+	// server the session would, and a self-hosted login keeps its base in the
+	// session rather than in the environment.
+	url := launch.MCPURLFor(launch.APIBaseFor(os.Getenv))
 	global := mcpWriteScope(opts)
 	for _, id := range agents {
 		spec, ok := lookupAgent(id)
@@ -652,6 +661,22 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 // after being asked for the project one is the same surprise as a write that did.
 func warnGlobalOnlyMCPScope(rep *reporter, id, action string) {
 	rep.warn("%-8s %-9s reads MCP config from one place only — %s the machine-wide file", id, capMCP, action)
+}
+
+// mcpEntryPresent answers launch's "is this agent already wired?" from the
+// registry, across both scopes — the same reader `--status`, `doctor` and
+// `disconnect` use, so launch cannot disagree with them about what is on disk.
+func mcpEntryPresent(agent string) bool {
+	spec, ok := lookupAgent(agent)
+	if !ok || spec.mcpConfig == nil || spec.mcpPresent == nil {
+		return false
+	}
+	for _, path := range bothScopePaths(spec.mcpConfig) {
+		if spec.mcpPresent(path) {
+			return true
+		}
+	}
+	return false
 }
 
 // mcpScopeAware reports whether the agent has a project scope at all. The
@@ -994,7 +1019,7 @@ func wiredMCPTargets(id string, spec agentSpec, opts *setupOptions) []wiredTarge
 		return nil
 	}
 	inScope := map[string]bool{}
-	for _, path := range scopedPaths(spec.mcpConfig, opts) {
+	for _, path := range scopedPaths(capMCP, spec.mcpConfig, opts) {
 		inScope[path] = true
 	}
 	var out []wiredTarget
@@ -1144,7 +1169,7 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 			if resolve == nil || remover == nil {
 				return
 			}
-			for _, path := range scopedPaths(resolve, opts) {
+			for _, path := range scopedPaths(cap, resolve, opts) {
 				removed, err := remover(path)
 				switch {
 				case err != nil:
@@ -1169,7 +1194,7 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
 		}
 		if hasCap(caps, capMCP) {
-			if opts.scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {
+			if opts.scope == scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {
 				warnGlobalOnlyMCPScope(rep, id, "removing from")
 			}
 			remove(capMCP, spec.mcpConfig, spec.removeMCP)
@@ -1263,38 +1288,64 @@ func reportCredentialSurvives(rep *reporter) {
 }
 
 // checkScopeFlags rejects the two things --local can mean that the user cannot
-// have. The pair is mutually exclusive with a message rather than a silent
-// precedence rule, and --local from $HOME is refused outright: it would write a
-// ~/.mcp.json, which is not project config and which Claude never reads, so the
-// run would report a wire that does nothing.
+// have. Naming both is already a parse error (scopeFlag), so what is left is
+// --local from $HOME: $HOME is not a project, and the ~/.mcp.json it would
+// produce follows the user into every session started from home instead of
+// scoping anything.
 //
 // A --local run that scopes nothing is a warning, not a failure: the gateway is
 // machine-wide for every agent (every provider resolver is home- or env-rooted),
 // so the flag is ignorable rather than wrong.
 func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
-	if opts.scopeGlobal && opts.scopeLocal {
-		return errors.New("--global and --local ask for opposite things — name one")
-	}
-	if !opts.scopeLocal {
+	if opts.scope != scopeLocal {
 		return nil
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		if cwd, cerr := os.Getwd(); cerr == nil && sameDir(cwd, home) {
-			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — the ~/.mcp.json that would produce is not read as project config", tilde(home))
+			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — the ~/.mcp.json that would produce applies to every session you start from home rather than to one project. Use --global", tilde(home))
 		}
 	}
-	// Only mcp reads the scope today. Suppressing this for skills as well would
-	// mean `orq connect skills --local` silently ignoring the flag until
-	// RES-1437 gives skills a project scope of its own.
-	if !hasCap(caps, capMCP) {
+	// Named per capability, not once for the run: everything unscoped in this
+	// run is about to be written machine-wide despite the flag, and saying so
+	// is the difference between a warning and a wire the user did not ask for.
+	unscoped := unscopedCaps(caps)
+	switch {
+	case len(unscoped) == len(caps):
 		rep.warn("--local has nothing to scope here: only the mcp capability has a project scope")
+	case len(unscoped) > 0:
+		rep.warn("--local scopes mcp only: %s %s machine-wide either way", strings.Join(unscoped, " and "), plural(len(unscoped), "is", "are"))
 	}
 	return nil
 }
 
+// capScoped reports whether a capability has a project scope at all. Only mcp
+// does today; RES-1437 adds skills. Scope is a property of the capability, not
+// of the run, so `orq disconnect codex --local` cannot narrow to a project and
+// then delete the machine-wide gateway anyway.
+func capScoped(cap string) bool { return cap == capMCP }
+
+// unscopedCaps is the requested capabilities a named scope cannot reach.
+func unscopedCaps(caps []string) []string {
+	var out []string
+	for _, c := range caps {
+		if !capScoped(c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // mcpWriteScope is the scope a write lands in: the flag when one was named,
-// global otherwise. checkScopeFlags has already rejected naming both.
-func mcpWriteScope(opts *setupOptions) bool { return !opts.scopeLocal }
+// global otherwise. A write has to pick one, so scopeUnset resolves to global
+// here — unlike a removal, which takes both.
+func mcpWriteScope(opts *setupOptions) bool { return opts.scope != scopeLocal }
 
 // scopeLabel names a scope for the reader. "local" rather than "project"
 // because that is the flag the user types to reach it.
@@ -1309,11 +1360,18 @@ func scopeLabel(global bool) string {
 // from that one, naming none removes from both. Both is the default because a
 // project-scoped entry would otherwise survive every `orq disconnect` run by
 // anyone who does not remember which scope it landed in.
-func scopedPaths(resolve func(bool) (string, error), opts *setupOptions) []string {
-	if !opts.scopeGlobal && !opts.scopeLocal {
+func scopedPaths(cap string, resolve func(bool) (string, error), opts *setupOptions) []string {
+	scope := opts.scope
+	// An unscoped capability ignores the flags entirely: its config is
+	// machine-wide, and honouring --local here would be a removal narrowed to a
+	// project that still deletes the only file there is.
+	if !capScoped(cap) {
+		scope = scopeUnset
+	}
+	if scope == scopeUnset {
 		return bothScopePaths(resolve)
 	}
-	path, err := resolve(opts.scopeGlobal)
+	path, err := resolve(scope == scopeGlobal)
 	if err != nil || path == "" {
 		return nil
 	}

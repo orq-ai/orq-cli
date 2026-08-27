@@ -54,6 +54,10 @@ Session tokens expire after an hour; use an API key for long sessions.`,
 				// this invocation's context for Ctrl-C during the approval
 				// poll. Launch owns the "offer to log in" decision; this only
 				// supplies the flow it cannot import.
+				// Same reason as LoginHook: launch cannot import this package,
+				// and the registry is the one place that knows where each
+				// agent keeps its MCP entry.
+				launch.PersistedMCPHook = mcpEntryPresent
 				launch.LoginHook = func() error {
 					_, err := deviceLogin(cmd.Context(), newReporter(false), &setupOptions{})
 					return err

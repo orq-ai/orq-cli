@@ -146,9 +146,19 @@ lands first owns the flag definitions and the other consumes them; they must not
 declared twice. Scope is meaningful for `mcp` and `skills`; naming one on a
 gateway-only run warns rather than silently doing nothing.
 
-Only Claude Code has two scopes: `./.mcp.json` (project) and `~/.claude.json` (global).
-Codex, opencode, kilo and kimi read MCP config from a fixed location, so `--local`
-against them warns and writes the global path.
+Scope is a property of the capability, not of the run. `--global` and `--local` bind to
+one tri-state field, so naming both is a parse error rather than a check every entry
+point has to remember, and "neither named" stays distinguishable from "global": a write
+takes global, a removal takes both scopes so a project entry cannot outlive every
+`orq disconnect` run. Path resolution takes the capability, so an unscoped capability
+ignores the flags entirely — `orq disconnect codex --local` cannot narrow to a project
+and then delete the machine-wide gateway anyway — and a `--local` run names the
+capabilities it could not scope instead of warning only when nothing scopes at all.
+
+Claude Code and Kimi Code have two scopes — claude `./.mcp.json` (project) and
+`~/.claude.json` (global), kimi `.kimi-code/mcp.json` at either root. Codex, opencode
+and kilo read MCP config from a fixed location, so `--local` against them warns and
+writes the global path.
 
 **Gateway is global-only, verified.** Every provider resolver in the registry is
 home- or env-rooted with no project variant: `alwaysGlobalPath` (opencode, kilo, kimi),
@@ -230,7 +240,7 @@ does not work: `launch/auth.go:51` records that the key `orq setup` mints does n
 carry `mcp_gateway`, so `SupportsMCP()` is "optimistic" — launch is wiring a credential
 that the MCP server is expected to reject.
 
-Two changes, both in `launch`:
+Three changes, all in `launch`:
 
 1. **Drop the credential from every launch MCP writer.** All five agents do OAuth; a
    bare URL is the correct entry in every one of their formats. This deletes the
@@ -241,12 +251,37 @@ Two changes, both in `launch`:
    `mcpPresent` on that agent's persisted config; if the entry is there, write nothing
    and let the persisted one serve. This is only correct where launch's injection sits
    *alongside* the agent's own config — claude (`--mcp-config` temp file,
-   `claude.go:82`) and codex (`-c` overrides, `mcp.go:148`). For kimi, launch points
-   `KIMI_CODE_HOME` at a temp dir (`kimi.go:75`), and the opencode family gets a whole
-   inline document via `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`
-   (`opencode.go:34`); there the persisted entry may not be visible at all, so launch
-   keeps writing — now headerless. Gate G3 settles which of those two the opencode
-   family is.
+   `claude.go:82`) and codex (`-c` overrides, `mcp.go:148`), and — G3 resolved — for
+   the opencode family, whose inline `OPENCODE_CONFIG_CONTENT` / `KILO_CONFIG_CONTENT`
+   document is merged over the persisted config rather than replacing it. Kimi is the
+   sole exception: launch points `KIMI_CODE_HOME` at a temp dir (`kimi.go:75`), so no
+   persisted file is on its search path and the session entry is always written.
+3. **MCP on by default, `--no-mcp` to opt out.** MCP was opt-in behind `--mcp` for two
+   reasons, and this design removes both. The first was the credential: a session entry
+   carrying a key the MCP server would reject is worth defaulting off, and there is no
+   credential now. The second was that MCP tool calls share the free plan's daily
+   request quota with model calls — accepted deliberately: an agent that cannot see the
+   workspace is the more common cost, the tools are the point of wiring them, and a
+   user who wants the quota back types `--no-mcp`. The default lives in `ParseArgv`,
+   which is the only place that applies it; the zero value of `GatewayFlags` is still
+   MCP off.
+
+   With the credential gone, nothing about the login session decides whether MCP works,
+   so the `SupportsMCP` / `MCPScoped` machinery and the "this login session predates MCP
+   scopes" notice go with it — the notice fired on every launch of a pre-scopes session
+   while MCP was in fact wired.
+
+The launch side does not carry its own copy of the per-agent MCP paths. `launch` cannot
+import `commands`, so the registry injects `launch.PersistedMCPHook` at wiring time, the
+same way it already injects `LoginHook` — one table, and the no-op check reads exactly
+what `connect`, `--status`, `doctor` and `disconnect` read.
+
+The opencode/kilo entry shape is `{"type": "remote", "url": …}` and nothing else, shared
+by both writers through `launch.RemoteMCPEntry`. `"oauth": true` is not a valid value:
+opencode types the field as `McpOAuthConfig | false`, and 1.17.20 rejects the whole
+config document with `Expected McpOAuthConfig | false, got true`, which would take the
+user's other MCP servers down with it. Omitting the key is what enables OAuth
+auto-detection, and `enabled` already defaults to true.
 
 URL resolution stays where it is: `ORQ_MCP_URL` → `deriveFromAPIBase(apiBase, "/v2/mcp")`
 → `DefaultMCPURL`, exported from `launch` and called by `connect` rather than copied,
@@ -278,7 +313,7 @@ Per agent, one line naming the login command — no shelling out, no blocking:
 | --- | --- |
 | claude | `run /mcp in Claude Code, or 'claude mcp login orq-workspace'` |
 | codex | `run 'codex mcp login orq-workspace'` |
-| opencode | opencode prompts on first use (status `needs_auth`) |
+| opencode | `run 'opencode mcp auth orq-workspace'` |
 | kilo | `run 'kilo mcp auth orq-workspace'` |
 | kimi | `run 'kimi mcp auth orq-workspace'` |
 
@@ -295,8 +330,9 @@ Per agent, one line naming the login command — no shelling out, no blocking:
   `bearerTokenEnvVar`, or any substring of a stored key. This is the test that keeps
   `e44c747`'s regression from returning, and it is the reason `writeMCP` takes no
   credential argument.
-- Launch/connect interaction: with a persisted entry present, `orq launch claude --mcp`
-  and `orq launch codex --mcp` inject nothing.
+- Launch/connect interaction: with a persisted entry present, `orq launch` injects
+  nothing for claude, codex, opencode or kilo — asserted per agent through the registry
+  writer, so the two sides cannot drift about what counts as wired.
 - Scope: `--local` writes `./.mcp.json` and leaves `~/.claude.json` untouched;
   `--global` the inverse; `--local` against a global-only agent warns and writes global;
   reads still find an entry in either scope.

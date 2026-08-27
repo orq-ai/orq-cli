@@ -101,8 +101,8 @@ func MCPURLFor(apiBase string) string {
 }
 
 // mcpURL returns the orq MCP endpoint for this launch, or "" with --no-mcp.
-// The API key is never embedded — each harness references the ORQ_API_KEY env
-// var through its own mechanism.
+// No credential is written anywhere: the URL is the whole entry, and every
+// harness authenticates this remote through its own OAuth flow.
 func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
 		return ""
@@ -116,58 +116,27 @@ func mcpURL(ctx *AgentContext) string {
 	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), MCPURLFor(apiBase))
 }
 
-// persistedMCPConfigured checks the configs that the agent reads alongside a
-// launch-owned session override. A persisted OAuth entry is authoritative, so
-// adding a second entry under the same name would only shadow it.
+// PersistedMCPHook reports whether an agent already carries an orq MCP entry in
+// a config it reads on its own. The commands package injects it at wiring time
+// from the same registry `orq connect` writes through: launch cannot import
+// that package, and the copy of the path-and-presence table that used to live
+// here had already drifted from it — different codex header rules, a missing
+// agent, one file of a two-file pair.
+var PersistedMCPHook func(agent string) bool
+
+// persistedMCPConfigured is the launch-side question: a persisted OAuth entry is
+// authoritative, so adding a second entry under the same name would only shadow
+// it. Unset hook means "cannot tell", which has to answer false — writing the
+// session entry is the recoverable mistake, suppressing it is not.
+//
+// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
+// persisted file is on its search path and the session entry must always be
+// written. pi has no MCP support at all.
 func persistedMCPConfigured(agent string) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	if PersistedMCPHook == nil {
 		return false
 	}
-	paths := []string{}
-	switch agent {
-	case "claude":
-		if cwd, err := os.Getwd(); err == nil {
-			paths = append(paths, filepath.Join(cwd, ".mcp.json"))
-		}
-		paths = append(paths, filepath.Join(home, ".claude.json"))
-	case "codex":
-		root := strings.TrimSpace(os.Getenv("CODEX_HOME"))
-		if root == "" {
-			root = filepath.Join(home, ".codex")
-		}
-		paths = append(paths, filepath.Join(root, "config.toml"))
-	case "opencode":
-		paths = append(paths, filepath.Join(home, ".config/opencode/opencode.json"))
-	case "kilo":
-		paths = append(paths, filepath.Join(home, ".config/kilo/kilo.json"), filepath.Join(home, ".config/kilo/kilo.jsonc"))
-	default:
-		return false
-	}
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		if strings.HasSuffix(path, ".toml") {
-			if strings.Contains(string(data), "[mcp_servers."+MCPServerName+"]") || strings.Contains(string(data), "[mcp_servers.\""+MCPServerName+"\"]") {
-				return true
-			}
-			continue
-		}
-		var raw map[string]any
-		if json.Unmarshal(data, &raw) != nil {
-			continue
-		}
-		for _, key := range []string{"mcpServers", "mcp"} {
-			if section, ok := raw[key].(map[string]any); ok {
-				if _, exists := section[MCPServerName]; exists {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return PersistedMCPHook(agent)
 }
 
 // claudeMCPConfig is the --mcp-config file payload. Claude authenticates the
@@ -208,13 +177,21 @@ func codexMCPArgs(url string) []string {
 // openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config.
 // OAuth is owned by the agent, not by this CLI.
 func openCodeMCPBlock(url string) map[string]any {
-	return map[string]any{
-		MCPServerName: map[string]any{
-			"type":  "remote",
-			"url":   url,
-			"oauth": true,
-		},
-	}
+	return map[string]any{MCPServerName: RemoteMCPEntry(url)}
+}
+
+// RemoteMCPEntry is the opencode/kilo mcp value, shared by the session config
+// launch injects and the persistent entry `orq connect` writes — one shape, so
+// the two cannot describe the same file two different ways.
+//
+// type and url only. The SDK's McpRemoteConfig types oauth as
+// `McpOAuthConfig | false`, so "oauth": true is not merely ignored: opencode
+// 1.17.20 rejects the whole document with "Expected McpOAuthConfig | false, got
+// true" and exits 1, taking the user's other MCP servers down with it. Omitting
+// the key is what turns OAuth auto-detection (RFC 9728 discovery, dynamic
+// client registration) on, and enabled defaults to true.
+func RemoteMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "remote", "url": url}
 }
 
 // writeSessionSkills symlinks the shipped skills into an agent directory the

@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,13 +50,50 @@ type setupOptions struct {
 	// wire per agent. The per-agent progress lines are that same report, so the
 	// two together printed each wire twice; only 'orq setup' sets it.
 	finalScreen bool
-	// scopeGlobal and scopeLocal are --global and --local, the scope a write
-	// lands in for the capabilities that have two (mcp today, skills next).
-	// Kept as the two raw flags rather than one boolean because "neither named"
-	// is a third state: it means global for a write and both scopes for a
-	// removal, and collapsing it early loses that.
-	scopeGlobal bool
-	scopeLocal  bool
+	// scope is --global / --local: where a write lands for the capabilities
+	// that have two places to put it (mcp today, skills next). Three-valued,
+	// not two bools: "neither named" is its own answer — global for a write,
+	// both scopes for a removal — and a pair of bools can also represent
+	// "both named", which is not an answer at all.
+	scope configScope
+}
+
+// configScope is where a scope-capable capability writes. scopeUnset is the
+// third state the flags can leave behind, and it is not the same as scopeGlobal:
+// an unset removal covers both scopes so a project entry cannot outlive every
+// `orq disconnect` run by whoever forgot which scope it landed in.
+type configScope int
+
+const (
+	scopeUnset configScope = iota
+	scopeGlobal
+	scopeLocal
+)
+
+// scopeFlag binds --global and --local to one configScope, so naming both is a
+// parse error at the flag layer rather than a check every entry point has to
+// remember, and no downstream reader can see the two set at once.
+type scopeFlag struct {
+	target *configScope
+	sets   configScope
+}
+
+func (s *scopeFlag) String() string { return strconv.FormatBool(*s.target == s.sets) }
+func (s *scopeFlag) Type() string   { return "bool" }
+
+func (s *scopeFlag) Set(v string) error {
+	on, err := strconv.ParseBool(v)
+	if err != nil {
+		return err
+	}
+	if !on {
+		return nil
+	}
+	if *s.target != scopeUnset && *s.target != s.sets {
+		return errors.New("--global and --local ask for opposite things — name one")
+	}
+	*s.target = s.sets
+	return nil
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
@@ -1420,8 +1458,8 @@ func capabilityLabels() map[string]string {
 }
 
 // resolveScope settles where the scope-capable capabilities write, before
-// anything writes. A named flag is the answer; otherwise an interactive run
-// asks and everything else takes global.
+// anything writes. A named flag is the answer, --yes and --no-input take the
+// default, and only an otherwise-interactive run asks.
 //
 // Global is the default because every other artifact `orq setup` writes is
 // machine-global, and install.sh runs setup non-interactively from wherever the
@@ -1429,7 +1467,7 @@ func capabilityLabels() map[string]string {
 // and no other, silently. There is no inference: the working directory never
 // decides this, only the prompt or the flag.
 func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
-	if opts.scopeGlobal || opts.scopeLocal || opts.noInput || opts.yes {
+	if opts.scope != scopeUnset || opts.noInput || opts.yes {
 		return nil
 	}
 	if !scopeMatters(caps) {
@@ -1439,7 +1477,11 @@ func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
 	if err != nil {
 		return err
 	}
-	opts.scopeGlobal, opts.scopeLocal = global, !global
+	if global {
+		opts.scope = scopeGlobal
+	} else {
+		opts.scope = scopeLocal
+	}
 	// The same refusal a typed --local gets: a project scope answered from a
 	// directory that is not a project writes a file the agent never reads.
 	return checkScopeFlags(rep, opts, caps)
@@ -1464,13 +1506,15 @@ func scopeMatters(caps []string) bool {
 // promptForScope is one question for every scope-capable capability rather than
 // one each: the answer is the same kind of answer, and asking twice in a
 // four-question wizard buys nothing. Global leads because it is the default.
+// Only mcp has a project scope today, so the question names only mcp — naming
+// skills here would promise a scoping that RES-1437 has not shipped yet.
 func promptForScope() (bool, error) {
 	globalOption := fmt.Sprintf("%-9s every project on this machine", "global")
 	localOption := fmt.Sprintf("%-9s this project only", "local")
 
 	var chosen string
 	if err := survey.AskOne(&survey.Select{
-		Message: "Where should MCP and skills go?",
+		Message: "Where should the MCP entry go?",
 		Options: []string{globalOption, localOption},
 		Default: globalOption,
 	}, &chosen, promptStdio()); err != nil {

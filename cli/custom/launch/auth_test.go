@@ -151,11 +151,10 @@ func TestResolveCredentialsOrLogin(t *testing.T) {
 // The gateway_key split made "no api_key configured" the ordinary state, so the
 // PreRun now injects the session's own workspace token into ORQ_API_KEY on
 // nearly every run. Reading that as a user-supplied key made Kind
-// CredentialAPIKey, which SupportsMCP always accepts — so the guard that warns
-// about a login predating MCP scopes could never fire again.
+// CredentialAPIKey, which is what ShadowsSession and every other
+// session-vs-key decision keys on.
 func TestInjectedSessionTokenIsRecognisedAsTheSession(t *testing.T) {
 	const active = "acme"
-	// A JWT payload with no mcp:* scope — what a pre-scopes login produces.
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"scope":["openid"]}`))
 	stale := "header." + payload + ".sig"
 
@@ -183,9 +182,6 @@ func TestInjectedSessionTokenIsRecognisedAsTheSession(t *testing.T) {
 	if creds.Kind != CredentialSessionToken {
 		t.Error("our own injected session token was treated as a user-supplied key")
 	}
-	if creds.SupportsMCP() {
-		t.Error("a session with no mcp scope reported as MCP-capable; the warning cannot fire")
-	}
 
 	// A key the user really did export still counts as a real key.
 	creds, err = ResolveCredentials(func(k string) string {
@@ -197,8 +193,8 @@ func TestInjectedSessionTokenIsRecognisedAsTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if creds.Kind != CredentialAPIKey || !creds.SupportsMCP() {
-		t.Errorf("a real API key must skip the session MCP check: %+v", creds)
+	if creds.Kind != CredentialAPIKey {
+		t.Errorf("a real API key must not be read as the session's own token: %+v", creds)
 	}
 }
 
@@ -215,23 +211,5 @@ func writeSessionFile(t *testing.T, home string, session map[string]any) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "default.json"), data, 0o600); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// The reason Kind replaced two bools. "Real API key" was the zero value of
-// FromSession, so a Credentials nobody filled in claimed it could reach the MCP
-// server, and every guard keyed on SupportsMCP silently passed.
-func TestUnresolvedCredentialsClaimNothing(t *testing.T) {
-	if (&Credentials{}).SupportsMCP() {
-		t.Error("a credential nobody resolved reported itself MCP-capable")
-	}
-	if (&Credentials{Kind: CredentialSessionToken}).SupportsMCP() {
-		t.Error("a session token with no mcp scope reported itself MCP-capable")
-	}
-	if !(&Credentials{Kind: CredentialSessionToken, MCPScoped: true}).SupportsMCP() {
-		t.Error("a session token carrying the mcp scope was refused")
-	}
-	if !(&Credentials{Kind: CredentialAPIKey}).SupportsMCP() {
-		t.Error("an API key must skip the session scope check")
 	}
 }

@@ -2,8 +2,6 @@ package launch
 
 import (
 	"bufio"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -35,31 +33,10 @@ type Credentials struct {
 	APIKey     string
 	APIBaseURL string
 	Kind       CredentialKind
-	// MCPScoped reports whether a session token carries the mcp:* scopes.
-	// Logins made before the CLI requested them produce tokens without, and the
-	// MCP server rejects those with insufficient_scope. Meaningful only for
-	// CredentialSessionToken.
-	MCPScoped bool
 	// ShadowsSession is set when ORQ_API_KEY won over an existing login
 	// session. The workspace the key belongs to is then in force instead of
 	// the one picked at login — invisible unless we say so.
 	ShadowsSession bool
-}
-
-// SupportsMCP reports whether the credential can authenticate against the orq
-// MCP server. An API key is assumed to pass: we cannot read its permissions
-// from here, and the key `orq setup` mints does not carry mcp_gateway, so this
-// answer is optimistic for exactly that case. The MCP server's own rejection is
-// the authority; this only decides whether to warn first.
-func (c *Credentials) SupportsMCP() bool {
-	switch c.Kind {
-	case CredentialAPIKey:
-		return true
-	case CredentialSessionToken:
-		return c.MCPScoped
-	default:
-		return false
-	}
 }
 
 // isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
@@ -67,31 +44,6 @@ func (c *Credentials) SupportsMCP() bool {
 func isSessionWorkspaceToken(key string, session *auth.Session) bool {
 	for _, tok := range session.WorkspaceTokens {
 		if strings.TrimSpace(tok.Token) == key {
-			return true
-		}
-	}
-	return false
-}
-
-// tokenHasMCPScope decodes the JWT payload (unverified — this is a local
-// capability hint, not authentication) and looks for an mcp:* scope entry.
-func tokenHasMCPScope(token string) bool {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return false
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return false
-	}
-	var claims struct {
-		Scope []string `json:"scope"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return false
-	}
-	for _, s := range claims.Scope {
-		if strings.HasPrefix(s, "mcp:") {
 			return true
 		}
 	}
@@ -124,6 +76,24 @@ func shadowsSession(key string, session *auth.Session) bool {
 	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
 }
 
+// APIBaseFor is the API base a persistent artifact should be written against:
+// the env override, then the saved login session's own base, then the hosted
+// default. It is ResolveCredentials' order for a caller that has no credential
+// to resolve — `orq connect mcp` writes a URL and never authenticates — so a
+// self-hosted user's persisted entry and the session `orq launch` starts cannot
+// point at two different servers.
+func APIBaseFor(getenv func(string) string) string {
+	if v := strings.TrimSpace(getenv("ORQ_API_BASE_URL")); v != "" {
+		return v
+	}
+	if session, err := auth.ReadSession(); err == nil && session != nil {
+		if base := strings.TrimSpace(session.APIBaseURL); base != "" {
+			return base
+		}
+	}
+	return DefaultGatewayAPIBaseURL
+}
+
 // ResolveCredentials resolves the orq API key and API base URL explicitly
 // (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
 // (the session is not read at all), else the active workspace token from the
@@ -142,11 +112,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		}
 		// installSessionPreRun injects the session's own workspace token into
 		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
-		// split made the ordinary state. Reading it as an exported key is what
-		// stopped the pre-MCP-scopes warning firing.
+		// split made the ordinary state. Reading it as an exported key rather
+		// than as the session's own is what made ShadowsSession fire wrongly.
 		if session != nil && isSessionWorkspaceToken(key, session) {
 			creds.Kind = CredentialSessionToken
-			creds.MCPScoped = tokenHasMCPScope(key)
 		}
 		return creds, nil
 	}
@@ -172,7 +141,6 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		APIKey:     active.AccessToken,
 		APIBaseURL: apiBase,
 		Kind:       CredentialSessionToken,
-		MCPScoped:  tokenHasMCPScope(active.AccessToken),
 	}, nil
 }
 

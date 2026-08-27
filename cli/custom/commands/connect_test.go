@@ -756,6 +756,58 @@ func TestDisconnectOnLogoutNeedsConsent(t *testing.T) {
 	})
 }
 
+// disconnectOnLogout was widened from gateway-only to every available
+// capability, so it now deletes MCP entries and installed skills too. The
+// preview the user consents to lists all three; so must the removal.
+func TestDisconnectOnLogoutCoversEveryCapability(t *testing.T) {
+	wire := func(t *testing.T) (mcpPath, providerPath string) {
+		t.Helper()
+		home, _ := mcpMachine(t, ".kimi-code")
+		providerPath = filepath.Join(home, ".kimi-code", "config.toml")
+		if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+			t.Fatal(err)
+		}
+		kimi, ok := lookupAgent("kimi")
+		if !ok {
+			t.Fatal("kimi not in registry")
+		}
+		mcpPath, err := kimi.mcpConfig(true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := kimi.writeMCP(mcpPath, launch.DefaultMCPURL); err != nil {
+			t.Fatal(err)
+		}
+		return mcpPath, providerPath
+	}
+
+	t.Run("--disconnect removes the mcp entry as well as the gateway", func(t *testing.T) {
+		mcpPath, providerPath := wire(t)
+		rows, _ := disconnectOnLogout(&setupOptions{noInput: true}, true)
+		if len(rows) == 0 {
+			t.Fatal("--disconnect removed nothing")
+		}
+		if _, err := os.Stat(providerPath); !os.IsNotExist(err) {
+			t.Errorf("gateway config survived --disconnect: %v", err)
+		}
+		kimi, _ := lookupAgent("kimi")
+		if kimi.mcpPresent(mcpPath) {
+			t.Error("the MCP entry survived --disconnect")
+		}
+	})
+
+	t.Run("a refusal leaves the mcp entry alone", func(t *testing.T) {
+		mcpPath, _ := wire(t)
+		if rows, _ := disconnectOnLogout(&setupOptions{yes: true}, false); rows != nil {
+			t.Errorf("--yes was taken as consent: %+v", rows)
+		}
+		kimi, _ := lookupAgent("kimi")
+		if !kimi.mcpPresent(mcpPath) {
+			t.Error("the MCP entry was removed by a logout nobody consented to")
+		}
+	})
+}
+
 // "opencode removed" reads as though the agent itself had been uninstalled.
 // orq is what is removed; the agent is where from.
 func TestRemovalNamesOrqAsTheThingRemoved(t *testing.T) {
@@ -1706,6 +1758,86 @@ func TestScopeFlagsRejectWhatTheyCannotMean(t *testing.T) {
 			t.Error("the refused run still wrote ~/.mcp.json")
 		}
 	})
+}
+
+// The preview and the write must resolve the same file, in whichever scope was
+// named — a dry run that shows one path and a real run that writes another is
+// the mismatch --dry-run exists to rule out. Asserted as a property rather than
+// as strings, so it cannot drift when the output format changes.
+func TestConnectDryRunPreviewsThePathItWouldWrite(t *testing.T) {
+	for _, scope := range []string{"--local", "--global"} {
+		t.Run(scope, func(t *testing.T) {
+			home, project := mcpMachine(t, ".claude")
+
+			out := captureOutput(t, func() {
+				c := NewConnectCommand()
+				c.SetArgs([]string{"claude", "mcp", scope, "--dry-run"})
+				if err := c.Execute(); err != nil {
+					t.Fatalf("dry run: %v", err)
+				}
+			})
+			want := filepath.Join(project, ".mcp.json")
+			if scope == "--global" {
+				want = filepath.Join(home, ".claude.json")
+			}
+			if !strings.Contains(out, tilde(want)) {
+				t.Fatalf("dry run did not preview %s:\n%s", tilde(want), out)
+			}
+			for _, path := range []string{filepath.Join(project, ".mcp.json"), filepath.Join(home, ".claude.json")} {
+				if _, err := os.Stat(path); err == nil {
+					t.Fatalf("the dry run wrote %s", path)
+				}
+			}
+
+			c := NewConnectCommand()
+			c.SetArgs([]string{"claude", "mcp", scope})
+			if err := c.Execute(); err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+			if _, err := os.Stat(want); err != nil {
+				t.Fatalf("the previewed path is not the one written: %v", err)
+			}
+		})
+	}
+}
+
+// An agent that can receive some of what was asked for is kept, not dropped:
+// dropping it would silently discard the capabilities it can receive. The
+// arithmetic in reportUnwirableAgents is the load-bearing part, and only the
+// all-unreachable case was covered.
+func TestPartlyUnwirableAgentsAreKept(t *testing.T) {
+	mcpMachine(t, ".claude", ".pi/agent")
+	cases := []struct {
+		agent string
+		caps  []string
+		kept  bool
+	}{
+		// pi has no MCP; claude has no gateway provider config.
+		{"pi", []string{capMCP}, false},
+		{"pi", []string{capGateway, capMCP}, true},
+		{"pi", []string{capGateway, capSkills, capMCP}, true},
+		{"claude", []string{capGateway}, false},
+		{"claude", []string{capGateway, capMCP}, true},
+	}
+	for _, tc := range cases {
+		got := reportUnwirableAgents(newReporter(true), []string{tc.agent}, tc.caps)
+		if kept := len(got) == 1; kept != tc.kept {
+			t.Errorf("%s %v: kept = %v, want %v", tc.agent, tc.caps, kept, tc.kept)
+		}
+	}
+}
+
+// The kept agent then has to actually receive the capability it was kept for.
+func TestAKeptAgentStillGetsItsMCPEntry(t *testing.T) {
+	home, _ := mcpMachine(t, ".claude")
+	agents := reportUnwirableAgents(newReporter(true), []string{"claude"}, []string{capGateway, capMCP})
+	if _, failed := connectMCP(newReporter(true), &setupOptions{noInput: true}, agents); failed {
+		t.Fatal("connectMCP failed")
+	}
+	claude, _ := lookupAgent("claude")
+	if !claude.mcpPresent(filepath.Join(home, ".claude.json")) {
+		t.Error("claude's MCP entry was not written on a gateway+mcp run")
+	}
 }
 
 // A removal that took only the global scope would leave a project entry that

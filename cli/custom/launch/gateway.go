@@ -58,7 +58,9 @@ type GatewayFlags struct {
 	Models        string
 	BaseURL       string
 	NoFetchModels bool
-	// MCP is enabled by default for launch and can be disabled with --no-mcp.
+	// MCP defaults on for launch and is disabled with --no-mcp. The default is
+	// applied by ParseArgv, which is the only place that applies it — the zero
+	// value of this struct is MCP off.
 	MCP      bool
 	NoSkills bool
 	DryRun   bool

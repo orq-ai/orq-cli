@@ -2625,7 +2625,7 @@ func TestSetupScopeDefaultsToGlobalWithoutAsking(t *testing.T) {
 		if err := resolveScope(newReporter(true), opts, []string{capMCP}); err != nil {
 			t.Fatalf("resolveScope: %v", err)
 		}
-		if opts.scopeLocal {
+		if opts.scope == scopeLocal {
 			t.Errorf("opts %+v took a local scope nobody asked for", opts)
 		}
 		if !mcpWriteScope(opts) {
@@ -2642,11 +2642,11 @@ func TestSetupScopeFlagPreAnswersThePrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := &setupOptions{scopeLocal: true}
+	opts := &setupOptions{scope: scopeLocal}
 	if err := resolveScope(newReporter(true), opts, []string{capMCP}); err != nil {
 		t.Fatalf("resolveScope: %v", err)
 	}
-	if !opts.scopeLocal || opts.scopeGlobal {
+	if opts.scope != scopeLocal {
 		t.Errorf("--local was not preserved: %+v", opts)
 	}
 	if mcpWriteScope(opts) {
@@ -2670,7 +2670,7 @@ func TestSetupScopeIsNotAskedWhenNothingScopes(t *testing.T) {
 	if err := resolveScope(newReporter(true), opts, []string{capGateway}); err != nil {
 		t.Fatalf("resolveScope: %v", err)
 	}
-	if opts.scopeGlobal || opts.scopeLocal {
+	if opts.scope != scopeUnset {
 		t.Errorf("an unasked question still answered itself: %+v", opts)
 	}
 }

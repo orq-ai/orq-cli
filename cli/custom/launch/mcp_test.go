@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -91,24 +93,6 @@ func TestClaudeBareLaunchWiresNoArgs(t *testing.T) {
 	}
 }
 
-func TestClaudeLaunchSkipsPersistedMCP(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{MCP: true, NoSkills: true}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
-	if len(plan.PreArgs) != 0 {
-		t.Fatalf("persisted MCP should suppress session injection: %v", plan.PreArgs)
-	}
-}
-
 func TestClaudeSkillsOverride(t *testing.T) {
 	plan, err := resolveClaude(&AgentContext{
 		Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
@@ -138,29 +122,6 @@ func TestCodexMCPArgs(t *testing.T) {
 	if !strings.Contains(joined, `mcp_servers.`+MCPServerName+`.url="`+DefaultMCPURL+`"`) ||
 		strings.Contains(joined, "bearer_token_env_var") {
 		t.Fatalf("mcp overrides missing: %s", joined)
-	}
-}
-
-func TestCodexLaunchSkipsPersistedMCP(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	codexHome := filepath.Join(home, ".codex")
-	t.Setenv("CODEX_HOME", codexHome)
-	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(codexHome, "config.toml"), []byte("[mcp_servers.\"orq-workspace\"]\nurl = \"https://api.orq.ai/v2/mcp\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	plan, err := resolveCodex(codexCtx(nil, GatewayFlags{MCP: true, NoSkills: true}, okProbe))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
-	if strings.Contains(strings.Join(plan.PreArgs, " "), "mcp_servers.orq-workspace.url") {
-		t.Fatalf("persisted MCP should suppress session override: %v", plan.PreArgs)
 	}
 }
 
@@ -249,5 +210,72 @@ func TestMaybeWriteSessionSkillsSuppressedByNoSkills(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
 		t.Error("--no-skills still wrote skills")
+	}
+}
+
+// The launch side asks the registry, through the hook the commands package
+// injects. Unset means "cannot tell", which must not read as "already wired".
+func TestPersistedMCPHookDecides(t *testing.T) {
+	if persistedMCPConfigured("claude") {
+		t.Fatal("an uninjected hook claimed the agent was already wired")
+	}
+	var asked string
+	PersistedMCPHook = func(agent string) bool { asked = agent; return true }
+	t.Cleanup(func() { PersistedMCPHook = nil })
+	if !persistedMCPConfigured("codex") || asked != "codex" {
+		t.Fatalf("hook not consulted for the agent asked about: asked=%q", asked)
+	}
+}
+
+// The canary the connect side has, on the side that actually leaked: e44c747's
+// regression was a launch-written entry. An allowlist, not a denylist of known
+// credential spellings — a key nobody thought to forbid is exactly the one that
+// gets added next, so any new key fails here until someone justifies it.
+func TestLaunchMCPEntriesCarryNothingButTheURL(t *testing.T) {
+	entryKeys := func(t *testing.T, doc string, section string) []string {
+		t.Helper()
+		var raw map[string]map[string]map[string]any
+		if err := json.Unmarshal([]byte(doc), &raw); err != nil {
+			t.Fatalf("parsing %s: %v", doc, err)
+		}
+		entry, ok := raw[section][MCPServerName]
+		if !ok {
+			t.Fatalf("no %s entry in %s", MCPServerName, doc)
+		}
+		keys := make([]string, 0, len(entry))
+		for k := range entry {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return keys
+	}
+
+	if got := entryKeys(t, claudeMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"type", "url"}) {
+		t.Errorf("claude entry keys = %v, want [type url]", got)
+	}
+	if got := entryKeys(t, kimiMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"url"}) {
+		t.Errorf("kimi entry keys = %v, want [url]", got)
+	}
+
+	block := openCodeMCPBlock(DefaultMCPURL)
+	entry, ok := block[MCPServerName].(map[string]any)
+	if !ok {
+		t.Fatalf("no %s entry in the opencode block: %v", MCPServerName, block)
+	}
+	var keys []string
+	for k := range entry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	// Not "oauth": opencode types it as McpOAuthConfig | false, so a true there
+	// makes opencode reject the whole document and start with no MCP at all.
+	if !reflect.DeepEqual(keys, []string{"type", "url"}) {
+		t.Errorf("opencode entry keys = %v, want [type url]", keys)
+	}
+
+	// codex takes -c overrides rather than a document: one override, the url.
+	args := codexMCPArgs(DefaultMCPURL)
+	if len(args) != 2 || args[0] != "-c" || args[1] != tomlOverride("mcp_servers."+MCPServerName+".url", DefaultMCPURL) {
+		t.Errorf("codex mcp args = %v, want a single url override", args)
 	}
 }

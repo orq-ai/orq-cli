@@ -321,6 +321,107 @@ func TestMCPProjectScopeFileMode(t *testing.T) {
 	}
 }
 
+// The mode has to survive the removal too: a committed .mcp.json that holds
+// other servers stays on disk, and narrowing it to 0600 on every disconnect
+// would fight the team it is shared with.
+func TestMCPProjectScopeFileModeSurvivesRemoval(t *testing.T) {
+	chdirTemp(t)
+	claude, ok := lookupAgent("claude")
+	if !ok {
+		t.Fatal("claude not in registry")
+	}
+	path, err := claude.mcpConfig(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A foreign entry, so the file survives the removal rather than being deleted.
+	if err := writeJSONConfigMode(path, map[string]any{
+		"mcpServers": map[string]any{"someone-else": map[string]any{"type": "http", "url": "https://example.com/mcp"}},
+	}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := claude.writeMCP(path, launch.DefaultMCPURL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claude.removeMCP(path); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("the foreign entry should have kept the file: %v", err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("mode after removal = %o, want 0644", info.Mode().Perm())
+	}
+}
+
+// readJSONConfig promises the file is "left untouched" when it cannot be
+// merged into. ~/.claude.json is the agent's entire user state and is corrupted
+// in the wild, so that promise is the one that matters most here.
+func TestMCPWriteRefusesAnUnmergeableConfig(t *testing.T) {
+	cases := map[string]string{
+		"truncated":                `{"mcpServers": {"a":`,
+		"not an object":            `[1, 2, 3]`,
+		"section is not an object": `{"mcpServers": 5, "mcp": 5}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			for _, spec := range mcpAgents(t) {
+				if spec.ID == "codex" {
+					// codex's writer strips and rewrites TOML rather than
+					// merging into a parsed document; writeTOMLConfig covers
+					// the equivalent refusal for it.
+					continue
+				}
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				chdirTemp(t)
+				path, err := spec.mcpConfig(true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := spec.writeMCP(path, launch.DefaultMCPURL); err == nil {
+					t.Errorf("%s: writeMCP accepted %s config", spec.ID, name)
+				}
+				after, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("%s: %v", spec.ID, err)
+				}
+				if string(after) != body {
+					t.Errorf("%s: refused write still changed the file:\n%s", spec.ID, after)
+				}
+			}
+		})
+	}
+}
+
+// The same promise on the TOML side: a rewrite that would not parse is refused
+// rather than leaving codex with a config it cannot load.
+func TestTOMLWriteRefusesToProduceInvalidTOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	original := "[model_providers.orq]\nname = \"Orq\"\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTOMLConfig(path, "[unterminated\n"); err == nil {
+		t.Fatal("invalid TOML was written")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != original {
+		t.Fatalf("the refused write still changed the file:\n%s", after)
+	}
+}
+
 func TestMCPGlobalScopeFileModeUnchanged(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -394,6 +495,52 @@ func TestKiloMCPPresentAcceptsJSONC(t *testing.T) {
 	}
 	if !kiloMCPPresent(jsonPath) {
 		t.Fatal("kiloMCPPresent(kilo.json) did not fall back to kilo.jsonc")
+	}
+}
+
+// The remover has to reach every file the reader accepts, or an entry made
+// directly against kilo.jsonc reports as wired forever and never comes out.
+func TestKiloRemoveMCPReachesJSONC(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "kilo.json")
+	jsoncPath := filepath.Join(dir, "kilo.jsonc")
+
+	if err := writeJSONConfig(jsoncPath, map[string]any{
+		"mcp": map[string]any{launch.MCPServerName: remoteMCPEntry("https://api.orq.ai/v2/mcp")},
+	}); err != nil {
+		t.Fatalf("seeding kilo.jsonc: %v", err)
+	}
+	removed, err := kiloRemoveMCP(jsonPath)
+	if err != nil {
+		t.Fatalf("kiloRemoveMCP: %v", err)
+	}
+	if !removed {
+		t.Fatal("kiloRemoveMCP reported nothing removed for an entry in kilo.jsonc")
+	}
+	if kiloMCPPresent(jsonPath) {
+		t.Fatal("entry still present after removal")
+	}
+}
+
+// A kilo.jsonc carrying comments does not parse as JSON, and the reader cannot
+// see an entry in it — reporting that as a disconnect failure would be a lie.
+func TestKiloRemoveMCPIgnoresUnparseableJSONC(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "kilo.json")
+	if err := os.WriteFile(filepath.Join(dir, "kilo.jsonc"), []byte("// a comment\n{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONConfig(jsonPath, map[string]any{
+		"mcp": map[string]any{launch.MCPServerName: remoteMCPEntry("https://api.orq.ai/v2/mcp")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := kiloRemoveMCP(jsonPath)
+	if err != nil {
+		t.Fatalf("an unreadable kilo.jsonc must not fail the removal: %v", err)
+	}
+	if !removed {
+		t.Fatal("the kilo.json entry was not removed")
 	}
 }
 
