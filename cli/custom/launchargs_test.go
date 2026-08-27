@@ -46,6 +46,29 @@ func TestSplitLaunchGlobals(t *testing.T) {
 			rest: []string{"launch", "claude", "--dry-run", "--model", "anthropic/claude-sonnet-5"},
 		},
 		{
+			name:    "flag before the launch word is orq's too",
+			argv:    []string{"--profile", "acme", "launch", "kimi"},
+			globals: []string{"--profile", "acme"},
+			rest:    []string{"launch", "kimi"},
+		},
+		{
+			name:    "globals on both sides of the launch word",
+			argv:    []string{"--server", "https://acme.internal", "launch", "--profile", "acme", "codex", "exec", "-p", "work"},
+			globals: []string{"--server", "https://acme.internal", "--profile", "acme"},
+			rest:    []string{"launch", "codex", "exec", "-p", "work"},
+		},
+		{
+			name:    "a boolean global does not swallow the next argument",
+			argv:    []string{"--no-color", "launch", "claude"},
+			globals: []string{"--no-color"},
+			rest:    []string{"launch", "claude"},
+		},
+		{
+			name: "a bare -- ends orq's flags",
+			argv: []string{"launch", "--", "claude", "--profile", "foo"},
+			rest: []string{"launch", "--", "claude", "--profile", "foo"},
+		},
+		{
 			name: "other commands are untouched",
 			argv: []string{"--profile", "acme", "prompts", "list"},
 			rest: []string{"--profile", "acme", "prompts", "list"},

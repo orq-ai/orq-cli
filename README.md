@@ -288,7 +288,7 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-Pass launcher-specific flags after the agent name, for example `orq launch claude --mcp --dry-run`, to wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
+Pass `--mcp` after the agent name, for example `orq launch claude --mcp`, to wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
 
 With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
 
@@ -305,7 +305,7 @@ With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-a
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-There are two layers of flags. Global `orq` flags such as `--profile` and `--server` must appear between `launch` and the agent name, so `orq launch --profile acme --server https://orq.acme.internal kimi` selects the profile and host. Once the agent name appears, those global flags belong to the agent and are forwarded verbatim. Launcher-specific flags in the table above (`--model`, `--mcp`, `--dry-run`, etc.) are recognized at the start of the agent's arguments; after the first agent-owned argument, everything goes to the agent untouched. A leading `--` ends launcher-specific parsing explicitly:
+There are two layers of flags. Global `orq` flags such as `--profile` and `--server` must appear before the agent name — either side of the `launch` word works, so `orq launch --profile acme --server https://orq.acme.internal kimi` and `orq --profile acme launch kimi` both select the profile and host. Once the agent name appears, those global flags belong to the agent and are forwarded verbatim. Launcher-specific flags in the table above (`--model`, `--mcp`, `--dry-run`, etc.) are recognized at the start of the agent's arguments; after the first agent-owned argument, everything goes to the agent untouched. A leading `--` ends launcher-specific parsing explicitly:
 
 ```sh
 orq launch claude -- --resume
@@ -339,7 +339,7 @@ Sandboxed execution is not available in this version.
 |---|---|
 | `ORQ_API_KEY` | API key for headless/CI auth |
 | `ORQ_PROFILE` | Default profile (same effect as `--profile`) |
-| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
+| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes (when there is no session) and `orq launch` injects: router, anthropic and MCP |
 | `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release. The matching `--api-base-url` flag on `auth`, `workspace` and `doctor` is deprecated the same way |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
@@ -379,14 +379,14 @@ format, or when the check fails.
 orq --profile acme auth login --server https://orq.acme.internal
 ```
 
-The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No configuration files, no per-command flag. Switch back and forth between profiles without logging out of either:
+The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No per-command flag. The full order, highest first: `--server`, `ORQ_SERVER`, a host persisted with `orq server set`, the session's own host, then `https://my.orq.ai`. `orq doctor` reports which of those the current run used. Switch back and forth between profiles without logging out of either:
 
 ```sh
 orq --profile acme prompts list            # talks to acme's backend
 orq --profile default prompts list         # talks to my.orq.ai
 ```
 
-That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. On `orq launch`, global flags go between `launch` and the agent name — `orq launch --server <url> claude` — because everything after the agent name is handed to the agent verbatim, so its own flags (`--resume`, codex's `-p`) reach it untouched.
+That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. On `orq launch`, global flags go before the agent name — `orq launch --server <url> claude`, or `orq --server <url> launch claude` — because everything after the agent name is handed to the agent verbatim, so its own flags (`--resume`, codex's `-p`) reach it untouched.
 
 | Derived from `--server` | Used by |
 |---|---|

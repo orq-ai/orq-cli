@@ -6,16 +6,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// splitLaunchGlobals separates orq's own global flags typed between `launch`
-// and the agent name from the rest of argv.
+// splitLaunchGlobals separates orq's own global flags from the rest of argv on
+// a `launch` invocation. They may be typed on either side of the `launch` word
+// (`orq --profile acme launch claude` and `orq launch --profile acme claude`
+// both work); the agent name ends them.
 //
 // `orq launch <agent>` runs with DisableFlagParsing so every agent flag reaches
 // the agent verbatim — including ones that collide with ours (codex's own
 // `-p profile`). But cobra reads that as "parse no flags at all for this
 // invocation": the root's own persistent flags are never parsed either, and
-// every argument, whether typed before or after the agent name, is handed to
-// the agent. So `orq launch --profile acme claude` forwarded `--profile` to
-// claude.
+// every argument, wherever it was typed, is handed to the agent. So
+// `orq launch --profile acme claude` forwarded `--profile` to claude.
 //
 // The dividing line is the agent name: before it the flags are orq's, after it
 // they are the agent's. The caller parses the returned globals into the root's
@@ -23,7 +24,7 @@ import (
 // host — and injects the session token — the same way it does for every other
 // command.
 func splitLaunchGlobals(root *cobra.Command, args []string) (globals, rest []string) {
-	launch := indexOfLaunch(root, args)
+	globals, launch := leadingGlobals(root, args)
 	if launch < 0 {
 		return nil, args
 	}
@@ -42,27 +43,31 @@ func splitLaunchGlobals(root *cobra.Command, args []string) (globals, rest []str
 	if len(globals) == 0 {
 		return nil, args
 	}
-	rest = append(rest, args[:launch+1]...)
+	rest = append(rest, "launch")
 	return globals, append(rest, args[i:]...)
 }
 
-// indexOfLaunch returns where the `launch` command word sits, or -1 when this
-// invocation is not a launch. Only leading global flags may precede it; the
-// first other word means cobra is resolving some other command.
-func indexOfLaunch(root *cobra.Command, args []string) int {
+// leadingGlobals returns orq's global flags typed before the `launch` command
+// word and where that word sits, or -1 when this invocation is not a launch.
+// Only global flags may precede it; the first other word means cobra is
+// resolving some other command.
+func leadingGlobals(root *cobra.Command, args []string) ([]string, int) {
+	var globals []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "launch" {
-			return i
+			return globals, i
 		}
 		name, hasValue := globalFlagName(root, args[i])
 		if name == "" {
-			return -1
+			return nil, -1
 		}
-		if hasValue {
+		globals = append(globals, args[i])
+		if hasValue && i+1 < len(args) {
 			i++
+			globals = append(globals, args[i])
 		}
 	}
-	return -1
+	return nil, -1
 }
 
 // globalFlagName reports the root persistent flag arg names, and whether it

@@ -1,10 +1,14 @@
 package custom
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"orq/cli/custom/auth"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -41,7 +45,8 @@ func TestServerFlagReplacesAPIBaseURL(t *testing.T) {
 	}
 }
 
-// The deprecated flag still routes, below an explicit --server.
+// The deprecated flag still routes, below an explicit --server, and its warning
+// goes to stderr: on stdout it would corrupt --json.
 func TestDeprecatedAPIBaseFlagResolves(t *testing.T) {
 	root := buildRoot(t)
 	t.Cleanup(func() { auth.SetServer("", "default") })
@@ -49,24 +54,73 @@ func TestDeprecatedAPIBaseFlagResolves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Flags().Set("api-base-url", "https://legacy-flag.example"); err != nil {
-		t.Fatal(err)
-	}
+	setDeprecatedFlag(t, cmd, "https://legacy-flag.example")
+
 	auth.SetServer("", "default")
-	resolveServer(cmd)
+	stdout, stderr := captureOutput(t, func() { resolveServer(cmd) })
 	if got := auth.Server(); got != "https://legacy-flag.example" {
 		t.Fatalf("server: got %q", got)
 	}
 	if got := auth.ServerSource(); got != "flag" {
 		t.Fatalf("source: got %q", got)
 	}
+	if !strings.Contains(stderr, "--api-base-url is deprecated") {
+		t.Errorf("deprecation warning missing from stderr: %q", stderr)
+	}
+	if stdout != "" {
+		t.Errorf("stdout must stay clean for --json, got %q", stdout)
+	}
+
+	// An explicit --server outranks the alias.
+	flags := root.PersistentFlags()
+	if err := flags.Set("server", "https://explicit.example"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { flags.Lookup("server").Changed = false })
+	resolveServer(cmd)
+	if got := auth.Server(); got != "https://explicit.example" {
+		t.Fatalf("--server must beat --api-base-url, got %q", got)
+	}
+}
+
+// setDeprecatedFlag sets the hidden alias and restores it afterwards: buildRoot
+// hands out the process-global root, so a flag left Changed would resolve for
+// every later test in this package.
+func setDeprecatedFlag(t *testing.T, cmd *cobra.Command, value string) {
+	t.Helper()
+	f := cmd.Flags().Lookup("api-base-url")
+	if f == nil {
+		t.Fatalf("%s has no --api-base-url", cmd.Name())
+	}
+	prev := f.Value.String()
+	if err := cmd.Flags().Set("api-base-url", value); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Flags().Set("api-base-url", prev)
+		f.Changed = false
+	})
+}
+
+// captureOutput swaps both bartolo writers for buffers for the duration of fn.
+func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
+	t.Helper()
+	prevOut, prevErr := bartolocli.Stdout, bartolocli.Stderr
+	var out, errBuf bytes.Buffer
+	bartolocli.Stdout, bartolocli.Stderr = &out, &errBuf
+	defer func() { bartolocli.Stdout, bartolocli.Stderr = prevOut, prevErr }()
+	fn()
+	return out.String(), errBuf.String()
 }
 
 // Precedence, and the provenance `orq doctor` reports. The session is layered
 // on by the PreRun itself, below every source here.
 func TestResolveServerPrecedence(t *testing.T) {
 	root := buildRoot(t)
-	t.Cleanup(func() { auth.SetServer("", "default") })
+	t.Cleanup(func() {
+		auth.SetServer("", "default")
+		viper.Set("server", "") // viper is process-global; do not leak a host
+	})
 
 	cases := []struct {
 		name       string
@@ -97,7 +151,9 @@ func TestResolveServerPrecedence(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			auth.SetServer("", "default")
+			// A stale value, so "nothing set" asserts that resolveServer clears
+			// rather than that it happened to leave the priming value alone.
+			auth.SetServer("https://stale.example", "flag")
 			viper.Set("server", tc.config)
 			t.Setenv("ORQ_SERVER", tc.env["ORQ_SERVER"])
 			t.Setenv("ORQ_API_BASE_URL", tc.env["ORQ_API_BASE_URL"])

@@ -57,7 +57,8 @@ var (
 )
 
 // SetServer records the resolved host and its origin ("flag", "env", "config",
-// "session"). Called once per invocation, before any command runs.
+// "session"). Called by the root PreRun before any command runs: once for the
+// explicit sources, again for the session host when none of them applied.
 func SetServer(url, source string) {
 	server = strings.TrimSpace(url)
 	serverSource = source
@@ -73,8 +74,9 @@ func envDefaultAPIBase() string {
 	if server != "" {
 		return server
 	}
-	// Direct env reads remain for callers that run without the PreRun — tests,
-	// and `orq launch` resolving credentials on its own.
+	// Direct env reads remain for callers that run without the PreRun, which in
+	// practice means tests. They deliberately skip the deprecation warning and
+	// the persisted `orq server set` layer; both go away with ORQ_API_BASE_URL.
 	if v := strings.TrimSpace(os.Getenv("ORQ_SERVER")); v != "" {
 		return v
 	}

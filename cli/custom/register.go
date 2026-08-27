@@ -156,8 +156,9 @@ func installSessionPreRun() {
 		}
 		// The session's host is the last resort, below every explicit source.
 		// TODO(orq-ai/bartolo#22): once a profile can carry its own server and
-		// the regenerated clients read it (ResolveServerFor), this bridge and
-		// the mirror above both go away — the profile becomes the one store.
+		// the regenerated clients read it (a per-profile resolver, proposed in
+		// that PR and absent from the pinned bartolo), this bridge and
+		// mirrorServerToViper both go away — the profile becomes the one store.
 		if auth.Server() == "" && session.APIBaseURL != "" {
 			auth.SetServer(session.APIBaseURL, "session")
 			mirrorServerToViper()
@@ -199,11 +200,10 @@ func resolveServer(cmd *cobra.Command) {
 	case cmd.Flags().Changed("api-base-url"):
 		// The pre-4.15 flag on the six auth/workspace/doctor commands, kept for
 		// one release (commands.DeprecatedAPIBaseFlag).
-		legacy, err := cmd.Flags().GetString("api-base-url")
-		if err == nil {
-			commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
-			auth.SetServer(legacy, "flag")
-		}
+		// Lookup, not GetString: the latter returns an error this branch would
+		// have to swallow, and swallowing it would drop a host the user typed.
+		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
+		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
 	case os.Getenv("ORQ_SERVER") != "":
 		auth.SetServer(os.Getenv("ORQ_SERVER"), "env")
 	case os.Getenv("ORQ_API_BASE_URL") != "":
@@ -212,14 +212,19 @@ func resolveServer(cmd *cobra.Command) {
 		auth.SetServer(os.Getenv("ORQ_API_BASE_URL"), "env")
 	case viper.GetString("server") != "":
 		auth.SetServer(viper.GetString("server"), "config") // persisted `orq server set`
+	default:
+		// Assign in every branch: the resolver decides the host, it does not
+		// leave behind whatever a previous call happened to store.
+		auth.SetServer("", "default")
 	}
 	mirrorServerToViper()
 }
 
 // mirrorServerToViper hands the resolved host to the generated commands, which
-// read viper's `server` key directly (bartolo cli.ResolveServer). Their own
-// default is the OpenAPI server list, a different host from auth's default, so
-// without this an unflagged run splits across two backends.
+// read viper's `server` key directly (bartolo cli.ResolveServer). They cannot
+// see the session host, --api-base-url or ORQ_API_BASE_URL; the mirror is the
+// only way those sources reach them. (The plain defaults now agree — the
+// OpenAPI server list and auth.DefaultAPIBaseURL are both my.orq.ai.)
 func mirrorServerToViper() {
 	if s := auth.Server(); s != "" && viper.GetString("server") != s {
 		viper.Set("server", s)
