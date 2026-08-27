@@ -21,9 +21,7 @@ const MCPServerName = "orq-workspace"
 
 // DefaultMCPURL is orq's hosted MCP server; agents get it wired automatically
 // so orq tools are available without manual per-harness setup.
-// api.orq.ai is the documented API host, matching auth.Client.MCPServerURL.
-// my.orq.ai answers the same route but is the dashboard.
-const DefaultMCPURL = "https://api.orq.ai/v2/mcp"
+const DefaultMCPURL = DefaultGatewayAPIBaseURL + "/v2/mcp"
 
 // skillsPluginURL returns a plugin zip for claude to fetch, and normally
 // returns nothing: the default skill set ships inside this binary and is

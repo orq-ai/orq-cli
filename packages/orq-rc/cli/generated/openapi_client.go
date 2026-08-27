@@ -3734,6 +3734,15 @@ func OpenapiListFinderEntities(params *viper.Viper) (*gentleman.Response, map[st
 
 	req := bartolocli.Client.Get().URL(url)
 
+	paramPageSize := params.GetInt64("page-size")
+	if paramPageSize != 0 {
+		req = req.AddQuery("page_size", fmt.Sprintf("%v", paramPageSize))
+	}
+	paramPageToken := params.GetString("page-token")
+	if paramPageToken != "" {
+		req = req.AddQuery("page_token", fmt.Sprintf("%v", paramPageToken))
+	}
+
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()

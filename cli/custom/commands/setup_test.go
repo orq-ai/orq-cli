@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -322,7 +323,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 	if bartolocli.Creds == nil {
 		// initAuth, which normally creates this, runs from the generated
 		// runtime that unit tests do not start.
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 
@@ -351,7 +352,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 func credsHarness(t *testing.T) {
 	t.Helper()
 	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
-	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	bartolocli.Creds = newTestCreds(t)
 	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
 	viper.Set("config-directory", t.TempDir())
 	viper.Set("profile", "default")
@@ -367,23 +368,35 @@ func credsHarness(t *testing.T) {
 // workspace wires every agent config — kimi holds the literal key — to the
 // workspace the user just switched away from, and verification passes because
 // the key is valid there. So the profile records the key's workspace, and reuse
-// requires a match: a provable mismatch re-mints, an unrecorded workspace (keys
-// saved before the field existed, or brought via --api-key) is reused as before.
+// requires a match: a provable mismatch re-mints, and an unrecorded workspace
+// (keys saved before the field existed, or brought via --api-key) is settled by
+// asking the API which workspace the key belongs to.
 func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 	wsA, wsB := "workspace-a", "workspace-b"
 	cases := map[string]struct {
-		storedWS  string
+		storedWS string
+		// keyWS is what the API says the saved key belongs to; empty means wsB.
+		keyWS     string
 		wantMints int64
 	}{
-		"same workspace reuses":        {storedWS: wsB, wantMints: 0},
-		"unrecorded workspace reuses":  {storedWS: "", wantMints: 0},
-		"other workspace mints for it": {storedWS: wsA, wantMints: 1},
+		"same workspace reuses":                               {storedWS: wsB, wantMints: 0},
+		"unrecorded workspace reuses on match":                {storedWS: "", wantMints: 0},
+		"unrecorded workspace mints on API-reported mismatch": {storedWS: "", keyWS: wsA, wantMints: 1},
+		"other workspace mints for it":                        {storedWS: wsA, wantMints: 1},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
 			var mints int64
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/workspace-settings" {
+					keyWS := tc.keyWS
+					if keyWS == "" {
+						keyWS = wsB
+					}
+					fmt.Fprintf(w, `{"settings":{"key":%q}}`, keyWS)
+					return
+				}
 				if r.URL.Path == "/v2/api-keys/capabilities" {
 					fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
 					return
@@ -406,7 +419,7 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 			}
 			// noInput skips every confirm.
 			opts := &setupOptions{noInput: true}
-			_, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+			_, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -414,14 +427,17 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 				t.Fatalf("minted %d keys, want %d", got, tc.wantMints)
 			}
 
-			wantKey, wantWS := "sk-orq-old", tc.storedWS
+			wantKey := "sk-orq-old"
 			if tc.wantMints > 0 {
-				// The replacement must record the workspace it was minted for,
-				// or the next run repeats the mismatch against a stale field.
-				wantKey, wantWS = "sk-orq-fresh", wsB
+				wantKey = "sk-orq-fresh"
 			}
-			if key, ws := savedAPIKey(); key != wantKey || ws != wantWS {
-				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wantWS)
+			// Every case ends recording workspace B, by one of two routes: a
+			// replacement records the workspace it was minted for, and a reused
+			// key has its workspace backfilled from the API's answer. The
+			// backfill is what stops an unrecorded workspace staying unrecorded
+			// forever, blinding `orq connect`, `orq launch` and `orq doctor`.
+			if key, ws := savedAPIKey(); key != wantKey || ws != wsB {
+				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wsB)
 			}
 		})
 	}
@@ -686,6 +702,8 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
 		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
 			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
+		case r.URL.Path == "/v2/workspace-settings":
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
 		default:
 			fmt.Fprint(w, `{}`)
 		}
@@ -705,7 +723,7 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	viper.Set("no-input", true)
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", ""); viper.Set("no-input", false) })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -817,7 +835,7 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1026,7 +1044,7 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	if bartolocli.Creds == nil {
 		// initAuth, which normally creates this, runs from the generated
 		// runtime that unit tests do not start.
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if err := writeAPIKeyProfile("default", "sk-orq-OLD-STALE", ""); err != nil {
@@ -1152,7 +1170,7 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1227,7 +1245,7 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 		viper.Set("profile", "")
 	})
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1730,7 +1748,7 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -2005,6 +2023,12 @@ func TestMintIsAlwaysRestricted(t *testing.T) {
 func TestLegacyAPIKeyProfileIsReusedNotReminted(t *testing.T) {
 	credsHarness(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// One identity call is expected: it is what proves the legacy key is for
+		// this workspace. A mint is not.
+		if r.URL.Path == "/v2/workspace-settings" {
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
+			return
+		}
 		t.Errorf("unexpected call %s %s — a legacy key was re-minted", r.Method, r.URL.Path)
 	}))
 	defer srv.Close()
@@ -2714,5 +2738,417 @@ func TestSetupAgentPickerOffersClaudeForMCP(t *testing.T) {
 	}
 	if !agentReceives(pi, []string{capGateway}) {
 		t.Error("pi lost the gateway it does receive")
+	}
+}
+
+// A key that authenticates fine but against another workspace is the silent
+// failure this call exists to catch, and one saved without a workspace field is
+// exactly the case the local guard cannot see.
+func TestVerifySetupFailsOnWorkspaceMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/workspace-settings" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		fmt.Fprint(w, `{"settings":{"key":"orq-research","display_name":"Research"}}`)
+	}))
+	defer srv.Close()
+
+	other := "acme"
+	state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &other}}
+	if verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify passed with the key on a different workspace than the login")
+	}
+
+	match := "orq-research"
+	state.session.ActiveWorkspaceKey = &match
+	if !verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify failed with the key on the workspace we are logged in to")
+	}
+}
+
+// "api unreachable" for a key the API answered and refused sent people to
+// check their network for a credential problem.
+func TestVerifySetupNamesARejectedKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	rep := newReporter(true)
+	rep.w = &out
+	if verifySetup(rep, auth.NewClient(srv.URL), &authState{bearer: "k"}, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify passed on a 401")
+	}
+	if !strings.Contains(out.String(), "api key rejected") {
+		t.Errorf("report = %q, want it to name the credential, not the network", out.String())
+	}
+}
+
+// A saved key the API refuses is replaced at the step that considers it, not
+// left to fail the run three steps later with every agent already wired to it.
+func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+		case r.URL.Path == "/v2/api-keys/capabilities":
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	if _, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 1 {
+		t.Fatalf("minted %d keys, want 1 replacing the rejected one", got)
+	}
+}
+
+// Declining the replacement must not mint one anyway. The decline travels back
+// as state.skipDurableKey, and the generic "Create a workspace API key now?"
+// gate downstream would otherwise ask again and take its own true default.
+func TestDecliningTheReplacementMintsNothing(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	// noInput takes the default at every prompt, and the replacement prompt
+	// defaults to yes, so drive the decline through the confirm seam.
+	opts := &setupOptions{noInput: true, confirmFn: func(string, bool) bool { return false }}
+	if _, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 0 {
+		t.Fatalf("minted %d keys after the user declined, want 0", got)
+	}
+	if !state.skipDurableKey {
+		t.Error("decline did not reach ensureDurableKey; the generic mint gate would ask again and default to yes")
+	}
+	if saved, _ := savedAPIKey(); saved != "sk-orq-dead" {
+		t.Errorf("saved key = %q, want the rejected one left in place", saved)
+	}
+}
+
+// A key the API answers 200 for, naming a workspace other than the active one,
+// is a live key in the wrong place — never the revoked-key path. Measured
+// against api.orq.ai, a cross-workspace key gets 200 naming its own workspace;
+// only a revoked key gets 401.
+func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			fmt.Fprint(w, `{"settings":{"key":"other-workspace"}}`)
+		case r.URL.Path == "/v2/api-keys/capabilities":
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-elsewhere", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	// noInput declines the switch (it defaults to no), which falls through to a mint.
+	if _, _, _, err := resolveAPIKey(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 1 {
+		t.Fatalf("minted %d keys, want 1 for the active workspace", got)
+	}
+	if strings.Contains(out.String(), "rejected") || strings.Contains(out.String(), "revoked") {
+		t.Errorf("a live key in another workspace was reported as refused:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "other-workspace") {
+		t.Errorf("report does not name the key's workspace:\n%s", out.String())
+	}
+}
+
+// Anything short of a 401 means "could not tell", never "bad key": a blip, a
+// 5xx, or a self-hosted base without the route. Re-minting over any of them
+// orphans a key that still works and is still wired into every agent config.
+func TestUnconfirmableWorkspaceReusesTheSavedKey(t *testing.T) {
+	for name, status := range map[string]int{
+		"server error": http.StatusInternalServerError,
+		"route absent": http.StatusNotFound,
+		"forbidden":    http.StatusForbidden,
+	} {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			var mints int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys" {
+					atomic.AddInt64(&mints, 1)
+					fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			if err := saveAPIKeyProfile("sk-orq-old", ""); err != nil {
+				t.Fatal(err)
+			}
+			ws := "workspace-b"
+			state := &authState{apiBase: srv.URL, bearer: "session-token",
+				session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+			var out strings.Builder
+			if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state,
+				&setupOptions{noInput: true}); err != nil {
+				t.Fatal(err)
+			}
+			if got := atomic.LoadInt64(&mints); got != 0 {
+				t.Errorf("minted %d keys over an unconfirmable answer; the saved key still works", got)
+			}
+			if key, _ := savedAPIKey(); key != "sk-orq-old" {
+				t.Errorf("saved key is now %q, want the original kept", key)
+			}
+			if !strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("reuse after an unreadable answer must say so:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// A base that does not serve workspace-settings says nothing about whether the
+// credential works, so verification proves it with the call it used before
+// rather than assuming either way. "verified" is a machine contract that
+// scripts branch on; it must never be a guess in either direction.
+func TestVerifySetupProvesTheKeyWhenTheWorkspaceIsUnconfirmable(t *testing.T) {
+	for name, status := range map[string]int{
+		"route absent": http.StatusNotFound,
+		"forbidden":    http.StatusForbidden,
+	} {
+		t.Run(name+", credential works", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/projects" {
+					fmt.Fprint(w, `{"data":[]}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("a setup whose credential answers was reported as broken:\n%s", out.String())
+			}
+			if !strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("reusing an unconfirmed workspace must say so:\n%s", out.String())
+			}
+		})
+
+		t.Run(name+", credential does not work", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("reported verified against a host that never accepted the key:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// --yes answers this run's prompts. The active workspace outlives the run and
+// redirects every later command, so an unattended run must never move it.
+//
+// The session is seeded on purpose: UseWorkspace reads it before calling the
+// API, so without one the switch fails locally for an unrelated reason and this
+// test passes whether or not --yes is guarded. It has to be able to succeed for
+// its absence to mean anything.
+func TestYesDoesNotSwitchWorkspace(t *testing.T) {
+	for _, opts := range []*setupOptions{{yes: true}, {yes: true, noInput: true}, {noInput: true}} {
+		// A --yes run also answers the "add the source line to your shell
+		// profile?" prompt, which appends under $HOME. credsHarness isolates
+		// config-directory but not $HOME, so without this the test edits the
+		// developer's real ~/.zshenv.
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		credsHarness(t)
+		var mints, switches int64
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/v2/workspace-settings":
+				fmt.Fprint(w, `{"settings":{"key":"other-workspace"}}`)
+			case r.URL.Path == "/v2/api-keys/capabilities":
+				fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+				atomic.AddInt64(&mints, 1)
+				fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+			default:
+				// Every workspace-token exchange lands here; count it as an
+				// attempted switch rather than failing, so the assertion below
+				// reports the behaviour instead of the transport.
+				atomic.AddInt64(&switches, 1)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer srv.Close()
+
+		ws := "acme"
+		sess := &auth.Session{
+			APIBaseURL:         srv.URL,
+			ActiveWorkspaceKey: &ws,
+			User:               &auth.SessionUser{ID: "u1"},
+			RefreshToken:       "rt",
+			Workspaces:         []map[string]any{{"key": "acme"}, {"key": "other-workspace"}},
+		}
+		if err := auth.SaveSession(sess); err != nil {
+			t.Fatal(err)
+		}
+		if err := saveAPIKeyProfile("sk-orq-elsewhere", ""); err != nil {
+			t.Fatal(err)
+		}
+		state := &authState{apiBase: srv.URL, bearer: "session-token", session: sess}
+		var out strings.Builder
+		if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := atomic.LoadInt64(&mints); got != 1 {
+			t.Errorf("opts %+v: minted %d keys, want 1 for the active workspace", opts, got)
+		}
+		if got := atomic.LoadInt64(&switches); got != 0 {
+			t.Errorf("opts %+v: attempted %d workspace switches, want 0", opts, got)
+		}
+		// Absence of both lines, not of a network call: UseWorkspace can fail
+		// for its own reasons before reaching the wire, and then a test that
+		// only watches the server passes whether or not the guard exists.
+		// "could not switch" is what an ATTEMPTED switch prints when it fails,
+		// so its absence proves the attempt never happened.
+		if o := out.String(); strings.Contains(o, "switched to workspace") || strings.Contains(o, "could not switch") {
+			t.Errorf("opts %+v: tried to move the active workspace with no human saying so:\n%s", opts, o)
+		}
+	}
+}
+
+// The guard itself, at the level it is written: --yes and --no-input decline a
+// change that outlives the run, and neither may consult the prompt seam.
+func TestConfirmPersistentNeverConsentsUnattended(t *testing.T) {
+	for name, o := range map[string]*setupOptions{
+		"yes":             {yes: true},
+		"yes and noinput": {yes: true, noInput: true},
+		"noinput":         {noInput: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			asked := false
+			o.confirmFn = func(string, bool) bool { asked = true; return true }
+			if o.confirmPersistent("switch?") {
+				t.Error("consented to a change that outlives the run")
+			}
+			if asked {
+				t.Error("consulted the prompt on a run with no human at it")
+			}
+		})
+	}
+	// And it is not simply always false: an interactive run still decides.
+	o := &setupOptions{confirmFn: func(string, bool) bool { return true }}
+	if !o.confirmPersistent("switch?") {
+		t.Error("an interactive yes must still be honoured")
+	}
+}
+
+// The retry window exists for a key minted this run; a reused key fails for
+// good and the wait is dead time.
+func TestRetryWindowAppliesOnlyToAMintedKey(t *testing.T) {
+	for name, tc := range map[string]struct {
+		minted    bool
+		wantCalls int64
+	}{
+		"reused key asks once": {minted: false, wantCalls: 1},
+		"minted key retries":   {minted: true, wantCalls: 4},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/workspace-settings" {
+					atomic.AddInt64(&calls, 1)
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, tc.minted)
+			if got := atomic.LoadInt64(&calls); got != tc.wantCalls {
+				t.Errorf("got %d calls, want %d", got, tc.wantCalls)
+			}
+		})
+	}
+}
+
+// resolveAPIKey's third return means "minted this run", never "have a token":
+// the reused-key path returns a token with created false.
+func TestResolveAPIKeyReportsReuseAsNotMinted(t *testing.T) {
+	credsHarness(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/workspace-settings" {
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
+			return
+		}
+		t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	if err := saveAPIKeyProfile("sk-orq-saved", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	_, token, created, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "sk-orq-saved" || created {
+		t.Errorf("got (token=%q, created=%v), want the saved token with created=false", token, created)
 	}
 }

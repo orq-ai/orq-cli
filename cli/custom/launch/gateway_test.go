@@ -299,8 +299,10 @@ func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
 					return nil
 				})
 			}
-			if strings.Contains(blob, "api.orq.ai/v3/") {
-				t.Errorf("%s sends model calls to the public gateway despite an on-prem API base", agent)
+			for _, hosted := range []string{"api.orq.ai/v3/", "my.orq.ai/v3/"} {
+				if strings.Contains(blob, hosted) {
+					t.Errorf("%s sends model calls to the public gateway (%s) despite an on-prem API base", agent, hosted)
+				}
 			}
 			if !strings.Contains(blob, onprem+"/v3/") {
 				t.Errorf("%s never points at the on-prem gateway", agent)

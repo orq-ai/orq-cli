@@ -81,6 +81,7 @@ func Register(root *cobra.Command) {
 	applyCommandGroups(root)
 	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
+	improveArgErrors(root)
 }
 
 func registerGlobalFlags() {
@@ -144,6 +145,8 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
+		resolveServer(cmd)
+		applyProfileAPIKey(cmd)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -154,8 +157,14 @@ func installSessionPreRun() {
 		if err != nil || session == nil {
 			return nil
 		}
-		if viper.GetString("server") == "" && session.APIBaseURL != "" {
-			viper.Set("server", session.APIBaseURL)
+		// The session's host is the last resort, below every explicit source.
+		// TODO(ENG-2902, orq-ai/bartolo#22): once a profile can carry its own server and
+		// the regenerated clients read it (a per-profile resolver, proposed in
+		// that PR and absent from the pinned bartolo), this bridge and
+		// mirrorServerToViper both go away — the profile becomes the one store.
+		if auth.Server() == "" && session.APIBaseURL != "" {
+			auth.SetServer(session.APIBaseURL, "session")
+			mirrorServerToViper()
 		}
 		if apiKeyConfigured() {
 			return nil
@@ -173,6 +182,104 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
+	}
+}
+
+// resolveServer decides the one host this invocation talks to, and records
+// where it came from. Every layer used to read its own env var — auth read
+// ORQ_API_BASE_URL, the generated commands read viper's `server`, launch read
+// the env directly — so the same run could reach two hosts. One decision here,
+// mirrored into viper for the generated commands and into auth for everything
+// else, is what makes --server mean the same thing everywhere.
+//
+// The session's own host is layered on afterwards by the caller: it loses to
+// every explicit source, so it cannot be decided until they are ruled out.
+func resolveServer(cmd *cobra.Command) {
+	envServer, envVar := auth.ServerFromEnv(os.Getenv)
+	switch {
+	case cmd.Root().PersistentFlags().Changed("server"):
+		// Read the flag, not viper's key: an explicitly typed --server has to
+		// win over anything else that lands on the same key.
+		auth.SetServer(cmd.Root().PersistentFlags().Lookup("server").Value.String(), "flag")
+	case cmd.Flags().Changed("api-base-url"):
+		// The pre-4.15 flag on the six auth/workspace/doctor commands, kept for
+		// one release (commands.DeprecatedAPIBaseFlag).
+		// Lookup, not GetString: the latter returns an error this branch would
+		// have to swallow, and swallowing it would drop a host the user typed.
+		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
+		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
+	case envServer != "":
+		if envVar == auth.DeprecatedServerEnvVar {
+			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
+		}
+		auth.SetServer(envServer, "env")
+	case commands.ProfileServer() != "":
+		// A host bound to the credentials profile. More specific than the
+		// global `orq server set`, so it outranks it: selecting a profile is
+		// how you select a backend.
+		auth.SetServer(commands.ProfileServer(), "profile")
+	case persistedServer() != "":
+		auth.SetServer(persistedServer(), "config") // persisted `orq server set`
+	default:
+		// Assign in every branch: the resolver decides the host, it does not
+		// leave behind whatever a previous call happened to store.
+		auth.SetServer("", "default")
+	}
+	mirrorServerToViper()
+}
+
+// persistedServer reads the host `orq server set` stored. bartolo writes it
+// under server-default and migrates an older `server` key into that on first
+// run, but a config.json the migration could not rewrite is still honoured.
+func persistedServer() string {
+	if v := strings.TrimSpace(viper.GetString("server-default")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(viper.GetString("server"))
+}
+
+// applyProfileAPIKey makes an explicitly typed --profile outrank an exported
+// key. bartolo's apikey handler reads its env vars before the profile, so a
+// stray ORQ_API_KEY in the shell otherwise sends the wrong credentials to the
+// host the named profile resolved — with no message at all. Promoting the
+// profile's own key into the env var that handler reads is what makes the flag
+// win; the structural fix is for bartolo to rank an explicit flag above the
+// environment, which would delete this (TODO(ENG-2902, orq-ai/bartolo#22)).
+//
+// Only the explicit flag counts. ORQ_PROFILE against ORQ_API_KEY is env versus
+// env, with no statement of intent to break the tie.
+func applyProfileAPIKey(cmd *cobra.Command) {
+	f := cmd.Root().PersistentFlags().Lookup("profile")
+	if f == nil || !f.Changed {
+		return
+	}
+	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	if key == "" {
+		return
+	}
+	var shadowed []string
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key {
+			shadowed = append(shadowed, envVar)
+		}
+		os.Unsetenv(envVar)
+	}
+	if len(shadowed) > 0 {
+		// Say it once, and say which key won: silently swapping credentials is
+		// the failure this whole ordering exists to prevent.
+		commands.Warn("using the API key from profile %q; %s set but an explicit --profile takes precedence", auth.ActiveProfile(), strings.Join(shadowed, " and "))
+	}
+	os.Setenv(apiKeyEnvVars[0], key)
+}
+
+// mirrorServerToViper hands the resolved host to the generated commands, which
+// read viper's `server` key directly (bartolo cli.ResolveServer). They cannot
+// see the session host, --api-base-url or ORQ_API_BASE_URL; the mirror is the
+// only way those sources reach them. (The plain defaults now agree — the
+// OpenAPI server list and auth.DefaultAPIBaseURL are both my.orq.ai.)
+func mirrorServerToViper() {
+	if s := auth.Server(); s != "" && viper.GetString("server") != s {
+		viper.Set("server", s)
 	}
 }
 
@@ -500,4 +607,23 @@ func skillsCommand(cmd *cobra.Command) bool {
 		return true
 	}
 	return false
+}
+
+// improveArgErrors rewrites cobra's bare arity errors ("accepts 2 arg(s),
+// received 0") into a message that names the expected arguments, by appending
+// the command's own usage line. Applied to the whole tree, so bartolo's
+// generated commands get it too.
+func improveArgErrors(cmd *cobra.Command) {
+	if inner := cmd.Args; inner != nil {
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			err := inner(c, args)
+			if err == nil {
+				return nil
+			}
+			return fmt.Errorf("%w\n\nUsage:\n  %s\n\nRun '%s --help' for details.", err, c.UseLine(), c.CommandPath())
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		improveArgErrors(sub)
+	}
 }

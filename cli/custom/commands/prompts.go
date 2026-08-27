@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"orq/cli/custom/auth"
-
 	survey "github.com/AlecAivazis/survey/v2"
 	isatty "github.com/mattn/go-isatty"
 	"github.com/spf13/viper"
@@ -96,14 +94,4 @@ func selectWorkspace(workspaces []map[string]any, message string) (string, error
 		}
 	}
 	return "", errors.New("no workspace selected")
-}
-
-func sessionAPIBase(override string, session *auth.Session) string {
-	if override != "" {
-		return override
-	}
-	if session != nil {
-		return session.APIBaseURL
-	}
-	return ""
 }

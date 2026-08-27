@@ -140,7 +140,7 @@ func TestKeyIDFromToken(t *testing.T) {
 		// A router token: same prefix, a JWT after it, and base64url has dashes.
 		"sk-orq-eyJhbGciOiJIUzI1NiJ9.eyJ3-x.sig": "",
 	} {
-		if got := keyIDFromToken(token); got != want {
+		if got := KeyIDFromToken(token); got != want {
 			t.Errorf("%q: key id = %q, want %q", token, got, want)
 		}
 	}
@@ -225,5 +225,80 @@ func TestCreateAPIKeyReadsTheKeyIDFromEitherShape(t *testing.T) {
 				t.Errorf("key id = %q, want %q", keyID, tc.want)
 			}
 		})
+	}
+}
+
+// "" was the old return for a 200 that named no workspace, and setup reads a
+// blank workspace as "no mismatch" — so a renamed field would turn both the
+// reuse guard and verification into no-ops that still report success.
+func TestKeyWorkspaceRejectsAResponseWithNoWorkspace(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		want    string
+		wantErr bool
+	}{
+		{name: "named", body: `{"settings":{"key":"acme"}}`, want: "acme"},
+		{name: "trimmed", body: `{"settings":{"key":"  acme  "}}`, want: "acme"},
+		{name: "empty key", body: `{"settings":{"key":""}}`, wantErr: true},
+		{name: "field renamed", body: `{"settings":{"slug":"acme"}}`, wantErr: true},
+		{name: "empty body", body: `{}`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+
+			got, err := NewClient(srv.URL).KeyWorkspace("k")
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("workspace = %q, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("KeyWorkspace: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("workspace = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// These three predicates decide whether setup discards the saved key. Measured
+// against api.orq.ai: a revoked gateway key gets 401 from workspace-settings, a
+// live one belonging to another workspace gets 200, a gateway key gets 403 from
+// /v2/api-keys/{id} ("This API key type cannot access this endpoint"), and a
+// session token asking for a key held in another workspace gets 404. Widening
+// Unauthorized back over 403 makes every run mint a replacement for a working
+// credential the moment a route stops serving gateway keys.
+func TestAPIErrorPredicatesMatchTheStatusesSetupBranchesOn(t *testing.T) {
+	for _, tc := range []struct {
+		status                      int
+		unauth, forbidden, notFound bool
+	}{
+		{status: http.StatusUnauthorized, unauth: true},
+		{status: http.StatusForbidden, forbidden: true},
+		{status: http.StatusNotFound, notFound: true},
+		{status: http.StatusInternalServerError},
+	} {
+		err := error(&APIError{Status: tc.status, Msg: "x"})
+		if got := Unauthorized(err); got != tc.unauth {
+			t.Errorf("Unauthorized(%d) = %v, want %v", tc.status, got, tc.unauth)
+		}
+		if got := Forbidden(err); got != tc.forbidden {
+			t.Errorf("Forbidden(%d) = %v, want %v", tc.status, got, tc.forbidden)
+		}
+		if got := NotFound(err); got != tc.notFound {
+			t.Errorf("NotFound(%d) = %v, want %v", tc.status, got, tc.notFound)
+		}
+	}
+	for _, err := range []error{fmt.Errorf("dial tcp: connection refused"), nil} {
+		if Unauthorized(err) || Forbidden(err) || NotFound(err) {
+			t.Errorf("%v must not read as any API refusal", err)
+		}
 	}
 }

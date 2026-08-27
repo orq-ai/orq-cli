@@ -32,7 +32,7 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if bartolocli.Creds == nil {
-				bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+				bartolocli.Creds = newTestCreds(t)
 				t.Cleanup(func() { bartolocli.Creds = nil })
 			}
 			viper.Set("profile", "default")
@@ -59,7 +59,7 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 // to keep working — otherwise the same warning fires forever for them instead.
 func TestShadowsSessionReadsTheLegacyFieldToo(t *testing.T) {
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	viper.Set("profile", "default")
@@ -84,7 +84,7 @@ func TestShadowsSessionReadsTheLegacyFieldToo(t *testing.T) {
 // token against the saved key and reporting a mismatch on every run.
 func TestShadowsSessionIgnoresOurOwnInjectedToken(t *testing.T) {
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	viper.Set("profile", "default")
@@ -105,4 +105,13 @@ func TestShadowsSessionIgnoresOurOwnInjectedToken(t *testing.T) {
 	if !shadowsSession("sk-somebody-elses", session) {
 		t.Error("a genuinely different key stopped being reported")
 	}
+}
+
+func newTestCreds(t *testing.T) *bartolocli.CredentialsFile {
+	t.Helper()
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCredentialsFile: %v", err)
+	}
+	return creds
 }
