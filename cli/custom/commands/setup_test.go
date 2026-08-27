@@ -3096,3 +3096,59 @@ func TestConfirmPersistentNeverConsentsUnattended(t *testing.T) {
 		t.Error("an interactive yes must still be honoured")
 	}
 }
+
+// The retry window exists for a key minted this run; a reused key fails for
+// good and the wait is dead time.
+func TestRetryWindowAppliesOnlyToAMintedKey(t *testing.T) {
+	for name, tc := range map[string]struct {
+		minted    bool
+		wantCalls int64
+	}{
+		"reused key asks once": {minted: false, wantCalls: 1},
+		"minted key retries":   {minted: true, wantCalls: 4},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/workspace-settings" {
+					atomic.AddInt64(&calls, 1)
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, tc.minted)
+			if got := atomic.LoadInt64(&calls); got != tc.wantCalls {
+				t.Errorf("got %d calls, want %d", got, tc.wantCalls)
+			}
+		})
+	}
+}
+
+// resolveAPIKey's third return means "minted this run", never "have a token":
+// the reused-key path returns a token with created false.
+func TestResolveAPIKeyReportsReuseAsNotMinted(t *testing.T) {
+	credsHarness(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/workspace-settings" {
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
+			return
+		}
+		t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	if err := saveAPIKeyProfile("sk-orq-saved", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	_, token, created, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "sk-orq-saved" || created {
+		t.Errorf("got (token=%q, created=%v), want the saved token with created=false", token, created)
+	}
+}
