@@ -100,7 +100,7 @@ func MCPURLFor(apiBase string) string {
 	)
 }
 
-// mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.
+// mcpURL returns the orq MCP endpoint for this launch, or "" with --no-mcp.
 // The API key is never embedded — each harness references the ORQ_API_KEY env
 // var through its own mechanism.
 func mcpURL(ctx *AgentContext) string {

@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-func TestMCPIsOptIn(t *testing.T) {
-	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{}}
-	if mcpURL(ctx) != "" {
-		t.Fatalf("MCP wired without --mcp: %s", mcpURL(ctx))
+func TestMCPIsEnabledByDefaultAndOptOut(t *testing.T) {
+	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{MCP: true}}
+	if mcpURL(ctx) != DefaultMCPURL {
+		t.Fatalf("MCP should be enabled by default: %s", mcpURL(ctx))
 	}
 	// The shipped skill set is linked in from the binary now, so no plugin is
 	// fetched unless someone pins their own bundle.
@@ -19,10 +19,11 @@ func TestMCPIsOptIn(t *testing.T) {
 		t.Fatal("a plugin was fetched without ORQ_SKILLS_URL")
 	}
 
-	ctx.Flags.MCP = true
-	if mcpURL(ctx) != DefaultMCPURL {
-		t.Fatalf("--mcp: %s", mcpURL(ctx))
+	ctx.Flags.MCP = false
+	if mcpURL(ctx) != "" {
+		t.Fatalf("--no-mcp should disable MCP: %s", mcpURL(ctx))
 	}
+	ctx.Flags.MCP = true
 	if skillsPluginURL(ctx) != "" {
 		t.Fatal("--mcp should not pull a skills plugin off the network")
 	}

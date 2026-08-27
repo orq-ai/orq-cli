@@ -91,7 +91,8 @@ Flags:
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
-	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent
+	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
+  --no-mcp              Do not make the orq MCP server available for this session
   --no-skills           Do not make the orq skills available for this session.
                         Every agent gets them: they are linked into the skills
                         directory the agent reads when it starts and removed
