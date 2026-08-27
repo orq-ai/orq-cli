@@ -2955,16 +2955,21 @@ func TestUnconfirmableWorkspaceReusesTheSavedKey(t *testing.T) {
 	}
 }
 
-// The same unconfirmable answer must not fail the run at verification either.
-// Step 2 reuses the key and step 3 called the whole setup broken, so a
-// self-hosted install without this route exited non-zero while working.
-func TestVerifySetupSurvivesAnUnconfirmableWorkspace(t *testing.T) {
+// A base that does not serve workspace-settings says nothing about whether the
+// credential works, so verification proves it with the call it used before
+// rather than assuming either way. "verified" is a machine contract that
+// scripts branch on; it must never be a guess in either direction.
+func TestVerifySetupProvesTheKeyWhenTheWorkspaceIsUnconfirmable(t *testing.T) {
 	for name, status := range map[string]int{
 		"route absent": http.StatusNotFound,
 		"forbidden":    http.StatusForbidden,
 	} {
-		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Run(name+", credential works", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/projects" {
+					fmt.Fprint(w, `{"data":[]}`)
+					return
+				}
 				w.WriteHeader(status)
 			}))
 			defer srv.Close()
@@ -2972,10 +2977,23 @@ func TestVerifySetupSurvivesAnUnconfirmableWorkspace(t *testing.T) {
 			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
 			var out strings.Builder
 			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
-				t.Fatalf("a setup that works reported as broken:\n%s", out.String())
+				t.Fatalf("a setup whose credential answers was reported as broken:\n%s", out.String())
 			}
-			if strings.Contains(out.String(), "unreachable") {
-				t.Errorf("an answered request must not be reported as unreachable:\n%s", out.String())
+			if !strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("reusing an unconfirmed workspace must say so:\n%s", out.String())
+			}
+		})
+
+		t.Run(name+", credential does not work", func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("reported verified against a host that never accepted the key:\n%s", out.String())
 			}
 		})
 	}
@@ -2983,15 +3001,21 @@ func TestVerifySetupSurvivesAnUnconfirmableWorkspace(t *testing.T) {
 
 // --yes answers this run's prompts. The active workspace outlives the run and
 // redirects every later command, so an unattended run must never move it.
+//
+// The session is seeded on purpose: UseWorkspace reads it before calling the
+// API, so without one the switch fails locally for an unrelated reason and this
+// test passes whether or not --yes is guarded. It has to be able to succeed for
+// its absence to mean anything.
 func TestYesDoesNotSwitchWorkspace(t *testing.T) {
 	for _, opts := range []*setupOptions{{yes: true}, {yes: true, noInput: true}, {noInput: true}} {
 		// A --yes run also answers the "add the source line to your shell
 		// profile?" prompt, which appends under $HOME. credsHarness isolates
 		// config-directory but not $HOME, so without this the test edits the
 		// developer's real ~/.zshenv.
-		t.Setenv("HOME", t.TempDir())
+		home := t.TempDir()
+		t.Setenv("HOME", home)
 		credsHarness(t)
-		var mints int64
+		var mints, switches int64
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/v2/workspace-settings":
@@ -3002,17 +3026,30 @@ func TestYesDoesNotSwitchWorkspace(t *testing.T) {
 				atomic.AddInt64(&mints, 1)
 				fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
 			default:
-				t.Errorf("unexpected call %s %s, a workspace switch was attempted", r.Method, r.URL.Path)
+				// Every workspace-token exchange lands here; count it as an
+				// attempted switch rather than failing, so the assertion below
+				// reports the behaviour instead of the transport.
+				atomic.AddInt64(&switches, 1)
+				w.WriteHeader(http.StatusNotFound)
 			}
 		}))
 		defer srv.Close()
 
+		ws := "acme"
+		sess := &auth.Session{
+			APIBaseURL:         srv.URL,
+			ActiveWorkspaceKey: &ws,
+			User:               &auth.SessionUser{ID: "u1"},
+			RefreshToken:       "rt",
+			Workspaces:         []map[string]any{{"key": "acme"}, {"key": "other-workspace"}},
+		}
+		if err := auth.SaveSession(sess); err != nil {
+			t.Fatal(err)
+		}
 		if err := saveAPIKeyProfile("sk-orq-elsewhere", ""); err != nil {
 			t.Fatal(err)
 		}
-		ws := "acme"
-		state := &authState{apiBase: srv.URL, bearer: "session-token",
-			session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		state := &authState{apiBase: srv.URL, bearer: "session-token", session: sess}
 		var out strings.Builder
 		if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, opts); err != nil {
 			t.Fatal(err)
@@ -3020,8 +3057,42 @@ func TestYesDoesNotSwitchWorkspace(t *testing.T) {
 		if got := atomic.LoadInt64(&mints); got != 1 {
 			t.Errorf("opts %+v: minted %d keys, want 1 for the active workspace", opts, got)
 		}
-		if strings.Contains(out.String(), "switched to workspace") {
-			t.Errorf("opts %+v: moved the active workspace without a human saying so:\n%s", opts, out.String())
+		if got := atomic.LoadInt64(&switches); got != 0 {
+			t.Errorf("opts %+v: attempted %d workspace switches, want 0", opts, got)
 		}
+		// Absence of both lines, not of a network call: UseWorkspace can fail
+		// for its own reasons before reaching the wire, and then a test that
+		// only watches the server passes whether or not the guard exists.
+		// "could not switch" is what an ATTEMPTED switch prints when it fails,
+		// so its absence proves the attempt never happened.
+		if o := out.String(); strings.Contains(o, "switched to workspace") || strings.Contains(o, "could not switch") {
+			t.Errorf("opts %+v: tried to move the active workspace with no human saying so:\n%s", opts, o)
+		}
+	}
+}
+
+// The guard itself, at the level it is written: --yes and --no-input decline a
+// change that outlives the run, and neither may consult the prompt seam.
+func TestConfirmPersistentNeverConsentsUnattended(t *testing.T) {
+	for name, o := range map[string]*setupOptions{
+		"yes":             {yes: true},
+		"yes and noinput": {yes: true, noInput: true},
+		"noinput":         {noInput: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			asked := false
+			o.confirmFn = func(string, bool) bool { asked = true; return true }
+			if o.confirmPersistent("switch?") {
+				t.Error("consented to a change that outlives the run")
+			}
+			if asked {
+				t.Error("consulted the prompt on a run with no human at it")
+			}
+		})
+	}
+	// And it is not simply always false: an interactive run still decides.
+	o := &setupOptions{confirmFn: func(string, bool) bool { return true }}
+	if !o.confirmPersistent("switch?") {
+		t.Error("an interactive yes must still be honoured")
 	}
 }
