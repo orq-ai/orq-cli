@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -160,4 +161,63 @@ func statusGlyph(status string) string {
 	default:
 		return "-"
 	}
+}
+
+// ============================================================================
+// Tables
+// ============================================================================
+
+// tableRow is one line of a table: an optional marker glyph and one cell per
+// header. Cells are plain text — only the last cell may carry its own color,
+// because every earlier cell is padded and padding a string with ANSI escapes
+// in it counts the escape bytes as width and breaks the alignment.
+type tableRow struct {
+	marker string   // a single visible rune, already painted, or "" for none
+	cells  []string // len(cells) == len(headers)
+}
+
+// printTable renders the CLI's one table shape: a marker column, a dim header
+// row, and columns sized to the widest value in them. `orq doctor`, `orq
+// workspace list` and `orq connect --status` all print through it, so their
+// gutters, header style and column alignment cannot drift apart.
+func printTable(w io.Writer, headers []string, rows []tableRow) {
+	if len(headers) == 0 {
+		return
+	}
+	// The last column is never padded — nothing follows it to line up with —
+	// so it is also the only one allowed to arrive pre-colored.
+	widths := make([]int, len(headers)-1)
+	for i := range widths {
+		widths[i] = utf8.RuneCountInString(headers[i])
+		for _, r := range rows {
+			if n := utf8.RuneCountInString(r.cells[i]); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+	// The marker occupies one rune between two-space gutters; the header's
+	// blank marker cell keeps its columns over the rows' columns.
+	fmt.Fprint(w, "     ")
+	printCells(w, widths, headers, func(s string) string { return paint(ansiDim, s) })
+	for _, r := range rows {
+		marker := r.marker
+		if marker == "" {
+			marker = " "
+		}
+		fmt.Fprintf(w, "  %s  ", marker)
+		printCells(w, widths, r.cells, func(s string) string { return s })
+	}
+}
+
+func printCells(w io.Writer, widths []int, cells []string, style func(string) string) {
+	for i, cell := range cells {
+		if i > 0 {
+			fmt.Fprint(w, "  ")
+		}
+		if i < len(widths) {
+			cell = pad(cell, widths[i])
+		}
+		fmt.Fprint(w, style(cell))
+	}
+	fmt.Fprintln(w)
 }

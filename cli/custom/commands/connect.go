@@ -8,7 +8,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
@@ -426,61 +425,51 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
-		rep.blank()
+		fmt.Fprintln(rep.w)
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
 }
 
-// printWiredTable renders the wiring as the same glyph-and-columns table
-// `orq doctor` prints, so the two status views read alike. The agent name is
-// printed once per group: repeating it on every capability row is noise the
-// alignment already carries. SCOPE appears only when some row has one --
-// "~/.claude.json" and "./.mcp.json" are the same capability wired two
-// different ways, and the path alone leaves the reader to work it out -- so a
-// machine with no project-scoped entries is not given an empty column.
+// printWiredTable renders the wiring through the shared table, so it lines up
+// with `orq doctor` and `orq workspace list`. The agent name is printed once
+// per group: repeating it on every capability row is noise the alignment
+// already carries.
 func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTarget) {
 	if len(order) == 0 {
 		return
 	}
-	agentW, capW, scopeW := utf8.RuneCountInString("AGENT"), utf8.RuneCountInString("CAPABILITY"), 0
+	// SCOPE earns a column only when some row has one: "~/.claude.json" and
+	// "./.mcp.json" are the same capability wired two different ways, and the
+	// path alone leaves the reader to work out which. A machine with no
+	// project-scoped entries gets no empty column for it.
+	scoped := false
 	for _, agent := range order {
-		if n := utf8.RuneCountInString(agent); n > agentW {
-			agentW = n
-		}
 		for _, w := range byAgent[agent] {
-			if n := utf8.RuneCountInString(w.capability); n > capW {
-				capW = n
-			}
-			if n := utf8.RuneCountInString(w.scope); n > scopeW {
-				scopeW = n
+			if w.scope != "" {
+				scoped = true
 			}
 		}
 	}
-	scoped := scopeW > 0
-	if scoped && scopeW < utf8.RuneCountInString("SCOPE") {
-		scopeW = utf8.RuneCountInString("SCOPE")
+	headers := []string{"AGENT", "CAPABILITY", "LOCATION"}
+	if scoped {
+		headers = []string{"AGENT", "CAPABILITY", "SCOPE", "LOCATION"}
 	}
-	column := func(s string, width int) string {
-		if !scoped {
-			return ""
-		}
-		return pad(s, width) + "  "
-	}
-	fmt.Fprintf(rep.w, "     %s  %s  %s%s\n",
-		paint(ansiDim, pad("AGENT", agentW)), paint(ansiDim, pad("CAPABILITY", capW)),
-		paint(ansiDim, column("SCOPE", scopeW)), paint(ansiDim, "LOCATION"))
+	var rows []tableRow
 	for _, agent := range order {
 		for i, w := range byAgent[agent] {
 			name := agent
 			if i > 0 {
 				name = ""
 			}
-			fmt.Fprintf(rep.w, "  %s  %s  %s  %s%s\n",
-				paint(ansiOK, "\u2713"), pad(name, agentW), pad(w.capability, capW),
-				column(w.scope, scopeW), tilde(w.path))
+			cells := []string{name, w.capability, tilde(w.path)}
+			if scoped {
+				cells = []string{name, w.capability, w.scope, tilde(w.path)}
+			}
+			rows = append(rows, tableRow{marker: statusGlyph("pass"), cells: cells})
 		}
 	}
+	printTable(rep.w, headers, rows)
 }
 
 func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {

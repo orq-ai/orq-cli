@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 
@@ -231,23 +230,14 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 	}
 	// Healthy per-agent rows collapse into the coding_agents summary; only
 	// fault rows earn their own line. --json keeps every row.
-	printed := checks[:0:0]
-	width := 16
+	rows := []tableRow{{marker: statusGlyph(authStatusToCheck(authStatus)), cells: []string{"auth", authLine}}}
 	for _, c := range checks {
 		if strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
 			continue
 		}
-		printed = append(printed, c)
-		if n := utf8.RuneCountInString(c.ID); n > width {
-			width = n
-		}
+		rows = append(rows, tableRow{marker: statusGlyph(c.Status), cells: []string{c.ID, c.Message}})
 	}
-	// Header row: 5-space gutter matches "  <glyph>  " before the label column.
-	fmt.Fprintf(out, "     %s  %s\n", paint(ansiDim, pad("CHECK", width)), paint(ansiDim, "RESULT"))
-	fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(authStatusToCheck(authStatus)), pad("auth", width), authLine)
-	for _, c := range printed {
-		fmt.Fprintf(out, "  %s  %s  %s\n", statusGlyph(c.Status), pad(c.ID, width), c.Message)
-	}
+	printTable(out, []string{"CHECK", "RESULT"}, rows)
 	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
 }
 

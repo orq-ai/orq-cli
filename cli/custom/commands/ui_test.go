@@ -26,7 +26,7 @@ func TestPrintWorkspaceListTable(t *testing.T) {
 		{Key: "ws1", Name: "Acme", TotalMembers: 12, Active: false},
 		{Key: "ws2", Name: "Long Workspace Name", TotalMembers: 3, Active: true},
 	}
-	out := captureStdout(t, func() { printWorkspaceList(rows, 19) })
+	out := captureStdout(t, func() { printWorkspaceList(rows) })
 
 	if !strings.Contains(out, "Workspaces") {
 		t.Fatalf("missing heading:\n%s", out)
@@ -67,5 +67,57 @@ func TestKVPadsLabelColumn(t *testing.T) {
 	}
 	if !strings.Contains(out, "Karina") || !strings.Contains(out, "Acme (ws1)") {
 		t.Errorf("values missing:\n%s", out)
+	}
+}
+
+// printTable is the one renderer behind doctor, workspace list and connect
+// --status, so its output is pinned byte for byte: an alignment regression in
+// here misaligns all three at once, and substring assertions never see it.
+func TestPrintTableGoldens(t *testing.T) {
+	cases := []struct {
+		name    string
+		headers []string
+		rows    []tableRow
+		want    string
+	}{
+		{name: "no headers", want: ""},
+		{
+			name:    "headers only",
+			headers: []string{"AGENT", "LOCATION"},
+			want:    "     AGENT  LOCATION\n",
+		},
+		{
+			name:    "columns grow past their headers",
+			headers: []string{"AGENT", "CAPABILITY", "LOCATION"},
+			rows: []tableRow{
+				{marker: "✓", cells: []string{"opencode", "gateway", "~/.config/opencode/opencode.json"}},
+				{cells: []string{"", "skills", "~/.agents/skills"}},
+			},
+			want: "     AGENT     CAPABILITY  LOCATION\n" +
+				"  ✓  opencode  gateway     ~/.config/opencode/opencode.json\n" +
+				"     " + "        " + "  skills      ~/.agents/skills\n",
+		},
+		{
+			// Padding counts runes, not bytes: a byte count over-pads any
+			// non-ASCII cell and skews every column after it.
+			name:    "multi-byte cells",
+			headers: []string{"NAME", "KEY"},
+			rows: []tableRow{
+				{marker: "●", cells: []string{"Ünïcodé", "ws1"}},
+				{cells: []string{"Acme", "ws2"}},
+			},
+			want: "     NAME     KEY\n" +
+				"  ●  Ünïcodé  ws1\n" +
+				"     Acme     ws2\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			printTable(&buf, tc.headers, tc.rows)
+			if got := buf.String(); got != tc.want {
+				t.Errorf("printTable output\n got: %q\nwant: %q", got, tc.want)
+			}
+		})
 	}
 }
