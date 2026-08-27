@@ -252,7 +252,7 @@ func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID st
 	if strings.TrimSpace(resp.Token) == "" {
 		return "", "", false, errors.New("api key create returned no token")
 	}
-	for _, candidate := range []string{resp.ID, resp.APIKey.ID, keyIDFromToken(resp.Token)} {
+	for _, candidate := range []string{resp.ID, resp.APIKey.ID, KeyIDFromToken(resp.Token)} {
 		if keyID = strings.TrimSpace(candidate); keyID != "" {
 			break
 		}
@@ -260,12 +260,12 @@ func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID st
 	return resp.Token, keyID, scopedToProject, nil
 }
 
-// keyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`, the opaque
+// KeyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`, the opaque
 // token shape. Router tokens share the `sk-orq-` prefix but carry a JWT after
 // it, and base64url contains "-", so the id is only trusted when it is shaped
 // like one. A wrong id is worse than none: it would be stored and later used to
 // address somebody else's key.
-func keyIDFromToken(token string) string {
+func KeyIDFromToken(token string) string {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "sk-orq-")
 	if !ok {
 		return ""
@@ -427,4 +427,30 @@ func SizeVariantRank(modelID string) int {
 		}
 	}
 	return 0
+}
+
+// APIKeyRecord is the metadata the API holds about one key. The raw secret is
+// never part of it.
+type APIKeyRecord struct {
+	ID       string   `json:"id"`
+	Projects []string `json:"projects"`
+	Active   *bool    `json:"active"`
+}
+
+// GetAPIKey looks a key up by id. Authenticate with the session's workspace
+// token, not the key itself: a gateway key is minted with source "router",
+// whose catalog preset has no api_keys access, so it cannot read its own
+// record. The route is workspace-scoped, so a 404 here means the key is not in
+// the workspace you are logged in to.
+func (c *Client) GetAPIKey(bearer, keyID string) (*APIKeyRecord, error) {
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" {
+		return nil, errors.New("no api key id to look up")
+	}
+	var rec APIKeyRecord
+	url := c.URLs.APIBaseURL + "/v2/api-keys/" + keyID
+	if err := c.jsonRequest(http.MethodGet, url, bearer, nil, &rec); err != nil {
+		return nil, err
+	}
+	return &rec, nil
 }

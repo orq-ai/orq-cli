@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"orq/cli/custom/skills"
@@ -242,5 +243,29 @@ func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
 	// The root itself is `orq` with no subcommand — help output, nothing else.
 	if skillsCommand(root) {
 		t.Error("bare `orq` refreshed skills")
+	}
+}
+
+func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
+	root := &cobra.Command{Use: "orq"}
+	sub := &cobra.Command{
+		Use:  "add-profile <name> <api-key>",
+		Args: cobra.ExactArgs(2),
+		Run:  func(*cobra.Command, []string) {},
+	}
+	root.AddCommand(sub)
+	improveArgErrors(root)
+
+	err := sub.Args(sub, nil)
+	if err == nil {
+		t.Fatal("expected an arity error")
+	}
+	for _, want := range []string{"accepts 2 arg(s)", "orq add-profile <name> <api-key>", "orq add-profile --help"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing %q", err, want)
+		}
+	}
+	if err := sub.Args(sub, []string{"a", "b"}); err != nil {
+		t.Fatalf("valid args rejected: %v", err)
 	}
 }
