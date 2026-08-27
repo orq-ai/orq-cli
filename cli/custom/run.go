@@ -2,6 +2,7 @@ package custom
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -49,6 +50,17 @@ func Run(version string, registerGenerated func(root *cobra.Command)) {
 
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root)
+	// `launch <agent>` disables flag parsing, so cobra parses no flags at all
+	// for that invocation — not even the root's own. Take orq's globals typed
+	// before the agent name and parse them here (see splitLaunchGlobals).
+	globals, rest := splitLaunchGlobals(bartolocli.Root, os.Args[1:])
+	if len(globals) > 0 {
+		if err := bartolocli.Root.PersistentFlags().Parse(globals); err != nil {
+			fmt.Fprintf(bartolocli.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		bartolocli.Root.SetArgs(rest)
+	}
 
 	// ExecuteContextC, not ExecuteContext, for the command that actually ran:
 	// the notice's suppression rules are per-command, and root cannot answer

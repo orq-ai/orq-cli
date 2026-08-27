@@ -80,6 +80,52 @@ the version and this changelog as the source of truth for breaking changes.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
+- **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
+  logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
+  doctor`. The CLI had two names for one value: those six commands took
+  `--api-base-url` and rejected `--server`, while every generated command took
+  the global `--server` and rejected `--api-base-url`. There is now one name —
+  the global `--server <url>` (env: `ORQ_SERVER`), which works on every command,
+  including `orq auth login --server https://orq.acme.internal`. Replace
+  `--api-base-url <url>` with `--server <url>`; it is the same root URL. The old
+  flag still works for one release: it is hidden from help and warns on stderr,
+  and it will be removed in a following minor.
+- **Changed:** the default host is `https://my.orq.ai`, the `servers[0]` entry
+  of the API spec and already the fallback the generated commands used. Auth,
+  `whoami`, `workspace` and `doctor` defaulted to `https://api.orq.ai` instead,
+  so a run with no session and no override could reach two hosts at once. Both
+  names answer the same routes from the same origin, so nothing moves for users
+  on either. `orq launch`'s gateway defaults (`/v3/router`, `/v3/anthropic`,
+  `/v2/mcp`) hang off that same host, so there is one host literal in the
+  binary; they give way to the resolved server whenever it is not orq's own
+  service under either of its two names.
+- **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` and `orq launch`,
+  and `orq doctor` reports where the host came from (`flag`, `env`, `config`,
+  `session`, `default`) from the point the value was decided rather than by
+  comparing it against the session. An explicit host also outranks the session
+  on `orq setup` and `orq launch`, so `--server` diverts the configs they write
+  instead of being overruled by the host the session was authenticated against.
+  `setup` and `launch` previously read only `ORQ_API_BASE_URL`, so `--server`
+  was silently ignored on both, and a coding agent could be wired to a
+  different host than the one the CLI was talking to.
+  On `orq launch` the flag goes before the agent name — either side of the
+  `launch` word (`orq --server <url> launch claude`, `orq launch --server <url>
+  claude`); everything after the agent name is forwarded to the agent.
+- **Changed:** a profile now carries its own host and its own credentials, and
+  both beat the wider setting. `orq auth login --server <url>` (and `orq setup`)
+  bind the host to the profile they authenticate, so `orq --profile acme ...`
+  routes to acme's backend with no flag and no session read; that binding
+  outranks a host persisted globally with `orq server set`, which stays global.
+  An explicitly typed `--profile` also outranks an exported `ORQ_API_KEY`,
+  `ORQ_TOKEN` or `ORQ_AUTHORIZATION` — previously a key left in the shell was
+  sent to whatever host the named profile resolved, silently. The CLI says on
+  stderr when it overrides one. `ORQ_PROFILE` does not do this: env against env
+  has no statement of intent to break the tie.
+- **Deprecated:** `ORQ_API_BASE_URL`. It still resolves, now as a spelling of
+  `ORQ_SERVER`, and prints a warning on stderr; it will be removed in a future
+  release. It also reaches the generated API commands for the first time, which
+  never honored it. Set `ORQ_SERVER` instead.
+
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
@@ -463,8 +509,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ### Known gap in the surface gate
 
-`orq launch` sets `DisableFlagParsing` so that everything after the agent name
-reaches the agent untouched. Its flags are therefore parsed by hand and do not
+`orq launch` sets `DisableFlagParsing` so that agent arguments can be forwarded
+without collisions. Global `orq` flags must appear before the agent name; its
+launcher-specific flags are parsed by hand at the start of the agent arguments
+and therefore do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
 `--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or

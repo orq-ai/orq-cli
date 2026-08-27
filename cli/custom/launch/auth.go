@@ -97,10 +97,15 @@ func APIBaseFor(getenv func(string) string) string {
 // ResolveCredentials resolves the orq API key and API base URL explicitly
 // (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
 // (the session is not read at all), else the active workspace token from the
-// login session. API base: ORQ_API_BASE_URL env → session APIBaseURL →
-// default.
+// login session. API base: the server the root PreRun resolved (--server,
+// ORQ_SERVER, the deprecated ORQ_API_BASE_URL) → session APIBaseURL → default.
 func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
-	apiBase := firstNonEmpty(getenv("ORQ_API_BASE_URL"), DefaultGatewayAPIBaseURL)
+	// auth.Server() is empty when the PreRun did not run — the launch tests,
+	// which drive this with an injected getenv. The env fallback goes through
+	// the same ladder the PreRun uses, so the two cannot disagree.
+	envServer, _ := auth.ServerFromEnv(getenv)
+	resolved := firstNonEmpty(auth.Server(), envServer)
+	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		session, _ := auth.ReadSession()
@@ -129,10 +134,12 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if session == nil {
 		return nil, errNotLoggedIn
 	}
-	if session.APIBaseURL != "" && getenv("ORQ_API_BASE_URL") == "" {
+	if session.APIBaseURL != "" && resolved == "" {
 		apiBase = session.APIBaseURL
 	}
-	client := auth.NewClient(session.APIBaseURL)
+	// apiBase, not session.APIBaseURL: an explicit --server diverts the token
+	// fetch too, so one run cannot straddle two hosts.
+	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return nil, err

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -413,7 +412,11 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		signedInAs = session.User.Email
 	}
 
-	client := auth.NewClient(session.APIBaseURL)
+	// The resolved server outranks the host the session was authenticated
+	// against, so `orq setup --server <url>` diverts this run instead of
+	// silently writing the session's host into every agent config.
+	apiBase := sessionAPIBase(session)
+	client := auth.NewClient(apiBase)
 	session, err = resolveWorkspace(rep, client, session, opts, signedInAs)
 	if err != nil {
 		return nil, err
@@ -423,18 +426,18 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	if err != nil {
 		return nil, err
 	}
-	return &authState{apiBase: session.APIBaseURL, session: session, bearer: active.AccessToken}, nil
+	return &authState{apiBase: apiBase, session: session, bearer: active.AccessToken}, nil
 }
 
+// apiBaseFromEnv is the no-session fallback. It goes through ResolveURLs rather
+// than reading an env var here, so the resolved --server, the env spellings and
+// the default are decided in exactly one place.
 func apiBaseFromEnv() string {
-	if v := strings.TrimSpace(os.Getenv("ORQ_API_BASE_URL")); v != "" {
-		return v
-	}
-	return auth.DefaultAPIBaseURL
+	return auth.ResolveURLs(serverURL()).APIBaseURL
 }
 
 func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
-	result, err := runDeviceLogin(ctx, rep, "", opts.workspace, true)
+	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, true)
 	if err != nil {
 		return nil, err
 	}
@@ -487,6 +490,11 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}
 	session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspace)
 	if err != nil {
+		return nil, err
+	}
+	// Bind the host to the profile this login belongs to, so an OAuth profile
+	// routes without a flag the same way an API-key one does.
+	if err := BindProfileServer(auth.ActiveProfile(), auth.Server()); err != nil {
 		return nil, err
 	}
 	return &deviceLoginResult{
@@ -766,10 +774,16 @@ func writeGatewayKeyProfile(profile, key, workspace string) error {
 func writeCredsProfile(profile, workspace string) error {
 	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
-	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
-	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
-		return err
+	// An explicit host travels with the credentials it was used against, so a
+	// later `orq --profile <name> ...` needs no flag.
+	if server := auth.Server(); server != "" {
+		bartolocli.Creds.Set("profiles."+profile+".server", server)
 	}
+	return saveCreds()
+}
+
+// chmodOwnerOnly keeps the credentials file readable only by its owner.
+func chmodOwnerOnly(filename string) error {
 	return os.Chmod(filename, 0o600)
 }
 
@@ -1547,7 +1561,7 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
 // webBaseFor derives the dashboard host, shared with doctor.
 func webBaseFor(apiBase string) string {
 	webBase := strings.TrimRight(os.Getenv("ORQ_WEB_BASE_URL"), "/")
-	if webBase == "" && apiBase == auth.DefaultAPIBaseURL {
+	if webBase == "" && auth.IsHostedAPIBase(apiBase) {
 		webBase = defaultWebBaseURL
 	}
 	return webBase

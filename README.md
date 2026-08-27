@@ -77,16 +77,17 @@ Setup authenticates the machine; wiring agents is `orq connect`:
 orq setup                          # sign in, create the key, then offers to connect
 orq connect                        # wire every detected agent through the gateway
 orq connect codex kimi             # specific agents
-orq connect codex gateway          # the capability is optional; gateway is the only one
+orq connect codex gateway          # one capability: gateway, tracing, skills or mcp
+orq connect claude mcp --local     # this project only (mcp is the only scoped capability)
 orq connect --dry-run              # show the files that would change
 orq disconnect codex               # remove exactly what connect wrote
 ```
 
 An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.
 
-Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered by connect: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route it.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route its model calls. It does receive `skills` and `mcp`.
 
-Connect wires the gateway and nothing else. MCP and skills are not part of it in this version — `orq launch --mcp` is the only place the orq MCP server is still wired, per session, writing nothing to disk.
+Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `--global` (the default) writes machine-wide, `--local` writes to this project — only `mcp` has a project scope, and `--local` is refused from your home directory, where the `~/.mcp.json` it would produce would follow you into every session started from home.
 
 **Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
@@ -152,7 +153,7 @@ orq --profile ci agents list
 
 ## Profiles
 
-Every command accepts `--profile <name>` (or the `ORQ_PROFILE` env var). Each profile has its own session file at `~/.orq/sessions/<name>.json` and its own API key credentials in `~/.orq/credentials.json`. The default profile is `default`.
+Every command accepts `--profile <name>` (or the `ORQ_PROFILE` env var). On `orq launch` it goes before the agent name — `orq launch --profile acme claude` — because everything after the agent name is handed to the agent. Each profile has its own session file at `~/.orq/sessions/<name>.json` and its own API key credentials in `~/.orq/credentials.json`. The default profile is `default`.
 
 ```sh
 # personal account against SaaS
@@ -164,7 +165,7 @@ orq --profile work workspace use marketing
 orq --profile work prompts list
 
 # self-hosted customer
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 orq --profile acme prompts list
 ```
 
@@ -288,9 +289,9 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-Pass `--mcp` to also wire the [orq MCP server](https://api.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
-With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
+orq's skills are linked into the agent's own skills directory **for the session only**; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
 ### Shared flags
 
@@ -300,12 +301,13 @@ With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-a
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
-| `--mcp` | Wire the orq MCP server (workspace tools) into the agent |
-| `--no-skills` | With `--mcp`, skip the orq skills plugin (claude only) |
+| `--mcp` | Wire the orq MCP server (workspace tools) into the agent — the default |
+| `--no-mcp` | Do not wire the orq MCP server for this session |
+| `--no-skills` | Do not link orq's skills into the agent for this session |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
-Launcher flags are recognized only **before** the first agent-owned argument — everything from the first arg the launcher doesn't recognize onwards goes to the agent verbatim, so agent flags stay reachable. Everything after `--` is passed to the agent untouched:
+There are two layers of flags. Global `orq` flags such as `--profile` and `--server` must appear before the agent name — either side of the `launch` word works, so `orq launch --profile acme --server https://orq.acme.internal kimi` and `orq --profile acme launch kimi` both select the profile and host. Once the agent name appears, those global flags belong to the agent and are forwarded verbatim. Launcher-specific flags in the table above (`--model`, `--mcp`, `--dry-run`, etc.) are recognized at the start of the agent's arguments; after the first agent-owned argument, everything goes to the agent untouched. A leading `--` ends launcher-specific parsing explicitly:
 
 ```sh
 orq launch claude -- --resume
@@ -337,10 +339,10 @@ Sandboxed execution is not available in this version.
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_API_KEY` | API key for headless/CI auth |
-| `ORQ_PROFILE` | Default profile (same effect as `--profile`) |
-| `ORQ_SERVER` | Override generated-command base URL (same as `--server`) |
-| `ORQ_API_BASE_URL` | Override the orq host. Drives auth (`auth login`, `whoami`, `workspace`) **and** the URLs `orq setup` writes and `orq launch` injects — router, anthropic and MCP |
+| `ORQ_API_KEY` | API key for headless/CI auth. An explicitly typed `--profile` outranks it: the flag names credentials, and the CLI warns on stderr when it overrides an exported key |
+| `ORQ_PROFILE` | Default profile (same as `--profile`, except that it does not outrank an exported `ORQ_API_KEY` — env against env has no tie-breaker) |
+| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
+| `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release. The matching `--api-base-url` flag on `auth`, `workspace` and `doctor` is deprecated the same way |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
@@ -376,33 +378,33 @@ format, or when the check fails.
 ## Self-hosted orq.ai
 
 ```sh
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 ```
 
-The host is stored in the session and reused for every subsequent command on that profile. No configuration files, no per-command flag, no env vars. Switch back and forth between profiles without logging out of either:
+The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No per-command flag. `orq auth login --server <url>` binds the host to the profile it authenticates, so later calls on that profile need no flag at all. The full order, highest first: `--server`, `ORQ_SERVER`, the host bound to the active profile, a host persisted globally with `orq server set`, the session's own host, then `https://my.orq.ai`. `orq doctor` reports which of those the current run used. Switch back and forth between profiles without logging out of either:
 
 ```sh
 orq --profile acme prompts list            # talks to acme's backend
-orq --profile default prompts list         # talks to api.orq.ai
+orq --profile default prompts list         # talks to my.orq.ai
 ```
 
-That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway:
+That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. On `orq launch`, global flags go before the agent name — `orq launch --server <url> claude`, or `orq --server <url> launch claude` — because everything after the agent name is handed to the agent verbatim, so its own flags (`--resume`, codex's `-p`) reach it untouched.
 
-| Derived from `--api-base-url` | Used by |
+| Derived from `--server` | Used by |
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
-| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch --mcp` |
+| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch` and persistently by `orq connect mcp` |
 
 ```sh
-orq --profile acme auth login --api-base-url https://orq.acme.internal
+orq --profile acme auth login --server https://orq.acme.internal
 orq --profile acme setup                   # writes acme's URLs into the agent's config
-orq --profile acme launch kimi             # model calls stay on acme's network
+orq launch --profile acme kimi             # model calls stay on acme's network
 ```
 
-Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://api.orq.ai` is only the fallback when there is no session and no override.
+Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no session and no override.
 
-Without a session — CI, or an API key alone — set `ORQ_API_BASE_URL` instead, which resolves the same three URLs.
+Without a session — CI, or an API key alone — set `ORQ_SERVER` (or pass `--server`) instead, which resolves the same three URLs.
 
 If a deployment serves the AI gateway from a different hostname than the platform API, override just that one with `ORQ_GATEWAY_URL` (all agents) or `--base-url` (one command) — see [per-agent environment overrides](#per-agent-environment-overrides). Both take precedence over the derived value.
 
