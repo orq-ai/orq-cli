@@ -58,8 +58,9 @@ type GatewayFlags struct {
 	Models        string
 	BaseURL       string
 	NoFetchModels bool
-	// MCP is opt-in: launch is the throwaway path, and MCP tool calls share
-	// the free plan's daily request quota with model calls.
+	// MCP defaults on for launch and is disabled with --no-mcp. The default is
+	// applied by ParseArgv, which is the only place that applies it — the zero
+	// value of this struct is MCP off.
 	MCP      bool
 	NoSkills bool
 	DryRun   bool

@@ -52,6 +52,17 @@ type agentSpec struct {
 	// providerKey reads back the embedded credential. A literal copy cannot follow
 	// a renewal, so only reading it can tell a wired agent from a dead one.
 	providerKey func(path string) string
+	// mcpConfig returns the file holding the agent's MCP servers; nil when the agent has no MCP support.
+	mcpConfig func(global bool) (string, error)
+	// writeMCP writes the orq-workspace entry. No credential argument, by design: every
+	// MCP-capable agent authenticates by OAuth, so no future edit here can put a key into an
+	// agent config file — the leak class e44c747 was written to close. The signature bounds
+	// what reaches the writer; TestMCPCredentialCanary is what checks what the writer emits.
+	writeMCP func(path, url string) error
+	// mcpPresent is writeMCP's read-side pair; required whenever writeMCP is set.
+	mcpPresent func(path string) bool
+	// removeMCP is writeMCP's inverse; required whenever writeMCP is set.
+	removeMCP func(path string) (bool, error)
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in order.
@@ -65,9 +76,13 @@ var preferredCodingModels = []string{
 func agentRegistry() []agentSpec {
 	return []agentSpec{
 		{
-			ID:     "claude",
-			Label:  "Claude Code",
-			detect: detectAny(".claude", ".claude.json"),
+			ID:         "claude",
+			Label:      "Claude Code",
+			detect:     detectAny(".claude", ".claude.json"),
+			mcpConfig:  projectOrGlobalPath(".mcp.json", ".claude.json"),
+			writeMCP:   writeMCPJSON("mcpServers", claudeMCPEntry),
+			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 		},
 		{
 			ID:    "codex",
@@ -78,6 +93,14 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeCodexProviderTOML,
 			removeProvider:  removeCodexProfile,
 			providerPresent: tomlTablePresent("model_providers." + launch.CodexProvider),
+			// The base config.toml, not the orq.config.toml profile: MCP servers are
+			// not profile-scoped in codex, and writeCodexProviderTOML owns the
+			// profile file outright and rewrites it wholesale, so an entry placed
+			// there would be destroyed on the next 'orq connect gateway'.
+			mcpConfig:  codexPath("config.toml"),
+			writeMCP:   writeCodexMCPTOML,
+			mcpPresent: tomlTablePresent("mcp_servers." + launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeTOMLTables(p, codexOwnedMCPTable) },
 		},
 		{
 			ID:    "opencode",
@@ -88,6 +111,10 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
+			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
+			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
+			mcpPresent:      jsonProviderPresentAt("mcp", launch.MCPServerName),
+			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", launch.MCPServerName) },
 		},
 		{
 			ID:     "kimi",
@@ -100,6 +127,11 @@ func agentRegistry() []agentSpec {
 			providerPresent:   tomlTablePresent("providers." + launch.KimiChatProvider),
 			providerEmbedsKey: true,
 			providerKey:       tomlStringAt("providers." + launch.KimiChatProvider + ".api_key"),
+			// Kimi's MCP config, unlike its provider TOML, has a project scope too.
+			mcpConfig:  projectOrGlobalPath(".kimi-code/mcp.json", ".kimi-code/mcp.json"),
+			writeMCP:   writeMCPJSON("mcpServers", kimiMCPEntry),
+			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
+			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 		},
 		{
 			ID:    "kilo",
@@ -110,6 +142,13 @@ func agentRegistry() []agentSpec {
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
+			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
+			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
+			// The shipped kilo binary reads kilo.jsonc as well as kilo.json; writes still go to .json.
+			// The remover has to follow the reader: an entry only kiloMCPPresent can see would
+			// otherwise be reported as wired forever and never removable.
+			mcpPresent: kiloMCPPresent,
+			removeMCP:  kiloRemoveMCP,
 		},
 		{
 			ID:     "pi",
@@ -148,6 +187,25 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, rel), nil
+	}
+}
+
+// projectOrGlobalPath resolves the project copy for global=false and the home copy for
+// global=true. Only claude and kimi have two scopes; everything else keeps alwaysGlobalPath.
+func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error) {
+	return func(global bool) (string, error) {
+		if !global {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(cwd, projectRel), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, globalRel), nil
 	}
 }
 
@@ -256,6 +314,26 @@ func readJSONConfig(path string) (map[string]any, error) {
 
 // writeJSONConfig writes atomically and backs the target up once: some of these files (~/.claude.json) hold the agent's entire user state.
 func writeJSONConfig(path string, cfg map[string]any) error {
+	return writeJSONConfigMode(path, cfg, 0o600)
+}
+
+// writeJSONConfigMode is writeJSONConfig with a caller-chosen file mode. A
+// project ./.mcp.json is meant to be committed, and Claude itself creates it
+// 0644 — narrowing it to writeJSONConfig's default 0600 would fight that.
+func writeJSONConfigMode(path string, cfg map[string]any, mode os.FileMode) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeConfigFile(path, append(data, '\n'), mode)
+}
+
+// writeConfigFile is how every agent config this binary owns reaches disk:
+// backed up once, written to a temp file, renamed into place. Format-agnostic
+// on purpose — codex's config.toml is the same class of file as ~/.claude.json
+// (the agent's own state, not ours), and a safety that lived only in the JSON
+// writer was a safety codex did not get.
+func writeConfigFile(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -273,11 +351,6 @@ func writeJSONConfig(path string, cfg map[string]any) error {
 			}
 		}
 	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
 	tmp, err := os.CreateTemp(dir, ".orq-cfg-*")
 	if err != nil {
 		return err
@@ -291,10 +364,21 @@ func writeJSONConfig(path string, cfg map[string]any) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpName, 0o600); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+// writeTOMLConfig is writeConfigFile plus a parse of what is about to land:
+// these TOML rewrites are line-oriented, so a mis-detected table header can
+// produce a file the agent cannot load. Refusing beats reporting success over
+// a codex that no longer starts.
+func writeTOMLConfig(path, content string) error {
+	if _, err := toml.Load(content); err != nil {
+		return fmt.Errorf("rewriting %s would produce invalid TOML — left untouched: %w", path, err)
+	}
+	return writeConfigFile(path, []byte(content), 0o600)
 }
 
 // A present non-object value is refused, matching readJSONConfig's rule for invalid JSON: never overwrite what we cannot merge into.
@@ -490,11 +574,12 @@ func writeKimiProviderTOML(path, routerURL, apiKey string, models []auth.RouterM
 	// No default for the builder: emitted here it would land after the user's tables and TOML would scope it to the last one.
 	refs, infos := launchCatalog(models)
 	block := launch.BuildKimiConfigTOML(routerURL, apiKey, "", refs, infos)
-	// The file carries a literal credential, so chmod an existing copy as well as writing 0600.
-	if err := os.WriteFile(path, []byte(kept+block), 0o600); err != nil {
+	// The file carries a literal credential; writeTOMLConfig renames a 0600
+	// temp into place, so an existing wider copy is replaced rather than kept.
+	if err := writeTOMLConfig(path, kept+block); err != nil {
 		return 0, err
 	}
-	return len(refs), os.Chmod(path, 0o600)
+	return len(refs), nil
 }
 
 func hasKimiDefaultModel(toml string) bool {
@@ -547,6 +632,151 @@ func orqOwnedKimiTable(header, body string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================================
+// MCP entry writers — the orq-workspace server, no credential ever included.
+// ============================================================================
+
+// claudeMCPEntry is claude's mcpServers value: a plain streamable-HTTP remote.
+// Claude authenticates it via 'claude mcp login', not a config field.
+func claudeMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "http", "url": url}
+}
+
+// kimiMCPEntry is kimi's mcpServers value — url only; kimi's own 'kimi mcp
+// auth' drives the OAuth flow, same as claude.
+func kimiMCPEntry(url string) map[string]any {
+	return map[string]any{"url": url}
+}
+
+// remoteMCPEntry is launch.RemoteMCPEntry: the persistent entry and the session
+// config launch injects are the same shape by construction.
+func remoteMCPEntry(url string) map[string]any { return launch.RemoteMCPEntry(url) }
+
+// writeMCPJSON writes the orq-workspace entry into a JSON config under the
+// given section key ("mcpServers" for claude/kimi, "mcp" for opencode/kilo).
+// The whole entry is assigned rather than merged into, so a v4.13.10 leftover
+// carrying "Authorization": "Bearer {env:ORQ_API_KEY}" is upgraded to the
+// headerless shape in place.
+func writeMCPJSON(key string, entry func(url string) map[string]any) func(path, url string) error {
+	return func(path, url string) error {
+		cfg, err := readJSONConfig(path)
+		if err != nil {
+			return err
+		}
+		servers, err := nestedMap(cfg, key)
+		if err != nil {
+			return err
+		}
+		servers[launch.MCPServerName] = entry(url)
+		return writeJSONConfigMode(path, cfg, mcpFileMode(path))
+	}
+}
+
+// mcpFileMode preserves an existing file's mode so a write never narrows it,
+// and otherwise gives a project-scoped .mcp.json the 0644 Claude itself
+// creates it with — it is meant to be committed and shared with a team.
+// Every other MCP config keeps writeJSONConfig's default 0600.
+func mcpFileMode(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	if filepath.Base(path) == ".mcp.json" {
+		return 0o644
+	}
+	return 0o600
+}
+
+// kiloMCPPresent checks kilo.json, which is where we write, and kilo.jsonc,
+// which the shipped kilo binary also reads — an entry made directly against
+// the jsonc file must still read back as wired.
+func kiloMCPPresent(path string) bool {
+	check := jsonProviderPresentAt("mcp", launch.MCPServerName)
+	if check(path) {
+		return true
+	}
+	if strings.HasSuffix(path, ".json") {
+		return check(path + "c")
+	}
+	return false
+}
+
+// kiloRemoveMCP is kiloMCPPresent's write-side pair: it strips the entry from
+// both files the reader accepts, so a jsonc-configured kilo can be disconnected.
+func kiloRemoveMCP(path string) (bool, error) {
+	removed, err := removeJSONKeys(path, "mcp", launch.MCPServerName)
+	if err != nil {
+		return removed, err
+	}
+	// Only when the reader can actually see an entry there: a kilo.jsonc
+	// carrying comments does not parse as JSON, and reporting that as a
+	// disconnect failure would be a lie about a file holding no orq entry.
+	if !strings.HasSuffix(path, ".json") || !jsonProviderPresentAt("mcp", launch.MCPServerName)(path+"c") {
+		return removed, nil
+	}
+	removedJSONC, err := removeJSONKeys(path+"c", "mcp", launch.MCPServerName)
+	return removed || removedJSONC, err
+}
+
+// writeCodexMCPTOML merges the orq-workspace table into codex's base
+// config.toml, the file codex always reads. writeCodexProviderTOML owns the
+// profile file outright and rewrites it wholesale, so MCP — which codex does
+// not scope by profile — cannot live there without being destroyed on the
+// next 'orq connect gateway'.
+func writeCodexMCPTOML(path, url string) error {
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	kept, _ := stripTOMLTables(string(data), codexOwnedMCPTable)
+	if kept = strings.TrimRight(kept, "\n"); kept != "" {
+		kept += "\n\n"
+	}
+	block := fmt.Sprintf("[mcp_servers.%s]\nurl = %s\n", launch.MCPServerName, launch.TOMLString(url))
+	return writeTOMLConfig(path, kept+block)
+}
+
+// codexOwnedMCPTable claims exactly the orq-workspace table (and any nested
+// under it), so stripping it for a rewrite leaves every other table in
+// config.toml — the user's own MCP servers included — byte-identical.
+//
+// Compares normalized segments, not the raw header string: TOML allows a
+// dotted key segment to be quoted (`[mcp_servers."orq-workspace"]` is the
+// same table as `[mcp_servers.orq-workspace]`), and a hand-written or
+// tool-written quoted header that a raw comparison failed to claim would be
+// left behind, then duplicated by the next write — a config.toml with two
+// `[mcp_servers.orq-workspace]` tables is not valid TOML and codex would
+// refuse to load it at all.
+func codexOwnedMCPTable(header string) bool {
+	segments := normalizeTOMLHeaderSegments(header)
+	want := []string{"mcp_servers", launch.MCPServerName}
+	if len(segments) < len(want) {
+		return false
+	}
+	for i, w := range want {
+		if segments[i] != w {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeTOMLHeaderSegments splits a table header into its dotted
+// segments, stripping the brackets and unquoting each segment so
+// `[a."b".c]`, `[a.b.c]`, and `[ a . b . c ]` all normalize the same way.
+func normalizeTOMLHeaderSegments(header string) []string {
+	trimmed := strings.TrimSpace(header)
+	trimmed = strings.TrimPrefix(trimmed, "[")
+	trimmed = strings.TrimSuffix(trimmed, "]")
+	parts := strings.Split(trimmed, ".")
+	segments := make([]string, len(parts))
+	for i, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.Trim(p, `"'`)
+		segments[i] = p
+	}
+	return segments
 }
 
 // ============================================================================
@@ -762,7 +992,10 @@ func removeJSONKeys(path, section string, keys ...string) (bool, error) {
 			return true, os.Remove(path)
 		}
 	}
-	return true, writeJSONConfig(path, cfg)
+	// writeJSONConfigMode, not writeJSONConfig: a project .mcp.json was written
+	// 0644 by writeMCPJSON, and rewriting it here through the 0600 default would
+	// narrow it right back — the mode discipline has to hold in both directions.
+	return true, writeJSONConfigMode(path, cfg, mcpFileMode(path))
 }
 
 // stripTOMLTables drops every table whose header the predicate claims,
@@ -809,7 +1042,7 @@ func removeTOMLTables(path string, owned func(header string) bool) (bool, error)
 		return true, os.Remove(path)
 	}
 	kept = strings.TrimRight(kept, "\n") + "\n"
-	return true, os.WriteFile(path, []byte(kept), 0o600)
+	return true, writeTOMLConfig(path, kept)
 }
 
 func removeOpenCodeProviders(path string) (bool, error) {
@@ -842,7 +1075,7 @@ func removeKimiProviderTOML(path string) (bool, error) {
 		return true, os.Remove(path)
 	}
 	kept = strings.TrimRight(kept, "\n") + "\n"
-	return true, os.WriteFile(path, []byte(kept), 0o600)
+	return true, writeTOMLConfig(path, kept)
 }
 
 // dropDanglingKimiDefault removes a default_model whose model table is gone.

@@ -87,41 +87,66 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 	plan.AddCleanup(release)
 }
 
-// mcpURL returns the orq MCP endpoint for this launch, or "" without --mcp.
-// A non-default ORQ_API_BASE_URL (self-hosted / regional)
-// carries the MCP endpoint with it. The API key is never embedded — each
-// harness references the ORQ_API_KEY env var through its own mechanism.
+// MCPURLFor is the single derivation of the orq MCP endpoint: the explicit
+// override first, then a non-default API base (self-hosted / regional) carrying
+// the endpoint with it, then the hosted default. `orq connect` writes persistent
+// entries against it rather than repeating the order, so a session launched by
+// `orq launch` and a persisted entry can never point at two different servers.
+func MCPURLFor(apiBase string) string {
+	return firstNonEmpty(
+		strings.TrimSpace(os.Getenv("ORQ_MCP_URL")),
+		deriveFromAPIBase(apiBase, "/v2/mcp"),
+		DefaultMCPURL,
+	)
+}
+
+// mcpURL returns the orq MCP endpoint for this launch, or "" with --no-mcp.
+// No credential is written anywhere: the URL is the whole entry, and every
+// harness authenticates this remote through its own OAuth flow.
 func mcpURL(ctx *AgentContext) string {
 	if !ctx.Flags.MCP {
-		return ""
-	}
-	// A credential that cannot pass MCP auth (session token from a login
-	// made before the CLI requested mcp:* scopes) would make every MCP call
-	// fail with insufficient_scope. Skip the wiring instead of shipping a
-	// broken server; run.go prints the note.
-	if ctx.Creds != nil && !ctx.Creds.SupportsMCP() {
 		return ""
 	}
 	apiBase := ""
 	if ctx.Creds != nil {
 		apiBase = ctx.Creds.APIBaseURL
 	}
-	return firstNonEmpty(
-		ctx.Getenv("ORQ_MCP_URL"),
-		deriveFromAPIBase(apiBase, "/v2/mcp"),
-		DefaultMCPURL,
-	)
+	// ctx.Getenv first, then the shared resolver: the context's environment is
+	// the seam tests inject through, and MCPURLFor reads the real one.
+	return firstNonEmpty(ctx.Getenv("ORQ_MCP_URL"), MCPURLFor(apiBase))
 }
 
-// claudeMCPConfig is the --mcp-config file payload; claude expands
-// ${ORQ_API_KEY} from the environment at load time.
+// PersistedMCPHook reports whether an agent already carries an orq MCP entry in
+// a config it reads on its own. The commands package injects it at wiring time
+// from the same registry `orq connect` writes through: launch cannot import
+// that package, and the copy of the path-and-presence table that used to live
+// here had already drifted from it — different codex header rules, a missing
+// agent, one file of a two-file pair.
+var PersistedMCPHook func(agent string) bool
+
+// persistedMCPConfigured is the launch-side question: a persisted OAuth entry is
+// authoritative, so adding a second entry under the same name would only shadow
+// it. Unset hook means "cannot tell", which has to answer false — writing the
+// session entry is the recoverable mistake, suppressing it is not.
+//
+// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
+// persisted file is on its search path and the session entry must always be
+// written. pi has no MCP support at all.
+func persistedMCPConfigured(agent string) bool {
+	if PersistedMCPHook == nil {
+		return false
+	}
+	return PersistedMCPHook(agent)
+}
+
+// claudeMCPConfig is the --mcp-config file payload. Claude authenticates the
+// remote through its own OAuth flow.
 func claudeMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			MCPServerName: map[string]any{
-				"type":    "http",
-				"url":     url,
-				"headers": map[string]string{"Authorization": "Bearer ${ORQ_API_KEY}"},
+				"type": "http",
+				"url":  url,
 			},
 		},
 	})
@@ -141,26 +166,32 @@ func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
 	return path, func() { os.RemoveAll(dir) }, nil
 }
 
-// codexMCPArgs wires the orq MCP server via -c TOML overrides using codex's
-// native streamable-HTTP transport with bearer_token_env_var.
+// codexMCPArgs wires the orq MCP server via -c TOML overrides. Codex performs
+// OAuth for the named server when the user runs its login command.
 func codexMCPArgs(url string) []string {
 	return []string{
 		"-c", tomlOverride("mcp_servers."+MCPServerName+".url", url),
-		"-c", tomlOverride("mcp_servers."+MCPServerName+".bearer_token_env_var", "ORQ_API_KEY"),
 	}
 }
 
-// openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config;
-// {env:ORQ_API_KEY} keeps the key out of the file.
+// openCodeMCPBlock is the "mcp" section for the inline OpenCode/Kilo config.
+// OAuth is owned by the agent, not by this CLI.
 func openCodeMCPBlock(url string) map[string]any {
-	return map[string]any{
-		MCPServerName: map[string]any{
-			"type":    "remote",
-			"url":     url,
-			"oauth":   false,
-			"headers": map[string]string{"Authorization": "Bearer {env:ORQ_API_KEY}"},
-		},
-	}
+	return map[string]any{MCPServerName: RemoteMCPEntry(url)}
+}
+
+// RemoteMCPEntry is the opencode/kilo mcp value, shared by the session config
+// launch injects and the persistent entry `orq connect` writes — one shape, so
+// the two cannot describe the same file two different ways.
+//
+// type and url only. The SDK's McpRemoteConfig types oauth as
+// `McpOAuthConfig | false`, so "oauth": true is not merely ignored: opencode
+// 1.17.20 rejects the whole document with "Expected McpOAuthConfig | false, got
+// true" and exits 1, taking the user's other MCP servers down with it. Omitting
+// the key is what turns OAuth auto-detection (RFC 9728 discovery, dynamic
+// client registration) on, and enabled defaults to true.
+func RemoteMCPEntry(url string) map[string]any {
+	return map[string]any{"type": "remote", "url": url}
 }
 
 // writeSessionSkills symlinks the shipped skills into an agent directory the
@@ -226,14 +257,13 @@ func maybeWriteSessionSkills(ctx *AgentContext, plan *LaunchPlan, dir string) {
 	}
 }
 
-// kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME; kimi resolves
-// the bearer token from ORQ_API_KEY via bearerTokenEnvVar.
+// kimiMCPConfig is the mcp.json written into KIMI_CODE_HOME. Kimi authenticates
+// this remote through its own OAuth flow.
 func kimiMCPConfig(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			MCPServerName: map[string]any{
-				"url":               url,
-				"bearerTokenEnvVar": "ORQ_API_KEY",
+				"url": url,
 			},
 		},
 	})

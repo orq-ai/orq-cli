@@ -81,6 +81,17 @@ func TestParseArgvLaunchFlags(t *testing.T) {
 	}
 }
 
+func TestParseArgvMCPDefaultsOnAndCanBeDisabled(t *testing.T) {
+	flags, rest, err := ParseArgv(nil, ParseArgvOptions{})
+	if err != nil || len(rest) != 0 || !flags.MCP {
+		t.Fatalf("default flags=%+v rest=%v err=%v", flags, rest, err)
+	}
+	flags, rest, err = ParseArgv([]string{"--no-mcp"}, ParseArgvOptions{})
+	if err != nil || len(rest) != 0 || flags.MCP {
+		t.Fatalf("--no-mcp flags=%+v rest=%v err=%v", flags, rest, err)
+	}
+}
+
 // Sandbox support is gone, so the flags it owned belong to the agent now. The
 // collision this un-shadows is real: codex has its own --sandbox <mode>.
 func TestSandboxFlagsBelongToTheAgent(t *testing.T) {

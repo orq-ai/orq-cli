@@ -46,7 +46,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	reportCredentialNotices(creds, flags)
+	reportCredentialNotices(creds)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -91,7 +91,8 @@ Flags:
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
-	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent
+	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
+  --no-mcp              Do not make the orq MCP server available for this session
   --no-skills           Do not make the orq skills available for this session.
                         Every agent gets them: they are linked into the skills
                         directory the agent reads when it starts and removed
@@ -135,11 +136,8 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-func reportCredentialNotices(creds *Credentials, flags GatewayFlags) {
+func reportCredentialNotices(creds *Credentials) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
-	}
-	if flags.MCP && !creds.SupportsMCP() {
-		fmt.Fprintln(os.Stderr, "Note: orq MCP server skipped — this login session predates MCP scopes. Re-run 'orq auth login' (or export ORQ_API_KEY) to enable MCP tools.")
 	}
 }

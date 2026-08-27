@@ -68,6 +68,71 @@ func TestCodingAgentsSummaryStates(t *testing.T) {
 	}
 }
 
+func TestMCPCheckPassNamesEntryAndLoginCommand(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	check, ok := mcpCheck()
+	if !ok || check.Status != "pass" {
+		t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
+	}
+	if !strings.Contains(check.Message, "entry present") {
+		t.Errorf("pass message does not use entry-present wording: %q", check.Message)
+	}
+	if strings.Contains(check.Message, "MCP works") {
+		t.Errorf("pass message makes an MCP health claim: %q", check.Message)
+	}
+	if !strings.Contains(check.Message, "run /mcp in Claude Code, or 'claude mcp login orq-workspace'") {
+		t.Errorf("pass message does not name Claude's login command: %q", check.Message)
+	}
+}
+
+func TestMCPCheckReadsProjectScope(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(project)
+
+	if err := os.Mkdir(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".mcp.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	check, ok := mcpCheck()
+	if !ok || check.Status != "pass" {
+		t.Fatalf("got ok=%v status=%q, want a pass from project-scoped entry", ok, check.Status)
+	}
+}
+
+func TestMCPCheckWarnsUnwiredAgentAndOmitsPi(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	check, ok := mcpCheck()
+	if !ok || check.Status != "warn" {
+		t.Fatalf("got ok=%v status=%q, want an unwired-agent warning", ok, check.Status)
+	}
+	if !strings.Contains(check.Message, "orq connect claude mcp") {
+		t.Errorf("warning does not name the remedy: %q", check.Message)
+	}
+	if strings.Contains(check.Message, "pi") {
+		t.Errorf("warning reports pi even though it has no MCP support: %q", check.Message)
+	}
+}
+
 // refresh converges the skill set, not the files: a skill the user deleted by
 // hand stays deleted, because silently recreating it on the next `orq --help`
 // would fight the user. doctor is where that state gets named.

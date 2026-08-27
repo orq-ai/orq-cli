@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,50 @@ type setupOptions struct {
 	// wire per agent. The per-agent progress lines are that same report, so the
 	// two together printed each wire twice; only 'orq setup' sets it.
 	finalScreen bool
+	// scope is --global / --local: where a write lands for the capabilities
+	// that have two places to put it (mcp today, skills next). Three-valued,
+	// not two bools: "neither named" is its own answer — global for a write,
+	// both scopes for a removal — and a pair of bools can also represent
+	// "both named", which is not an answer at all.
+	scope configScope
+}
+
+// configScope is where a scope-capable capability writes. scopeUnset is the
+// third state the flags can leave behind, and it is not the same as scopeGlobal:
+// an unset removal covers both scopes so a project entry cannot outlive every
+// `orq disconnect` run by whoever forgot which scope it landed in.
+type configScope int
+
+const (
+	scopeUnset configScope = iota
+	scopeGlobal
+	scopeLocal
+)
+
+// scopeFlag binds --global and --local to one configScope, so naming both is a
+// parse error at the flag layer rather than a check every entry point has to
+// remember, and no downstream reader can see the two set at once.
+type scopeFlag struct {
+	target *configScope
+	sets   configScope
+}
+
+func (s *scopeFlag) String() string { return strconv.FormatBool(*s.target == s.sets) }
+func (s *scopeFlag) Type() string   { return "bool" }
+
+func (s *scopeFlag) Set(v string) error {
+	on, err := strconv.ParseBool(v)
+	if err != nil {
+		return err
+	}
+	if !on {
+		return nil
+	}
+	if *s.target != scopeUnset && *s.target != s.sets {
+		return errors.New("--global and --local ask for opposite things — name one")
+	}
+	*s.target = s.sets
+	return nil
 }
 
 // --yes takes the affirmative without asking; --no-input or no TTY takes the default rather than blocking a script.
@@ -83,7 +128,7 @@ func setupComplete(verified bool, agents []agentResult) bool {
 		return false
 	}
 	for _, a := range agents {
-		if a.Error != "" || a.Skipped != "" {
+		if a.Error != "" || a.Skipped != "" || a.MCPError != "" {
 			return false
 		}
 	}
@@ -98,7 +143,19 @@ type agentResult struct {
 	// capability was not requested. The final screen reports per agent, so a
 	// skills-only run has something to show even with no gateway wire.
 	Skills string `json:"skills,omitempty"`
-	Error  string `json:"error,omitempty"`
+	// MCP is the config file the orq-workspace entry landed in, empty when the
+	// capability was not requested. One field per capability, like Skills: the
+	// final screen labels each row with the capability that produced it, so a
+	// shared field would make it name the wrong one.
+	MCP   string `json:"mcp,omitempty"`
+	Error string `json:"error,omitempty"`
+	// MCPError is an MCP write that was attempted and failed. Separate from
+	// Error because Error is the gateway's — the final screen renders it under
+	// that label — and one agent can lose both wires in the same run. Folding
+	// them together printed the MCP failure as a gateway one, or, when the
+	// gateway had already failed, dropped it from the screen and the JSON
+	// entirely.
+	MCPError string `json:"mcp_error,omitempty"`
 	// Skipped is the wire that was never attempted, as opposed to Error's wire
 	// that was attempted and failed. Set only when nothing on disk wires the
 	// agent afterwards: an earlier run's provider block surviving is not a skip.
@@ -138,6 +195,10 @@ wins over a key left exported in your shell.`),
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked")
 	f.StringSliceVar(&opts.caps, "capability", nil,
 		"Capabilities to connect ("+strings.Join(availableCapabilities(), ", ")+"); repeatable")
+	// The same pair connect and disconnect carry, for the same capabilities.
+	// On setup they pre-answer the wizard's scope question, which is how a
+	// non-interactive run — install.sh, CI — names a scope at all.
+	addScopeFlags(f, &opts)
 	return cmd
 }
 
@@ -181,6 +242,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// credential gate and all, so hand it over rather than growing a second
 	// credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
+		if !opts.noInput {
+			return runCredentialFreeSetup(cmd, opts)
+		}
 		return runConnect(cmd, opts, opts.caps, false)
 	}
 
@@ -1271,7 +1335,14 @@ func defaultCodingModel(rep *reporter, client *auth.Client, state *authState) (a
 	return models[0], true
 }
 
-func promptForAgents(rep *reporter) ([]string, error) {
+// promptForAgents offers agents that can receive one of the available
+// capabilities. The setup wizard asks this before functionality, so it cannot
+// filter from the user's not-yet-selected capability set. Filtering on
+// writeProvider alone — which it used to do —
+// hid claude, the one agent with no gateway provider config and the most common
+// MCP agent there is, from every picker; agentReceives is the same question
+// agentsToConnect asks for the bare-connect path.
+func promptForAgents(rep *reporter, caps []string) ([]string, error) {
 	registry := agentRegistry()
 	options := make([]string, 0, len(registry))
 	byOption := map[string]string{}
@@ -1279,7 +1350,7 @@ func promptForAgents(rep *reporter) ([]string, error) {
 
 	detected := []string{}
 	for _, spec := range registry {
-		if spec.writeProvider == nil {
+		if !agentReceives(spec, caps) {
 			continue
 		}
 		label := fmt.Sprintf("%-9s %s", spec.ID, spec.Label)
@@ -1299,7 +1370,7 @@ func promptForAgents(rep *reporter) ([]string, error) {
 		Message: "Instrument which agents?",
 		Options: options,
 		Default: defaults,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(chosen))
@@ -1342,11 +1413,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 	// dropUnavailableCaps then stripped with "not available yet" — offering a
 	// choice and refusing it one keystroke later.
 	options := availableCapabilities()
-	labels := map[string]string{
-		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
-		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
-		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
-	}
+	labels := capabilityLabels()
 	byOption := map[string]string{}
 	display := make([]string, 0, len(options))
 	for _, c := range options {
@@ -1364,7 +1431,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 		Message: "What should orq connect?",
 		Options: display,
 		Default: defaults,
-	}, &chosen); err != nil {
+	}, &chosen, promptStdio()); err != nil {
 		return nil, err
 	}
 	caps := make([]string, 0, len(chosen))
@@ -1372,6 +1439,88 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 		caps = append(caps, byOption[label])
 	}
 	return dropUnavailableCaps(rep, caps), nil
+}
+
+// capabilityLabels is the one-line description the picker shows per capability.
+// Its own function so a capability that reaches availableCapabilities without a
+// label here is a test failure rather than a blank row in the picker.
+//
+// mcp names the login because the entry carries no credential: the agent
+// authenticates to the server itself, and a user who expects the wire to be
+// finished when setup exits would otherwise meet that step unannounced.
+func capabilityLabels() map[string]string {
+	return map[string]string{
+		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
+		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
+		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
+		capMCP:     fmt.Sprintf("%-9s give the agent orq's MCP tools (the agent logs in itself)", capMCP),
+	}
+}
+
+// resolveScope settles where the scope-capable capabilities write, before
+// anything writes. A named flag is the answer, --yes and --no-input take the
+// default, and only an otherwise-interactive run asks.
+//
+// Global is the default because every other artifact `orq setup` writes is
+// machine-global, and install.sh runs setup non-interactively from wherever the
+// user happens to be — a local default would give that one directory MCP tools
+// and no other, silently. There is no inference: the working directory never
+// decides this, only the prompt or the flag.
+func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
+	if opts.scope != scopeUnset || opts.noInput || opts.yes {
+		return nil
+	}
+	if !scopeMatters(caps) {
+		return nil
+	}
+	global, err := promptForScope()
+	if err != nil {
+		return err
+	}
+	if global {
+		opts.scope = scopeGlobal
+	} else {
+		opts.scope = scopeLocal
+	}
+	// The same refusal a typed --local gets: a project scope answered from a
+	// directory that is not a project writes a file the agent never reads.
+	return checkScopeFlags(rep, opts, caps)
+}
+
+// scopeMatters answers "would either answer change what this run writes?". Only
+// mcp reads the scope today — skills joins it in RES-1437 through these same
+// flags — and only an agent with two MCP config paths has anywhere else to put
+// the entry, so anyone else is asked a question whose answer nothing consults.
+func scopeMatters(caps []string) bool {
+	if !hasCap(caps, capMCP) {
+		return false
+	}
+	for _, spec := range agentRegistry() {
+		if spec.detect() && spec.writeMCP != nil && mcpScopeAware(spec) {
+			return true
+		}
+	}
+	return false
+}
+
+// promptForScope is one question for every scope-capable capability rather than
+// one each: the answer is the same kind of answer, and asking twice in a
+// four-question wizard buys nothing. Global leads because it is the default.
+// Only mcp has a project scope today, so the question names only mcp — naming
+// skills here would promise a scoping that RES-1437 has not shipped yet.
+func promptForScope() (bool, error) {
+	globalOption := fmt.Sprintf("%-9s every project on this machine", "global")
+	localOption := fmt.Sprintf("%-9s this project only", "local")
+
+	var chosen string
+	if err := survey.AskOne(&survey.Select{
+		Message: "Where should the MCP entry go?",
+		Options: []string{globalOption, localOption},
+		Default: globalOption,
+	}, &chosen, promptStdio()); err != nil {
+		return false, err
+	}
+	return chosen == globalOption, nil
 }
 
 // ============================================================================
@@ -1445,7 +1594,8 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		type capRow struct{ mark, label, detail string }
 		rows := []capRow{}
 		// One gateway row per agent, whichever way the wire went: a failure
-		// that prints nothing reads as an agent nobody asked about.
+		// that prints nothing reads as an agent nobody asked about. Error and
+		// Skipped are the gateway's own; the MCP leg has its own pair below.
 		switch {
 		// Error before Provider: a failed wire can still carry the path it was
 		// writing to, and reporting that path with a tick is the claim the
@@ -1465,6 +1615,14 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 		}
 		if a.Skills != "" {
 			rows = append(rows, capRow{paint(ansiOK, "✓"), capSkills, tilde(a.Skills)})
+		}
+		// Its own row, under its own label: an MCP failure rendered under the
+		// gateway's told the user to go and fix the wrong file.
+		switch {
+		case a.MCPError != "":
+			rows = append(rows, capRow{paint(ansiRed, "✗"), capMCP, a.MCPError})
+		case a.MCP != "":
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capMCP, tilde(a.MCP)})
 		}
 		if len(rows) == 0 {
 			continue

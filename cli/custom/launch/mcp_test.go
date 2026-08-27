@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
 
-func TestMCPIsOptIn(t *testing.T) {
-	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{}}
-	if mcpURL(ctx) != "" {
-		t.Fatalf("MCP wired without --mcp: %s", mcpURL(ctx))
+func TestMCPIsEnabledByDefaultAndOptOut(t *testing.T) {
+	ctx := &AgentContext{Getenv: env(nil), Flags: GatewayFlags{MCP: true}}
+	if mcpURL(ctx) != DefaultMCPURL {
+		t.Fatalf("MCP should be enabled by default: %s", mcpURL(ctx))
 	}
 	// The shipped skill set is linked in from the binary now, so no plugin is
 	// fetched unless someone pins their own bundle.
@@ -19,10 +21,11 @@ func TestMCPIsOptIn(t *testing.T) {
 		t.Fatal("a plugin was fetched without ORQ_SKILLS_URL")
 	}
 
-	ctx.Flags.MCP = true
-	if mcpURL(ctx) != DefaultMCPURL {
-		t.Fatalf("--mcp: %s", mcpURL(ctx))
+	ctx.Flags.MCP = false
+	if mcpURL(ctx) != "" {
+		t.Fatalf("--no-mcp should disable MCP: %s", mcpURL(ctx))
 	}
+	ctx.Flags.MCP = true
 	if skillsPluginURL(ctx) != "" {
 		t.Fatal("--mcp should not pull a skills plugin off the network")
 	}
@@ -59,8 +62,7 @@ func TestClaudeMCPWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(data)
-	if !strings.Contains(content, DefaultMCPURL) ||
-		!strings.Contains(content, "Bearer ${ORQ_API_KEY}") {
+	if !strings.Contains(content, DefaultMCPURL) {
 		t.Fatalf("mcp config: %s", content)
 	}
 	// claude skips servers with a url but no transport type.
@@ -70,8 +72,8 @@ func TestClaudeMCPWiring(t *testing.T) {
 	if strings.Contains(content, "orq-key") {
 		t.Fatal("key leaked into mcp config file")
 	}
-	if plan.Env["ORQ_API_KEY"] != "orq-key" {
-		t.Fatal("ORQ_API_KEY env missing for ${VAR} expansion")
+	if strings.Contains(content, "Authorization") || strings.Contains(content, "ORQ_API_KEY") {
+		t.Fatalf("credential reference leaked into mcp config: %s", content)
 	}
 }
 
@@ -118,7 +120,7 @@ func TestCodexMCPArgs(t *testing.T) {
 	}
 	joined := strings.Join(plan.PreArgs, " ")
 	if !strings.Contains(joined, `mcp_servers.`+MCPServerName+`.url="`+DefaultMCPURL+`"`) ||
-		!strings.Contains(joined, `mcp_servers.`+MCPServerName+`.bearer_token_env_var="ORQ_API_KEY"`) {
+		strings.Contains(joined, "bearer_token_env_var") {
 		t.Fatalf("mcp overrides missing: %s", joined)
 	}
 }
@@ -142,9 +144,11 @@ func TestOpenCodeMCPBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	orq := parsed.MCP[MCPServerName]
-	if orq.Type != "remote" || orq.URL != DefaultMCPURL ||
-		orq.Headers["Authorization"] != "Bearer {env:ORQ_API_KEY}" {
+	if orq.Type != "remote" || orq.URL != DefaultMCPURL {
 		t.Fatalf("mcp block: %+v", orq)
+	}
+	if len(orq.Headers) != 0 {
+		t.Fatalf("mcp block contains headers: %+v", orq.Headers)
 	}
 }
 
@@ -166,8 +170,7 @@ func TestKimiMCPFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := string(data)
-	if !strings.Contains(content, DefaultMCPURL) ||
-		!strings.Contains(content, `"bearerTokenEnvVar":"ORQ_API_KEY"`) {
+	if !strings.Contains(content, DefaultMCPURL) || strings.Contains(content, "bearerTokenEnvVar") {
 		t.Fatalf("kimi mcp.json: %s", content)
 	}
 	if strings.Contains(content, "sk-test") {
@@ -207,5 +210,72 @@ func TestMaybeWriteSessionSkillsSuppressedByNoSkills(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
 		t.Error("--no-skills still wrote skills")
+	}
+}
+
+// The launch side asks the registry, through the hook the commands package
+// injects. Unset means "cannot tell", which must not read as "already wired".
+func TestPersistedMCPHookDecides(t *testing.T) {
+	if persistedMCPConfigured("claude") {
+		t.Fatal("an uninjected hook claimed the agent was already wired")
+	}
+	var asked string
+	PersistedMCPHook = func(agent string) bool { asked = agent; return true }
+	t.Cleanup(func() { PersistedMCPHook = nil })
+	if !persistedMCPConfigured("codex") || asked != "codex" {
+		t.Fatalf("hook not consulted for the agent asked about: asked=%q", asked)
+	}
+}
+
+// The canary the connect side has, on the side that actually leaked: e44c747's
+// regression was a launch-written entry. An allowlist, not a denylist of known
+// credential spellings — a key nobody thought to forbid is exactly the one that
+// gets added next, so any new key fails here until someone justifies it.
+func TestLaunchMCPEntriesCarryNothingButTheURL(t *testing.T) {
+	entryKeys := func(t *testing.T, doc string, section string) []string {
+		t.Helper()
+		var raw map[string]map[string]map[string]any
+		if err := json.Unmarshal([]byte(doc), &raw); err != nil {
+			t.Fatalf("parsing %s: %v", doc, err)
+		}
+		entry, ok := raw[section][MCPServerName]
+		if !ok {
+			t.Fatalf("no %s entry in %s", MCPServerName, doc)
+		}
+		keys := make([]string, 0, len(entry))
+		for k := range entry {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return keys
+	}
+
+	if got := entryKeys(t, claudeMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"type", "url"}) {
+		t.Errorf("claude entry keys = %v, want [type url]", got)
+	}
+	if got := entryKeys(t, kimiMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"url"}) {
+		t.Errorf("kimi entry keys = %v, want [url]", got)
+	}
+
+	block := openCodeMCPBlock(DefaultMCPURL)
+	entry, ok := block[MCPServerName].(map[string]any)
+	if !ok {
+		t.Fatalf("no %s entry in the opencode block: %v", MCPServerName, block)
+	}
+	var keys []string
+	for k := range entry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	// Not "oauth": opencode types it as McpOAuthConfig | false, so a true there
+	// makes opencode reject the whole document and start with no MCP at all.
+	if !reflect.DeepEqual(keys, []string{"type", "url"}) {
+		t.Errorf("opencode entry keys = %v, want [type url]", keys)
+	}
+
+	// codex takes -c overrides rather than a document: one override, the url.
+	args := codexMCPArgs(DefaultMCPURL)
+	if len(args) != 2 || args[0] != "-c" || args[1] != tomlOverride("mcp_servers."+MCPServerName+".url", DefaultMCPURL) {
+		t.Errorf("codex mcp args = %v, want a single url override", args)
 	}
 }

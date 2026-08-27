@@ -29,7 +29,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if !strings.HasPrefix(toComplete, "-") {
 		return nil
 	}
-	flags := []string{"--model", "--base-url", "--no-fetch-models", "--mcp",
+	flags := []string{"--model", "--base-url", "--no-fetch-models", "--mcp", "--no-mcp",
 		"--no-skills", "--dry-run", "--help"}
 	if def.AllowModels {
 		flags = append(flags, "--models")
@@ -48,7 +48,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
-// --base-url/--no-fetch-models/--mcp/--no-skills/--dry-run/-h — are recognized
+// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h — are recognized
 // only at the FRONT of argv: the first arg the launcher doesn't own ends
 // launcher parsing and everything from there on belongs to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
@@ -57,7 +57,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 // Prompt-mapped flags (-p/--prompt) expand to the agent's own syntax (e.g.
 // `run <text>`) and land at the front of the agent argv by construction.
 func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, error) {
-	var flags GatewayFlags
+	flags := GatewayFlags{MCP: true}
 	var prompt []string
 
 	takeValue := func(arg string, i *int) (string, error) {
@@ -138,7 +138,7 @@ scan:
 		case arg == "--mcp":
 			flags.MCP = true
 		case arg == "--no-mcp":
-			// Accepted no-op: was the opt-out when MCP wired by default.
+			flags.MCP = false
 		case arg == "--no-skills":
 			flags.NoSkills = true
 		case arg == "--dry-run":

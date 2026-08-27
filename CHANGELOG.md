@@ -48,6 +48,38 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Added:** the `mcp` capability returns to `orq setup`, `orq connect`,
+  `orq disconnect`, `--status` and `--dry-run`, on OAuth. `orq connect claude mcp`
+  writes the orq MCP server's URL into the agent's own config and nothing else —
+  no key, no header, no bearer variable — and the agent logs in to that server
+  itself; each write names the agent's login command. Supported for Claude Code,
+  Codex, opencode, Kilo Code and Kimi Code; pi has no MCP support and says so
+  rather than reporting a wire. `orq doctor` gains an MCP check group, which
+  reports that an entry is present rather than claiming MCP works: the CLI holds
+  no token and cannot know. This is the capability v4.13.10 wrote a
+  workspace-admin key for, on a credential model that writes no credential.
+- **Added:** `--global` and `--local` return to `orq connect` and
+  `orq disconnect`, and `orq setup` asks where the MCP entry goes, defaulting to
+  global. Only `mcp` has a project scope; a run that names `--local` alongside a
+  machine-wide capability says which ones it could not scope rather than
+  narrowing them. `--local` from your home directory is refused: `$HOME` is not a
+  project, and the `~/.mcp.json` it would produce would follow you into every
+  session started from home.
+- **Changed:** `orq launch` wires the orq MCP server by default again;
+  `--no-mcp` declines. It writes no credential — the agent authenticates by
+  OAuth — and it no-ops when `orq connect` has already wired that agent, so a
+  session entry cannot shadow the persisted one. MCP tool calls still share the
+  free plan's daily request quota with model calls; `--no-mcp` is how you keep
+  the quota for model calls.
+- **Fixed:** `orq launch` no longer wires opencode or Kilo Code with an `oauth`
+  value their config schema rejects. Both type the field as
+  `McpOAuthConfig | false`, so the `true` this wrote made opencode refuse the
+  whole config document and start with no MCP servers at all — including the
+  ones you configured yourself.
+- **Changed:** `orq auth logout --disconnect` now removes MCP entries and
+  installed skills as well as gateway configuration, matching what a bare
+  `orq connect` writes. The consent prompt is unchanged, and the preview lists
+  every file before anything is removed.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
@@ -182,11 +214,13 @@ the version and this changelog as the source of truth for breaking changes.
   `ORQ_API_KEY` was being compared against the saved key as though the user had
   exported it. The credential lookup now lives in one place (`auth.SavedAgentKey`)
   that `launch`, `setup` and `doctor` share.
-- **Fixed:** `orq launch --mcp` warns again when your login predates MCP scopes.
-  The CLI injects the session's own workspace token into `ORQ_API_KEY`, and
-  `launch` was treating that as a key you had exported — which left it marked as
-  "not from a session", so the scope check could never fire and the MCP server
-  rejected the call instead with an unexplained `insufficient_scope`.
+- **Fixed:** `orq launch` recognises the session's own workspace token again.
+  The CLI injects it into `ORQ_API_KEY`, and `launch` was treating that as a key
+  you had exported, which left it marked as "not from a session" — so every
+  decision keyed on where the credential came from was made on the wrong answer.
+  (The MCP scope warning this originally restored is gone with the credential:
+  MCP entries carry none, so the login session no longer decides whether MCP
+  works.)
 - **Fixed:** `orq setup --api-key <key>` is no longer silently overridden. A
   previously minted `gateway_key` outranks `api_key`, so the supplied key was
   used for that run and then ignored by the next `orq connect`. Saving an
@@ -244,11 +278,15 @@ the version and this changelog as the source of truth for breaking changes.
   `./.mcp.json`, `~/.kimi-code/mcp.json`, `~/.config/opencode/opencode.json`,
   `~/.config/kilo/kilo.json`, and the `[mcp_servers.orq]` table in codex's
   `config.toml`. `orq launch --mcp` is unaffected: it wires MCP for a single
-  session using your login, and writes nothing to disk.
+  session using your login, and writes nothing to disk. *(Superseded before
+  release for MCP: the capability returns, writing a URL and no credential. The
+  v4.13.10 entries this describes are still yours to delete — the new writer
+  replaces the `orq-workspace` entry, not the old `orq` one.)*
 - **Removed (breaking):** `--global` and `--local` on `orq connect` and
   `orq disconnect`. No provider config is project-scoped — every agent reads its
   gateway configuration from one absolute path — so both flags had no effect
-  once MCP was removed.
+  once MCP was removed. *(Superseded before release: both flags return with the
+  `mcp` capability.)*
 - **Changed:** `orq connect` no longer offers Claude Code, and `--status` no
   longer reports it as unwired. Claude reads its endpoint from the environment
   and has no gateway provider config, so with MCP gone there is nothing to
@@ -304,7 +342,9 @@ the version and this changelog as the source of truth for breaking changes.
   to be wired on every launch with `--no-mcp` to decline; it is now off unless
   you pass `--mcp`, and `--no-mcp` is accepted but does nothing. The skills
   plugin follows MCP, so it is off by default too. A wrapper relying on the old
-  default gets an agent with no orq tools and no error.
+  default gets an agent with no orq tools and no error. *(Superseded before
+  release: MCP is on by default again, and `--no-mcp` declines. See the entry at
+  the top of this section.)*
 - **Changed:** the API key `orq setup` mints is owned by you, not by a service
   account. Service accounts can only be created by workspace admins, so the old
   behaviour failed for Developer and Researcher members of an Enterprise

@@ -93,6 +93,9 @@ func NewDoctorCommand() *cobra.Command {
 			if sk, ok := skillsCheck(); ok {
 				checks = append(checks, sk)
 			}
+			if mcp, ok := mcpCheck(); ok {
+				checks = append(checks, mcp)
+			}
 			if shadow, ok := gatewayKeyShadowsSessionCheck(inspect); ok {
 				checks = append(checks, shadow)
 			}
@@ -394,6 +397,54 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 		Message: message,
 		Details: map[string]any{"url": url, "http_status": res.StatusCode},
 	}
+}
+
+// mcpCheck reports detected MCP-capable agents and the OAuth command their
+// users must run. An entry is only the wiring state: doctor cannot know
+// whether the agent's OAuth flow has completed.
+//
+// wiredPath probes both project and machine-wide scopes. Pi is deliberately
+// absent from the registry's MCP fields, so it is never reported here.
+func mcpCheck() (doctorCheck, bool) {
+	var present, missing []string
+	for _, spec := range agentRegistry() {
+		if !spec.detect() || spec.writeMCP == nil || spec.mcpConfig == nil || spec.mcpPresent == nil {
+			continue
+		}
+		if _, wired := wiredPath(spec.mcpConfig, spec.mcpPresent); wired {
+			present = append(present, spec.ID)
+		} else {
+			missing = append(missing, spec.ID)
+		}
+	}
+	if len(present) == 0 && len(missing) == 0 {
+		return doctorCheck{}, false
+	}
+
+	check := doctorCheck{
+		ID: "mcp",
+		Details: map[string]any{
+			"detected":       len(present) + len(missing),
+			"present":        len(present),
+			"missing":        len(missing),
+			"present_agents": present,
+			"missing_agents": missing,
+		},
+	}
+	var messages []string
+	for _, id := range present {
+		messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
+	}
+	if len(missing) > 0 {
+		check.Status = "warn"
+		for _, id := range missing {
+			messages = append(messages, fmt.Sprintf("%s detected without an MCP entry — run 'orq connect %s mcp'", id, id))
+		}
+	} else {
+		check.Status = "pass"
+	}
+	check.Message = strings.Join(messages, "; ")
+	return check, true
 }
 
 // gatewayKeyShadowsSessionCheck names the one state the credential split can
