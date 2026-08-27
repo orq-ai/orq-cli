@@ -48,6 +48,18 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Fixed (security):** the credentials file is no longer world-readable while
+  it is being written. The CLI wrote it at 0644 and then chmodded it to 0600, so
+  the gateway key was readable by any account on the machine in between, and
+  stayed readable if the process died before the chmod. It now goes through
+  bartolo's hardened write: 0600 from the moment the file exists, swapped in by
+  rename, and an interrupted write leaves the previous file intact. The file on
+  disk ends up at 0600 either way, so a machine whose credentials were written
+  by an earlier version needs no action.
+- **Added:** `orq auth add-profile --api-key-file` reads the key from a file,
+  and its positional `<api-key>` becomes optional. A key passed as an argument
+  is visible to every process on the machine through `ps`; a file avoids that.
+- **Added:** `orq request --force`.
 - **Added:** the `mcp` capability returns to `orq setup`, `orq connect`,
   `orq disconnect`, `--status` and `--dry-run`, on OAuth. `orq connect claude mcp`
   writes the orq MCP server's URL into the agent's own config and nothing else —
