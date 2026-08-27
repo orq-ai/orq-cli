@@ -146,9 +146,8 @@ func newWorkspaceUseCommand() *cobra.Command {
 	return cmd
 }
 
-// printWorkspaceList renders the workspace roster through the shared table: a
-// dim header row, a dot on the active workspace, and right-aligned member
-// counts.
+// printWorkspaceList renders the workspace roster, with a dot on the active
+// workspace.
 func printWorkspaceList(rows []workspaceRow) {
 	const memHdr = "MEMBERS"
 	out := bartolocli.Stdout
@@ -161,8 +160,8 @@ func printWorkspaceList(rows []workspaceRow) {
 			marker = paint(ansiOK, "●")
 			anyActive = true
 		}
-		// MEMBERS is the last column, so it is never padded and may carry its
-		// own color; the count is right-aligned under its header.
+		// The last column is never padded, so the right-alignment is this
+		// sprintf's job rather than the table's.
 		members := paint(ansiDim, fmt.Sprintf("%*d", len(memHdr), r.TotalMembers))
 		table = append(table, tableRow{marker: marker, cells: []string{r.Name, r.Key, members}})
 	}

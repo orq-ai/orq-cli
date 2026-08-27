@@ -50,9 +50,10 @@ func TestPrintWorkspaceListTable(t *testing.T) {
 	if !strings.Contains(out, "Acme               ") {
 		t.Errorf("short name not padded to column width:\n%s", out)
 	}
-	// Member counts are right-aligned under the MEMBERS header.
-	if !strings.Contains(out, "12") || !strings.Contains(out, "3") {
-		t.Errorf("member counts missing:\n%s", out)
+	// Member counts are right-aligned under the MEMBERS header: the table
+	// never pads its last column, so only the caller's own sprintf does it.
+	if !strings.Contains(out, "ws1       12") || !strings.Contains(out, "ws2        3") {
+		t.Errorf("member counts not right-aligned:\n%s", out)
 	}
 }
 
@@ -72,7 +73,7 @@ func TestKVPadsLabelColumn(t *testing.T) {
 
 // printTable is the one renderer behind doctor, workspace list and connect
 // --status, so its output is pinned byte for byte: an alignment regression in
-// here misaligns all three at once, and substring assertions never see it.
+// here misaligns all three at once.
 func TestPrintTableGoldens(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -112,8 +113,9 @@ func TestPrintTableGoldens(t *testing.T) {
 				"     pi        gateway     ~/.pi\n",
 		},
 		{
-			// Padding counts runes, not bytes: a byte count over-pads any
-			// non-ASCII cell and skews every column after it.
+			// Column widths are measured in runes: measured in bytes, the
+			// non-ASCII cell sizes its column too wide and skews every column
+			// after it.
 			name:    "multi-byte cells",
 			headers: []string{"NAME", "KEY"},
 			rows: []tableRow{
@@ -136,10 +138,8 @@ func TestPrintTableGoldens(t *testing.T) {
 	}
 }
 
-// printWiredTable's two pieces of display logic — the agent name printed once
-// per group, and the SCOPE column that appears only when a row has a scope —
-// are invisible to connect_test.go's substring assertions: dropping either
-// leaves that suite green.
+// The agent name printed once per group is invisible to connect_test.go's
+// substring assertions: dropping it leaves that suite green.
 func TestPrintWiredTable(t *testing.T) {
 	rows := func(targets ...wiredTarget) (order []string, byAgent map[string][]wiredTarget) {
 		byAgent = map[string][]wiredTarget{}
@@ -179,8 +179,6 @@ func TestPrintWiredTable(t *testing.T) {
 				"  ✓          skills             /b\n",
 		},
 		{
-			// The marker comes from the target's own probed state; a warn
-			// target must not render the pass glyph.
 			name: "warn target renders its own glyph",
 			targets: []wiredTarget{
 				{agent: "claude", capability: "gateway", path: "/a", status: "pass"},

@@ -425,26 +425,21 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
-		// blank() is suppressed under quiet while info() survives it: the
-		// separator is decoration, the footer it separates is a fact.
 		rep.blank()
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
 }
 
-// printWiredTable renders the wiring through the shared table, so it lines up
-// with `orq doctor` and `orq workspace list`. The agent name is printed once
-// per group: repeating it on every capability row is noise the alignment
-// already carries.
+// printWiredTable prints one row per capability, with the agent name on the
+// first of its group: repeating it on every row is noise the alignment already
+// carries.
 func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTarget) {
 	if len(order) == 0 {
 		return
 	}
-	// SCOPE earns a column only when some row has one: "~/.claude.json" and
-	// "./.mcp.json" are the same capability wired two different ways, and the
-	// path alone leaves the reader to work out which. A machine with no
-	// project-scoped entries gets no empty column for it.
+	// Only mcp carries a scope, so a machine wired for gateway or skills alone
+	// gets no empty column for it.
 	scoped := false
 	for _, agent := range order {
 		for _, w := range byAgent[agent] {
@@ -1035,8 +1030,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 // wiredTarget is one agent's capability and the file holding it. scope is set
 // only for the capabilities that have two, so a report can say which of them an
 // entry was found in; the file alone does not always say.
-// status is a statusGlyph state ("pass" or "warn") set where the target is
-// built, from whatever probe established it — never defaulted at render time.
+// status is a statusGlyph state: "pass" or "warn".
 type wiredTarget struct{ agent, capability, path, scope, status string }
 
 // wiredMCPTargets lists the scopes holding this agent's MCP entry. wiredPath
@@ -1090,11 +1084,9 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	if hasCap(caps, capSkills) {
-		// ReadStatus rather than the bare manifest: a skills row carries the
-		// same ✓ the disk-probed rows do, so it must rest on the same kind of
-		// evidence. One missing or foreign link taints its whole directory,
-		// and a stale fingerprint taints every directory — the fold `orq
-		// doctor` applies.
+		// A skills row carries the same ✓ the disk-probed rows do, so it rests
+		// on the same kind of evidence: ReadStatus probes each recorded link
+		// rather than trusting the manifest that records it.
 		status, err := skills.ReadStatus()
 		if err == nil && status != nil {
 			idx := map[string]int{}

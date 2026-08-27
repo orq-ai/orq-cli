@@ -168,11 +168,8 @@ func statusGlyph(status string) string {
 // ============================================================================
 
 // tableRow is one line of a table: an optional marker glyph and one cell per
-// header. Cells are plain text — only the last cell may carry its own color,
-// because every earlier cell is padded and padding a string with ANSI escapes
-// in it counts the escape bytes as width and breaks the alignment. That rule
-// is unenforced: a painted earlier cell mis-pads only when color is on, which
-// no test sees.
+// header. Only the last cell may arrive pre-colored: every earlier cell is
+// padded, and pad counts the characters of an ANSI escape as visible width.
 type tableRow struct {
 	marker string // a single visible rune, already painted, or "" for none
 	// One cell per header. A short row renders the missing columns blank
@@ -182,16 +179,11 @@ type tableRow struct {
 
 // printTable renders the CLI's one table shape: a marker column, a dim header
 // row, and every column but the last sized to its widest value — the last is
-// emitted verbatim, since nothing follows it to line up with. `orq doctor`,
-// `orq workspace list` and `orq connect --status` all print through it, so
-// their gutters, header style and column alignment cannot drift apart. (The
-// setup final screen still formats its own per-agent rows; it is not a table.)
+// emitted verbatim, since nothing follows it to line up with.
 func printTable(w io.Writer, headers []string, rows []tableRow) {
 	if len(headers) == 0 {
 		return
 	}
-	// The last column is never padded, so it is also the only one allowed to
-	// arrive pre-colored.
 	widths := make([]int, len(headers)-1)
 	for i := range widths {
 		widths[i] = utf8.RuneCountInString(headers[i])
@@ -215,8 +207,6 @@ func printTable(w io.Writer, headers []string, rows []tableRow) {
 	}
 }
 
-// printCells writes exactly len(widths)+1 columns, so a row that is short of
-// its headers leaves a blank column instead of an index panic mid-render.
 func printCells(w io.Writer, widths []int, cells []string, dim bool) {
 	for i := 0; i <= len(widths); i++ {
 		if i > 0 {
