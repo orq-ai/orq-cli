@@ -77,16 +77,17 @@ Setup authenticates the machine; wiring agents is `orq connect`:
 orq setup                          # sign in, create the key, then offers to connect
 orq connect                        # wire every detected agent through the gateway
 orq connect codex kimi             # specific agents
-orq connect codex gateway          # the capability is optional; gateway is the only one
+orq connect codex gateway          # one capability: gateway, tracing, skills or mcp
+orq connect claude mcp --local     # this project only (mcp is the only scoped capability)
 orq connect --dry-run              # show the files that would change
 orq disconnect codex               # remove exactly what connect wrote
 ```
 
 An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.
 
-Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered by connect: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route it.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route its model calls. It does receive `skills` and `mcp`.
 
-Connect wires the gateway and nothing else. MCP and skills are not part of it in this version — `orq launch --mcp` is the only place the orq MCP server is still wired, per session, writing nothing to disk.
+Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `--global` (the default) writes machine-wide, `--local` writes to this project — only `mcp` has a project scope, and `--local` is refused from your home directory, where the `~/.mcp.json` it would produce would follow you into every session started from home.
 
 **Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
@@ -288,9 +289,9 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
-Pass `--mcp` after the agent name, for example `orq launch claude --mcp`, to wire the [orq MCP server](https://my.orq.ai/v2/mcp) into the launched agent, using its native mechanism; the API key is passed by env-var reference, never written into config files. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP is per-session only in this version; `orq connect` no longer wires it.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
-With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-ai/assistant-plugins) **session-only** via `--plugin-url`; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`, override the zip with `ORQ_SKILLS_URL`.
+orq's skills are linked into the agent's own skills directory **for the session only**; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
 ### Shared flags
 
@@ -300,8 +301,9 @@ With `--mcp`, claude also loads the [orq skills plugin](https://github.com/orq-a
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
-| `--mcp` | Wire the orq MCP server (workspace tools) into the agent |
-| `--no-skills` | With `--mcp`, skip the orq skills plugin (claude only) |
+| `--mcp` | Wire the orq MCP server (workspace tools) into the agent — the default |
+| `--no-mcp` | Do not wire the orq MCP server for this session |
+| `--no-skills` | Do not link orq's skills into the agent for this session |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
@@ -392,7 +394,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
-| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch --mcp` |
+| `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch` and persistently by `orq connect mcp` |
 
 ```sh
 orq --profile acme auth login --server https://orq.acme.internal
