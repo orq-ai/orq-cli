@@ -1181,9 +1181,15 @@
     },
     {
       "path": "orq auth add-profile",
-      "use": "add-profile [flags] \u003cname\u003e \u003capi-key\u003e",
+      "use": "add-profile [flags] \u003cname\u003e [\u003capi-key\u003e]",
       "aliases": [
         "add"
+      ],
+      "flags": [
+        {
+          "name": "api-key-file",
+          "type": "string"
+        }
       ]
     },
     {
@@ -6925,6 +6931,10 @@
         {
           "name": "content-type",
           "type": "string"
+        },
+        {
+          "name": "force",
+          "type": "bool"
         },
         {
           "name": "from-file",

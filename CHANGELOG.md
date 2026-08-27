@@ -48,6 +48,40 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Fixed (security):** `~/.orq/credentials.json` is no longer written
+  world-readable. On Unix it is now 0600 from the moment the file exists and is
+  swapped in by rename, so there is no window in which the key is readable by
+  other accounts, and an interrupted write leaves the previous file intact.
+  Windows has no equivalent; the file inherits the directory's ACLs there.
+
+  **Check your existing file: `ls -l ~/.orq/credentials.json`.** Earlier
+  versions could leave it at 0644 permanently, not just briefly. `orq setup`
+  chmodded the file after writing it, but `orq auth add-profile` did not chmod
+  at all, so a file created by that command has been world-readable ever since,
+  with the key in plaintext. This release does not repair an existing file: it
+  keeps whatever mode it has until the next successful save. If yours is 0644,
+  run `chmod 600 ~/.orq/credentials.json`, and treat any key in it as exposed
+  to other accounts on that machine.
+- **Changed (security):** `orq auth list-profiles` masks stored credentials.
+  It previously printed the full API key in plaintext, so keys reached terminal
+  scrollback, CI logs and screen recordings. Keys now render as
+  `sk-o********wxyz`.
+- **Changed (breaking):** `orq auth list-profiles` output moved from a rendered
+  ASCII table to the standard response formatter, so it honors `--json`, `-o
+  yaml` and the default TOON format like every other command. It previously
+  printed the table regardless of `--output-format`. Anything parsing that table
+  needs updating; the masking above means the key can no longer be scraped from
+  it at all.
+- **Changed (breaking):** `orq request DELETE` now asks for confirmation, and
+  refuses to run without `--force` when there is no terminal. A CI job doing a
+  raw `orq request DELETE ...` exits non-zero until `--force` is added.
+- **Changed:** `orq server list` no longer emits a per-entry `override` field;
+  a top-level `overridden` replaces it. `orq server current` gains
+  `profile_server` and `server_default`.
+- **Added:** `orq auth add-profile --api-key-file` reads the key from a file,
+  or from stdin with `-`, and its positional `<api-key>` becomes optional. A key
+  passed as an argument is visible to every process on the machine through `ps`.
+- **Added:** `orq request --force`, which skips the DELETE confirmation above.
 - **Added:** the `mcp` capability returns to `orq setup`, `orq connect`,
   `orq disconnect`, `--status` and `--dry-run`, on OAuth. `orq connect claude mcp`
   writes the orq MCP server's URL into the agent's own config and nothing else —
@@ -80,6 +114,52 @@ the version and this changelog as the source of truth for breaking changes.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
+- **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
+  logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
+  doctor`. The CLI had two names for one value: those six commands took
+  `--api-base-url` and rejected `--server`, while every generated command took
+  the global `--server` and rejected `--api-base-url`. There is now one name —
+  the global `--server <url>` (env: `ORQ_SERVER`), which works on every command,
+  including `orq auth login --server https://orq.acme.internal`. Replace
+  `--api-base-url <url>` with `--server <url>`; it is the same root URL. The old
+  flag still works for one release: it is hidden from help and warns on stderr,
+  and it will be removed in a following minor.
+- **Changed:** the default host is `https://my.orq.ai`, the `servers[0]` entry
+  of the API spec and already the fallback the generated commands used. Auth,
+  `whoami`, `workspace` and `doctor` defaulted to `https://api.orq.ai` instead,
+  so a run with no session and no override could reach two hosts at once. Both
+  names answer the same routes from the same origin, so nothing moves for users
+  on either. `orq launch`'s gateway defaults (`/v3/router`, `/v3/anthropic`,
+  `/v2/mcp`) hang off that same host, so there is one host literal in the
+  binary; they give way to the resolved server whenever it is not orq's own
+  service under either of its two names.
+- **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` and `orq launch`,
+  and `orq doctor` reports where the host came from (`flag`, `env`, `config`,
+  `session`, `default`) from the point the value was decided rather than by
+  comparing it against the session. An explicit host also outranks the session
+  on `orq setup` and `orq launch`, so `--server` diverts the configs they write
+  instead of being overruled by the host the session was authenticated against.
+  `setup` and `launch` previously read only `ORQ_API_BASE_URL`, so `--server`
+  was silently ignored on both, and a coding agent could be wired to a
+  different host than the one the CLI was talking to.
+  On `orq launch` the flag goes before the agent name — either side of the
+  `launch` word (`orq --server <url> launch claude`, `orq launch --server <url>
+  claude`); everything after the agent name is forwarded to the agent.
+- **Changed:** a profile now carries its own host and its own credentials, and
+  both beat the wider setting. `orq auth login --server <url>` (and `orq setup`)
+  bind the host to the profile they authenticate, so `orq --profile acme ...`
+  routes to acme's backend with no flag and no session read; that binding
+  outranks a host persisted globally with `orq server set`, which stays global.
+  An explicitly typed `--profile` also outranks an exported `ORQ_API_KEY`,
+  `ORQ_TOKEN` or `ORQ_AUTHORIZATION` — previously a key left in the shell was
+  sent to whatever host the named profile resolved, silently. The CLI says on
+  stderr when it overrides one. `ORQ_PROFILE` does not do this: env against env
+  has no statement of intent to break the tie.
+- **Deprecated:** `ORQ_API_BASE_URL`. It still resolves, now as a spelling of
+  `ORQ_SERVER`, and prints a warning on stderr; it will be removed in a future
+  release. It also reaches the generated API commands for the first time, which
+  never honored it. Set `ORQ_SERVER` instead.
+
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
@@ -463,8 +543,10 @@ the version and this changelog as the source of truth for breaking changes.
 
 ### Known gap in the surface gate
 
-`orq launch` sets `DisableFlagParsing` so that everything after the agent name
-reaches the agent untouched. Its flags are therefore parsed by hand and do not
+`orq launch` sets `DisableFlagParsing` so that agent arguments can be forwarded
+without collisions. Global `orq` flags must appear before the agent name; its
+launcher-specific flags are parsed by hand at the start of the agent arguments
+and therefore do not
 appear in `surface.json`, so the CI gate covers the seven `orq launch` command
 paths but **not** their flags: renaming or removing `--sandbox`, `--dry-run`,
 `--model`, `--mount-cwd`, `--rebuild`, `--mcp`, `--no-skills` or
