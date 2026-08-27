@@ -162,6 +162,20 @@ jobs:
             if [ "$version" != "$file_version" ]; then echo "$version" > VERSION; fi
           fi
 
+          # The resolved version must sort above the highest STABLE tag. A
+          # stale or badly merged VERSION (say 4.14.3 after the 5.x line
+          # started) would otherwise resolve to 4.14.4 and publish it as npm
+          # latest and as GitHub /releases/latest, downgrading every user —
+          # and `orq update` refuses downgrades, so nobody is walked back
+          # automatically. Stable tags only: sort -V puts v5.1.0 below its own
+          # v5.1.0-rc.N, so comparing against prereleases would refuse the
+          # stable release those rcs exist to precede.
+          highest="$(git tag --list 'v*' | grep -v -- - | sort -V | tail -n1)"
+          if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "v$version" | sort -V | tail -n1)" != "v$version" ]; then
+            echo "error: resolved v$version does not sort above the highest stable tag $highest; VERSION is stale or mis-merged" >&2
+            exit 1
+          fi
+
           {
             echo "version=$version"
             echo "tag=v$version"

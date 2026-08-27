@@ -35,8 +35,11 @@ REPO="orq-ai/orq-cli"
 INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
 CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
+# Only the --channel flag marks the channel explicit. The env var is ambient:
+# `orq update` re-runs this script with --version in whatever shell the user
+# has, and an exported ORQ_CLI_CHANNEL would trip the exclusion check below
+# and break self-update for everyone who set it.
 CHANNEL_EXPLICIT=0
-[ -n "${ORQ_CLI_CHANNEL:-}" ] && CHANNEL_EXPLICIT=1
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
