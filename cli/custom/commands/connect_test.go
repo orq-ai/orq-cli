@@ -78,7 +78,7 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -294,7 +294,7 @@ func TestConnectLoginDeclinedIsACleanExit(t *testing.T) {
 func ensureCreds(t *testing.T) {
 	t.Helper()
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 }

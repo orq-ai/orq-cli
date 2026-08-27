@@ -63,7 +63,7 @@ func TestBindProfileServer(t *testing.T) {
 	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
 
 	prevCreds := bartolocli.Creds
-	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	bartolocli.Creds = newTestCreds(t)
 	t.Cleanup(func() { bartolocli.Creds = prevCreds })
 
 	profile := auth.ActiveProfile()
@@ -90,4 +90,13 @@ func TestBindProfileServer(t *testing.T) {
 	if got := ProfileServer(); got != "https://orq.acme.internal" {
 		t.Errorf("a blank host must not overwrite a bound one: got %q", got)
 	}
+}
+
+func newTestCreds(t *testing.T) *bartolocli.CredentialsFile {
+	t.Helper()
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCredentialsFile: %v", err)
+	}
+	return creds
 }

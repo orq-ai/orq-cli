@@ -322,7 +322,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 	if bartolocli.Creds == nil {
 		// initAuth, which normally creates this, runs from the generated
 		// runtime that unit tests do not start.
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 
@@ -351,7 +351,7 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 func credsHarness(t *testing.T) {
 	t.Helper()
 	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
-	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	bartolocli.Creds = newTestCreds(t)
 	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
 	viper.Set("config-directory", t.TempDir())
 	viper.Set("profile", "default")
@@ -705,7 +705,7 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	viper.Set("no-input", true)
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", ""); viper.Set("no-input", false) })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -817,7 +817,7 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1026,7 +1026,7 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	if bartolocli.Creds == nil {
 		// initAuth, which normally creates this, runs from the generated
 		// runtime that unit tests do not start.
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if err := writeAPIKeyProfile("default", "sk-orq-OLD-STALE", ""); err != nil {
@@ -1152,7 +1152,7 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1227,7 +1227,7 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 		viper.Set("profile", "")
 	})
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
@@ -1730,7 +1730,7 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 	if bartolocli.Creds == nil {
-		bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {

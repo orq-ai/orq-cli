@@ -56,13 +56,9 @@ func BindProfileServer(profile, server string) error {
 	return saveCreds()
 }
 
-// saveCreds persists the credentials file with owner-only permissions.
+// saveCreds persists the credentials file through bartolo's 0600 write.
 func saveCreds() error {
-	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
-	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
-		return err
-	}
-	return chmodOwnerOnly(filename)
+	return bartolocli.Creds.Save(path.Join(viper.GetString("config-directory"), "credentials.json"))
 }
 
 // sessionAPIBase prefers the resolved server over the host the session was

@@ -782,11 +782,6 @@ func writeCredsProfile(profile, workspace string) error {
 	return saveCreds()
 }
 
-// chmodOwnerOnly keeps the credentials file readable only by its owner.
-func chmodOwnerOnly(filename string) error {
-	return os.Chmod(filename, 0o600)
-}
-
 // clearShellEnvFile removes the exported key from the file `orq setup` wrote,
 // leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
 // and deleting the target would make every new shell report a missing file.

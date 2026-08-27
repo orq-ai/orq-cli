@@ -124,16 +124,29 @@ func TestResolveServerPrecedence(t *testing.T) {
 	})
 
 	cases := []struct {
-		name       string
-		flag       string
-		env        map[string]string
-		profile    string
-		config     string
-		wantServer string
-		wantSource string
+		name         string
+		flag         string
+		env          map[string]string
+		profile      string
+		config       string
+		legacyConfig string
+		wantServer   string
+		wantSource   string
 	}{
 		{name: "nothing set", wantServer: "", wantSource: "default"},
 		{name: "config", config: "https://config.example", wantServer: "https://config.example", wantSource: "config"},
+		{
+			// A config.json written before bartolo moved the key, which its
+			// migration has not rewritten yet.
+			name:         "legacy config key",
+			legacyConfig: "https://legacy-config.example",
+			wantServer:   "https://legacy-config.example", wantSource: "config",
+		},
+		{
+			name:   "migrated key beats the legacy one",
+			config: "https://config.example", legacyConfig: "https://legacy-config.example",
+			wantServer: "https://config.example", wantSource: "config",
+		},
 		{
 			// Selecting a profile is how you select a backend, so a host bound
 			// to one outranks a host persisted globally with `orq server set`.
@@ -168,7 +181,12 @@ func TestResolveServerPrecedence(t *testing.T) {
 			// A stale value, so "nothing set" asserts that resolveServer clears
 			// rather than that it happened to leave the priming value alone.
 			auth.SetServer("https://stale.example", "flag")
-			viper.Set("server", tc.config)
+			// server-default is the key bartolo persists `orq server set` under.
+			// Driving the old `server` key here made every config case test the
+			// legacy fallback, so the resolver reading the wrong key passed.
+			viper.Set("server-default", tc.config)
+			viper.Set("server", tc.legacyConfig)
+			t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
 			setProfileServer(t, tc.profile)
 			t.Setenv("ORQ_SERVER", tc.env["ORQ_SERVER"])
 			t.Setenv("ORQ_API_BASE_URL", tc.env["ORQ_API_BASE_URL"])
