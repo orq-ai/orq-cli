@@ -96,15 +96,18 @@ the version and this changelog as the source of truth for breaking changes.
   so a run with no session and no override could reach two hosts at once. Both
   names answer the same routes from the same origin, so nothing moves for users
   on either. `orq launch`'s gateway defaults (`/v3/router`, `/v3/anthropic`,
-  `/v2/mcp`) still name `api.orq.ai`; they give way to the resolved server
-  whenever it is not one of orq's own two hostnames.
-- **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` (when there is
-  no login session; a session's own host still wins there) and `orq launch`,
+  `/v2/mcp`) hang off that same host, so there is one host literal in the
+  binary; they give way to the resolved server whenever it is not orq's own
+  service under either of its two names.
+- **Changed:** `--server` / `ORQ_SERVER` now reach `orq setup` and `orq launch`,
   and `orq doctor` reports where the host came from (`flag`, `env`, `config`,
   `session`, `default`) from the point the value was decided rather than by
-  comparing it against the session. `setup` and `launch` previously read only
-  `ORQ_API_BASE_URL`, so `--server` was silently ignored on both, and a coding
-  agent could be wired to a different host than the one the CLI was talking to.
+  comparing it against the session. An explicit host also outranks the session
+  on `orq setup` and `orq launch`, so `--server` diverts the configs they write
+  instead of being overruled by the host the session was authenticated against.
+  `setup` and `launch` previously read only `ORQ_API_BASE_URL`, so `--server`
+  was silently ignored on both, and a coding agent could be wired to a
+  different host than the one the CLI was talking to.
   On `orq launch` the flag goes before the agent name — either side of the
   `launch` word (`orq --server <url> launch claude`, `orq launch --server <url>
   claude`); everything after the agent name is forwarded to the agent.

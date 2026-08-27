@@ -192,6 +192,7 @@ func installSessionPreRun() {
 // The session's own host is layered on afterwards by the caller: it loses to
 // every explicit source, so it cannot be decided until they are ruled out.
 func resolveServer(cmd *cobra.Command) {
+	envServer, envVar := auth.ServerFromEnv(os.Getenv)
 	switch {
 	case cmd.Root().PersistentFlags().Changed("server"):
 		// Read the flag, not viper's key: an explicitly typed --server has to
@@ -204,12 +205,11 @@ func resolveServer(cmd *cobra.Command) {
 		// have to swallow, and swallowing it would drop a host the user typed.
 		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
 		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
-	case os.Getenv("ORQ_SERVER") != "":
-		auth.SetServer(os.Getenv("ORQ_SERVER"), "env")
-	case os.Getenv("ORQ_API_BASE_URL") != "":
-		// ORQ_API_BASE_URL is the pre-4.15 spelling, honored for one release.
-		commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
-		auth.SetServer(os.Getenv("ORQ_API_BASE_URL"), "env")
+	case envServer != "":
+		if envVar == auth.DeprecatedServerEnvVar {
+			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
+		}
+		auth.SetServer(envServer, "env")
 	case viper.GetString("server") != "":
 		auth.SetServer(viper.GetString("server"), "config") // persisted `orq server set`
 	default:

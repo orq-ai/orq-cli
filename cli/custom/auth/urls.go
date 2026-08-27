@@ -70,17 +70,34 @@ func Server() string { return server }
 // ServerSource names where Server() came from, for `orq doctor`.
 func ServerSource() string { return serverSource }
 
+// ServerFromEnv reports the host the environment names and which spelling
+// named it, or "" for both when neither is set. It is the one env ladder in
+// the binary: the root PreRun calls it to resolve --server's env layer (and
+// warns on the deprecated spelling), and the fallbacks below call it so a run
+// that misses the PreRun cannot resolve a different host than one that does
+// not. getenv is injected so callers can drive it in tests.
+func ServerFromEnv(getenv func(string) string) (url, envVar string) {
+	for _, name := range []string{"ORQ_SERVER", "ORQ_API_BASE_URL"} {
+		if v := strings.TrimSpace(getenv(name)); v != "" {
+			return v, name
+		}
+	}
+	return "", ""
+}
+
+// DeprecatedServerEnvVar is the pre-4.15 spelling of ORQ_SERVER, honored for
+// one release. Callers that can print compare ServerFromEnv's second return
+// against it and warn.
+const DeprecatedServerEnvVar = "ORQ_API_BASE_URL"
+
 func envDefaultAPIBase() string {
 	if server != "" {
 		return server
 	}
-	// Direct env reads remain for callers that run without the PreRun, which in
-	// practice means tests. They deliberately skip the deprecation warning and
-	// the persisted `orq server set` layer; both go away with ORQ_API_BASE_URL.
-	if v := strings.TrimSpace(os.Getenv("ORQ_SERVER")); v != "" {
-		return v
-	}
-	if v := strings.TrimSpace(os.Getenv("ORQ_API_BASE_URL")); v != "" {
+	// Reached only by callers that run without the PreRun, which in practice
+	// means tests: no warning is printed here, and the persisted
+	// `orq server set` layer lives with viper in the PreRun.
+	if v, _ := ServerFromEnv(os.Getenv); v != "" {
 		return v
 	}
 	return DefaultAPIBaseURL

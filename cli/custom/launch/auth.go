@@ -101,10 +101,10 @@ func APIBaseFor(getenv func(string) string) string {
 // ORQ_SERVER, the deprecated ORQ_API_BASE_URL) → session APIBaseURL → default.
 func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// auth.Server() is empty when the PreRun did not run — the launch tests,
-	// which drive this with an injected getenv. Both env spellings are read
-	// there, in the same order resolveServer uses, so the fallback cannot
-	// disagree with the real resolution.
-	resolved := firstNonEmpty(auth.Server(), getenv("ORQ_SERVER"), getenv("ORQ_API_BASE_URL"))
+	// which drive this with an injected getenv. The env fallback goes through
+	// the same ladder the PreRun uses, so the two cannot disagree.
+	envServer, _ := auth.ServerFromEnv(getenv)
+	resolved := firstNonEmpty(auth.Server(), envServer)
 	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
 
 	if key := getenv("ORQ_API_KEY"); key != "" {
@@ -137,7 +137,9 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if session.APIBaseURL != "" && resolved == "" {
 		apiBase = session.APIBaseURL
 	}
-	client := auth.NewClient(session.APIBaseURL)
+	// apiBase, not session.APIBaseURL: an explicit --server diverts the token
+	// fetch too, so one run cannot straddle two hosts.
+	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return nil, err

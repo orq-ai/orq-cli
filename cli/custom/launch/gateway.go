@@ -21,9 +21,13 @@ import (
 	"orq/cli/custom/auth"
 )
 
+// One host literal for the whole binary: every launch endpoint hangs off the
+// same default the auth and generated commands use. Two spellings of the
+// hosted service is what ENG-2852 removed from the flags; the gateway URLs
+// carried the same split until they were derived from here.
 const (
-	DefaultGatewayBaseURL    = "https://api.orq.ai/v3/router"
-	DefaultGatewayAPIBaseURL = "https://api.orq.ai"
+	DefaultGatewayAPIBaseURL = auth.DefaultAPIBaseURL
+	DefaultGatewayBaseURL    = DefaultGatewayAPIBaseURL + "/v3/router"
 )
 
 // The label agents show for the orq provider in their own model pickers. It was
@@ -201,9 +205,9 @@ func ShouldWarnMissingProviderPrefix(model string, normalize NormalizeModel) boo
 // follow the override instead of silently staying on production. Returns ""
 // on the default base — the hardcoded per-endpoint defaults win there.
 func deriveFromAPIBase(apiBase, path string) string {
-	// Both SaaS hostnames count as default: the CLI's own default moved from
-	// api.orq.ai to my.orq.ai, and deriving from the new one would rewrite
-	// every agent's gateway URL for a host change that is only cosmetic.
+	// Both SaaS hostnames count as default: sessions written before 4.15 hold
+	// api.orq.ai, and deriving from that name would rewrite every agent's
+	// gateway URL for a host change that is only cosmetic.
 	if apiBase == "" || auth.IsHostedAPIBase(apiBase) {
 		return ""
 	}

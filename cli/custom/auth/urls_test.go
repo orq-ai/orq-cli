@@ -17,3 +17,36 @@ func TestIsHostedAPIBase(t *testing.T) {
 		}
 	}
 }
+
+// One env ladder: ORQ_SERVER wins, the deprecated spelling still resolves and
+// names itself so the caller can warn, and whitespace is not a value.
+func TestServerFromEnv(t *testing.T) {
+	cases := []struct {
+		name       string
+		env        map[string]string
+		wantURL    string
+		wantEnvVar string
+	}{
+		{name: "nothing set"},
+		{name: "ORQ_SERVER", env: map[string]string{"ORQ_SERVER": "https://env.example"}, wantURL: "https://env.example", wantEnvVar: "ORQ_SERVER"},
+		{
+			name:    "deprecated spelling names itself",
+			env:     map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"},
+			wantURL: "https://legacy.example", wantEnvVar: DeprecatedServerEnvVar,
+		},
+		{
+			name:    "ORQ_SERVER beats the deprecated spelling",
+			env:     map[string]string{"ORQ_SERVER": "https://env.example", "ORQ_API_BASE_URL": "https://legacy.example"},
+			wantURL: "https://env.example", wantEnvVar: "ORQ_SERVER",
+		},
+		{name: "whitespace is not a value", env: map[string]string{"ORQ_SERVER": "   "}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			url, envVar := ServerFromEnv(func(k string) string { return tc.env[k] })
+			if url != tc.wantURL || envVar != tc.wantEnvVar {
+				t.Errorf("got (%q, %q), want (%q, %q)", url, envVar, tc.wantURL, tc.wantEnvVar)
+			}
+		})
+	}
+}

@@ -413,7 +413,11 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		signedInAs = session.User.Email
 	}
 
-	client := auth.NewClient(session.APIBaseURL)
+	// The resolved server outranks the host the session was authenticated
+	// against, so `orq setup --server <url>` diverts this run instead of
+	// silently writing the session's host into every agent config.
+	apiBase := sessionAPIBase(session)
+	client := auth.NewClient(apiBase)
 	session, err = resolveWorkspace(rep, client, session, opts, signedInAs)
 	if err != nil {
 		return nil, err
@@ -423,7 +427,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	if err != nil {
 		return nil, err
 	}
-	return &authState{apiBase: session.APIBaseURL, session: session, bearer: active.AccessToken}, nil
+	return &authState{apiBase: apiBase, session: session, bearer: active.AccessToken}, nil
 }
 
 // apiBaseFromEnv is the no-session fallback. It goes through ResolveURLs rather
