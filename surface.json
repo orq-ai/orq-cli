@@ -1844,6 +1844,14 @@
           "type": "bool"
         },
         {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
           "name": "status",
           "type": "bool"
         },
@@ -2272,6 +2280,14 @@
       "flags": [
         {
           "name": "dry-run",
+          "type": "bool"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "local",
           "type": "bool"
         },
         {
@@ -7507,8 +7523,16 @@
           "type": "stringSlice"
         },
         {
+          "name": "global",
+          "type": "bool"
+        },
+        {
           "name": "interactive",
           "shorthand": "i",
+          "type": "bool"
+        },
+        {
+          "name": "local",
           "type": "bool"
         },
         {
