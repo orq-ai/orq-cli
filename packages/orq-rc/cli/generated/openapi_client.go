@@ -808,7 +808,7 @@ func OpenapiAlertUpdate(paramAlertId string, params *viper.Viper, body string) (
 }
 
 // OpenapiAddAnnotationQueueItems Add items to an annotation queue
-func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues add-items annotation-queue-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -831,7 +831,7 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -843,14 +843,14 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
 }
 
-// OpenapiClearAnnotationQueue Delete all items
-func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+// OpenapiClearAnnotationQueue Clear an annotation queue
+func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues clear annotation-queue-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -869,7 +869,7 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -881,7 +881,7 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
@@ -929,7 +929,7 @@ func OpenapiCreateAnnotationQueue(params *viper.Viper, body string) (*gentleman.
 }
 
 // OpenapiDeleteAnnotationQueue Delete an annotation queue
-func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues delete annotation-queue-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -948,7 +948,7 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -960,7 +960,7 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
@@ -1152,8 +1152,8 @@ func OpenapiListAnnotationQueueItems(paramAnnotationQueueId string, params *vipe
 	return resp, decoded, nil
 }
 
-// OpenapiRemoveAnnotationQueueItems Remove annotation queue items
-func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+// OpenapiRemoveAnnotationQueueItems Remove items from an annotation queue
+func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues remove-items annotation-queue-id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -1176,7 +1176,7 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1188,13 +1188,13 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
 }
 
-// OpenapiUpdateAnnotationQueue Edit an annotation queue
+// OpenapiUpdateAnnotationQueue Update an annotation queue
 func OpenapiUpdateAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues update annotation-queue-id"
 	server := viper.GetString("server")
@@ -2491,7 +2491,7 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 }
 
 // OpenapiCreateEval Create an Evaluator
-func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals create"
 	server := viper.GetString("server")
 	if server == "" {
@@ -2513,7 +2513,7 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, i
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2525,14 +2525,14 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, i
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
 }
 
 // OpenapiDeleteEval Delete an Evaluator
-func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals delete id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -2551,7 +2551,7 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2563,14 +2563,56 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiDuplicateEval Duplicate an Evaluator
+func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "evals duplicate id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/evaluators/{id}/duplicate"
+	url = strings.Replace(url, "{id}", paramId, 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
 }
 
 // OpenapiGetEval Retrieve an Evaluator
-func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
+func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals get id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -2589,7 +2631,7 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, i
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2601,7 +2643,46 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, i
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetEvalVersion Get evaluator version
+func OpenapiGetEvalVersion(paramId string, paramVersionId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "evals get-version id version-id"
+	server := viper.GetString("server")
+	if server == "" {
+		server = servers()[viper.GetInt("server-index")]["url"]
+	}
+
+	url := server + "/v2/evaluators/{id}/versions/{version_id}"
+	url = strings.Replace(url, "{id}", paramId, 1)
+	url = strings.Replace(url, "{version_id}", paramVersionId, 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil
@@ -2649,8 +2730,8 @@ func OpenapiInvokeEval(paramId string, params *viper.Viper, body string) (*gentl
 	return resp, decoded, nil
 }
 
-// OpenapiGetV2EvaluatorsIdVersions List evaluator versions
-func OpenapiGetV2EvaluatorsIdVersions(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+// OpenapiListEvalVersions List evaluator versions
+func OpenapiListEvalVersions(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals list-versions id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -2701,7 +2782,7 @@ func OpenapiGetV2EvaluatorsIdVersions(paramId string, params *viper.Viper) (*gen
 }
 
 // OpenapiUpdateEval Update an Evaluator
-func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
+func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals update id"
 	server := viper.GetString("server")
 	if server == "" {
@@ -2724,7 +2805,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded interface{}
+	var decoded map[string]interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2736,7 +2817,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after
+		decoded = after.(map[string]interface{})
 	}
 
 	return resp, decoded, nil

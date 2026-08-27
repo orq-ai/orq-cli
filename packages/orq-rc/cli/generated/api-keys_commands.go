@@ -28,7 +28,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `labels` (object)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -48,6 +48,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 							FlagName:    "expires-at",
 							Type:        "string",
 							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+						},
+						{
+							Name:        "labels",
+							FlagName:    "labels",
+							Type:        "string-map",
+							Description: "Optional attribution labels (at most 10; keys `^[a-z0-9_.-]{1,32}$`,\n values up to 64 characters). See ApiKey.labels.",
 						},
 						{
 							Name:        "mcp_access",
@@ -118,6 +124,12 @@ func registerapiKeysCommands(root *cobra.Command) {
 					FlagName:    "expires-at",
 					Type:        "string",
 					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
+				},
+				{
+					Name:        "labels",
+					FlagName:    "labels",
+					Type:        "string-map",
+					Description: "Optional attribution labels (at most 10; keys `^[a-z0-9_.-]{1,32}$`,\n values up to 64 characters). See ApiKey.labels.",
 				},
 				{
 					Name:        "mcp_access",

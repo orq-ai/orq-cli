@@ -28,7 +28,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "add-items annotation-queue-id",
 			Short:   "Add items to an annotation queue",
-			Long:    bartolocli.Markdown("Adds items to the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Adds spans to the annotation queue. Spans already present are skipped; the response contains only the newly created items.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -41,7 +41,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 							Name:        "items",
 							FlagName:    "items",
 							Type:        "json",
-							Description: "The spans to add to the annotation queue",
+							Description: "The spans to add to the annotation queue.",
 						},
 					},
 				)
@@ -69,7 +69,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					Name:        "items",
 					FlagName:    "items",
 					Type:        "json",
-					Description: "The spans to add to the annotation queue",
+					Description: "The spans to add to the annotation queue.",
 				},
 			},
 		)
@@ -89,8 +89,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "clear annotation-queue-id",
-			Short:   "Delete all items",
-			Long:    bartolocli.Markdown("Delete all items from an annotation queue. This action is irreversible."),
+			Short:   "Clear an annotation queue",
+			Long:    bartolocli.Markdown("Removes every item from the annotation queue without deleting the queue itself."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -126,7 +126,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an annotation queue",
-			Long:    bartolocli.Markdown("Create a new annotation queue in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string, required)\n- `project_id` (string, required)\n\nRequired fields: `description`, `display_name`, `project_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates an annotation queue in a project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string, required)\n- `project_id` (string, required)\n\nRequired fields: `description`, `display_name`, `project_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -139,19 +139,19 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
-							Description: "The description of the annotation queue",
+							Description: "Required. The description of the annotation queue.",
 						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "The display name of the annotation queue",
+							Description: "Required. The display name of the annotation queue.",
 						},
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "The project ID to link this annotation queue to",
+							Description: "Required. The project to link this annotation queue to.",
 						},
 					},
 				)
@@ -179,19 +179,19 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
-					Description: "The description of the annotation queue",
+					Description: "Required. The description of the annotation queue.",
 				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "The display name of the annotation queue",
+					Description: "Required. The display name of the annotation queue.",
 				},
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "The project ID to link this annotation queue to",
+					Description: "Required. The project to link this annotation queue to.",
 				},
 			},
 		)
@@ -212,7 +212,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete annotation-queue-id",
 			Short:   "Delete an annotation queue",
-			Long:    bartolocli.Markdown("Delete an annotation queue and its items by ID."),
+			Long:    bartolocli.Markdown("Deletes an annotation queue, its items, and the queue references stored on the annotated spans."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -246,7 +246,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get annotation-queue-id",
 			Short:   "Retrieve an annotation queue",
-			Long:    bartolocli.Markdown("Retrieves a specific annotation queue by its unique identifier"),
+			Long:    bartolocli.Markdown("Retrieves an existing annotation queue by ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -280,7 +280,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-item annotation-queue-id item-id",
 			Short:   "Retrieve an annotation queue item",
-			Long:    bartolocli.Markdown("Retrieve an annotation queue item. Each item is a pointer to a span with fully resolved span data."),
+			Long:    bartolocli.Markdown("Retrieves an item from the specified annotation queue in its expanded form. An annotation queue item is a pointer to a span; this endpoint returns the fully resolved span the item references."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -314,7 +314,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List annotation queues",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of annotation queues for the current workspace. Results can be paginated using cursor-based pagination."),
+			Long:    bartolocli.Markdown("Returns annotation queues in the workspace, newest first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -332,11 +332,11 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("search", "", "Filter annotation queues by display name (case-insensitive match).")
-		cmd.Flags().String("updated-by", "", "Comma-separated list of user IDs; returns annotation queues last updated by any of them.")
+		cmd.Flags().Int64("limit", 0, "Optional. Number of annotation queues to return. Defaults to 10 and must be between 1 and 200.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from the previous page.")
+		cmd.Flags().String("search", "", "Optional. Case-insensitive substring match on the annotation queue display name.")
+		cmd.Flags().String("updated-by", "", "Optional. Comma-separated account IDs; returns queues last updated by any of them.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -354,7 +354,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query-items annotation-queue-id",
 			Short:   "Query items from an annotation queue",
-			Long:    bartolocli.Markdown("Queries items from the specified annotation queue."),
+			Long:    bartolocli.Markdown("Queries items from the specified annotation queue. Items whose span no longer exists are skipped."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -372,9 +372,9 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		}
 		annotationQueuesCmd.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
-		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
-		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
+		cmd.Flags().Int64("limit", 0, "Optional. Number of items to return. Defaults to 10 and must be between 1 and 200.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from the previous page.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -393,8 +393,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "remove-items annotation-queue-id",
-			Short:   "Remove annotation queue items",
-			Long:    bartolocli.Markdown("Removes items from the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `span_ids` (array, required)\n\nRequired fields: `span_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Remove items from an annotation queue",
+			Long:    bartolocli.Markdown("Removes the referenced spans from the annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `span_ids` (array, required)\n\nRequired fields: `span_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -407,7 +407,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 							Name:        "span_ids",
 							FlagName:    "span-ids",
 							Type:        "string-slice",
-							Description: "The unique identifiers of the spans to be removed from the annotation queue",
+							Description: "The unique identifiers of the spans to be removed from the annotation queue.",
 						},
 					},
 				)
@@ -435,7 +435,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					Name:        "span_ids",
 					FlagName:    "span-ids",
 					Type:        "string-slice",
-					Description: "The unique identifiers of the spans to be removed from the annotation queue",
+					Description: "The unique identifiers of the spans to be removed from the annotation queue.",
 				},
 			},
 		)
@@ -457,8 +457,8 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update annotation-queue-id",
-			Short:   "Edit an annotation queue",
-			Long:    bartolocli.Markdown("Update an annotation queue by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `human_review_ids` (array)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Short:   "Update an annotation queue",
+			Long:    bartolocli.Markdown("Partially updates an existing annotation queue. Setting `project_id` clears the legacy `human_review_ids` selection.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `human_review_ids` (array)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
@@ -471,25 +471,25 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
-							Description: "The description of the annotation queue",
+							Description: "Optional. New description.",
 						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
 							Type:        "string",
-							Description: "The display name of the annotation queue",
+							Description: "Optional. New display name.",
 						},
 						{
 							Name:        "human_review_ids",
 							FlagName:    "human-review-ids",
 							Type:        "string-slice",
-							Description: "Legacy: update manually selected human review IDs. Only allowed when project_id is not set",
+							Description: "Legacy: update manually selected human review IDs. Only applied when `project_id` is not set.",
 						},
 						{
 							Name:        "project_id",
 							FlagName:    "project-id",
 							Type:        "string",
-							Description: "The project ID. When set, human reviews are resolved from the project automatically",
+							Description: "Optional. New project. Setting this clears the legacy `human_review_ids` selection.",
 						},
 					},
 				)
@@ -517,25 +517,25 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
-					Description: "The description of the annotation queue",
+					Description: "Optional. New description.",
 				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
 					Type:        "string",
-					Description: "The display name of the annotation queue",
+					Description: "Optional. New display name.",
 				},
 				{
 					Name:        "human_review_ids",
 					FlagName:    "human-review-ids",
 					Type:        "string-slice",
-					Description: "Legacy: update manually selected human review IDs. Only allowed when project_id is not set",
+					Description: "Legacy: update manually selected human review IDs. Only applied when `project_id` is not set.",
 				},
 				{
 					Name:        "project_id",
 					FlagName:    "project-id",
 					Type:        "string",
-					Description: "The project ID. When set, human reviews are resolved from the project automatically",
+					Description: "Optional. New project. Setting this clears the legacy `human_review_ids` selection.",
 				},
 			},
 		)

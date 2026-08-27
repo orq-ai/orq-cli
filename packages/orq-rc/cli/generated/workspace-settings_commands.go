@@ -62,15 +62,21 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update",
 			Short:   "Update workspace settings",
-			Long:    bartolocli.Markdown("Partially updates workspace settings. Every field is optional; an omitted field is left unchanged. Provide `display_name` to rename the workspace, `enforce_enabled_models` to toggle model enforcement, or `pii_redaction` to replace the workspace-default PII redaction plugin configuration.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `pii_redaction` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates workspace settings. Every field is optional; an omitted field is left unchanged. Provide `display_name` to rename the workspace, `enforce_enabled_models` to toggle model enforcement, or `pii_redaction` to replace the workspace-default PII redaction plugin configuration.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `default_policy_profile_ids` (object)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `pii_redaction` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"pii_redaction\": {\n    \"enabled\": false\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"default_policy_profile_ids\": {\n    \"ids\": [\n      \"ids\"\n    ]\n  },\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"pii_redaction\": {\n    \"enabled\": false\n  }\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "default_policy_profile_ids",
+							FlagName:    "default-policy-profile-ids",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "display_name",
 							FlagName:    "display-name",
@@ -111,6 +117,12 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "default_policy_profile_ids",
+					FlagName:    "default-policy-profile-ids",
+					Type:        "json",
+					Description: "",
+				},
 				{
 					Name:        "display_name",
 					FlagName:    "display-name",
