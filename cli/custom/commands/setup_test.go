@@ -419,7 +419,7 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 			}
 			// noInput skips every confirm.
 			opts := &setupOptions{noInput: true}
-			_, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+			_, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -427,14 +427,17 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 				t.Fatalf("minted %d keys, want %d", got, tc.wantMints)
 			}
 
-			wantKey, wantWS := "sk-orq-old", tc.storedWS
+			wantKey := "sk-orq-old"
 			if tc.wantMints > 0 {
-				// The replacement must record the workspace it was minted for,
-				// or the next run repeats the mismatch against a stale field.
-				wantKey, wantWS = "sk-orq-fresh", wsB
+				wantKey = "sk-orq-fresh"
 			}
-			if key, ws := savedAPIKey(); key != wantKey || ws != wantWS {
-				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wantWS)
+			// Every case ends recording workspace B, by one of two routes: a
+			// replacement records the workspace it was minted for, and a reused
+			// key has its workspace backfilled from the API's answer. The
+			// backfill is what stops an unrecorded workspace staying unrecorded
+			// forever, blinding `orq connect`, `orq launch` and `orq doctor`.
+			if key, ws := savedAPIKey(); key != wantKey || ws != wsB {
+				t.Errorf("profile holds (%q, %q), want (%q, %q)", key, ws, wantKey, wsB)
 			}
 		})
 	}
@@ -2810,7 +2813,7 @@ func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
-	if _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+	if _, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt64(&mints); got != 1 {
@@ -2847,7 +2850,7 @@ func TestDecliningTheReplacementMintsNothing(t *testing.T) {
 	// noInput takes the default at every prompt, and the replacement prompt
 	// defaults to yes, so drive the decline through the confirm seam.
 	opts := &setupOptions{noInput: true, confirmFn: func(string, bool) bool { return false }}
-	if _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts); err != nil {
+	if _, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt64(&mints); got != 0 {
@@ -2892,7 +2895,7 @@ func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
 	var out strings.Builder
 	rep := &reporter{w: &out}
 	// noInput declines the switch (it defaults to no), which falls through to a mint.
-	if _, _, err := resolveAPIKey(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+	if _, _, _, err := resolveAPIKey(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt64(&mints); got != 1 {
@@ -2903,5 +2906,122 @@ func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "other-workspace") {
 		t.Errorf("report does not name the key's workspace:\n%s", out.String())
+	}
+}
+
+// Anything short of a 401 means "could not tell", never "bad key": a blip, a
+// 5xx, or a self-hosted base without the route. Re-minting over any of them
+// orphans a key that still works and is still wired into every agent config.
+func TestUnconfirmableWorkspaceReusesTheSavedKey(t *testing.T) {
+	for name, status := range map[string]int{
+		"server error": http.StatusInternalServerError,
+		"route absent": http.StatusNotFound,
+		"forbidden":    http.StatusForbidden,
+	} {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			var mints int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys" {
+					atomic.AddInt64(&mints, 1)
+					fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+					return
+				}
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+
+			if err := saveAPIKeyProfile("sk-orq-old", ""); err != nil {
+				t.Fatal(err)
+			}
+			ws := "workspace-b"
+			state := &authState{apiBase: srv.URL, bearer: "session-token",
+				session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+			var out strings.Builder
+			if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state,
+				&setupOptions{noInput: true}); err != nil {
+				t.Fatal(err)
+			}
+			if got := atomic.LoadInt64(&mints); got != 0 {
+				t.Errorf("minted %d keys over an unconfirmable answer; the saved key still works", got)
+			}
+			if key, _ := savedAPIKey(); key != "sk-orq-old" {
+				t.Errorf("saved key is now %q, want the original kept", key)
+			}
+			if !strings.Contains(out.String(), "could not confirm") {
+				t.Errorf("reuse after an unreadable answer must say so:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// The same unconfirmable answer must not fail the run at verification either.
+// Step 2 reuses the key and step 3 called the whole setup broken, so a
+// self-hosted install without this route exited non-zero while working.
+func TestVerifySetupSurvivesAnUnconfirmableWorkspace(t *testing.T) {
+	for name, status := range map[string]int{
+		"route absent": http.StatusNotFound,
+		"forbidden":    http.StatusForbidden,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+			}))
+			defer srv.Close()
+			ws := "acme"
+			state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &ws}}
+			var out strings.Builder
+			if !verifySetup(&reporter{w: &out}, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+				t.Fatalf("a setup that works reported as broken:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "unreachable") {
+				t.Errorf("an answered request must not be reported as unreachable:\n%s", out.String())
+			}
+		})
+	}
+}
+
+// --yes answers this run's prompts. The active workspace outlives the run and
+// redirects every later command, so an unattended run must never move it.
+func TestYesDoesNotSwitchWorkspace(t *testing.T) {
+	for _, opts := range []*setupOptions{{yes: true}, {yes: true, noInput: true}, {noInput: true}} {
+		// A --yes run also answers the "add the source line to your shell
+		// profile?" prompt, which appends under $HOME. credsHarness isolates
+		// config-directory but not $HOME, so without this the test edits the
+		// developer's real ~/.zshenv.
+		t.Setenv("HOME", t.TempDir())
+		credsHarness(t)
+		var mints int64
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/v2/workspace-settings":
+				fmt.Fprint(w, `{"settings":{"key":"other-workspace"}}`)
+			case r.URL.Path == "/v2/api-keys/capabilities":
+				fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+			case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+				atomic.AddInt64(&mints, 1)
+				fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+			default:
+				t.Errorf("unexpected call %s %s, a workspace switch was attempted", r.Method, r.URL.Path)
+			}
+		}))
+		defer srv.Close()
+
+		if err := saveAPIKeyProfile("sk-orq-elsewhere", ""); err != nil {
+			t.Fatal(err)
+		}
+		ws := "acme"
+		state := &authState{apiBase: srv.URL, bearer: "session-token",
+			session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+		var out strings.Builder
+		if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, opts); err != nil {
+			t.Fatal(err)
+		}
+		if got := atomic.LoadInt64(&mints); got != 1 {
+			t.Errorf("opts %+v: minted %d keys, want 1 for the active workspace", opts, got)
+		}
+		if strings.Contains(out.String(), "switched to workspace") {
+			t.Errorf("opts %+v: moved the active workspace without a human saying so:\n%s", opts, out.String())
+		}
 	}
 }

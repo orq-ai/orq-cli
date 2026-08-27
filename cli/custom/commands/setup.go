@@ -120,6 +120,20 @@ func (o *setupOptions) confirm(message string, def bool) bool {
 	return answer
 }
 
+// confirmPersistent is confirm for a change that outlives the run. --yes does
+// not grant it: answering yes to every prompt is a statement about this
+// invocation, and moving the active workspace redirects every later command.
+// An unattended run declines, exactly as --no-input does.
+func (o *setupOptions) confirmPersistent(message string) bool {
+	if o.confirmFn != nil {
+		return o.confirmFn(message, false)
+	}
+	if o.yes || o.noInput {
+		return false
+	}
+	return o.confirm(message, false)
+}
+
 // setupComplete is the run's verdict, and drives both the final screen and the
 // setup_complete field. verified is one narrow fact — the API answered — so on
 // its own it printed a green "Setup complete" directly above an agent that
@@ -274,7 +288,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	// --- Step 2: API key -----------------------------------------------------
 	rep.step(2, setupSteps, "API key")
-	keyInfo, mintedToken, err := resolveAPIKey(rep, client, authState, opts)
+	keyInfo, mintedToken, mintedThisRun, err := resolveAPIKey(rep, client, authState, opts)
 	if err != nil {
 		return err
 	}
@@ -298,10 +312,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	rep.blank()
 
 	// Only a key minted this run needs the retry window; anything else that
-	// fails is failing for good and the wait is pure dead time. mintedToken is
-	// the fact itself; reading it back out of keyInfo would put a silently
-	// defaulting type assertion in charge of the retry.
-	verified := verifySetup(rep, client, authState, opts, mintedToken != "")
+	// fails is failing for good and the wait is pure dead time. resolveAPIKey
+	// returns the fact itself: mintedToken is also set for a REUSED key, so
+	// testing it kept the six seconds on exactly the runs that do not need them.
+	verified := verifySetup(rep, client, authState, opts, mintedThisRun)
 	result["verified"] = verified
 
 	links := buildLinks(authState)
@@ -904,22 +918,24 @@ func envAPIKeySet() bool {
 // Step 2 — API key
 // ============================================================================
 
-// resolveAPIKey returns the payload summary and, when it minted one, the raw token.
-func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, error) {
+// resolveAPIKey returns the payload summary, the raw token the agents will use
+// (minted or reused), and whether this run minted it. The last is separate
+// because only a fresh key needs the verification retry window.
+func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, bool, error) {
 	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
 
 	if state.suppliedKey != "" {
 		rep.ok("using the API key you passed")
-		return info, "", nil
+		return info, "", false, nil
 	}
 
 	token, created, err := ensureDurableKey(rep, client, state, opts)
 	if err != nil {
-		return nil, "", err
+		return nil, "", false, err
 	}
 	info["created"] = created
 	if token == "" {
-		return info, "", nil
+		return info, "", false, nil
 	}
 	if _, err := writeShellEnvFile(token); err != nil {
 		// Not fatal: the key is saved, and the final screen still shows how to export it.
@@ -929,7 +945,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 		offerProfileSourceLine(rep, opts)
 	}
 
-	return info, token, nil
+	return info, token, created, nil
 }
 
 // ensureDurableKey reuses the saved workspace key or mints and persists a new
@@ -1589,9 +1605,16 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *set
 		// workspace answers 200 and is handled by reconcileKeyWorkspace above.
 		rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
 		diagnoseRejectedKey(rep, client, state)
-	} else {
-		rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+		return false
 	}
+	if auth.Forbidden(err) || auth.NotFound(err) {
+		// checkSavedKey already treats these as "could not tell" rather than as
+		// a bad key. The same answer cannot mean the setup is broken here: a
+		// self-hosted base without this route would fail an install that works.
+		rep.warn("could not confirm the key's workspace: %v", err)
+		return true
+	}
+	rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
 	return false
 }
 
@@ -1704,24 +1727,47 @@ func reconcileRejectedSavedKey(rep *reporter, state *authState, opts *setupOptio
 func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, keyWS string, mayMint bool) bool {
 	active := activeWorkspaceKey(state.session)
 	if !keyWorkspaceMismatch(keyWS, active) {
+		recordKeyWorkspace(rep, keyWS)
 		return true
 	}
-	if opts.confirm(fmt.Sprintf("Saved key is for workspace %s, you are in %s. Switch to %s?", keyWS, active, keyWS), false) {
+	if opts.confirmPersistent(fmt.Sprintf("Saved key is for workspace %s, you are in %s. Switch to %s?", keyWS, active, keyWS)) {
 		updated, err := client.UseWorkspace(keyWS)
 		if err != nil {
 			rep.warn("could not switch to workspace %s: %v", keyWS, err)
 			return false
 		}
 		state.session = updated
+		recordKeyWorkspace(rep, keyWS)
 		rep.ok("switched to workspace %s", keyWS)
 		return true
 	}
 	if mayMint {
-		rep.note("key is for workspace %s — creating one for %s", keyWS, active)
+		// info, not note: note is dropped by the quiet reporter, so --no-input
+		// replaced the saved key with nothing on stderr explaining it.
+		rep.info("key is for workspace %s — creating one for %s", keyWS, active)
 	} else {
 		rep.fail("api key belongs to workspace %s, this login is %s", keyWS, active)
 	}
 	return false
+}
+
+// recordKeyWorkspace persists the workspace the API just named for the saved
+// key. Without it this check is a per-run diagnostic: profiles.<p>.workspace
+// stays blank for every key minted before the field existed and for every
+// --api-key run, so keyWorkspaceMismatch keeps reporting "no mismatch" and
+// `orq connect`, `orq launch` and `orq doctor` stay blind to the very drift
+// this function just resolved. It also stops the next run repeating the call.
+func recordKeyWorkspace(rep *reporter, keyWS string) {
+	// Creds nil is not an error here: bartolo's GetProfile dereferences the
+	// global without a guard, and this is a best-effort backfill, not the
+	// credential itself. ProfileServer guards the same way.
+	if keyWS == "" || bartolocli.Creds == nil || bartolocli.GetProfile()["workspace"] == keyWS {
+		return
+	}
+	if err := writeCredsProfile(auth.ActiveProfile(), keyWS); err != nil {
+		// Not fatal: the key itself is fine, this only re-arms the local guard.
+		rep.warn("could not record the key's workspace: %v", err)
+	}
 }
 
 // webBaseURL is the dashboard origin, "" when self-hosted without ORQ_WEB_BASE_URL.
