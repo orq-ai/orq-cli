@@ -170,27 +170,33 @@ func statusGlyph(status string) string {
 // tableRow is one line of a table: an optional marker glyph and one cell per
 // header. Cells are plain text — only the last cell may carry its own color,
 // because every earlier cell is padded and padding a string with ANSI escapes
-// in it counts the escape bytes as width and breaks the alignment.
+// in it counts the escape bytes as width and breaks the alignment. That rule
+// is unenforced: a painted earlier cell mis-pads only when color is on, which
+// no test sees.
 type tableRow struct {
-	marker string   // a single visible rune, already painted, or "" for none
-	cells  []string // len(cells) == len(headers)
+	marker string // a single visible rune, already painted, or "" for none
+	// One cell per header. A short row renders the missing columns blank
+	// rather than panicking; extra cells past the last header are dropped.
+	cells []string
 }
 
 // printTable renders the CLI's one table shape: a marker column, a dim header
-// row, and columns sized to the widest value in them. `orq doctor`, `orq
-// workspace list` and `orq connect --status` all print through it, so their
-// gutters, header style and column alignment cannot drift apart.
+// row, and every column but the last sized to its widest value — the last is
+// emitted verbatim, since nothing follows it to line up with. `orq doctor`,
+// `orq workspace list` and `orq connect --status` all print through it, so
+// their gutters, header style and column alignment cannot drift apart. (The
+// setup final screen still formats its own per-agent rows; it is not a table.)
 func printTable(w io.Writer, headers []string, rows []tableRow) {
 	if len(headers) == 0 {
 		return
 	}
-	// The last column is never padded — nothing follows it to line up with —
-	// so it is also the only one allowed to arrive pre-colored.
+	// The last column is never padded, so it is also the only one allowed to
+	// arrive pre-colored.
 	widths := make([]int, len(headers)-1)
 	for i := range widths {
 		widths[i] = utf8.RuneCountInString(headers[i])
 		for _, r := range rows {
-			if n := utf8.RuneCountInString(r.cells[i]); n > widths[i] {
+			if n := utf8.RuneCountInString(cellAt(r.cells, i)); n > widths[i] {
 				widths[i] = n
 			}
 		}
@@ -198,26 +204,39 @@ func printTable(w io.Writer, headers []string, rows []tableRow) {
 	// The marker occupies one rune between two-space gutters; the header's
 	// blank marker cell keeps its columns over the rows' columns.
 	fmt.Fprint(w, "     ")
-	printCells(w, widths, headers, func(s string) string { return paint(ansiDim, s) })
+	printCells(w, widths, headers, true)
 	for _, r := range rows {
 		marker := r.marker
 		if marker == "" {
 			marker = " "
 		}
 		fmt.Fprintf(w, "  %s  ", marker)
-		printCells(w, widths, r.cells, func(s string) string { return s })
+		printCells(w, widths, r.cells, false)
 	}
 }
 
-func printCells(w io.Writer, widths []int, cells []string, style func(string) string) {
-	for i, cell := range cells {
+// printCells writes exactly len(widths)+1 columns, so a row that is short of
+// its headers leaves a blank column instead of an index panic mid-render.
+func printCells(w io.Writer, widths []int, cells []string, dim bool) {
+	for i := 0; i <= len(widths); i++ {
 		if i > 0 {
 			fmt.Fprint(w, "  ")
 		}
+		cell := cellAt(cells, i)
 		if i < len(widths) {
 			cell = pad(cell, widths[i])
 		}
-		fmt.Fprint(w, style(cell))
+		if dim {
+			cell = paint(ansiDim, cell)
+		}
+		fmt.Fprint(w, cell)
 	}
 	fmt.Fprintln(w)
+}
+
+func cellAt(cells []string, i int) string {
+	if i < len(cells) {
+		return cells[i]
+	}
+	return ""
 }

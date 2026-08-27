@@ -158,7 +158,7 @@ func printWorkspaceList(rows []workspaceRow) {
 	for _, r := range rows {
 		marker := ""
 		if r.Active {
-			marker = paint(ansiOK, "\u25cf")
+			marker = paint(ansiOK, "●")
 			anyActive = true
 		}
 		// MEMBERS is the last column, so it is never padded and may carry its
@@ -168,6 +168,6 @@ func printWorkspaceList(rows []workspaceRow) {
 	}
 	printTable(out, []string{"NAME", "KEY", memHdr}, table)
 	if anyActive {
-		fmt.Fprintln(out, paint(ansiDim, "\n\u25cf active"))
+		fmt.Fprintln(out, paint(ansiDim, "\n● active"))
 	}
 }

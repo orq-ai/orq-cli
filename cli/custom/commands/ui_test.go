@@ -98,6 +98,20 @@ func TestPrintTableGoldens(t *testing.T) {
 				"     " + "        " + "  skills      ~/.agents/skills\n",
 		},
 		{
+			// A row that is short of its headers must leave a blank column,
+			// not panic mid-render; extra cells past the last header go
+			// nowhere rather than printing an unaligned phantom column.
+			name:    "ragged rows",
+			headers: []string{"AGENT", "CAPABILITY", "LOCATION"},
+			rows: []tableRow{
+				{cells: []string{"opencode"}},
+				{cells: []string{"pi", "gateway", "~/.pi", "extra"}},
+			},
+			want: "     AGENT     CAPABILITY  LOCATION\n" +
+				"     opencode              \n" +
+				"     pi        gateway     ~/.pi\n",
+		},
+		{
 			// Padding counts runes, not bytes: a byte count over-pads any
 			// non-ASCII cell and skews every column after it.
 			name:    "multi-byte cells",

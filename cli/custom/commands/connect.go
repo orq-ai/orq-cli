@@ -425,7 +425,9 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
-		fmt.Fprintln(rep.w)
+		// blank() is suppressed under quiet while info() survives it: the
+		// separator is decoration, the footer it separates is a fact.
+		rep.blank()
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
