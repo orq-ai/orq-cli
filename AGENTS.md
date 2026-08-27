@@ -6,8 +6,8 @@ Guidance for humans and coding agents working in this repo.
 
 **Every PR title must be a conventional commit.** The `pr title is a conventional
 commit` job in `.github/workflows/pr-title.yml` fails CI otherwise. It runs when a
-PR is opened, edited, reopened, or synchronized, so changing a title is validated
-immediately.
+PR is opened, edited, reopened, or synchronized. `edited` fires on a retitle, so a
+corrected title is revalidated without a push.
 
 ```
 <type>[optional scope][!]: <description>
@@ -32,15 +32,21 @@ groups the release body by that label:
 | `chore`, `build`, `test`, `style`, `ci`, `refactor` | `release:maintenance` | 🧰 Maintenance        |
 
 The `release:*` namespace is reserved for this automation. On PR open, edit, or
-reopen, the labeler provisions a missing release label explicitly, then adds it.
+reopen, the labeler creates a missing release label (an existing one is left alone,
+colour and description included), adds it, and only then removes the stale ones —
+that order means an interrupted run leaves too many release labels rather than none.
 Retitling a mapped PR replaces its previous automation label; an invalid or unmapped
 title removes all automation labels. Ordinary, human-applied labels are preserved.
-Invalid titles also fail title-validation CI and are not intentionally routed to
+An invalid title fails title-validation CI and carries no automation label, so if it
+is merged anyway its PR falls through `.github/release.yml`'s `"*"` catch-all into
 `Other Changes`.
 
 Adding a type or renaming a label means keeping `label-pr.yml`, `pr-title.yml`, and
-`.github/release.yml` synchronized — a category whose label nothing applies silently
-matches nothing.
+`.github/release.yml` synchronized. You do not have to remember to: the `workflow
+and release-label validation` CI job runs
+`.github/scripts/check-release-label-config.js`, which fails when the three
+disagree — an allowed type with no mapping, a mapped label missing from the release
+categories, or a mapped label with no colour and description.
 
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.

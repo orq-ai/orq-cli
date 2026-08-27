@@ -18,13 +18,17 @@ permissions:
   contents: read
 
 jobs:
-  stable:
-    name: build, vet, test, surface (stable module)
+  # Separate from `stable`: neither step needs Go, and a workflow-only PR
+  # should not have to wait for the Go build to learn its workflows are broken.
+  workflows:
+    name: workflow and release-label validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: release-label configuration
-        run: node .github/scripts/check-release-label-config.js
+        run: |
+          node .github/scripts/check-release-label-config.js
+          node .github/scripts/check-release-label-config.js --mutation-test
       - name: actionlint
         env:
           ACTIONLINT_VERSION: "1.7.12"
@@ -32,23 +36,29 @@ jobs:
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl --fail --location --retry 3 --show-error --silent \
+          curl --fail --location --retry 3 --retry-all-errors --show-error --silent \
             --output "$archive" \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check --status
           mkdir -p "$RUNNER_TEMP/actionlint"
           tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
-          # ShellCheck is an optional actionlint integration supplied by the
-          # runner, not by the pinned actionlint archive. Disable it so this
-          # workflow-validation gate stays reproducible.
-          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= .github/workflows/*.yml
+          # ShellCheck runs too: it is the runner's copy rather than a pinned
+          # one, so a runner upgrade can surface new warnings, but muting the
+          # only shell diagnostics this repo has is worse than that risk.
+          "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
+
+  stable:
+    name: build, vet, test, surface (stable module)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: gofmt
         run: |
           set -euo pipefail
-          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"; echo "$unformatted"; exit 1
           fi

@@ -446,9 +446,9 @@ PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`). Title
 validation runs when a PR is opened, edited, reopened, or synchronized, so invalid
 titles fail CI. A valid title receives a dedicated `release:*` automation label;
 these labels are provisioned explicitly and do not replace ordinary human labels.
-Invalid titles receive no automation label and are not intentionally routed to
-`Other Changes`. See [AGENTS.md](AGENTS.md) for the full type → label table and the
-rest of the repo conventions.
+An invalid title receives no automation label, so its PR falls into the
+`Other Changes` catch-all if merged. See [AGENTS.md](AGENTS.md) for the full
+type → label table and the rest of the repo conventions.
 
 ### Regenerating from OpenAPI
 
