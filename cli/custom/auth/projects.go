@@ -428,3 +428,42 @@ func SizeVariantRank(modelID string) int {
 	}
 	return 0
 }
+
+// APIKeyRecord is the metadata the API holds about one key. The raw secret is
+// never part of it.
+type APIKeyRecord struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	WorkspaceID string   `json:"workspace_id"`
+	Projects    []string `json:"projects"`
+	Status      string   `json:"status"`
+	Active      *bool    `json:"active"`
+}
+
+// GetAPIKey looks a key up by id. Authenticate with the session's workspace
+// token, not the key itself: a gateway key is minted with source "router",
+// whose catalog preset has no api_keys access, so it cannot read its own
+// record. The route is workspace-scoped, so a 404 here means the key is not in
+// the workspace you are logged in to.
+func (c *Client) GetAPIKey(bearer, keyID string) (*APIKeyRecord, error) {
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" {
+		return nil, errors.New("no api key id to look up")
+	}
+	var rec APIKeyRecord
+	url := c.URLs.APIBaseURL + "/v2/api-keys/" + keyID
+	if err := c.jsonRequest(http.MethodGet, url, bearer, nil, &rec); err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// KeyIDFromToken exposes the id carried in an opaque token, for callers holding
+// a key but no saved id.
+func KeyIDFromToken(token string) string { return keyIDFromToken(token) }
+
+// NotFound reports whether err is the API saying the resource is not in this workspace.
+func NotFound(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound
+}

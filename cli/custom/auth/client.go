@@ -536,6 +536,25 @@ func (c *Client) Login(ctx context.Context, workspaceKey, clientName string) (*S
 // Helpers
 // ============================================================================
 
+// APIError is a response the API rejected, carrying the status so callers can
+// tell "your credential is refused" from "the host did not answer" — the two
+// read identically once the body is flattened into a string.
+type APIError struct {
+	Status int
+	Msg    string
+}
+
+func (e *APIError) Error() string { return e.Msg }
+
+// Unauthorized reports whether err is the API refusing the credential.
+func Unauthorized(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusForbidden
+}
+
 func (c *Client) jsonRequest(method, url, bearer string, body any, out any) error {
 	var reqBody io.Reader
 	if body != nil {
@@ -560,7 +579,7 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 400 {
-		return fmt.Errorf("%s", describeAPIError(res.StatusCode, raw))
+		return &APIError{Status: res.StatusCode, Msg: describeAPIError(res.StatusCode, raw)}
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -665,4 +684,21 @@ func OpenBrowser(url string) bool {
 	}
 	_ = cmd.Process.Release()
 	return true
+}
+
+// KeyWorkspace returns the workspace slug the bearer belongs to. The mismatch
+// guard in setup can only compare a workspace it recorded locally, which is
+// blank for keys minted before that field existed and for --api-key runs; this
+// asks the API instead.
+func (c *Client) KeyWorkspace(bearer string) (string, error) {
+	var resp struct {
+		Settings struct {
+			Key string `json:"key"`
+		} `json:"settings"`
+	}
+	url := c.URLs.APIBaseURL + "/v2/workspace-settings"
+	if err := c.jsonRequest(http.MethodGet, url, bearer, nil, &resp); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Settings.Key), nil
 }

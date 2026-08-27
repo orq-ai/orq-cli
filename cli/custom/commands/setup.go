@@ -290,7 +290,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	// Reachability only: a model call would spend the user's credits and write a trace into their workspace.
 	rep.blank()
 
-	verified := verifySetup(rep, client, authState)
+	// Only a key minted this run needs the retry window; anything else that
+	// fails is failing for good and the wait is pure dead time.
+	mintedThisRun, _ := keyInfo["created"].(bool)
+	verified := verifySetup(rep, client, authState, opts, mintedThisRun)
 	result["verified"] = verified
 
 	links := buildLinks(authState)
@@ -330,7 +333,13 @@ type authState struct {
 	// suppliedKey is set when the user brought their own key; we never mint then.
 	suppliedKey string
 	// durableKey is set whenever an API key becomes the bearer — minted this run or reused from a previous one.
-	durableKey           bool
+	durableKey bool
+	// skipDurableKey is set when the user declines the replacement prompt after
+	// a saved key was rejected. It prevents the generic mint confirmation below
+	// from silently creating the key anyway.
+	skipDurableKey bool
+	// sessionBearer keeps the workspace access token after a key takes over as bearer.
+	sessionBearer        string
 	enabledModels        int
 	enabledModelsCounted bool
 }
@@ -339,6 +348,11 @@ type authState struct {
 // together: a second assignment site that sets one without the other is how a
 // valid key ends up reported as "no durable API key".
 func (s *authState) useDurableKey(key string) {
+	// The session token is the only credential that can read an api-key record,
+	// which is what turns a rejected key into a diagnosis.
+	if s.session != nil {
+		s.sessionBearer = s.bearer
+	}
 	s.bearer = key
 	s.durableKey = true
 }
@@ -920,9 +934,15 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 		token = ""
 	default:
 		rep.ok("using your saved key")
+		if !checkSavedKey(rep, client, state, opts, token) {
+			token = ""
+		}
 	}
 	if token != "" {
 		return token, false, nil
+	}
+	if state.skipDurableKey {
+		return "", false, nil
 	}
 	if opts.interactive && !opts.confirm("Create a workspace API key now?", true) {
 		rep.ok("skipped creating an API key")
@@ -1528,18 +1548,167 @@ func promptForScope() (bool, error) {
 // ============================================================================
 
 // verifySetup makes one authenticated call with the new credentials. Not whoami: an --api-key run has no session and whoami would report "not logged in".
-func verifySetup(rep *reporter, client *auth.Client, state *authState) bool {
+func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, mintedThisRun bool) bool {
+	// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
+	attempts := 1
+	if mintedThisRun {
+		attempts = 4
+	}
+	// workspace-settings over projects: same reachability signal, and it names
+	// the workspace the credential actually belongs to.
 	var err error
-	for attempt := 0; attempt < 4; attempt++ {
-		// A freshly minted key is not accepted for a second or two; without the retry a working setup reports as broken.
+	var keyWS string
+	for attempt := 0; attempt < attempts; attempt++ {
 		if attempt > 0 {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
-		if _, err = client.ListProjects(state.bearer); err == nil {
-			return true
+		if keyWS, err = client.KeyWorkspace(state.bearer); err == nil {
+			return reconcileKeyWorkspace(rep, client, state, opts, keyWS)
 		}
 	}
-	rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+	if auth.Unauthorized(err) {
+		rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
+		diagnoseRejectedKey(rep, client, state)
+	} else {
+		rep.fail("api unreachable  %s: %v", client.URLs.APIBaseURL, err)
+	}
+	return false
+}
+
+// diagnoseRejectedKey says why the key was refused, using the session token: a
+// gateway key cannot read its own record, and the workspace-scoped route 404s
+// for a key belonging to another workspace, which is the answer we want.
+// Best effort — every path here is already reporting a failure.
+func diagnoseRejectedKey(rep *reporter, client *auth.Client, state *authState) {
+	if state.sessionBearer == "" {
+		return
+	}
+	keyID := savedGatewayKeyID()
+	if keyID == "" {
+		keyID = auth.KeyIDFromToken(state.bearer)
+	}
+	if keyID == "" {
+		return
+	}
+	rec, err := client.GetAPIKey(state.sessionBearer, keyID)
+	if auth.NotFound(err) {
+		rep.note("key %s is not in workspace %s — switch workspace, or delete it from credentials.json to mint a new one",
+			keyID, activeWorkspaceKey(state.session))
+		return
+	}
+	if err != nil {
+		return
+	}
+	if len(rec.Projects) > 0 {
+		rep.note("key %s is scoped to project(s) %s", keyID, strings.Join(rec.Projects, ", "))
+		return
+	}
+	if rec.Active != nil && !*rec.Active {
+		rep.note("key %s is in this workspace but inactive", keyID)
+	}
+}
+
+// checkSavedKey settles the reused key here, at the step that decides to reuse
+// it, rather than at the verification call three steps later: by then the key
+// is written into every agent config and the shell env file. One request, the
+// same one verifySetup makes. Returns false when the key must not be reused,
+// which falls through to minting a replacement.
+func checkSavedKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, token string) bool {
+	keyWS, err := client.KeyWorkspace(token)
+	if auth.Unauthorized(err) {
+		return reconcileRejectedSavedKey(rep, client, state, opts, token)
+	}
+	if err != nil {
+		// Could be the network. verifySetup reports that; re-minting over a blip
+		// would orphan a working key.
+		return true
+	}
+	return reconcileKeyWorkspace(rep, client, state, opts, keyWS)
+}
+
+// reconcileRejectedSavedKey handles the important case where the gateway
+// rejected a key before workspace-settings could identify it. The session
+// bearer can inspect the key record, and the locally recorded workspace is a
+// useful fallback for keys whose record is not visible from the current
+// workspace. Never silently replace a credential here: an interactive user
+// should get the choice to move to the key's workspace or mint for the one
+// they selected.
+func reconcileRejectedSavedKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, token string) bool {
+	keyID := savedGatewayKeyID()
+	if keyID == "" {
+		keyID = auth.KeyIDFromToken(token)
+	}
+	_, savedWS := savedAPIKey()
+	projects := []string(nil)
+	sessionBearer := state.sessionBearer
+	// Reuse is checked before resolveAPIKey has a chance to call
+	// useDurableKey, so bearer is still the session token at this point.
+	if sessionBearer == "" && !state.durableKey {
+		sessionBearer = state.bearer
+	}
+	if sessionBearer != "" && keyID != "" {
+		if rec, err := client.GetAPIKey(sessionBearer, keyID); err == nil {
+			projects = rec.Projects
+		}
+	}
+
+	active := activeWorkspaceKey(state.session)
+	detail := ""
+	if len(projects) > 0 {
+		detail = fmt.Sprintf(" (project-scoped to %s)", strings.Join(projects, ", "))
+	}
+	if savedWS != "" && savedWS != active {
+		if opts.confirm(fmt.Sprintf("Saved key was rejected; it belongs to workspace %s%s. Switch to %s and reuse it?", savedWS, detail, savedWS), false) {
+			updated, err := client.UseWorkspace(savedWS)
+			if err != nil {
+				rep.warn("could not switch to workspace %s: %v", savedWS, err)
+				return false
+			}
+			state.session = updated
+			rep.ok("switched to workspace %s", savedWS)
+			return true
+		}
+	} else {
+		// There is no different workspace to switch to. Still stop and ask before
+		// replacing the credential; bare setup normally mints without a prompt,
+		// but a rejected saved key is an exceptional destructive transition.
+		if !opts.confirm(fmt.Sprintf("Saved key was rejected for workspace %s%s. Create a new gateway key?", active, detail), true) {
+			state.skipDurableKey = true
+			rep.note("kept the rejected saved key; no gateway key was created")
+			return false
+		}
+	}
+
+	if savedWS != "" {
+		rep.note("saved key was rejected for workspace %s%s — creating a new key for %s", savedWS, detail, active)
+	} else {
+		rep.note("saved key was rejected — creating a new key for %s", active)
+	}
+	return false
+}
+
+// reconcileKeyWorkspace compares the workspace the API says the key belongs to
+// against the one the user is logged in to and, on a mismatch, offers to move
+// the login to the key's workspace. The local guard cannot see this case:
+// profile["workspace"] is blank for keys minted before that field existed and
+// for every --api-key run, and either side unknown means no mismatch.
+// Only internal staff have a second workspace to be in the wrong one of.
+func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, keyWS string) bool {
+	active := activeWorkspaceKey(state.session)
+	if !keyWorkspaceMismatch(keyWS, active) {
+		return true
+	}
+	if opts.confirm(fmt.Sprintf("Saved key is for workspace %s, you are in %s. Switch to %s?", keyWS, active, keyWS), false) {
+		updated, err := client.UseWorkspace(keyWS)
+		if err != nil {
+			rep.warn("could not switch to workspace %s: %v", keyWS, err)
+			return false
+		}
+		state.session = updated
+		rep.ok("switched to workspace %s", keyWS)
+		return true
+	}
+	rep.note("key is for workspace %s — creating one for %s", keyWS, active)
 	return false
 }
 

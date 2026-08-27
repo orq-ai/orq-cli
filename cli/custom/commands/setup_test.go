@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -367,23 +368,35 @@ func credsHarness(t *testing.T) {
 // workspace wires every agent config — kimi holds the literal key — to the
 // workspace the user just switched away from, and verification passes because
 // the key is valid there. So the profile records the key's workspace, and reuse
-// requires a match: a provable mismatch re-mints, an unrecorded workspace (keys
-// saved before the field existed, or brought via --api-key) is reused as before.
+// requires a match: a provable mismatch re-mints, and an unrecorded workspace
+// (keys saved before the field existed, or brought via --api-key) is settled by
+// asking the API which workspace the key belongs to.
 func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 	wsA, wsB := "workspace-a", "workspace-b"
 	cases := map[string]struct {
-		storedWS  string
+		storedWS string
+		// keyWS is what the API says the saved key belongs to; empty means wsB.
+		keyWS     string
 		wantMints int64
 	}{
-		"same workspace reuses":        {storedWS: wsB, wantMints: 0},
-		"unrecorded workspace reuses":  {storedWS: "", wantMints: 0},
-		"other workspace mints for it": {storedWS: wsA, wantMints: 1},
+		"same workspace reuses":                               {storedWS: wsB, wantMints: 0},
+		"unrecorded workspace reuses on match":                {storedWS: "", wantMints: 0},
+		"unrecorded workspace mints on API-reported mismatch": {storedWS: "", keyWS: wsA, wantMints: 1},
+		"other workspace mints for it":                        {storedWS: wsA, wantMints: 1},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
 			var mints int64
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/workspace-settings" {
+					keyWS := tc.keyWS
+					if keyWS == "" {
+						keyWS = wsB
+					}
+					fmt.Fprintf(w, `{"settings":{"key":%q}}`, keyWS)
+					return
+				}
 				if r.URL.Path == "/v2/api-keys/capabilities" {
 					fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
 					return
@@ -2005,6 +2018,12 @@ func TestMintIsAlwaysRestricted(t *testing.T) {
 func TestLegacyAPIKeyProfileIsReusedNotReminted(t *testing.T) {
 	credsHarness(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// One identity call is expected: it is what proves the legacy key is for
+		// this workspace. A mint is not.
+		if r.URL.Path == "/v2/workspace-settings" {
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
+			return
+		}
 		t.Errorf("unexpected call %s %s — a legacy key was re-minted", r.Method, r.URL.Path)
 	}))
 	defer srv.Close()
@@ -2714,5 +2733,85 @@ func TestSetupAgentPickerOffersClaudeForMCP(t *testing.T) {
 	}
 	if !agentReceives(pi, []string{capGateway}) {
 		t.Error("pi lost the gateway it does receive")
+	}
+}
+
+// A key that authenticates fine but against another workspace is the silent
+// failure this call exists to catch, and one saved without a workspace field is
+// exactly the case the local guard cannot see.
+func TestVerifySetupFailsOnWorkspaceMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/workspace-settings" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		fmt.Fprint(w, `{"settings":{"key":"orq-research","display_name":"Research"}}`)
+	}))
+	defer srv.Close()
+
+	other := "acme"
+	state := &authState{bearer: "k", session: &auth.Session{ActiveWorkspaceKey: &other}}
+	if verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify passed with the key on a different workspace than the login")
+	}
+
+	match := "orq-research"
+	state.session.ActiveWorkspaceKey = &match
+	if !verifySetup(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify failed with the key on the workspace we are logged in to")
+	}
+}
+
+// "api unreachable" for a key the API answered and refused sent people to
+// check their network for a credential problem.
+func TestVerifySetupNamesARejectedKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	rep := newReporter(true)
+	rep.w = &out
+	if verifySetup(rep, auth.NewClient(srv.URL), &authState{bearer: "k"}, &setupOptions{noInput: true}, false) {
+		t.Fatal("verify passed on a 401")
+	}
+	if !strings.Contains(out.String(), "api key rejected") {
+		t.Errorf("report = %q, want it to name the credential, not the network", out.String())
+	}
+}
+
+// A saved key the API refuses is replaced at the step that considers it, not
+// left to fail the run three steps later with every agent already wired to it.
+func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+		case r.URL.Path == "/v2/api-keys/capabilities":
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	if _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 1 {
+		t.Fatalf("minted %d keys, want 1 replacing the rejected one", got)
 	}
 }
