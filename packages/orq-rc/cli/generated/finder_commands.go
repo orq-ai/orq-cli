@@ -61,7 +61,7 @@ func registerfinderCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List finder entities",
-			Long:    bartolocli.Markdown("Returns all finder entities for the current workspace. Owned entities are scoped to the active project; structural entities and skills remain workspace-wide."),
+			Long:    bartolocli.Markdown("Returns a page of finder entities visible to the caller across the current workspace."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -79,6 +79,9 @@ func registerfinderCommands(root *cobra.Command) {
 			},
 		}
 		finderCmd.AddCommand(cmd)
+
+		cmd.Flags().Int64("page-size", 0, "Number of entities to return. Unset uses the server default (100).")
+		cmd.Flags().String("page-token", "", "Opaque cursor returned by the previous page.")
 
 		bartolocli.SetCustomFlags(cmd)
 
