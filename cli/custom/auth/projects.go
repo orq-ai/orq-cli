@@ -252,7 +252,7 @@ func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID st
 	if strings.TrimSpace(resp.Token) == "" {
 		return "", "", false, errors.New("api key create returned no token")
 	}
-	for _, candidate := range []string{resp.ID, resp.APIKey.ID, keyIDFromToken(resp.Token)} {
+	for _, candidate := range []string{resp.ID, resp.APIKey.ID, KeyIDFromToken(resp.Token)} {
 		if keyID = strings.TrimSpace(candidate); keyID != "" {
 			break
 		}
@@ -260,12 +260,12 @@ func (c *Client) CreateAPIKey(bearer string, req APIKeyRequest) (token, keyID st
 	return resp.Token, keyID, scopedToProject, nil
 }
 
-// keyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`, the opaque
+// KeyIDFromToken reads the id out of `sk-orq-<api_key_id>-<secret>`, the opaque
 // token shape. Router tokens share the `sk-orq-` prefix but carry a JWT after
 // it, and base64url contains "-", so the id is only trusted when it is shaped
 // like one. A wrong id is worse than none: it would be stored and later used to
 // address somebody else's key.
-func keyIDFromToken(token string) string {
+func KeyIDFromToken(token string) string {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(token), "sk-orq-")
 	if !ok {
 		return ""
@@ -432,12 +432,9 @@ func SizeVariantRank(modelID string) int {
 // APIKeyRecord is the metadata the API holds about one key. The raw secret is
 // never part of it.
 type APIKeyRecord struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	WorkspaceID string   `json:"workspace_id"`
-	Projects    []string `json:"projects"`
-	Status      string   `json:"status"`
-	Active      *bool    `json:"active"`
+	ID       string   `json:"id"`
+	Projects []string `json:"projects"`
+	Active   *bool    `json:"active"`
 }
 
 // GetAPIKey looks a key up by id. Authenticate with the session's workspace
@@ -456,14 +453,4 @@ func (c *Client) GetAPIKey(bearer, keyID string) (*APIKeyRecord, error) {
 		return nil, err
 	}
 	return &rec, nil
-}
-
-// KeyIDFromToken exposes the id carried in an opaque token, for callers holding
-// a key but no saved id.
-func KeyIDFromToken(token string) string { return keyIDFromToken(token) }
-
-// NotFound reports whether err is the API saying the resource is not in this workspace.
-func NotFound(err error) bool {
-	var apiErr *APIError
-	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound
 }

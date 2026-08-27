@@ -699,6 +699,8 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
 		case strings.HasSuffix(r.URL.Path, "/v2/credits"):
 			fmt.Fprint(w, `{"balance":25,"currency":"usd"}`)
+		case r.URL.Path == "/v2/workspace-settings":
+			fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
 		default:
 			fmt.Fprint(w, `{}`)
 		}
@@ -2813,5 +2815,93 @@ func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(&mints); got != 1 {
 		t.Fatalf("minted %d keys, want 1 replacing the rejected one", got)
+	}
+}
+
+// Declining the replacement must not mint one anyway. The decline travels back
+// as state.skipDurableKey, and the generic "Create a workspace API key now?"
+// gate downstream would otherwise ask again and take its own true default.
+func TestDecliningTheReplacementMintsNothing(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"API key is not valid for this workspace."}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	// noInput takes the default at every prompt, and the replacement prompt
+	// defaults to yes, so drive the decline through the confirm seam.
+	opts := &setupOptions{noInput: true, confirmFn: func(string, bool) bool { return false }}
+	if _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 0 {
+		t.Fatalf("minted %d keys after the user declined, want 0", got)
+	}
+	if !state.skipDurableKey {
+		t.Error("decline did not reach ensureDurableKey; the generic mint gate would ask again and default to yes")
+	}
+	if saved, _ := savedAPIKey(); saved != "sk-orq-dead" {
+		t.Errorf("saved key = %q, want the rejected one left in place", saved)
+	}
+}
+
+// A key the API answers 200 for, naming a workspace other than the active one,
+// is a live key in the wrong place — never the revoked-key path. Measured
+// against api.orq.ai, a cross-workspace key gets 200 naming its own workspace;
+// only a revoked key gets 401.
+func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
+	credsHarness(t)
+	var mints int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v2/workspace-settings":
+			fmt.Fprint(w, `{"settings":{"key":"other-workspace"}}`)
+		case r.URL.Path == "/v2/api-keys/capabilities":
+			fmt.Fprint(w, `{"domains":[{"id":"chat_completions","group":3,"writable":true}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v2/api-keys":
+			atomic.AddInt64(&mints, 1)
+			fmt.Fprint(w, `{"token":"sk-orq-fresh"}`)
+		default:
+			t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	if err := saveAPIKeyProfile("sk-orq-elsewhere", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	ws := "acme"
+	state := &authState{apiBase: srv.URL, bearer: "session-token",
+		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	// noInput declines the switch (it defaults to no), which falls through to a mint.
+	if _, _, err := resolveAPIKey(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt64(&mints); got != 1 {
+		t.Fatalf("minted %d keys, want 1 for the active workspace", got)
+	}
+	if strings.Contains(out.String(), "rejected") || strings.Contains(out.String(), "revoked") {
+		t.Errorf("a live key in another workspace was reported as refused:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "other-workspace") {
+		t.Errorf("report does not name the key's workspace:\n%s", out.String())
 	}
 }

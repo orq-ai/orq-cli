@@ -56,6 +56,11 @@ type setupOptions struct {
 	// both scopes for a removal — and a pair of bools can also represent
 	// "both named", which is not an answer at all.
 	scope configScope
+	// confirmFn overrides the prompt, for tests. Every branch guarded by a
+	// confirm is otherwise reachable only through noInput, which takes the
+	// default — so the answer the user is most likely to regret (declining a
+	// replacement, accepting a workspace switch) had no way to be exercised.
+	confirmFn func(message string, def bool) bool
 }
 
 // configScope is where a scope-capable capability writes. scopeUnset is the
@@ -100,6 +105,9 @@ func (s *scopeFlag) Set(v string) error {
 // A prompt that was drawn and then failed (Ctrl-C, closed terminal) is a decline, never the default: at a true-default
 // prompt the default is "yes", and taking an abort as consent mints keys and edits shell profiles the user backed out of.
 func (o *setupOptions) confirm(message string, def bool) bool {
+	if o.confirmFn != nil {
+		return o.confirmFn(message, def)
+	}
 	if o.yes {
 		return true
 	}
@@ -291,9 +299,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	rep.blank()
 
 	// Only a key minted this run needs the retry window; anything else that
-	// fails is failing for good and the wait is pure dead time.
-	mintedThisRun, _ := keyInfo["created"].(bool)
-	verified := verifySetup(rep, client, authState, opts, mintedThisRun)
+	// fails is failing for good and the wait is pure dead time. mintedToken is
+	// the fact itself; reading it back out of keyInfo would put a silently
+	// defaulting type assertion in charge of the retry.
+	verified := verifySetup(rep, client, authState, opts, mintedToken != "")
 	result["verified"] = verified
 
 	links := buildLinks(authState)
@@ -1563,10 +1572,12 @@ func verifySetup(rep *reporter, client *auth.Client, state *authState, opts *set
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 		if keyWS, err = client.KeyWorkspace(state.bearer); err == nil {
-			return reconcileKeyWorkspace(rep, client, state, opts, keyWS)
+			return reconcileKeyWorkspace(rep, client, state, opts, keyWS, false)
 		}
 	}
 	if auth.Unauthorized(err) {
+		// 401 is a revoked key, not a workspace mismatch: a key from another
+		// workspace answers 200 and is handled by reconcileKeyWorkspace above.
 		rep.fail("api key rejected  %s: %v", client.URLs.APIBaseURL, err)
 		diagnoseRejectedKey(rep, client, state)
 	} else {
@@ -1592,7 +1603,14 @@ func diagnoseRejectedKey(rep *reporter, client *auth.Client, state *authState) {
 	}
 	rec, err := client.GetAPIKey(state.sessionBearer, keyID)
 	if auth.NotFound(err) {
-		rep.note("key %s is not in workspace %s — switch workspace, or delete it from credentials.json to mint a new one",
+		// The route is workspace-scoped, so 404 covers both "revoked" and "lives
+		// in another workspace" — measured, a key deleted from this workspace and
+		// a key that was never in it are the same 404. Name both; claiming either
+		// one sends half the users down the wrong remedy.
+		//
+		// info, not note: note() is suppressed under --no-input, which is exactly
+		// the run whose only output is the failure line this explains.
+		rep.info("key %s was revoked, or belongs to a workspace other than %s — delete it from credentials.json to mint a new one",
 			keyID, activeWorkspaceKey(state.session))
 		return
 	}
@@ -1600,11 +1618,11 @@ func diagnoseRejectedKey(rep *reporter, client *auth.Client, state *authState) {
 		return
 	}
 	if len(rec.Projects) > 0 {
-		rep.note("key %s is scoped to project(s) %s", keyID, strings.Join(rec.Projects, ", "))
+		rep.info("key %s is scoped to project(s) %s", keyID, strings.Join(rec.Projects, ", "))
 		return
 	}
 	if rec.Active != nil && !*rec.Active {
-		rep.note("key %s is in this workspace but inactive", keyID)
+		rep.info("key %s is in this workspace but inactive", keyID)
 	}
 }
 
@@ -1616,74 +1634,50 @@ func diagnoseRejectedKey(rep *reporter, client *auth.Client, state *authState) {
 func checkSavedKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, token string) bool {
 	keyWS, err := client.KeyWorkspace(token)
 	if auth.Unauthorized(err) {
-		return reconcileRejectedSavedKey(rep, client, state, opts, token)
+		return reconcileRejectedSavedKey(rep, state, opts)
 	}
 	if err != nil {
-		// Could be the network. verifySetup reports that; re-minting over a blip
-		// would orphan a working key.
+		// Anything short of a 401 leaves the key in place. A blip, a 5xx, a 404
+		// on a self-hosted base without the route, or a 403 from a key type the
+		// route does not serve are all "could not tell", and re-minting over any
+		// of them orphans a working key. Say so: "✓ using your saved key" has
+		// already printed, and unannounced this reads as a check that passed.
+		rep.warn("could not confirm the saved key's workspace: %v — reusing it", err)
 		return true
 	}
-	return reconcileKeyWorkspace(rep, client, state, opts, keyWS)
+	return reconcileKeyWorkspace(rep, client, state, opts, keyWS, true)
 }
 
-// reconcileRejectedSavedKey handles the important case where the gateway
-// rejected a key before workspace-settings could identify it. The session
-// bearer can inspect the key record, and the locally recorded workspace is a
-// useful fallback for keys whose record is not visible from the current
-// workspace. Never silently replace a credential here: an interactive user
-// should get the choice to move to the key's workspace or mint for the one
-// they selected.
-func reconcileRejectedSavedKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, token string) bool {
-	keyID := savedGatewayKeyID()
-	if keyID == "" {
-		keyID = auth.KeyIDFromToken(token)
-	}
+// reconcileRejectedSavedKey handles a saved key the API answered 401 to.
+//
+// That is a revoked or unknown key, and nothing else: measured against the live
+// API, a key belonging to a different workspace gets a 200 from
+// /v2/workspace-settings naming that workspace, so it never reaches here. The
+// server's wording ("API key is not valid for this workspace") invites the
+// opposite reading, which is why this says so — an earlier version offered to
+// switch workspace and reuse the key, and a switch cannot revive a key the
+// server has no record of.
+//
+// So the only choice worth offering is replace-or-keep. Never replace silently:
+// bare setup mints without a prompt, but discarding a credential the user may
+// have wired somewhere else is an exceptional, destructive transition.
+func reconcileRejectedSavedKey(rep *reporter, state *authState, opts *setupOptions) bool {
 	_, savedWS := savedAPIKey()
-	projects := []string(nil)
-	sessionBearer := state.sessionBearer
-	// Reuse is checked before resolveAPIKey has a chance to call
-	// useDurableKey, so bearer is still the session token at this point.
-	if sessionBearer == "" && !state.durableKey {
-		sessionBearer = state.bearer
-	}
-	if sessionBearer != "" && keyID != "" {
-		if rec, err := client.GetAPIKey(sessionBearer, keyID); err == nil {
-			projects = rec.Projects
-		}
-	}
-
 	active := activeWorkspaceKey(state.session)
-	detail := ""
-	if len(projects) > 0 {
-		detail = fmt.Sprintf(" (project-scoped to %s)", strings.Join(projects, ", "))
+	where := active
+	if where == "" {
+		where = savedWS
 	}
-	if savedWS != "" && savedWS != active {
-		if opts.confirm(fmt.Sprintf("Saved key was rejected; it belongs to workspace %s%s. Switch to %s and reuse it?", savedWS, detail, savedWS), false) {
-			updated, err := client.UseWorkspace(savedWS)
-			if err != nil {
-				rep.warn("could not switch to workspace %s: %v", savedWS, err)
-				return false
-			}
-			state.session = updated
-			rep.ok("switched to workspace %s", savedWS)
-			return true
-		}
-	} else {
-		// There is no different workspace to switch to. Still stop and ask before
-		// replacing the credential; bare setup normally mints without a prompt,
-		// but a rejected saved key is an exceptional destructive transition.
-		if !opts.confirm(fmt.Sprintf("Saved key was rejected for workspace %s%s. Create a new gateway key?", active, detail), true) {
-			state.skipDurableKey = true
-			rep.note("kept the rejected saved key; no gateway key was created")
-			return false
-		}
+	prompt := "Saved key was rejected — it has been revoked or deleted. Create a new gateway key?"
+	if where != "" {
+		prompt = fmt.Sprintf("Saved key was rejected for workspace %s — it has been revoked or deleted. Create a new gateway key?", where)
 	}
-
-	if savedWS != "" {
-		rep.note("saved key was rejected for workspace %s%s — creating a new key for %s", savedWS, detail, active)
-	} else {
-		rep.note("saved key was rejected — creating a new key for %s", active)
+	if !opts.confirm(prompt, true) {
+		state.skipDurableKey = true
+		rep.note("kept the rejected saved key; no gateway key was created")
+		return false
 	}
+	rep.note("saved key was rejected — creating a new key for %s", where)
 	return false
 }
 
@@ -1693,7 +1687,12 @@ func reconcileRejectedSavedKey(rep *reporter, client *auth.Client, state *authSt
 // profile["workspace"] is blank for keys minted before that field existed and
 // for every --api-key run, and either side unknown means no mismatch.
 // Only internal staff have a second workspace to be in the wrong one of.
-func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, keyWS string) bool {
+// mayMint distinguishes the two call sites: step 2 falls through to minting a
+// replacement, verification is the end of the run and creates nothing. Sharing
+// one message told a user whose verification just failed that a key was being
+// created for them, and said it with note(), which --no-input suppresses — so a
+// CI run got "verified": false and not one line explaining why.
+func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState, opts *setupOptions, keyWS string, mayMint bool) bool {
 	active := activeWorkspaceKey(state.session)
 	if !keyWorkspaceMismatch(keyWS, active) {
 		return true
@@ -1708,7 +1707,11 @@ func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState,
 		rep.ok("switched to workspace %s", keyWS)
 		return true
 	}
-	rep.note("key is for workspace %s — creating one for %s", keyWS, active)
+	if mayMint {
+		rep.note("key is for workspace %s — creating one for %s", keyWS, active)
+	} else {
+		rep.fail("api key belongs to workspace %s, this login is %s", keyWS, active)
+	}
 	return false
 }
 

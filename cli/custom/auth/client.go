@@ -546,13 +546,34 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Msg }
 
-// Unauthorized reports whether err is the API refusing the credential.
+// Unauthorized reports whether err is the API refusing the credential itself.
+//
+// 401 only, and deliberately: measured against the live API, a revoked gateway
+// key gets 401 from /v2/workspace-settings while a live one belonging to a
+// different workspace gets 200 naming that workspace. So a 401 here means the
+// key is gone, never that it belongs elsewhere — despite the message the server
+// sends with it ("API key is not valid for this workspace").
+//
+// 403 is a different answer, see Forbidden.
 func Unauthorized(err error) bool {
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		return false
-	}
-	return apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusForbidden
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized
+}
+
+// Forbidden reports whether err is the API accepting the credential but
+// refusing it for this route — "This API key type cannot access this endpoint",
+// which is what a gateway key gets from /v2/api-keys/{id}. Folding it into
+// Unauthorized would read a route the key may not use as a dead key, and every
+// run would mint a replacement for a credential that works.
+func Forbidden(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusForbidden
+}
+
+// NotFound reports whether err is the API saying the resource is not in this workspace.
+func NotFound(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound
 }
 
 func (c *Client) jsonRequest(method, url, bearer string, body any, out any) error {
@@ -690,6 +711,13 @@ func OpenBrowser(url string) bool {
 // guard in setup can only compare a workspace it recorded locally, which is
 // blank for keys minted before that field existed and for --api-key runs; this
 // asks the API instead.
+//
+// The route resolves the workspace from the credential alone — there is no
+// session context in the request — so it answers for a session token and for a
+// gateway key alike, and a key minted in another workspace gets a 200 naming
+// that other workspace rather than a refusal. Verified against api.orq.ai with
+// a freshly minted restricted key of source "router": 200 here, 200 on
+// /v2/projects, 403 on /v2/api-keys/{id}.
 func (c *Client) KeyWorkspace(bearer string) (string, error) {
 	var resp struct {
 		Settings struct {
@@ -700,5 +728,13 @@ func (c *Client) KeyWorkspace(bearer string) (string, error) {
 	if err := c.jsonRequest(http.MethodGet, url, bearer, nil, &resp); err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(resp.Settings.Key), nil
+	// A 200 with no workspace key is a broken response, not an answer. Returning
+	// "" instead would read as "no mismatch" to every caller, so a renamed field
+	// would silently turn both the reuse guard and verification into no-ops that
+	// still report success.
+	ws := strings.TrimSpace(resp.Settings.Key)
+	if ws == "" {
+		return "", errors.New("workspace-settings returned no workspace key")
+	}
+	return ws, nil
 }
