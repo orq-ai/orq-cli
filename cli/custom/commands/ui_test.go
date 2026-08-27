@@ -159,9 +159,9 @@ func TestPrintWiredTable(t *testing.T) {
 		{
 			name: "name printed once per agent, no SCOPE column",
 			targets: []wiredTarget{
-				{agent: "opencode", capability: "gateway", path: "/a"},
-				{agent: "opencode", capability: "skills", path: "/b"},
-				{agent: "pi", capability: "gateway", path: "/c"},
+				{agent: "opencode", capability: "gateway", path: "/a", status: "pass"},
+				{agent: "opencode", capability: "skills", path: "/b", status: "pass"},
+				{agent: "pi", capability: "gateway", path: "/c", status: "pass"},
 			},
 			want: "     AGENT     CAPABILITY  LOCATION\n" +
 				"  ✓  opencode  gateway     /a\n" +
@@ -171,12 +171,24 @@ func TestPrintWiredTable(t *testing.T) {
 		{
 			name: "SCOPE column appears when any row is scoped",
 			targets: []wiredTarget{
-				{agent: "claude", capability: "mcp", path: "/a", scope: "user"},
-				{agent: "claude", capability: "skills", path: "/b"},
+				{agent: "claude", capability: "mcp", path: "/a", scope: "local", status: "pass"},
+				{agent: "claude", capability: "skills", path: "/b", status: "pass"},
 			},
 			want: "     AGENT   CAPABILITY  SCOPE  LOCATION\n" +
-				"  ✓  claude  mcp         user   /a\n" +
+				"  ✓  claude  mcp         local  /a\n" +
 				"  ✓          skills             /b\n",
+		},
+		{
+			// The marker comes from the target's own probed state; a warn
+			// target must not render the pass glyph.
+			name: "warn target renders its own glyph",
+			targets: []wiredTarget{
+				{agent: "claude", capability: "gateway", path: "/a", status: "pass"},
+				{agent: "claude", capability: "skills", path: "/b", status: "warn"},
+			},
+			want: "     AGENT   CAPABILITY  LOCATION\n" +
+				"  ✓  claude  gateway     /a\n" +
+				"  !          skills      /b\n",
 		},
 	}
 	for _, tc := range cases {

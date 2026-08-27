@@ -1070,6 +1070,67 @@ func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
 	if !strings.Contains(out, "orq connect skills") {
 		t.Errorf("status did not point at the fix:\n%s", out)
 	}
+	if !strings.Contains(out, "  !  ") {
+		t.Errorf("skills row did not carry the warn glyph:\n%s", out)
+	}
+	if strings.Contains(out, "✓") {
+		t.Errorf("a pass glyph survived on broken skills wiring:\n%s", out)
+	}
+}
+
+// A foreign link is the case with no warning line at all: the missing-link
+// report covers only LinkMissing, so the table row's glyph is the sole place
+// the breakage can surface. It must warn, not claim health nobody measured.
+func TestConnectStatusWarnsAboutForeignSkillLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil || len(m.Links) == 0 {
+		t.Fatalf("expected a populated manifest, got %+v, err=%v", m, err)
+	}
+	taken := m.Links[0]
+	if err := os.RemoveAll(taken.Path); err != nil {
+		t.Fatal(err)
+	}
+	// Something else now occupies the recorded path: neither our symlink nor
+	// a copy carrying our marker.
+	if err := os.MkdirAll(taken.Path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "recorded but not installed") {
+		t.Fatalf("a foreign link is not a missing one; the premise of this test is off:\n%s", out)
+	}
+	if !strings.Contains(out, "  !  ") {
+		t.Errorf("skills row did not carry the warn glyph:\n%s", out)
+	}
+	if strings.Contains(out, "✓") {
+		t.Errorf("a pass glyph survived on foreign skills wiring:\n%s", out)
+	}
 }
 
 // Session-scoped links belong to a live `orq launch` and are created and torn

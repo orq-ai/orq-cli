@@ -468,7 +468,7 @@ func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTa
 			if scoped {
 				cells = []string{name, w.capability, w.scope, tilde(w.path)}
 			}
-			rows = append(rows, tableRow{marker: statusGlyph("pass"), cells: cells})
+			rows = append(rows, tableRow{marker: statusGlyph(w.status), cells: cells})
 		}
 	}
 	printTable(rep.w, headers, rows)
@@ -1035,7 +1035,9 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 // wiredTarget is one agent's capability and the file holding it. scope is set
 // only for the capabilities that have two, so a report can say which of them an
 // entry was found in; the file alone does not always say.
-type wiredTarget struct{ agent, capability, path, scope string }
+// status is a statusGlyph state ("pass" or "warn") set where the target is
+// built, from whatever probe established it — never defaulted at render time.
+type wiredTarget struct{ agent, capability, path, scope, status string }
 
 // wiredMCPTargets lists the scopes holding this agent's MCP entry. wiredPath
 // answers "is it wired at all" and stops at the first hit, which is right for
@@ -1064,7 +1066,7 @@ func wiredMCPTargets(id string, spec agentSpec, opts *setupOptions) []wiredTarge
 			continue
 		}
 		seen[path] = true
-		out = append(out, wiredTarget{agent: id, capability: capMCP, path: path, scope: scopeLabel(global)})
+		out = append(out, wiredTarget{agent: id, capability: capMCP, path: path, scope: scopeLabel(global), status: "pass"})
 	}
 	return out
 }
@@ -1080,7 +1082,7 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 		if hasCap(caps, capGateway) {
 			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
-				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path})
+				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path, status: "pass"})
 			}
 		}
 		if hasCap(caps, capMCP) {
@@ -1088,28 +1090,34 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	if hasCap(caps, capSkills) {
-		m, err := skills.LoadManifest()
-		if err == nil && m != nil {
-			seen := map[string]bool{}
+		// ReadStatus rather than the bare manifest: a skills row carries the
+		// same ✓ the disk-probed rows do, so it must rest on the same kind of
+		// evidence. One missing or foreign link taints its whole directory,
+		// and a stale fingerprint taints every directory — the fold `orq
+		// doctor` applies.
+		status, err := skills.ReadStatus()
+		if err == nil && status != nil {
+			idx := map[string]int{}
 			wanted := map[string]bool{}
 			for _, id := range agents {
 				wanted[id] = true
 			}
-			for _, l := range m.Links {
-				if l.Session {
-					continue
-				}
+			for _, l := range status.Links {
 				// An empty agent is the shared directory, which serves any
 				// selected agent that reads it.
 				if l.Agent != "" && !wanted[l.Agent] {
 					continue
 				}
 				dir := filepath.Dir(l.Path)
-				if seen[dir] {
-					continue
+				i, seen := idx[dir]
+				if !seen {
+					out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir, status: "pass"})
+					i = len(out) - 1
+					idx[dir] = i
 				}
-				seen[dir] = true
-				out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir})
+				if l.State != skills.LinkInstalled || status.Stale {
+					out[i].status = "warn"
+				}
 			}
 		}
 	}
