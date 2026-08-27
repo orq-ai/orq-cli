@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
@@ -405,19 +406,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 		byAgent[key] = append(byAgent[key], w)
 	}
-	for _, agent := range order {
-		rep.info("%s", agent)
-		for _, w := range byAgent[agent] {
-			// Naming the scope where there are two: "~/.claude.json" and
-			// "./.mcp.json" are the same capability wired two different ways,
-			// and the path alone leaves the reader to work out which.
-			if w.scope != "" {
-				rep.info("  %-9s %-6s %s", w.capability, w.scope, tilde(w.path))
-				continue
-			}
-			rep.info("  %-9s %s", w.capability, tilde(w.path))
-		}
-	}
+	printWiredTable(rep, order, byAgent)
 	// Scoped like the rest of this function: `--status kimi` naming only
 	// kimi, or a run that never asked about skills at all, must not surface
 	// another agent's or another capability's broken links.
@@ -437,9 +426,61 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
+		rep.blank()
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
+}
+
+// printWiredTable renders the wiring as the same glyph-and-columns table
+// `orq doctor` prints, so the two status views read alike. The agent name is
+// printed once per group: repeating it on every capability row is noise the
+// alignment already carries. SCOPE appears only when some row has one --
+// "~/.claude.json" and "./.mcp.json" are the same capability wired two
+// different ways, and the path alone leaves the reader to work it out -- so a
+// machine with no project-scoped entries is not given an empty column.
+func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTarget) {
+	if len(order) == 0 {
+		return
+	}
+	agentW, capW, scopeW := utf8.RuneCountInString("AGENT"), utf8.RuneCountInString("CAPABILITY"), 0
+	for _, agent := range order {
+		if n := utf8.RuneCountInString(agent); n > agentW {
+			agentW = n
+		}
+		for _, w := range byAgent[agent] {
+			if n := utf8.RuneCountInString(w.capability); n > capW {
+				capW = n
+			}
+			if n := utf8.RuneCountInString(w.scope); n > scopeW {
+				scopeW = n
+			}
+		}
+	}
+	scoped := scopeW > 0
+	if scoped && scopeW < utf8.RuneCountInString("SCOPE") {
+		scopeW = utf8.RuneCountInString("SCOPE")
+	}
+	column := func(s string, width int) string {
+		if !scoped {
+			return ""
+		}
+		return pad(s, width) + "  "
+	}
+	fmt.Fprintf(rep.w, "     %s  %s  %s%s\n",
+		paint(ansiDim, pad("AGENT", agentW)), paint(ansiDim, pad("CAPABILITY", capW)),
+		paint(ansiDim, column("SCOPE", scopeW)), paint(ansiDim, "LOCATION"))
+	for _, agent := range order {
+		for i, w := range byAgent[agent] {
+			name := agent
+			if i > 0 {
+				name = ""
+			}
+			fmt.Fprintf(rep.w, "  %s  %s  %s  %s%s\n",
+				paint(ansiOK, "\u2713"), pad(name, agentW), pad(w.capability, capW),
+				column(w.scope, scopeW), tilde(w.path))
+		}
+	}
 }
 
 func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {
