@@ -80,6 +80,7 @@ func Register(root *cobra.Command) {
 	applyCommandGroups(root)
 	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
+	improveArgErrors(root)
 }
 
 func registerGlobalFlags() {
@@ -498,4 +499,23 @@ func skillsCommand(cmd *cobra.Command) bool {
 		return true
 	}
 	return false
+}
+
+// improveArgErrors rewrites cobra's bare arity errors ("accepts 2 arg(s),
+// received 0") into a message that names the expected arguments, by appending
+// the command's own usage line. Applied to the whole tree, so bartolo's
+// generated commands get it too.
+func improveArgErrors(cmd *cobra.Command) {
+	if inner := cmd.Args; inner != nil {
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			err := inner(c, args)
+			if err == nil {
+				return nil
+			}
+			return fmt.Errorf("%w\n\nUsage:\n  %s\n\nRun '%s --help' for details.", err, c.UseLine(), c.CommandPath())
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		improveArgErrors(sub)
+	}
 }
