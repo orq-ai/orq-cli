@@ -155,7 +155,7 @@ func installSessionPreRun() {
 			return nil
 		}
 		// The session's host is the last resort, below every explicit source.
-		// TODO(orq-ai/bartolo#22): once a profile can carry its own server and
+		// TODO(ENG-2902, orq-ai/bartolo#22): once a profile can carry its own server and
 		// the regenerated clients read it (a per-profile resolver, proposed in
 		// that PR and absent from the pinned bartolo), this bridge and
 		// mirrorServerToViper both go away — the profile becomes the one store.
