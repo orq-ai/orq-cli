@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -493,6 +492,11 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	if err != nil {
 		return nil, err
 	}
+	// Bind the host to the profile this login belongs to, so an OAuth profile
+	// routes without a flag the same way an API-key one does.
+	if err := BindProfileServer(auth.ActiveProfile(), auth.Server()); err != nil {
+		return nil, err
+	}
 	return &deviceLoginResult{
 		Session:         session,
 		VerificationURI: start.VerificationURIComplete,
@@ -770,10 +774,16 @@ func writeGatewayKeyProfile(profile, key, workspace string) error {
 func writeCredsProfile(profile, workspace string) error {
 	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
 	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
-	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
-	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
-		return err
+	// An explicit host travels with the credentials it was used against, so a
+	// later `orq --profile <name> ...` needs no flag.
+	if server := auth.Server(); server != "" {
+		bartolocli.Creds.Set("profiles."+profile+".server", server)
 	}
+	return saveCreds()
+}
+
+// chmodOwnerOnly keeps the credentials file readable only by its owner.
+func chmodOwnerOnly(filename string) error {
 	return os.Chmod(filename, 0o600)
 }
 

@@ -144,6 +144,7 @@ func installSessionPreRun() {
 			return err
 		}
 		resolveServer(cmd)
+		applyProfileAPIKey(cmd)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -210,6 +211,11 @@ func resolveServer(cmd *cobra.Command) {
 			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
 		}
 		auth.SetServer(envServer, "env")
+	case commands.ProfileServer() != "":
+		// A host bound to the credentials profile. More specific than the
+		// global `orq server set`, so it outranks it: selecting a profile is
+		// how you select a backend.
+		auth.SetServer(commands.ProfileServer(), "profile")
 	case viper.GetString("server") != "":
 		auth.SetServer(viper.GetString("server"), "config") // persisted `orq server set`
 	default:
@@ -218,6 +224,40 @@ func resolveServer(cmd *cobra.Command) {
 		auth.SetServer("", "default")
 	}
 	mirrorServerToViper()
+}
+
+// applyProfileAPIKey makes an explicitly typed --profile outrank an exported
+// key. bartolo's apikey handler reads its env vars before the profile, so a
+// stray ORQ_API_KEY in the shell otherwise sends the wrong credentials to the
+// host the named profile resolved — with no message at all. Promoting the
+// profile's own key into the env var that handler reads is what makes the flag
+// win; the structural fix is for bartolo to rank an explicit flag above the
+// environment, which would delete this (TODO(ENG-2902, orq-ai/bartolo#22)).
+//
+// Only the explicit flag counts. ORQ_PROFILE against ORQ_API_KEY is env versus
+// env, with no statement of intent to break the tie.
+func applyProfileAPIKey(cmd *cobra.Command) {
+	f := cmd.Root().PersistentFlags().Lookup("profile")
+	if f == nil || !f.Changed {
+		return
+	}
+	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	if key == "" {
+		return
+	}
+	var shadowed []string
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key {
+			shadowed = append(shadowed, envVar)
+		}
+		os.Unsetenv(envVar)
+	}
+	if len(shadowed) > 0 {
+		// Say it once, and say which key won: silently swapping credentials is
+		// the failure this whole ordering exists to prevent.
+		commands.Warn("using the API key from profile %q; %s set but an explicit --profile takes precedence", auth.ActiveProfile(), strings.Join(shadowed, " and "))
+	}
+	os.Setenv(apiKeyEnvVars[0], key)
 }
 
 // mirrorServerToViper hands the resolved host to the generated commands, which

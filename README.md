@@ -337,8 +337,8 @@ Sandboxed execution is not available in this version.
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_API_KEY` | API key for headless/CI auth |
-| `ORQ_PROFILE` | Default profile (same effect as `--profile`) |
+| `ORQ_API_KEY` | API key for headless/CI auth. An explicitly typed `--profile` outranks it: the flag names credentials, and the CLI warns on stderr when it overrides an exported key |
+| `ORQ_PROFILE` | Default profile (same as `--profile`, except that it does not outrank an exported `ORQ_API_KEY` — env against env has no tie-breaker) |
 | `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
 | `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release. The matching `--api-base-url` flag on `auth`, `workspace` and `doctor` is deprecated the same way |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
@@ -379,7 +379,7 @@ format, or when the check fails.
 orq --profile acme auth login --server https://orq.acme.internal
 ```
 
-The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No per-command flag. The full order, highest first: `--server`, `ORQ_SERVER`, a host persisted with `orq server set`, the session's own host, then `https://my.orq.ai`. `orq doctor` reports which of those the current run used. Switch back and forth between profiles without logging out of either:
+The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No per-command flag. `orq auth login --server <url>` binds the host to the profile it authenticates, so later calls on that profile need no flag at all. The full order, highest first: `--server`, `ORQ_SERVER`, the host bound to the active profile, a host persisted globally with `orq server set`, the session's own host, then `https://my.orq.ai`. `orq doctor` reports which of those the current run used. Switch back and forth between profiles without logging out of either:
 
 ```sh
 orq --profile acme prompts list            # talks to acme's backend

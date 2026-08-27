@@ -2,6 +2,7 @@ package custom
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -126,12 +127,25 @@ func TestResolveServerPrecedence(t *testing.T) {
 		name       string
 		flag       string
 		env        map[string]string
+		profile    string
 		config     string
 		wantServer string
 		wantSource string
 	}{
 		{name: "nothing set", wantServer: "", wantSource: "default"},
 		{name: "config", config: "https://config.example", wantServer: "https://config.example", wantSource: "config"},
+		{
+			// Selecting a profile is how you select a backend, so a host bound
+			// to one outranks a host persisted globally with `orq server set`.
+			name:    "profile beats the global config",
+			profile: "https://profile.example", config: "https://config.example",
+			wantServer: "https://profile.example", wantSource: "profile",
+		},
+		{
+			name: "env beats the profile",
+			env:  map[string]string{"ORQ_SERVER": "https://env.example"}, profile: "https://profile.example",
+			wantServer: "https://env.example", wantSource: "env",
+		},
 		{name: "env", env: map[string]string{"ORQ_SERVER": "https://env.example"}, wantServer: "https://env.example", wantSource: "env"},
 		{name: "deprecated env", env: map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"}, wantServer: "https://legacy.example", wantSource: "env"},
 		{
@@ -155,6 +169,7 @@ func TestResolveServerPrecedence(t *testing.T) {
 			// rather than that it happened to leave the priming value alone.
 			auth.SetServer("https://stale.example", "flag")
 			viper.Set("server", tc.config)
+			setProfileServer(t, tc.profile)
 			t.Setenv("ORQ_SERVER", tc.env["ORQ_SERVER"])
 			t.Setenv("ORQ_API_BASE_URL", tc.env["ORQ_API_BASE_URL"])
 			flags := root.PersistentFlags()
@@ -177,5 +192,51 @@ func TestResolveServerPrecedence(t *testing.T) {
 				t.Errorf("viper mirror: got %q, want %q", viper.GetString("server"), tc.wantServer)
 			}
 		})
+	}
+}
+
+// setProfileServer binds a host to the active credentials profile for one test.
+func setProfileServer(t *testing.T, server string) {
+	t.Helper()
+	key := "profiles." + auth.ActiveProfile() + ".server"
+	prev := bartolocli.Creds.GetString(key)
+	bartolocli.Creds.Set(key, server)
+	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
+}
+
+// An explicitly typed --profile is a more specific statement of intent than an
+// exported key, so the profile's own key must reach the request instead.
+func TestProfileAPIKeyBeatsTheEnvironment(t *testing.T) {
+	root := buildRoot(t)
+	profile := auth.ActiveProfile()
+	key := "profiles." + profile + ".api_key"
+	prev := bartolocli.Creds.GetString(key)
+	bartolocli.Creds.Set(key, "profile-key")
+	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
+
+	flags := root.PersistentFlags()
+	t.Cleanup(func() { flags.Lookup("profile").Changed = false })
+
+	// Without the flag, env versus env is bartolo's call and nothing moves.
+	t.Setenv("ORQ_API_KEY", "env-key")
+	flags.Lookup("profile").Changed = false
+	applyProfileAPIKey(root)
+	if got := os.Getenv("ORQ_API_KEY"); got != "env-key" {
+		t.Fatalf("no --profile: got %q, want the environment untouched", got)
+	}
+
+	// With it, the profile wins and says so on stderr.
+	t.Setenv("ORQ_TOKEN", "env-token")
+	flags.Lookup("profile").Changed = true
+	_, stderr := captureOutput(t, func() { applyProfileAPIKey(root) })
+	if got := os.Getenv("ORQ_API_KEY"); got != "profile-key" {
+		t.Fatalf("--profile: got %q, want the profile key", got)
+	}
+	// The other spellings are cleared, or bartolo would read them first.
+	if got := os.Getenv("ORQ_TOKEN"); got != "" {
+		t.Errorf("ORQ_TOKEN: got %q, want it cleared", got)
+	}
+	if !strings.Contains(stderr, "takes precedence") {
+		t.Errorf("no warning for the shadowed key: %q", stderr)
 	}
 }

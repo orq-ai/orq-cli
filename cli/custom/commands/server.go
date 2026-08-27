@@ -1,9 +1,14 @@
 package commands
 
 import (
+	"path"
+	"strings"
+
 	"orq/cli/custom/auth"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // DeprecatedAPIBaseFlag re-registers --api-base-url on a command that used to
@@ -23,6 +28,42 @@ func DeprecatedAPIBaseFlag(cmd *cobra.Command) {
 // custom.resolveServer). Empty means nothing overrode the default, which
 // auth.ResolveURLs then supplies.
 func serverURL() string { return auth.Server() }
+
+// ProfileServer is the host bound to the active credentials profile, or "" when
+// that profile has none. A profile is the more specific statement of intent
+// than a host persisted globally with `orq server set`, so custom.resolveServer
+// ranks it above the config layer and below the env vars and flags.
+func ProfileServer() string {
+	if bartolocli.Creds == nil {
+		return ""
+	}
+	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".server"))
+}
+
+// BindProfileServer records a host on a profile, so `orq --profile acme ...`
+// routes to acme's backend with no flag and no session read. Only an explicit
+// host is bound: pinning the default would survive a change of default and
+// silently keep an old one alive.
+func BindProfileServer(profile, server string) error {
+	server = strings.TrimSpace(server)
+	if bartolocli.Creds == nil || profile == "" || server == "" {
+		return nil
+	}
+	if bartolocli.Creds.GetString("profiles."+profile+".server") == server {
+		return nil
+	}
+	bartolocli.Creds.Set("profiles."+profile+".server", server)
+	return saveCreds()
+}
+
+// saveCreds persists the credentials file with owner-only permissions.
+func saveCreds() error {
+	filename := path.Join(viper.GetString("config-directory"), "credentials.json")
+	if err := bartolocli.Creds.WriteConfigAs(filename); err != nil {
+		return err
+	}
+	return chmodOwnerOnly(filename)
+}
 
 // sessionAPIBase prefers the resolved server over the host the session was
 // authenticated against, so --server still diverts a single call.

@@ -1,9 +1,14 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"orq/cli/custom/auth"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // One name for the host. The root PreRun decides it; everything here reads that
@@ -46,5 +51,43 @@ func TestServerResolution(t *testing.T) {
 	t.Setenv("ORQ_API_BASE_URL", "")
 	if got := apiBaseFromEnv(); got != auth.DefaultAPIBaseURL {
 		t.Fatalf("default: got %q", got)
+	}
+}
+
+// A host bound to a profile is what makes `orq --profile acme ...` route with
+// no flag, so it has to survive a write and be readable back.
+func TestBindProfileServer(t *testing.T) {
+	dir := t.TempDir()
+	prevDir := viper.GetString("config-directory")
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
+
+	prevCreds := bartolocli.Creds
+	bartolocli.Creds = &bartolocli.CredentialsFile{Viper: viper.New()}
+	t.Cleanup(func() { bartolocli.Creds = prevCreds })
+
+	profile := auth.ActiveProfile()
+	if err := BindProfileServer(profile, "https://orq.acme.internal"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProfileServer(); got != "https://orq.acme.internal" {
+		t.Fatalf("ProfileServer: got %q", got)
+	}
+
+	info, err := os.Stat(filepath.Join(dir, "credentials.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Credentials, not config: nobody else on the box reads this.
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("credentials.json mode: got %o, want 600", perm)
+	}
+
+	// The default host is never pinned — it would outlive a change of default.
+	if err := BindProfileServer(profile, "  "); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProfileServer(); got != "https://orq.acme.internal" {
+		t.Errorf("a blank host must not overwrite a bound one: got %q", got)
 	}
 }
