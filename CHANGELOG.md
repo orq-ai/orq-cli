@@ -48,18 +48,40 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
-- **Fixed (security):** the credentials file is no longer world-readable while
-  it is being written. The CLI wrote it at 0644 and then chmodded it to 0600, so
-  the gateway key was readable by any account on the machine in between, and
-  stayed readable if the process died before the chmod. It now goes through
-  bartolo's hardened write: 0600 from the moment the file exists, swapped in by
-  rename, and an interrupted write leaves the previous file intact. The file on
-  disk ends up at 0600 either way, so a machine whose credentials were written
-  by an earlier version needs no action.
+- **Fixed (security):** `~/.orq/credentials.json` is no longer written
+  world-readable. On Unix it is now 0600 from the moment the file exists and is
+  swapped in by rename, so there is no window in which the key is readable by
+  other accounts, and an interrupted write leaves the previous file intact.
+  Windows has no equivalent; the file inherits the directory's ACLs there.
+
+  **Check your existing file: `ls -l ~/.orq/credentials.json`.** Earlier
+  versions could leave it at 0644 permanently, not just briefly. `orq setup`
+  chmodded the file after writing it, but `orq auth add-profile` did not chmod
+  at all, so a file created by that command has been world-readable ever since,
+  with the key in plaintext. This release does not repair an existing file: it
+  keeps whatever mode it has until the next successful save. If yours is 0644,
+  run `chmod 600 ~/.orq/credentials.json`, and treat any key in it as exposed
+  to other accounts on that machine.
+- **Changed (security):** `orq auth list-profiles` masks stored credentials.
+  It previously printed the full API key in plaintext, so keys reached terminal
+  scrollback, CI logs and screen recordings. Keys now render as
+  `sk-o********wxyz`.
+- **Changed (breaking):** `orq auth list-profiles` output moved from a rendered
+  ASCII table to the standard response formatter, so it honors `--json`, `-o
+  yaml` and the default TOON format like every other command. It previously
+  printed the table regardless of `--output-format`. Anything parsing that table
+  needs updating; the masking above means the key can no longer be scraped from
+  it at all.
+- **Changed (breaking):** `orq request DELETE` now asks for confirmation, and
+  refuses to run without `--force` when there is no terminal. A CI job doing a
+  raw `orq request DELETE ...` exits non-zero until `--force` is added.
+- **Changed:** `orq server list` no longer emits a per-entry `override` field;
+  a top-level `overridden` replaces it. `orq server current` gains
+  `profile_server` and `server_default`.
 - **Added:** `orq auth add-profile --api-key-file` reads the key from a file,
-  and its positional `<api-key>` becomes optional. A key passed as an argument
-  is visible to every process on the machine through `ps`; a file avoids that.
-- **Added:** `orq request --force`.
+  or from stdin with `-`, and its positional `<api-key>` becomes optional. A key
+  passed as an argument is visible to every process on the machine through `ps`.
+- **Added:** `orq request --force`, which skips the DELETE confirmation above.
 - **Added:** the `mcp` capability returns to `orq setup`, `orq connect`,
   `orq disconnect`, `--status` and `--dry-run`, on OAuth. `orq connect claude mcp`
   writes the orq MCP server's URL into the agent's own config and nothing else —

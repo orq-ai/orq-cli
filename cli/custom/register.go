@@ -216,14 +216,24 @@ func resolveServer(cmd *cobra.Command) {
 		// global `orq server set`, so it outranks it: selecting a profile is
 		// how you select a backend.
 		auth.SetServer(commands.ProfileServer(), "profile")
-	case viper.GetString("server") != "":
-		auth.SetServer(viper.GetString("server"), "config") // persisted `orq server set`
+	case persistedServer() != "":
+		auth.SetServer(persistedServer(), "config") // persisted `orq server set`
 	default:
 		// Assign in every branch: the resolver decides the host, it does not
 		// leave behind whatever a previous call happened to store.
 		auth.SetServer("", "default")
 	}
 	mirrorServerToViper()
+}
+
+// persistedServer reads the host `orq server set` stored. bartolo writes it
+// under server-default and migrates an older `server` key into that on first
+// run, but a config.json the migration could not rewrite is still honoured.
+func persistedServer() string {
+	if v := strings.TrimSpace(viper.GetString("server-default")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(viper.GetString("server"))
 }
 
 // applyProfileAPIKey makes an explicitly typed --profile outrank an exported
