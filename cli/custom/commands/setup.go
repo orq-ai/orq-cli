@@ -861,9 +861,16 @@ func activeWorkspaceKey(session *auth.Session) string {
 
 // wiredWorkspace names the workspace the bearer just wired into an agent's
 // config actually authenticates against: the saved key's own workspace when
-// that key is the bearer, the session's active workspace otherwise, and ""
-// for a bearer this run never resolved a workspace for (--api-key, or the
-// exported ORQ_API_KEY overriding a saved key).
+// that key is the bearer, the session's active workspace otherwise. The
+// "otherwise" falls through to activeWorkspaceKey(state.session), which
+// answers "" whenever state.session is nil — not a property of the bearer
+// itself, but of resolveAuth leaving session unset. Today that only happens
+// on the --api-key path (and the exported-ORQ_API_KEY-with-no-session path),
+// so this reads as "" for a bearer this run never resolved a workspace for.
+// If resolveAuth ever starts populating session on the --api-key path too,
+// this function silently starts reporting the session's workspace for an
+// unrelated key — check this comment against resolveAuth before relying on
+// either meaning.
 //
 // A session being non-nil does not mean the session's workspace is the
 // bearer's: resolveConnectAuth can make the exported ORQ_API_KEY the bearer

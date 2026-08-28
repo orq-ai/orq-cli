@@ -76,12 +76,18 @@ func TestDoctorSummaryKeepsPinnedWorkspaceRow(t *testing.T) {
 	checks := []doctorCheck{
 		{ID: "session_file", Status: "pass", Message: "Session file loaded"},
 		{ID: "coding_agent_kimi", Status: "pass", Message: "Kimi Code is wired to orq (workspace acme)"},
-		{ID: "agent_workspace_kimi", Status: "info", Message: "Kimi Code is pinned to workspace acme — run 'orq connect kimi' to move it to beta"},
+		// AlwaysShow is what keeps this row out of the collapse, not its ID: it
+		// deliberately shares the "coding_agent_" prefix and a pass/info status
+		// with the row above, which does collapse.
+		{ID: "coding_agent_kimi_workspace", Status: "info", AlwaysShow: true, Message: "Kimi Code is pinned to workspace acme — run 'orq connect kimi' to move it to beta"},
 	}
 	out := captureStdout(t, func() { printDoctorSummary("authenticated", "u@x.dev", checks) })
 
-	if !strings.Contains(out, "agent_workspace_kimi") {
-		t.Errorf("pinned-workspace row missing from human doctor output:\n%s", out)
+	if strings.Contains(out, "is wired to orq (workspace acme)") {
+		t.Errorf("healthy coding_agent row without AlwaysShow should have collapsed:\n%s", out)
+	}
+	if !strings.Contains(out, "coding_agent_kimi_workspace") {
+		t.Errorf("AlwaysShow row missing from human doctor output:\n%s", out)
 	}
 	if !strings.Contains(out, "pinned to workspace acme") {
 		t.Errorf("pinned-workspace message missing from human doctor output:\n%s", out)

@@ -24,6 +24,7 @@ func TestClaudeDefaults(t *testing.T) {
 		"ANTHROPIC_API_KEY":          "",
 		"ANTHROPIC_MODEL":            DefaultClaudeModel,
 		"ANTHROPIC_SMALL_FAST_MODEL": DefaultClaudeSmallFastModel,
+		"ORQ_API_KEY":                "orq-key",
 	}
 	for k, v := range want {
 		got, present := plan.Env[k]

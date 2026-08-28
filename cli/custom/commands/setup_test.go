@@ -2350,6 +2350,39 @@ func TestClearAgentWiring(t *testing.T) {
 	}
 }
 
+// The config write is already on disk by the time recordAgentWiring runs, so a
+// failure there must not turn a successful wire into a reported failure — only
+// a warning. Breaking config-directory after credsHarness sets it up forces
+// saveCreds (called by recordAgentWiring) to fail for real, through the same
+// os.CreateTemp path production hits, rather than faking a mock that proves
+// nothing about the real failure mode.
+func TestInstrumentAgentsWarnsWhenWiringRecordFails(t *testing.T) {
+	srv, _ := gatewayFixture(t, "25", oneChatModel)
+	wiringHarness(t)
+	credsHarness(t)
+	// Provider configs are written under $HOME (wiringHarness), independent of
+	// config-directory; only recordAgentWiring's saveCreds is affected.
+	viper.Set("config-directory", filepath.Join(t.TempDir(), "does-not-exist"))
+
+	var out strings.Builder
+	rep := &reporter{w: &out}
+	state := sessionWithToken(srv.URL)
+	state.bearer = "t"
+	results, err := instrumentAgents(rep, auth.NewClient(srv.URL), state, &setupOptions{noInput: true, agents: []string{"kimi"}})
+	if err != nil {
+		t.Fatalf("instrumentAgents: %v", err)
+	}
+	if len(results) != 1 || results[0].Error != "" {
+		t.Fatalf("a failed wiring record must not fail the wire: %+v", results)
+	}
+	if results[0].Provider == "" {
+		t.Fatalf("provider config not reported written: %+v", results[0])
+	}
+	if !strings.Contains(out.String(), "could not record the workspace") {
+		t.Errorf("no warning printed for the failed record:\n%s", out.String())
+	}
+}
+
 // A spend cap that stops an agent mid-task is worse than the leak it prevents
 // on a key that already expires, and budgets are a workspace-scope RPC a
 // Developer is refused. So the mint recommends and never calls.

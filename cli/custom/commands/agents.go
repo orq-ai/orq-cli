@@ -870,16 +870,24 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 			// exists for the active workspace, so when the currently saved key
 			// belongs elsewhere, the fix is 'orq setup --workspace <active>' first.
 			remedy := launch.RemedyForWorkspace(spec.ID, savedWS, activeWorkspace)
+			// 'orq setup --workspace <active>' only mints a key for that workspace; it
+			// does not itself repoint the agent (setupConnectStep is a no-op without a
+			// TTY, and otherwise only wires agents re-selected in its prompt). Only
+			// 'orq connect <id>', run directly, actually does the repointing.
+			action := "run '" + remedy + "' to move it to " + activeWorkspace
+			if savedWS != activeWorkspace {
+				action = "run '" + remedy + "' to mint a key for " + activeWorkspace +
+					", then 'orq connect " + spec.ID + "' to move it there"
+			}
 			checks = append(checks, doctorCheck{
-				// Deliberately outside the "coding_agent_" namespace: printDoctorSummary
-				// collapses every "coding_agent_" row whose status is pass or info, and
-				// this row exists precisely to be seen by a person in the default human
-				// view — collapsing it would hide the only place it tells them their
-				// agent is pinned elsewhere and how to move it.
 				ID:     "agent_workspace_" + spec.ID,
 				Status: "info",
-				Message: spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " +
-					"run '" + remedy + "' to move it to " + activeWorkspace,
+				// AlwaysShow: this row exists precisely to be seen by a person in the
+				// default human view — printDoctorSummary would otherwise collapse it
+				// as a healthy coding-agent row, hiding the only place that tells them
+				// their agent is pinned elsewhere and how to move it.
+				AlwaysShow: true,
+				Message:    spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " + action,
 			})
 		}
 	}

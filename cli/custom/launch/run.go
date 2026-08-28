@@ -150,6 +150,6 @@ func reportCredentialNotices(def *AgentDef, creds *Credentials) {
 		// construction here — RemedyForWorkspace always names 'orq setup', never
 		// 'orq connect', which resolveConnectAuth would reject in this exact state.
 		remedy := RemedyForWorkspace(def.Name, creds.SupersededWorkspace, creds.Workspace)
-		fmt.Fprintf(os.Stderr, "Note: using workspace %s from your login. ORQ_API_KEY was minted for %s, which this run ignores; the agent's own configuration is unchanged — '%s' repoints it.\n", creds.Workspace, creds.SupersededWorkspace, remedy)
+		fmt.Fprintf(os.Stderr, "Note: using workspace %s from your login. ORQ_API_KEY was minted for %s, which this run ignores; the agent's own configuration is unchanged. Run '%s' to mint a key for %s, then 'orq connect %s' to repoint the agent to it.\n", creds.Workspace, creds.SupersededWorkspace, remedy, creds.Workspace, def.Name)
 	}
 }

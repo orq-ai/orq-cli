@@ -122,6 +122,9 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		// savedKey is the key seedProfile records as minted; empty means "same
 		// as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
 		savedKey string
+		// envKey overrides the exported ORQ_API_KEY; empty means "sk-minted",
+		// the ordinary case.
+		envKey string
 		// newServer builds the profile-fetch stub this case needs, or nil when
 		// the case never reaches the network (the same-workspace short-circuit
 		// returns before ResolveCredentials reads the session at all).
@@ -183,6 +186,39 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			wantWorkspace: "",
 			wantShadows:   true,
 		},
+		{
+			// exported key == saved key, but the saved workspace is empty:
+			// provenance is unknown, so the env key wins outright and
+			// nothing is superseded.
+			name:     "saved key matches but saved workspace is empty",
+			savedWS:  "",
+			activeWS: "acme",
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("unexpected request to %s; env key should have short-circuited", r.URL.Path)
+				}))
+			},
+			wantKey:       "sk-minted",
+			wantKind:      CredentialAPIKey,
+			wantWorkspace: "",
+		},
+		{
+			// the exported key is one of the session's own cached workspace
+			// tokens (installSessionPreRun's doing, not a user export): it
+			// wins outright as the session, not as a superseded key.
+			name:     "exported key is the session's own cached token",
+			envKey:   "session-token-for-acme",
+			savedWS:  "beta",
+			activeWS: "acme",
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("unexpected request to %s; the session's own token should have short-circuited", r.URL.Path)
+				}))
+			},
+			wantKey:       "session-token-for-acme",
+			wantKind:      CredentialSessionToken,
+			wantWorkspace: "",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			apiBase := "https://api.orq.ai"
@@ -193,9 +229,14 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 				t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
 			}
 
+			envKey := tc.envKey
+			if envKey == "" {
+				envKey = "sk-minted"
+			}
+
 			home := t.TempDir()
 			t.Setenv("HOME", home)
-			t.Setenv("ORQ_API_KEY", "sk-minted")
+			t.Setenv("ORQ_API_KEY", envKey)
 			t.Setenv("ORQ_API_BASE_URL", "")
 
 			savedKey := tc.savedKey

@@ -181,8 +181,7 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		}
 		// superseded implies session != nil (supersededBySession requires it), so
 		// the read below is skipped and ResolveCredentials itself makes exactly one
-		// ReadSession call (the superseded path below still reads the session again,
-		// via GetActiveWorkspaceAccessToken).
+		// ReadSession call.
 		supersededWorkspace = mintedFor
 	}
 
