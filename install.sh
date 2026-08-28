@@ -77,13 +77,6 @@ For Windows, install via npm instead:
 USAGE
 }
 
-# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) ship older, so probe.
-if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
-  CURL_RETRY_ALL='--retry-all-errors'
-else
-  CURL_RETRY_ALL=''
-fi
-
 # No -f: the checksum call reads the status code out of a 404; callers needing it pass -f.
 fetch() {
   # Unquoted: empty must expand to no argument at all.
@@ -113,6 +106,23 @@ binary_version() {
   _bv_out="$("$1" --version 2>"${2:-/dev/null}")" || return 1
   printf '%s\n' "$_bv_out" | head -n 1 | tr -d '\n'
 }
+
+rc_version_from_dist_tags() {
+  # Take the value after the "rc" KEY, requiring the next field to start
+  # with a colon, or a dist-tag whose *value* is "rc" matches and installs
+  # "vrc".
+  # No `exit` in the body: it closes the pipe and curl fails on every retry.
+  awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && $(i + 1) ~ /^:/ && !v) v = $(i + 2)} END {if (v != "") print "v" v}'
+}
+
+if [ "${ORQ_CLI_LIB_ONLY:-}" = "1" ]; then return 0; fi
+
+# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) ship older, so probe.
+if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
+  CURL_RETRY_ALL='--retry-all-errors'
+else
+  CURL_RETRY_ALL=''
+fi
 
 # --- Parse arguments -------------------------------------------------------
 
@@ -247,24 +257,30 @@ if [ -z "$VERSION" ]; then
     # skips, so it is resolved from the npm dist-tag instead - the same source
     # `orq update` uses, so the two never disagree about what "rc" means.
     api_url="https://registry.npmjs.org/-/package/@orq-ai/cli/dist-tags"
-    # Take the value after the "rc" KEY, requiring the next field to start with
-    # a colon, or a dist-tag whose *value* is "rc" matches and installs "vrc".
-    # No `exit` in the body: it closes the pipe and curl fails on every retry.
-    VERSION="$(fetch -fsS "$api_url" \
-      | awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && $(i + 1) ~ /^:/ && !v) v = $(i + 2)} END {if (v != "") print "v" v}')"
+    if ! dist_tags="$(fetch -fsS "$api_url")"; then
+      err "failed to fetch rc release metadata from $api_url"
+      err "check your network connection and try again, or use --version <version> to skip rc resolution"
+      exit 1
+    fi
+    VERSION="$(printf '%s\n' "$dist_tags" | rc_version_from_dist_tags)"
+    if [ -z "$VERSION" ]; then
+      err "no rc release is published at $api_url"
+      err "wait for an rc release, or use --version <version> for a known release"
+      exit 1
+    fi
   else
     # awk out tag_name without requiring jq; the endpoint excludes prereleases.
     # awk drains the stream, because exiting on the match closes the pipe
     # mid-body and curl reports a write failure per retry.
     api_url="https://api.github.com/repos/$REPO/releases/latest"
     VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
+    if [ -z "$VERSION" ]; then
+      err "failed to determine the latest $CHANNEL release from $api_url"
+      err "You can pin one explicitly: --version v0.1.0"
+      exit 1
+    fi
   fi
 
-  if [ -z "$VERSION" ]; then
-    err "failed to determine the latest $CHANNEL release from $api_url"
-    err "You can pin one explicitly: --version v0.1.0"
-    exit 1
-  fi
   version_label="$VERSION (latest $CHANNEL)"
 fi
 

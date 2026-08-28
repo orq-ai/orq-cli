@@ -135,6 +135,29 @@ jobs:
       - uses: actions/checkout@v4
       - name: parse under dash
         run: dash -n install.sh
+      - name: test rc resolver fixtures under dash
+        run: |
+          dash <<'SH'
+          set -eu
+          ORQ_CLI_LIB_ONLY=1 . ./install.sh
+
+          assert_fixture() {
+            input="$1"
+            expected="$2"
+            actual="$(printf '%s' "$input" | rc_version_from_dist_tags)"
+            printf 'input: %s\n' "$input"
+            printf 'output: %s\n' "${actual:-<empty>}"
+            if [ "$actual" != "$expected" ]; then
+              printf 'expected: %s\n' "${expected:-<empty>}" >&2
+              exit 1
+            fi
+          }
+
+          assert_fixture '{"latest":"4.14.3","rc":"5.1.0-rc.1"}' 'v5.1.0-rc.1'
+          assert_fixture '{"stable":"rc","rc":"5.1.0-rc.1"}' 'v5.1.0-rc.1'
+          assert_fixture '{"latest":"4.14.3"}' ''
+          assert_fixture '' ''
+          SH
       - name: install with no controlling terminal
         # setsid = no controlling terminal (the CI/Docker/ssh case), which fails only at runtime.
         # A full install, not --help: --help returns before the first have_tty call.
@@ -146,6 +169,7 @@ jobs:
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
       - name: install the rc channel
+        if: github.event_name == 'push'
         # The rc line is a GitHub pre-release, which /releases/latest never
         # returns, so --channel rc resolves the version from the npm rc
         # dist-tag instead - a separate code path with its own failure modes.
