@@ -674,10 +674,15 @@ func inspectCredPath(c credPermCandidate, fix bool) (result *credPermResult, jud
 // repairs such a file silently and would otherwise erase the evidence before
 // doctor could ever report it. The chmod does not un-expose it: what was
 // readable stays compromised until the key is revoked.
-func exposedAPIKeyAdvice() string {
+//
+// keyID names the key to revoke, and callers that cannot know it pass "".
+// `orq setup` is such a caller: it has already persisted the key it just
+// minted by the time it rewrites the env file, so the saved ID there is the
+// new key, not the exposed one it is replacing.
+func exposedAPIKeyAdvice(keyID string) string {
 	revoke := "revoke it in the orq dashboard"
-	if id := savedGatewayKeyID(); id != "" {
-		revoke = fmt.Sprintf("revoke it with 'orq api-keys delete %s'", id)
+	if keyID != "" {
+		revoke = fmt.Sprintf("revoke it with 'orq api-keys delete %s'", keyID)
 	}
 	return "treat the exposed API key as compromised: " + revoke
 }
@@ -820,7 +825,7 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 	// `orq setup` reuses a saved, still-valid API key rather than rotating
 	// it, and revokes no refresh token at all.
 	if exposed[credClassAPIKey] {
-		messages = append(messages, exposedAPIKeyAdvice()+
+		messages = append(messages, exposedAPIKeyAdvice(savedGatewayKeyID())+
 			", then 'orq auth logout' to clear the local copy and 'orq setup' to mint a new one")
 	}
 	if exposed[credClassSession] {

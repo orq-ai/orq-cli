@@ -668,7 +668,7 @@ func warnIfEnvFileWasExposed(rep *reporter, path string) {
 		return
 	}
 	rep.warn("%s was mode %04o — readable by other accounts on this machine. Tightening it to 0600, but %s",
-		tilde(path), info.Mode().Perm(), exposedAPIKeyAdvice())
+		tilde(path), info.Mode().Perm(), exposedAPIKeyAdvice(""))
 }
 
 func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
