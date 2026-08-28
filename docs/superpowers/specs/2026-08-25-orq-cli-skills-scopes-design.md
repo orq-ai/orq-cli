@@ -3,9 +3,10 @@
 Date: 2026-08-25
 Status: proposed design, not yet implemented
 Ticket: RES-1437
-Assumes: skills and MCP are both live capabilities (`availableCapabilities()` returns
-`gateway, skills, mcp`), i.e. this design sits on top of RES-1435's MCP wiring
-(`Baukebrenninkmeijer/cli-mcp-support`) and PR #31 (`arianpasquali/skills-safety-fixes`).
+Base: `main`. The prerequisites have landed — PR #31 (skills safety), #34 (projector
+state reporting), #35 (RES-1435 MCP wiring) and #41 (`--status` table). Skills and MCP
+are both live capabilities, and `--global` / `--local` already exist on `orq connect`
+and `orq disconnect`.
 
 ## Problem
 
@@ -41,9 +42,12 @@ handles them — warn, write global.
 
 ### 1. Two flags on connect and disconnect, not on launch
 
-`--local` and `--global` land on `orq connect` and `orq disconnect`, the same two
-commands RES-1435 puts them on, and mean the same thing for skills as for MCP: which
-directory receives the wiring. Default stays `--global`, which is today's behaviour.
+`--local` and `--global` are already on `orq connect` and `orq disconnect`, declared by
+`addScopeFlags` for the MCP capability. Skills consumes them unchanged and means the same
+thing by them: which directory receives the wiring. Default stays `--global`, which is
+today's behaviour. `capScoped()` — true for `mcp` only, with a comment naming this
+ticket — accepts `skills` too, which is what stops `checkScopeFlags` warning "`--local`
+has nothing to scope here" on a skills run.
 
 `orq launch --local` keeps its unrelated RES-1349 meaning (skip the sandbox safety
 prompt) and gains no scope flag. The collision is real but confined to a command that
