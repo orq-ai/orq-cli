@@ -53,21 +53,17 @@ func TestPartitionConnectArgs(t *testing.T) {
 	}
 }
 
-// The subcommand's documented case, through the new verb: a saved key and no
-// --api-key wires the provider with the saved key.
-func TestConnectWiresTheSavedKey(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "model") {
-			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
-			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
-			return
-		}
-		fmt.Fprint(w, `{}`)
-	}))
-	defer srv.Close()
+// codingModelCatalogueJSON is the one model the fixture servers below hand
+// back for a /models call: enough for writeProvider to have something to wire.
+const codingModelCatalogueJSON = `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+ "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+ "metadata":{"context_window":200000,"max_output_tokens":64000}}]`
 
+// connectHarness sets up an isolated $HOME, credentials store, and formatter
+// for a connect/disconnect test against srv, and returns the temp $HOME so
+// callers can inspect what got written into an agent's config file.
+func connectHarness(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
@@ -85,10 +81,27 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
+	resetSetupMemos(t)
+	return home
+}
+
+// The subcommand's documented case, through the new verb: a saved key and no
+// --api-key wires the provider with the saved key.
+func TestConnectWiresTheSavedKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "model") {
+			fmt.Fprint(w, codingModelCatalogueJSON)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	home := connectHarness(t, srv)
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", ""); err != nil {
 		t.Fatal(err)
 	}
-	resetSetupMemos(t)
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
@@ -122,36 +135,17 @@ func TestConnectRecordsAgentWiring(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "model") {
-			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
-			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
 		}
 		fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
 
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
-	t.Chdir(t.TempDir())
-
-	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
+	connectHarness(t, srv)
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
 		t.Fatal(err)
 	}
-	resetSetupMemos(t)
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
@@ -182,38 +176,19 @@ func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "model") {
-			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
-			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
 		}
 		fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
 
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
-	t.Chdir(t.TempDir())
-
-	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
+	connectHarness(t, srv)
 	// A saved key with a workspace exists, but --api-key below must win as the
 	// bearer, and the record must reflect that this run used a key that is not it.
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
 		t.Fatal(err)
 	}
-	resetSetupMemos(t)
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-SUPPLIED"})

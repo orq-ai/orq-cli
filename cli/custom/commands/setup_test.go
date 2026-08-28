@@ -1165,6 +1165,49 @@ func TestDurableBearerNeedsBothABearerAndItsProvenance(t *testing.T) {
 	}
 }
 
+// wiredWorkspace must never guess: resolveConnectAuth can make the exported
+// ORQ_API_KEY the bearer while a login session still sits on state (no saved
+// key, no --api-key, ORQ_API_KEY set, and a session exists — see
+// auth.EnvKeyShadowsWorkspace). That key's workspace is unknowable, and
+// falling through to activeWorkspaceKey(state.session) would record the
+// login's workspace for a bearer that never used it. "" is the honest record.
+func TestWiredWorkspaceIsHonestAboutTheExportedKey(t *testing.T) {
+	credsHarness(t)
+	prev, prevTaken := userEnvAPIKey, userEnvAPIKeyTaken
+	t.Cleanup(func() { userEnvAPIKey, userEnvAPIKeyTaken = prev, prevTaken })
+
+	loginWS := "login-workspace"
+	session := &auth.Session{ActiveWorkspaceKey: &loginWS}
+
+	for name, tc := range map[string]struct {
+		saved, savedWS string
+		envKey         string
+		bearer         string
+		want           string
+	}{
+		"bearer is the saved key": {
+			saved: "sk-orq-SAVED", savedWS: "acme", bearer: "sk-orq-SAVED", want: "acme",
+		},
+		"bearer is the exported key shadowing a live session, no saved key": {
+			envKey: "sk-orq-ENV", bearer: "sk-orq-ENV", want: "",
+		},
+		"bearer is the session token, no exported key": {
+			bearer: "session-token", want: loginWS,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := writeAPIKeyProfile("default", tc.saved, tc.savedWS); err != nil {
+				t.Fatal(err)
+			}
+			SetUserEnvAPIKey(tc.envKey)
+			state := &authState{bearer: tc.bearer, session: session}
+			if got := wiredWorkspace(state); got != tc.want {
+				t.Errorf("wiredWorkspace = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // Setup admits a run when ORQ_API_KEY is exported, so the wiring must
 // accept the same credential. resolveAuth ranks the session above the env key,
 // which left the run admitted and then skipping every provider write — the
@@ -2255,6 +2298,24 @@ func TestRecordAndReadAgentWiring(t *testing.T) {
 	// A different agent is a separate record.
 	if ws, _ := agentWiring("claude"); ws != "" {
 		t.Errorf("claude's record = %q, want empty (unaffected by kimi's)", ws)
+	}
+
+	// wired_at is the one recorded field no helper reads back; assert it
+	// parses as the RFC3339 timestamp recordAgentWiring promises to write.
+	rawWiredAt := bartolocli.Creds.GetString("agents.kimi.wired_at")
+	if _, err := time.Parse(time.RFC3339, rawWiredAt); err != nil {
+		t.Errorf("agents.kimi.wired_at = %q, want RFC3339: %v", rawWiredAt, err)
+	}
+
+	// Task 3 reads this record in a fresh process, so the write must actually
+	// reach credentials.json on disk, not just the in-memory viper tree.
+	dir := viper.GetString("config-directory")
+	onDisk, err := bartolocli.NewCredentialsFile(dir)
+	if err != nil {
+		t.Fatalf("NewCredentialsFile: %v", err)
+	}
+	if ws, keyID := onDisk.GetString("agents.kimi.workspace"), onDisk.GetString("agents.kimi.gateway_key_id"); ws != "beta" || keyID != "KEYID_B" {
+		t.Errorf("on-disk agents.kimi = (%q, %q), want (beta, KEYID_B)", ws, keyID)
 	}
 }
 
