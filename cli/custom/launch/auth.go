@@ -44,15 +44,30 @@ type Credentials struct {
 	SupersededWorkspace string
 }
 
-// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
-// session's own cached workspace tokens rather than a key the user exported.
+// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is the
+// session's own cached token for its *active* workspace rather than a key the
+// user exported.
+//
+// Active only, so this agrees with shadowsSession, which reads
+// WorkspaceTokens[active] alone. Scanning every cached token made the two
+// disagree on one input: a token cached for a workspace the session has left
+// counted as the session's own here while shadowsSession called it a mismatch,
+// so it was labelled CredentialSessionToken and the shadow note never fired.
+//
+// Whether such a stale token should also lose to the session's current one is a
+// separate question — it needs provenance this function does not have, since
+// installSessionPreRun caches a deliberate `--workspace` override under a
+// non-active key too. Left for RES-1464's follow-up rather than decided here.
 func isSessionWorkspaceToken(key string, session *auth.Session) bool {
-	for _, tok := range session.WorkspaceTokens {
-		if strings.TrimSpace(tok.Token) == key {
-			return true
-		}
+	if session.ActiveWorkspaceKey == nil {
+		return false
 	}
-	return false
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return false
+	}
+	tok, ok := session.WorkspaceTokens[active]
+	return ok && strings.TrimSpace(tok.Token) == key
 }
 
 // shadowsSession reports whether the env key provably belongs to a different

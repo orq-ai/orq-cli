@@ -125,6 +125,9 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		// envKey overrides the exported ORQ_API_KEY; empty means "sk-minted",
 		// the ordinary case.
 		envKey string
+		// extraTokens caches workspace tokens beyond the active one, for the
+		// stale-token case.
+		extraTokens map[string]string
 		// newServer builds the profile-fetch stub this case needs, or nil when
 		// the case never reaches the network (the same-workspace short-circuit
 		// returns before ResolveCredentials reads the session at all).
@@ -219,6 +222,30 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			wantKind:      CredentialSessionToken,
 			wantWorkspace: "",
 		},
+		{
+			// a token cached for a workspace the session has LEFT is not the
+			// session's own current credential. It still wins the run — its
+			// provenance is unknowable here, since installSessionPreRun caches
+			// a deliberate `--workspace` override under a non-active key too —
+			// but it must be reported as an exported key that shadows the
+			// session, not labelled CredentialSessionToken and passed over in
+			// silence. That mislabelling is what the narrowed
+			// isSessionWorkspaceToken fixes.
+			name:        "exported key is a cached token for a workspace the session left",
+			envKey:      "session-token-for-alpha",
+			extraTokens: map[string]string{"alpha": "session-token-for-alpha"},
+			savedWS:     "acme",
+			activeWS:    "other",
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("unexpected request to %s; the exported key should have short-circuited", r.URL.Path)
+				}))
+			},
+			wantKey:       "session-token-for-alpha",
+			wantKind:      CredentialAPIKey,
+			wantWorkspace: "",
+			wantShadows:   true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			apiBase := "https://api.orq.ai"
@@ -245,6 +272,10 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			}
 			seedProfile(t, savedKey, tc.savedWS)
 
+			tokens := map[string]any{tc.activeWS: map[string]any{"token": "session-token-for-" + tc.activeWS, "expiresAt": future}}
+			for ws, tok := range tc.extraTokens {
+				tokens[ws] = map[string]any{"token": tok, "expiresAt": future}
+			}
 			writeSessionFile(t, home, map[string]any{
 				"version":            1,
 				"apiBaseUrl":         apiBase,
@@ -254,7 +285,7 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 				"activeWorkspaceKey": tc.activeWS,
 				"refreshToken":       "refresh-token",
 				"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
-				"workspaceTokens":    map[string]any{tc.activeWS: map[string]any{"token": "session-token-for-" + tc.activeWS, "expiresAt": future}},
+				"workspaceTokens":    tokens,
 			})
 
 			creds, err := ResolveCredentials(os.Getenv)
