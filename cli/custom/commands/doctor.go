@@ -503,10 +503,16 @@ type loosePermPath struct {
 // paths need nothing; a home directory with a space or shell metacharacter
 // would otherwise break the printed `chmod` the moment it is pasted.
 func shellQuotePath(path string) string {
-	if !strings.ContainsAny(path, " \t\n'\"\\$`!*?[]{}()<>|;&~") {
-		return path
+	// A quoted ~ is a literal directory name, so quoting the whole path turns
+	// every printed chmod into one that cannot find the file.
+	prefix := ""
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		prefix, path = "~/", rest
 	}
-	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+	if !strings.ContainsAny(path, " \t\n'\"\\$`!*?[]{}()<>|;&~") {
+		return prefix + path
+	}
+	return prefix + "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 // credentialPermsCheck reports credential files and directories left with

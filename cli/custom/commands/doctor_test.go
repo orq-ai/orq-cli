@@ -506,3 +506,15 @@ func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
 		t.Errorf("round-tripped loose entry = %v, want path=%s", entry, credPath)
 	}
 }
+
+func TestShellQuotePathKeepsTildeExpandable(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"~/.orq/credentials.json", "~/.orq/credentials.json"},
+		{"~/.orq dir/credentials.json", "~/'.orq dir/credentials.json'"},
+		{"/Users/Alice Smith/.orq/env", "'/Users/Alice Smith/.orq/env'"},
+	} {
+		if got := shellQuotePath(tc.in); got != tc.want {
+			t.Errorf("shellQuotePath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
