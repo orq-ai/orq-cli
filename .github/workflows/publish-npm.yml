@@ -52,19 +52,14 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 1
 
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
-          cache: false
-
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
-          registry-url: https://registry.npmjs.org
 
-      - name: Build packages from the immutable release tag
+      - name: Download and stage release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
@@ -74,7 +69,43 @@ jobs:
           fi
           workdir="${module_dir:-.}"
           api_version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
-          ./scripts/release-build.sh "$version" "$module_dir" "$api_version"
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf "$download_dir"' EXIT
+          gh release download "$TAG" -p 'orq-*' --dir "$download_dir"
+
+          for pkgdir in npm/cli-*/; do
+            package="${pkgdir%/}"
+            target="${package##*/}"
+            suffix="${target#cli-}"
+            asset="orq-$suffix"
+            executable="orq"
+            if [ "$suffix" = "win32-x64" ]; then
+              asset="$asset.exe"
+              executable="orq.exe"
+            fi
+
+            binary="$download_dir/$asset"
+            checksum="$binary.sha256"
+            if [ ! -f "$binary" ] || [ ! -f "$checksum" ]; then
+              echo "error: release is missing $asset or $asset.sha256" >&2
+              exit 1
+            fi
+            expected="$(awk 'NF { print $1; exit }' "$checksum")"
+            actual="$(shasum -a 256 "$binary" | awk '{ print $1 }')"
+            if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+              echo "error: checksum mismatch for $asset" >&2
+              echo "  expected: $expected" >&2
+              echo "  actual:   $actual" >&2
+              exit 1
+            fi
+            echo "  sha256 verified $asset: $actual"
+
+            mkdir -p "$pkgdir/bin"
+            cp "$binary" "$pkgdir/bin/$executable"
+            chmod +x "$pkgdir/bin/$executable"
+          done
+
+          ./scripts/release-build.sh --stamp-only "$version" "$api_version"
 
       - name: Publish packages that are not in npm yet
         run: |

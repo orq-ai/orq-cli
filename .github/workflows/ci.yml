@@ -43,6 +43,72 @@ jobs:
         run: go run ./cmd/surface-dump -check
       - name: changelog stamping
         run: python3 scripts/stamp-changelog.py --self-test
+      - name: stamp-only release packages stay aligned
+        run: |
+          set -euo pipefail
+          version="5.0.0"
+          api_version="4.13.22"
+
+          for pkgdir in npm/cli-*/; do
+            package="${pkgdir%/}"
+            target="${package##*/}"
+            suffix="${target#cli-}"
+            executable="orq"
+            if [ "$suffix" = "win32-x64" ]; then
+              executable="orq.exe"
+            fi
+            mkdir -p "$pkgdir/bin"
+            printf 'fake' > "$pkgdir/bin/$executable"
+          done
+
+          ./scripts/release-build.sh --stamp-only "$version" "$api_version"
+
+          VERSION="$version" API_VERSION="$api_version" node <<'NODE'
+          const fs = require("node:fs");
+          const dirs = [
+            "npm/cli",
+            "npm/cli-darwin-arm64",
+            "npm/cli-darwin-x64",
+            "npm/cli-linux-x64",
+            "npm/cli-linux-arm64",
+            "npm/cli-win32-x64",
+          ];
+          const version = process.env.VERSION;
+          const apiVersion = process.env.API_VERSION;
+          const packages = dirs.map((dir) => ({
+            dir,
+            package: JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")),
+          }));
+
+          for (const { dir, package: pkg } of packages) {
+            if (pkg.version !== version || pkg.orqApiVersion !== apiVersion) {
+              throw new Error(`${dir} has the wrong version metadata`);
+            }
+          }
+
+          const wrapper = packages[0].package;
+          const expectedDependencies = dirs.slice(1).map((dir) => {
+            const suffix = dir.slice("npm/cli-".length);
+            return `@orq-ai/cli-${suffix}`;
+          });
+          for (const name of expectedDependencies) {
+            if (wrapper.optionalDependencies[name] !== version) {
+              throw new Error(`${name} is not pinned to ${version}`);
+            }
+          }
+          for (const [name, dependencyVersion] of Object.entries(wrapper.optionalDependencies)) {
+            if (!name.startsWith("@orq-ai/cli-") || dependencyVersion !== version) {
+              throw new Error(`${name} is not pinned to ${version}`);
+            }
+          }
+          NODE
+
+          missing="npm/cli-linux-arm64/bin/orq"
+          rm "$missing"
+          if ./scripts/release-build.sh --stamp-only "$version" "$api_version"; then
+            echo "stamp-only succeeded without $missing" >&2
+            exit 1
+          fi
 
   windows:
     name: skills on windows
