@@ -1,8 +1,11 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +15,8 @@ import (
 	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -312,7 +317,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		dir = t.TempDir()
 		viper.Set("config-directory", dir)
 		t.Cleanup(func() { viper.Set("config-directory", "") })
-		return dir, filepath.Dir(auth.SessionFilePath())
+		return dir, auth.SessionsDir()
 	}
 
 	t.Run("loose credentials.json warns and names the fix", func(t *testing.T) {
@@ -389,6 +394,14 @@ func TestCredentialPermsCheck(t *testing.T) {
 		loose, ok := check.Details["loose"].([]map[string]any)
 		if !ok || len(loose) != 1 || loose[0]["path"] != sessionPath {
 			t.Errorf("details[loose] = %v, want raw path %s", check.Details["loose"], sessionPath)
+		}
+		// A session file holds refresh and access tokens, not an API key:
+		// logout revokes them, `orq setup` does not.
+		if !strings.Contains(check.Message, "orq auth logout") {
+			t.Errorf("session finding does not point at logout: %q", check.Message)
+		}
+		if strings.Contains(check.Message, "orq setup") {
+			t.Errorf("session finding offers the API-key rotation route: %q", check.Message)
 		}
 	})
 
@@ -541,6 +554,87 @@ func TestCredentialPermsCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("a credentials.json that is a directory is a finding, not silence", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.Mkdir(credPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck(true)
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn naming the wrong-typed path", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, credPath) || !strings.Contains(check.Message, "a directory") {
+			t.Errorf("message does not name the path and what it is: %q", check.Message)
+		}
+		if _, ok := check.Details["invalid_type"].([]string); !ok {
+			t.Errorf("details[invalid_type] = %v, want the finding", check.Details["invalid_type"])
+		}
+		if fixed, ok := check.Details["fixed"]; ok {
+			t.Errorf("--fix chmodded a non-regular target: %v", fixed)
+		}
+	})
+
+	t.Run("a config directory with a space prints a runnable chmod", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir := filepath.Join(t.TempDir(), "space dir")
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		viper.Set("config-directory", dir)
+		t.Cleanup(func() { viper.Set("config-directory", "") })
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(credPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck(false)
+		if !ok {
+			t.Fatal("a loose file under a path with a space reported nothing")
+		}
+		// The chmod is printed unwrapped: the path already carries its own
+		// quotes, and a second layer of quotes makes it unrunnable.
+		want := "run chmod 600 '" + credPath + "'"
+		if !strings.Contains(check.Message, want) {
+			t.Errorf("message = %q, want it to contain %q", check.Message, want)
+		}
+		if strings.Contains(check.Message, "run '") {
+			t.Errorf("message double-quotes the chmod: %q", check.Message)
+		}
+	})
+
+	t.Run("a sessions directory that cannot be listed is reported", func(t *testing.T) {
+		if os.Getuid() == 0 {
+			t.Skip("root can read a directory with no read bit")
+		}
+		dir, sessionsDir := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(sessionsDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		// Write-and-search only: the mode is tight, so the directory itself is
+		// not a finding — only the listing that failed is.
+		if err := os.Chmod(sessionsDir, 0o300); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(sessionsDir, 0o700) })
+		check, ok := credentialPermsCheck(false)
+		if !ok {
+			t.Fatal("an unlistable sessions directory reported nothing")
+		}
+		if !strings.Contains(check.Message, "could not be inspected") || !strings.Contains(check.Message, tilde(sessionsDir)) {
+			t.Errorf("message does not report the failed listing: %q", check.Message)
+		}
+	})
+
 	t.Run("fix on a symlink chmods the target", func(t *testing.T) {
 		dir, _ := setupConfig(t)
 		if err := os.Chmod(dir, 0o700); err != nil {
@@ -569,18 +663,70 @@ func TestCredentialPermsCheck(t *testing.T) {
 	})
 }
 
-// TestCredentialPermsCheckReachesDoctorChecksAsJSON exercises the check the
-// way `orq doctor` actually consumes it: appended into the checks slice the
-// command assembles, then marshaled for `--json`. A helper that called
-// credentialPermsCheck directly, as every other test here does, would miss
-// a check that never got wired into that slice, or a Details map whose
-// values don't survive json.Marshal in the shape --json promises.
-func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
+// runDoctorJSON runs the real `orq doctor` the way a script does — through
+// cobra, with the process-wide formatter — and returns the decoded report.
+// No --json: that flag lives on bartolo's root command, and a non-TTY run
+// already gets the structured report, which is the contract scripts use.
+func runDoctorJSON(t *testing.T, args ...string) map[string]any {
+	t.Helper()
+	var out bytes.Buffer
+	origStdout, origFormatter := bartolocli.Stdout, bartolocli.Formatter
+	t.Cleanup(func() { bartolocli.Stdout, bartolocli.Formatter = origStdout, origFormatter })
+	bartolocli.Stdout = &out
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	// doctor stamps the report with bartolo's root command version, so the
+	// command under test hangs off that same root, as it does in the binary.
+	root := &cobra.Command{Use: "orq", Version: "test"}
+	origRoot := bartolocli.Root
+	bartolocli.Root = root
+	t.Cleanup(func() { bartolocli.Root = origRoot })
+	root.AddCommand(NewDoctorCommand())
+	root.SetArgs(append([]string{"doctor"}, args...))
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("orq doctor %v: %v", args, err)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("doctor output is not JSON (%v): %s", err, out.String())
+	}
+	return report
+}
+
+// findCheck returns the check with the given id, or nil when the report has none.
+func findCheck(t *testing.T, report map[string]any, id string) map[string]any {
+	t.Helper()
+	checks, ok := report["checks"].([]any)
+	if !ok {
+		t.Fatalf("report has no checks array: %v", report["checks"])
+	}
+	for _, raw := range checks {
+		check, ok := raw.(map[string]any)
+		if ok && check["id"] == id {
+			return check
+		}
+	}
+	return nil
+}
+
+// TestDoctorReportsAndFixesCredentialPermissions drives the actual command,
+// not credentialPermsCheck: a check that never got wired into RunE, or a
+// --fix flag that was never bound to it, passes every direct-call test in
+// this file and fails this one.
+func TestDoctorReportsAndFixesCredentialPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("credentialPermsCheck is absent on windows")
 	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
+	// The report probes its base URLs; pointing them at a local server keeps
+	// the test off the network without stubbing the probe itself out.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(srv.Close)
+	t.Setenv("ORQ_SERVER", srv.URL)
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	viper.Set("config-directory", dir)
 	t.Cleanup(func() { viper.Set("config-directory", "") })
@@ -595,31 +741,44 @@ func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mirrors how NewDoctorCommand's RunE folds credentialPermsCheck into the
-	// checks slice that becomes doctorReport.Checks.
-	var checks []doctorCheck
-	if perms, ok := credentialPermsCheck(false); ok {
-		checks = append(checks, perms)
+	// The real binary initializes the credentials file at startup; the
+	// gateway-key checks in the same report dereference it.
+	creds, err := bartolocli.NewCredentialsFile(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(checks) != 1 || checks[0].Status != "warn" {
-		t.Fatalf("credentialPermsCheck did not surface into the checks slice: %+v", checks)
+	origCreds := bartolocli.Creds
+	bartolocli.Creds = creds
+	t.Cleanup(func() { bartolocli.Creds = origCreds })
+
+	check := findCheck(t, runDoctorJSON(t), "credential_permissions")
+	if check == nil {
+		t.Fatal("orq doctor carries no credential_permissions check")
+	}
+	if check["status"] != "warn" {
+		t.Errorf("status = %v, want warn", check["status"])
+	}
+	details, _ := check["details"].(map[string]any)
+	loose, _ := details["loose"].([]any)
+	if len(loose) != 1 {
+		t.Fatalf("details.loose = %v, want 1 entry", details["loose"])
+	}
+	if entry, _ := loose[0].(map[string]any); entry["path"] != credPath {
+		t.Errorf("loose entry = %v, want path=%s", loose[0], credPath)
 	}
 
-	raw, err := json.Marshal(checks)
-	if err != nil {
-		t.Fatalf("checks slice does not marshal: %v", err)
+	fixed := findCheck(t, runDoctorJSON(t, "--fix"), "credential_permissions")
+	if fixed == nil {
+		t.Fatal("orq doctor --fix carries no credential_permissions check")
 	}
-	var round []doctorCheck
-	if err := json.Unmarshal(raw, &round); err != nil {
-		t.Fatalf("marshaled checks do not unmarshal: %v", err)
+	if info, err := os.Stat(credPath); err != nil {
+		t.Fatal(err)
+	} else if info.Mode().Perm() != 0o600 {
+		t.Fatalf("credentials.json is %04o after --fix, want 0600", info.Mode().Perm())
 	}
-	loose, ok := round[0].Details["loose"].([]any)
-	if !ok || len(loose) != 1 {
-		t.Fatalf("Details[loose] after round-trip = %v, want 1 entry", round[0].Details["loose"])
-	}
-	entry, ok := loose[0].(map[string]any)
-	if !ok || entry["path"] != credPath {
-		t.Errorf("round-tripped loose entry = %v, want path=%s", entry, credPath)
+
+	if again := findCheck(t, runDoctorJSON(t), "credential_permissions"); again != nil {
+		t.Errorf("a repaired tree still reports: %v", again)
 	}
 }
 

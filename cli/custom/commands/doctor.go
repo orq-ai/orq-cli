@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"orq/cli/custom/auth"
@@ -495,15 +496,44 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 	return check, true
 }
 
-// loosePermPath is one credential path found accessible by group or other
-// (mode & 0o077 != 0). humanPath is the tilde'd, shell-quoted form printed in
-// messages; path stays the raw absolute path for --json's Details.
-type loosePermPath struct {
+// credPermClass is what a candidate path holds, which decides both the mode
+// it should carry and the advice a leak earns.
+type credPermClass int
+
+const (
+	credClassDir credPermClass = iota
+	credClassAPIKey
+	credClassSession
+)
+
+// credPermOutcome is the one thing worth saying about a candidate path.
+type credPermOutcome int
+
+const (
+	credPermLoose credPermOutcome = iota
+	credPermRepaired
+	credPermFixFailed
+	credPermWrongType
+	credPermUnreadable
+)
+
+type credPermCandidate struct {
+	path  string
+	class credPermClass
+}
+
+// credPermResult is one candidate's finding. humanPath is the tilde'd,
+// shell-quoted form printed in messages; path stays the raw absolute path for
+// --json's Details.
+type credPermResult struct {
 	path      string
 	humanPath string
+	class     credPermClass
 	mode      os.FileMode
 	want      os.FileMode
-	fix       string
+	outcome   credPermOutcome
+	found     string // what the path turned out to be, for credPermWrongType
+	err       error
 }
 
 // shellQuotePath renders path for safe pasting into a shell command. Most
@@ -520,6 +550,85 @@ func shellQuotePath(path string) string {
 		return prefix + path
 	}
 	return prefix + "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
+
+func describeFileType(mode os.FileMode) string {
+	switch {
+	case mode.IsDir():
+		return "a directory"
+	case mode.IsRegular():
+		return "a regular file"
+	case mode&os.ModeNamedPipe != 0:
+		return "a FIFO"
+	case mode&os.ModeSocket != 0:
+		return "a socket"
+	case mode&os.ModeDevice != 0:
+		return "a device"
+	default:
+		return "not a regular file"
+	}
+}
+
+// inspectCredPath judges one candidate and, when fix is set, repairs it
+// through the very descriptor it judged: a path-based chmod in a second pass
+// would act on whatever the path resolves to by then, which a swapped symlink
+// or parent directory can change between the two. Returns nil when there is
+// nothing to report; judged says whether the mode could be read at all.
+func inspectCredPath(c credPermCandidate, fix bool) (result *credPermResult, judged bool) {
+	r := credPermResult{
+		path:      c.path,
+		humanPath: shellQuotePath(tilde(c.path)),
+		class:     c.class,
+		want:      0o600,
+	}
+	wantDir := c.class == credClassDir
+	if wantDir {
+		r.want = 0o700
+	}
+	// O_NONBLOCK so a FIFO left where a credential file belongs cannot block
+	// the open waiting for a writer. Opening follows symlinks — a dotfile
+	// manager's link is judged and repaired on its target, which is the file
+	// the CLI actually reads.
+	f, err := os.OpenFile(c.path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		// Missing (including a broken symlink) is not a finding: nothing to leak.
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false
+		}
+		r.outcome, r.err = credPermUnreadable, err
+		return &r, false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		r.outcome, r.err = credPermUnreadable, err
+		return &r, false
+	}
+	expected := info.Mode().IsRegular()
+	if wantDir {
+		expected = info.IsDir()
+	}
+	if !expected {
+		// Silence means the tree is clean, so a credential path that is a
+		// directory, FIFO or device cannot simply be skipped.
+		r.outcome, r.found = credPermWrongType, describeFileType(info.Mode())
+		return &r, false
+	}
+
+	r.mode = info.Mode().Perm()
+	if r.mode&0o077 == 0 {
+		return nil, true
+	}
+	r.outcome = credPermLoose
+	if fix {
+		if err := f.Chmod(r.want); err != nil {
+			r.outcome, r.err = credPermFixFailed, err
+		} else {
+			r.outcome = credPermRepaired
+		}
+	}
+	return &r, true
 }
 
 // credentialPermsCheck reports credential files and directories left with
@@ -539,159 +648,138 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 	if dir == "" {
 		return doctorCheck{}, false
 	}
-
-	type candidate struct {
-		path  string
-		isDir bool
+	if _, err := os.UserHomeDir(); err != nil {
+		// auth builds a relative `.orq/...` when the home directory cannot be
+		// resolved; auditing — let alone chmodding — whatever sits under the
+		// working directory is not what this check is for.
+		return doctorCheck{}, false
 	}
-	candidates := []candidate{
-		{dir, true},
-		{filepath.Join(dir, "credentials.json"), false},
+
+	candidates := []credPermCandidate{
+		{dir, credClassDir},
+		{filepath.Join(dir, "credentials.json"), credClassAPIKey},
 	}
 	for _, name := range shellEnvFileNames {
-		candidates = append(candidates, candidate{filepath.Join(dir, name), false})
+		candidates = append(candidates, credPermCandidate{filepath.Join(dir, name), credClassAPIKey})
 	}
 	// auth.SessionsDir/LegacySessionFilePath are the package that owns the
 	// session layout; deriving the directory from them (rather than
 	// hardcoding it here) is what makes this check track that layout instead
 	// of silently drifting from it if it ever changes.
 	sessionsDir := auth.SessionsDir()
-	candidates = append(candidates, candidate{sessionsDir, true})
-	candidates = append(candidates, candidate{auth.LegacySessionFilePath(), false})
+	candidates = append(candidates, credPermCandidate{sessionsDir, credClassDir})
+	candidates = append(candidates, credPermCandidate{auth.LegacySessionFilePath(), credClassSession})
 
-	var loose []loosePermPath
-	var unreadable []string
+	var results []credPermResult
 	checked := 0
 
+	// ReadDir can return entries *and* an error; the entries it did read are
+	// still worth auditing, and the truncated listing is its own finding —
+	// reporting "clean" over files this check never saw would be a lie.
 	entries, err := os.ReadDir(sessionsDir)
-	switch {
-	case err == nil:
-		for _, entry := range entries {
-			if strings.HasSuffix(entry.Name(), ".json") {
-				candidates = append(candidates, candidate{filepath.Join(sessionsDir, entry.Name()), false})
-			}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".json") {
+			candidates = append(candidates, credPermCandidate{filepath.Join(sessionsDir, entry.Name()), credClassSession})
 		}
-	case errors.Is(err, fs.ErrNotExist):
-		// No sessions yet: nothing to leak, not a finding.
-	default:
-		// A directory that cannot be listed cannot be vouched for either —
-		// reporting "pass" here would be claiming safety for files this
-		// check never actually looked at.
-		unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(sessionsDir)), err))
 	}
-
-	for _, c := range candidates {
-		info, err := os.Lstat(c.path)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				// Missing is not a finding: nothing to leak.
-				continue
-			}
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(c.path)), err))
-			continue
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			// Dotfile managers (chezmoi, stow) symlink credentials.json, and
-			// the CLI follows the link to read the key — so the target's mode
-			// is the one that exposes it. Skipping symlinks reported a clean
-			// pass over a world-readable key.
-			info, err = os.Stat(c.path)
-			if err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					continue
-				}
-				unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(c.path)), err))
-				continue
-			}
-		}
-		if c.isDir {
-			if !info.IsDir() {
-				continue
-			}
-		} else if !info.Mode().IsRegular() {
-			continue
-		}
-		checked++
-		perm := info.Mode().Perm()
-		if perm&0o077 == 0 {
-			continue
-		}
-		humanPath := shellQuotePath(tilde(c.path))
-		want := os.FileMode(0o600)
-		if c.isDir {
-			want = 0o700
-		}
-		loose = append(loose, loosePermPath{
-			path:      c.path,
-			humanPath: humanPath,
-			mode:      perm,
-			want:      want,
-			// chmod follows symlinks, so the path the user recognizes is also
-			// the one that repairs the target.
-			fix: fmt.Sprintf("chmod %o %s", want, humanPath),
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		results = append(results, credPermResult{
+			path:      sessionsDir,
+			humanPath: shellQuotePath(tilde(sessionsDir)),
+			class:     credClassDir,
+			outcome:   credPermUnreadable,
+			err:       err,
 		})
 	}
 
-	var repaired, remaining []loosePermPath
-	var fixErrors []string
-	if fix {
-		for _, l := range loose {
-			if err := os.Chmod(l.path, l.want); err != nil {
-				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be chmodded to %04o: %v", l.humanPath, l.want, err))
-				remaining = append(remaining, l)
-				continue
-			}
-			repaired = append(repaired, l)
+	for _, c := range candidates {
+		r, judged := inspectCredPath(c, fix)
+		if judged {
+			checked++
 		}
-	} else {
-		remaining = loose
+		if r != nil {
+			results = append(results, *r)
+		}
 	}
-
-	if len(loose) == 0 && len(unreadable) == 0 {
+	if len(results) == 0 {
 		// Nothing to say: a clean run prints no credential row at all.
 		return doctorCheck{}, false
 	}
 
-	details := make([]map[string]any, 0, len(remaining))
-	messages := make([]string, 0, len(loose)+len(unreadable)+len(fixErrors)+1)
-	for _, l := range repaired {
-		messages = append(messages, fmt.Sprintf("%s was mode %04o — changed to %04o", l.humanPath, l.mode, l.want))
-	}
-	for _, l := range remaining {
-		details = append(details, map[string]any{
-			"path": l.path,
-			"mode": fmt.Sprintf("%04o", l.mode),
-			"fix":  l.fix,
-		})
-		messages = append(messages, fmt.Sprintf("%s is mode %04o — run '%s'", l.humanPath, l.mode, l.fix))
-	}
-	messages = append(messages, fixErrors...)
-	messages = append(messages, unreadable...)
-	if len(loose) > 0 {
-		// A key that leaked to other local accounts is compromised the moment
-		// it was readable, not just when it is found — a chmod after the fact
-		// does not un-expose it. `orq setup` alone does not rotate either: it
-		// reuses a saved, still-valid key, so the old key must be revoked first.
-		messages = append(messages, "treat any exposed key as compromised: revoke it in the orq dashboard, delete it from credentials.json, then run 'orq setup' to mint a new one")
+	var repairedMsgs, looseMsgs, fixErrors, wrongTypeMsgs, unreadable []string
+	looseDetails := make([]map[string]any, 0, len(results))
+	fixedDetails := make([]map[string]any, 0, len(results))
+	exposed := map[credPermClass]bool{}
+	for _, r := range results {
+		switch r.outcome {
+		case credPermRepaired:
+			exposed[r.class] = true
+			repairedMsgs = append(repairedMsgs, fmt.Sprintf("%s was mode %04o — changed to %04o", r.humanPath, r.mode, r.want))
+			fixedDetails = append(fixedDetails, map[string]any{
+				"path":          r.path,
+				"previous_mode": fmt.Sprintf("%04o", r.mode),
+				"mode":          fmt.Sprintf("%04o", r.want),
+			})
+		case credPermLoose, credPermFixFailed:
+			exposed[r.class] = true
+			// chmod follows symlinks, so the path the user recognizes is also
+			// the one that repairs the target.
+			chmod := fmt.Sprintf("chmod %o %s", r.want, r.humanPath)
+			looseDetails = append(looseDetails, map[string]any{
+				"path": r.path,
+				"mode": fmt.Sprintf("%04o", r.mode),
+				"fix":  chmod,
+			})
+			looseMsgs = append(looseMsgs, fmt.Sprintf("%s is mode %04o — run %s", r.humanPath, r.mode, chmod))
+			if r.outcome == credPermFixFailed {
+				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be chmodded to %04o: %v", r.humanPath, r.want, r.err))
+			}
+		case credPermWrongType:
+			want := "a regular file"
+			if r.class == credClassDir {
+				want = "a directory"
+			}
+			wrongTypeMsgs = append(wrongTypeMsgs, fmt.Sprintf("%s is %s, not %s — left untouched, inspect it by hand", r.humanPath, r.found, want))
+		case credPermUnreadable:
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", r.humanPath, r.err))
+		}
 	}
 
-	detailsOut := map[string]any{"checked": checked, "loose": details}
-	if len(repaired) > 0 {
-		fixed := make([]map[string]any, 0, len(repaired))
-		for _, l := range repaired {
-			fixed = append(fixed, map[string]any{
-				"path":          l.path,
-				"previous_mode": fmt.Sprintf("%04o", l.mode),
-				"mode":          fmt.Sprintf("%04o", l.want),
-			})
+	messages := make([]string, 0, len(results)+2)
+	messages = append(messages, repairedMsgs...)
+	messages = append(messages, looseMsgs...)
+	messages = append(messages, fixErrors...)
+	messages = append(messages, wrongTypeMsgs...)
+	messages = append(messages, unreadable...)
+	// A credential that leaked to other local accounts is compromised the
+	// moment it was readable, not just when it is found — a chmod after the
+	// fact does not un-expose it. What undoes it differs per credential:
+	// `orq setup` reuses a saved, still-valid API key rather than rotating
+	// it, and revokes no refresh token at all.
+	if exposed[credClassAPIKey] {
+		revoke := "revoke it in the orq dashboard"
+		if id := savedGatewayKeyID(); id != "" {
+			revoke = fmt.Sprintf("revoke it with 'orq api-keys delete %s'", id)
 		}
-		detailsOut["fixed"] = fixed
+		messages = append(messages, "treat the exposed API key as compromised: "+revoke+
+			", then 'orq auth logout' to clear the local copy and 'orq setup' to mint a new one")
+	}
+	if exposed[credClassSession] {
+		messages = append(messages, "treat the exposed session as compromised: run 'orq auth logout' to revoke the refresh token and clear the local copy")
+	}
+
+	details := map[string]any{"checked": checked, "loose": looseDetails}
+	if len(fixedDetails) > 0 {
+		details["fixed"] = fixedDetails
 	}
 	if len(fixErrors) > 0 {
-		detailsOut["fix_errors"] = fixErrors
+		details["fix_errors"] = fixErrors
+	}
+	if len(wrongTypeMsgs) > 0 {
+		details["invalid_type"] = wrongTypeMsgs
 	}
 	if len(unreadable) > 0 {
-		detailsOut["unreadable"] = unreadable
+		details["unreadable"] = unreadable
 	}
 	status := "warn"
 	if len(fixErrors) > 0 {
@@ -701,6 +789,6 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 		ID:      "credential_permissions",
 		Status:  status,
 		Message: strings.Join(messages, "; "),
-		Details: detailsOut,
+		Details: details,
 	}, true
 }

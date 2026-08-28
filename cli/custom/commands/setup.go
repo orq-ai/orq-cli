@@ -769,6 +769,12 @@ func clearAPIKeyProfile() (bool, error) {
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
 func savedGatewayKeyID() string {
+	// bartolo's GetProfile dereferences Creds, which only the CLI's own
+	// startup initializes; a caller reached before that (or from a test) must
+	// not take a nil dereference for an unset key.
+	if bartolocli.Creds == nil {
+		return ""
+	}
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
 }
 
