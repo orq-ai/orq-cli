@@ -875,7 +875,11 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 			// TTY, and otherwise only wires agents re-selected in its prompt). Only
 			// 'orq connect <id>', run directly, actually does the repointing.
 			action := "run '" + remedy + "' to move it to " + activeWorkspace
-			if savedWS != activeWorkspace {
+			// Mirror RemedyForWorkspace's own condition exactly: with no saved
+			// key workspace the remedy above is 'orq connect <id>', and naming
+			// it a second time here would tell the user to run one command
+			// twice — and claim it mints a key, which connect never does.
+			if savedWS != "" && savedWS != activeWorkspace {
 				action = "run '" + remedy + "' to mint a key for " + activeWorkspace +
 					", then 'orq connect " + spec.ID + "' to move it there"
 			}

@@ -1492,20 +1492,54 @@ func TestCodingAgentChecksReportsWorkspaceMismatchAsInfo(t *testing.T) {
 		t.Errorf("unknown active workspace produced a row: info=%d warn=%d", info, warn)
 	}
 
-	// Different workspace: exactly one info row, never a warn, naming the fix.
-	checks := codingAgentChecks("beta")
-	info, warn := countMismatchRows(checks)
-	if info != 1 || warn != 0 {
-		t.Fatalf("mismatch rows: info=%d warn=%d, want info=1 warn=0 (checks: %+v)", info, warn, checks)
-	}
-	var row doctorCheck
-	for _, c := range checks {
-		if c.ID == "agent_workspace_kimi" {
-			row = c
+	// Different workspace: exactly one info row, never a warn. The action text
+	// is asserted in full because a Contains check let a self-contradictory
+	// message ship: with no saved key workspace the remedy is 'orq connect',
+	// and the mint-first arm then named that same command a second time while
+	// claiming it mints a key, which connect never does.
+	mismatchRow := func(t *testing.T) doctorCheck {
+		t.Helper()
+		checks := codingAgentChecks("beta")
+		if info, warn := countMismatchRows(checks); info != 1 || warn != 0 {
+			t.Fatalf("mismatch rows: info=%d warn=%d, want info=1 warn=0 (checks: %+v)", info, warn, checks)
 		}
+		for _, c := range checks {
+			if c.ID == "agent_workspace_kimi" {
+				return c
+			}
+		}
+		return doctorCheck{}
 	}
-	if !strings.Contains(row.Message, "orq connect kimi") {
-		t.Errorf("mismatch row does not name the fix: %q", row.Message)
+	const pinned = "Kimi Code is pinned to workspace acme, the workspace it was connected against — "
+
+	// Each arm seeds both profile fields itself, so no arm depends on the one
+	// before it and any subset can run alone.
+	for _, arm := range []struct {
+		name, savedKey, savedWS, want string
+	}{
+		{
+			// The post-logout state: record survives, profile key is gone.
+			// The remedy is 'orq connect kimi' alone; the mint-first arm
+			// must not fire.
+			name: "no saved key workspace", savedKey: "", savedWS: "",
+			want: pinned + "run 'orq connect kimi' to move it to beta",
+		},
+		{
+			name: "saved key minted for another workspace", savedKey: "sk-orq-saved", savedWS: "acme",
+			want: pinned + "run 'orq setup --workspace beta' to mint a key for beta, then 'orq connect kimi' to move it there",
+		},
+		{
+			name: "saved key already minted for the active workspace", savedKey: "sk-orq-saved", savedWS: "beta",
+			want: pinned + "run 'orq connect kimi' to move it to beta",
+		},
+	} {
+		t.Run(arm.name, func(t *testing.T) {
+			bartolocli.Creds.Set("profiles.default.gateway_key", arm.savedKey)
+			bartolocli.Creds.Set("profiles.default.workspace", arm.savedWS)
+			if got := mismatchRow(t).Message; got != arm.want {
+				t.Errorf("message:\n got %q\nwant %q", got, arm.want)
+			}
+		})
 	}
 }
 
