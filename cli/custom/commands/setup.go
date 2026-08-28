@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -627,7 +628,7 @@ func tilde(path string) string {
 }
 
 // Agent configs reference ORQ_API_KEY rather than inlining it, and nothing else exported it: agents came up with an empty bearer.
-func writeShellEnvFile(token string) (string, error) {
+func writeShellEnvFile(rep *reporter, token string) (string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
 		return "", errors.New("no config directory configured")
@@ -644,11 +645,41 @@ func writeShellEnvFile(token string) (string, error) {
 	if sh.Line != "" {
 		header += "# Add to " + sh.Profile + ":\n#     " + sh.Line + "\n"
 	}
-	if err := os.WriteFile(sh.EnvFile, []byte(header+assign+"\n"), 0o600); err != nil {
+	warnIfEnvFileWasExposed(rep, sh.EnvFile)
+	f, err := os.OpenFile(sh.EnvFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
 		return "", err
 	}
-	// A pre-existing file may have been created with looser permissions.
-	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
+	defer f.Close()
+	// OpenFile's mode is only applied when creating a file. Tighten the
+	// descriptor before writing the new token so an existing loose file never
+	// briefly exposes the freshly minted key.
+	if err := f.Chmod(0o600); err != nil {
+		return "", err
+	}
+	if _, err := io.WriteString(f, header+assign+"\n"); err != nil {
+		return "", err
+	}
+	return sh.EnvFile, nil
+}
+
+// warnIfEnvFileWasExposed says so before the chmod below tightens a
+// pre-existing env file. Silently repairing it destroys the only evidence
+// doctor's permissions check would ever have had, and the key inside was
+// already readable by every other account on the machine by then.
+//
+// Unix only: Windows ACLs do not map onto these bits, so there is nothing to
+// judge there — the same reason doctor's check is absent on Windows.
+func warnIfEnvFileWasExposed(rep *reporter, path string) {
+	if rep == nil || runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 == 0 {
+		return
+	}
+	rep.warn("%s was mode %04o — readable by other accounts on this machine. Tightening it to 0600, but %s",
+		tilde(path), info.Mode().Perm(), exposedAPIKeyAdvice(""))
 }
 
 func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
@@ -769,6 +800,12 @@ func clearAPIKeyProfile() (bool, error) {
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
 func savedGatewayKeyID() string {
+	// bartolo's GetProfile dereferences Creds, which only the CLI's own
+	// startup initializes; a caller reached before that (or from a test) must
+	// not take a nil dereference for an unset key.
+	if bartolocli.Creds == nil {
+		return ""
+	}
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
 }
 
@@ -818,6 +855,13 @@ func writeCredsProfile(profile, workspace string) error {
 	return saveCreds()
 }
 
+// shellEnvFileNames are the shell-integration files `orq setup` writes under
+// the config directory: "env" for POSIX shells, "env.fish" for fish. Anything
+// that enumerates them (clearShellEnvFile, doctor's permission check) ranges
+// over this one slice, so a third shell variant can't be added to one caller
+// and forgotten in the other.
+var shellEnvFileNames = []string{"env", "env.fish"}
+
 // clearShellEnvFile removes the exported key from the file `orq setup` wrote,
 // leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
 // and deleting the target would make every new shell report a missing file.
@@ -829,18 +873,35 @@ func clearShellEnvFile() []string {
 		return nil
 	}
 	var cleared []string
-	for _, name := range []string{"env", "env.fish"} {
+	for _, name := range shellEnvFileNames {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
 		if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
 			continue
 		}
 		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
-		if os.WriteFile(path, []byte(body), 0o600) == nil {
+		if writeSecretFile(path, []byte(body)) == nil {
 			cleared = append(cleared, path)
 		}
 	}
 	return cleared
+}
+
+// writeSecretFile replaces the contents of a secret-bearing file only after
+// tightening its held descriptor. The permission argument to os.WriteFile is
+// ignored for an existing file, which would otherwise expose newly written
+// secret data until a later chmod.
+func writeSecretFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return err
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that
@@ -936,7 +997,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	if token == "" {
 		return info, "", false, nil
 	}
-	if _, err := writeShellEnvFile(token); err != nil {
+	if _, err := writeShellEnvFile(rep, token); err != nil {
 		// Not fatal: the key is saved, and the final screen still shows how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {

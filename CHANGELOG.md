@@ -133,10 +133,38 @@ controls on surface changes, whichever side they originate from.
   versions could leave it at 0644 permanently, not just briefly. `orq setup`
   chmodded the file after writing it, but `orq auth add-profile` did not chmod
   at all, so a file created by that command has been world-readable ever since,
-  with the key in plaintext. This release does not repair an existing file: it
-  keeps whatever mode it has until the next successful save. If yours is 0644,
-  run `chmod 600 ~/.orq/credentials.json`, and treat any key in it as exposed
-  to other accounts on that machine.
+  with the key in plaintext. This release does not repair an existing file
+  automatically: it keeps whatever mode it has until the next successful save.
+  If yours is 0644, run `chmod 600 ~/.orq/credentials.json` (or let
+  `orq doctor --fix` do it, below), and treat any key in it as exposed to other
+  accounts on that machine.
+- **Added:** `orq doctor` runs the manual check the entry above asks for, on
+  every run, over `~/.orq` itself, `credentials.json`, `env`, `env.fish`, each
+  per-profile file under `sessions/`, and the legacy `session.json`. A finding
+  names the path, its mode and the `chmod` that fixes it, plus what to do about
+  the credential that leaked: revoke and replace an API key, `orq auth logout`
+  for a session file. A symlinked path is judged on its target, since that is
+  what the CLI reads, and the finding names that target alongside the path you
+  know, so nothing is inspected or repaired off-screen. A clean run says
+  nothing at all. Unix only.
+- **Added:** `orq doctor --fix` chmods what that check flags — 0600 for files,
+  0700 for directories — and reports each path it changed. Without the flag
+  doctor still repairs nothing. A chmod that fails is reported as a failure
+  naming the path and the error, and the advice stands after a repair: a chmod
+  cannot un-expose a credential that was already readable. A `--fix` run that
+  failed to repair something now exits `1` — it is an action, and a failed
+  action must not report success to a script. This is covered by the existing
+  exit-code contract (`1` any failure); nothing else about doctor's exit code
+  changed, and a run that only *reports* findings still exits `0`. The check
+  is Unix only — Windows ACLs do not map onto the bits it reads. `--fix` is
+  accepted on every platform's command surface but rejected with a message on
+  Windows, where there is nothing for it to change.
+- **Added (security):** `orq setup` warns when the `~/.orq/env` file it is
+  about to overwrite was group- or other-accessible. It has always chmodded a
+  pre-existing env file to 0600, silently — which erased the only evidence
+  doctor's check would have had, on a run started for some unrelated reason.
+  The warning carries the same revoke-and-rotate advice doctor gives. Unix
+  only.
 - **Changed (security):** `orq auth list-profiles` masks stored credentials.
   It previously printed the full API key in plaintext, so keys reached terminal
   scrollback, CI logs and screen recordings. Keys now render as

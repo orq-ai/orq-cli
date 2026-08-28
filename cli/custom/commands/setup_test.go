@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -266,7 +267,7 @@ func TestWriteShellEnvFile(t *testing.T) {
 			t.Cleanup(func() { viper.Set("config-directory", "") })
 			t.Setenv("SHELL", tc.shell)
 
-			path, err := writeShellEnvFile("test-token-value")
+			path, err := writeShellEnvFile(newReporter(true), "test-token-value")
 			if err != nil {
 				t.Fatalf("writeShellEnvFile: %v", err)
 			}
@@ -288,6 +289,34 @@ func TestWriteShellEnvFile(t *testing.T) {
 				t.Errorf("mode = %o, want 600", mode)
 			}
 		})
+	}
+}
+
+func TestWriteShellEnvFileTightensBeforeWritingExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	t.Setenv("SHELL", "/bin/zsh")
+	path := filepath.Join(dir, "env")
+	if err := os.WriteFile(path, []byte("export ORQ_API_KEY=old-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if _, err := writeShellEnvFile(&reporter{w: &out}, "new-token"); err != nil {
+		t.Fatalf("writeShellEnvFile: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("mode = %o, want 600", got)
+	}
+	if !strings.Contains(out.String(), "treat the exposed API key as compromised") {
+		t.Errorf("warning = %q, want exposure warning", out.String())
 	}
 }
 
@@ -2282,6 +2311,11 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 	if err := os.WriteFile(fish, []byte("set -gx ORQ_API_KEY sk-orq-LIVE\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	for _, path := range []string{posix, fish} {
+		if err := os.Chmod(path, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	cleared := clearShellEnvFile()
 	if len(cleared) != 2 {
@@ -2294,6 +2328,9 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 		body := string(mustRead(t, path))
 		if strings.Contains(body, "sk-orq-LIVE") || strings.Contains(body, "ORQ_API_KEY") {
 			t.Errorf("%s still exports the key:\n%s", path, body)
+		}
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %v, want 0600", path, info)
 		}
 	}
 
@@ -3151,4 +3188,60 @@ func TestResolveAPIKeyReportsReuseAsNotMinted(t *testing.T) {
 	if token != "sk-orq-saved" || created {
 		t.Errorf("got (token=%q, created=%v), want the saved token with created=false", token, created)
 	}
+}
+
+// A pre-existing env file gets chmodded to 0600 on every `orq setup`. Doing
+// that silently erases the only trace of an exposure doctor could have
+// reported, so setup has to say so — and say what to do about the key.
+func TestWriteShellEnvFileWarnsOnPreexistingLooseFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on windows")
+	}
+	write := func(t *testing.T, prepare func(envFile string)) string {
+		t.Helper()
+		dir := t.TempDir()
+		viper.Set("config-directory", dir)
+		t.Cleanup(func() { viper.Set("config-directory", "") })
+		t.Setenv("SHELL", "/bin/zsh")
+		prepare(filepath.Join(dir, "env"))
+		var out bytes.Buffer
+		if _, err := writeShellEnvFile(&reporter{w: &out}, "test-token-value"); err != nil {
+			t.Fatalf("writeShellEnvFile: %v", err)
+		}
+		return out.String()
+	}
+
+	t.Run("loose", func(t *testing.T) {
+		out := write(t, func(envFile string) {
+			if err := os.WriteFile(envFile, []byte("old\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(envFile, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if !strings.Contains(out, "0644") || !strings.Contains(out, "treat the exposed API key as compromised") {
+			t.Errorf("no exposure warning in:\n%s", out)
+		}
+	})
+
+	t.Run("already 0600", func(t *testing.T) {
+		out := write(t, func(envFile string) {
+			if err := os.WriteFile(envFile, []byte("old\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(envFile, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if strings.Contains(out, "compromised") {
+			t.Errorf("warned about a 0600 file:\n%s", out)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		if out := write(t, func(string) {}); strings.Contains(out, "compromised") {
+			t.Errorf("warned about a file that did not exist:\n%s", out)
+		}
+	})
 }
