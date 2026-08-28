@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,6 +313,65 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A failed token fetch reads differently depending on why the session was
+// being consulted. On the superseded path a working exported key was set
+// aside, so the user is left with nothing and the error must name the way
+// back. On the plain session path the same call fails for network, disk and
+// server reasons too, so the error passes through untouched — advising
+// re-login on a 5xx sends the user the wrong way.
+func TestResolveCredentialsTokenFetchFailure(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	seed := func(t *testing.T, withEnvKey bool) {
+		t.Helper()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}))
+		t.Cleanup(srv.Close)
+		t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("ORQ_API_BASE_URL", "")
+		if withEnvKey {
+			t.Setenv("ORQ_API_KEY", "sk-minted")
+			seedProfile(t, "sk-minted", "acme")
+		} else {
+			t.Setenv("ORQ_API_KEY", "")
+		}
+		writeSessionFile(t, home, map[string]any{
+			"version":            1,
+			"apiBaseUrl":         srv.URL,
+			"v1BaseUrl":          srv.URL,
+			"authBaseUrl":        srv.URL,
+			"profileBaseUrl":     srv.URL,
+			"activeWorkspaceKey": "other",
+			"refreshToken":       "refresh-token",
+			"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+		})
+	}
+
+	t.Run("superseded path names the way back", func(t *testing.T) {
+		seed(t, true)
+		_, err := ResolveCredentials(os.Getenv)
+		if err == nil {
+			t.Fatal("expected the failed token fetch to surface")
+		}
+		if !strings.Contains(err.Error(), "orq auth login") {
+			t.Errorf("superseded error does not name the remedy: %q", err)
+		}
+	})
+
+	t.Run("plain session path passes the error through", func(t *testing.T) {
+		seed(t, false)
+		_, err := ResolveCredentials(os.Getenv)
+		if err == nil {
+			t.Fatal("expected the failed token fetch to surface")
+		}
+		if strings.Contains(err.Error(), "re-authenticate") {
+			t.Errorf("plain session-path error carries re-login advice it cannot stand behind: %q", err)
+		}
+	})
 }
 
 func TestResolveCredentialsNotLoggedIn(t *testing.T) {

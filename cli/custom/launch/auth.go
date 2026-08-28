@@ -220,11 +220,21 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
-		// This is also the path a superseded ORQ_API_KEY falls through to: the
-		// exported key is being ignored in favor of the session, so a failure here
-		// (most often an expired refresh token) must name the fix — re-login — not
-		// just the raw API error, or the user is stuck with no next step.
-		return nil, fmt.Errorf("%w (run 'orq auth login' to re-authenticate)", err)
+		// Only the superseded path earns the re-login advice: there a working
+		// exported key was set aside in favour of the session, so the session
+		// failing leaves the user with nothing and no next step.
+		//
+		// The plain session path returns the error untouched, as it did before
+		// this branch. This call reaches two HTTP round trips, a token exchange
+		// and a session write, so it also fails for DNS, 5xx and disk reasons,
+		// and it can surface the API's own "run 'orq workspace use <key>'
+		// first" — telling the user to re-login on any of those sends them the
+		// wrong way, and on the last it ships two contradictory remedies in one
+		// string.
+		if supersededWorkspace != "" {
+			return nil, fmt.Errorf("%w (run 'orq auth login' to re-authenticate)", err)
+		}
+		return nil, err
 	}
 	return &Credentials{
 		APIKey:              active.AccessToken,
