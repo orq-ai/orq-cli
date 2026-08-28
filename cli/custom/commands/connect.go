@@ -1253,6 +1253,13 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		}
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
+			// The provider config is gone, so a leftover wiring record would
+			// report a workspace for an agent orq no longer speaks for.
+			if slices.Contains(removedFrom, capGateway) {
+				if err := clearAgentWiring(id); err != nil {
+					rep.warn("%-8s %-9s could not clear the workspace record: %v", id, capGateway, err)
+				}
+			}
 		}
 		if hasCap(caps, capMCP) {
 			if opts.scope == scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {

@@ -809,11 +809,61 @@ func savedGatewayKeyID() string {
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
 }
 
+// recordAgentWiring notes which workspace an agent's provider config was wired
+// against, at agents.<id> rather than under the active profile: the config file
+// connect writes is machine-global, so a per-profile record would go silent the
+// moment a second profile wires the same agent. Neither field is a secret — the
+// key id is what logout already keeps, for the same reason (clearAPIKeyProfile)
+// — only the key itself is.
+func recordAgentWiring(id, workspace, keyID string) error {
+	if bartolocli.Creds == nil {
+		return nil
+	}
+	bartolocli.Creds.Set("agents."+id+".workspace", workspace)
+	bartolocli.Creds.Set("agents."+id+".gateway_key_id", keyID)
+	bartolocli.Creds.Set("agents."+id+".wired_at", time.Now().UTC().Format(time.RFC3339))
+	return saveCreds()
+}
+
+// agentWiring reads back what recordAgentWiring stored. Empty means unrecorded
+// — an agent wired before this field existed, or with --api-key — and callers
+// must treat that as unknown rather than as a mismatch.
+func agentWiring(id string) (workspace, keyID string) {
+	if bartolocli.Creds == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(bartolocli.Creds.GetString("agents." + id + ".workspace")),
+		strings.TrimSpace(bartolocli.Creds.GetString("agents." + id + ".gateway_key_id"))
+}
+
+// clearAgentWiring removes the record for an agent whose provider config was
+// just deleted, so disconnect stops it being reported as wired to anything.
+func clearAgentWiring(id string) error {
+	if bartolocli.Creds == nil {
+		return nil
+	}
+	bartolocli.Creds.Set("agents."+id+".workspace", "")
+	bartolocli.Creds.Set("agents."+id+".gateway_key_id", "")
+	bartolocli.Creds.Set("agents."+id+".wired_at", "")
+	return saveCreds()
+}
+
 func activeWorkspaceKey(session *auth.Session) string {
 	if session != nil && session.ActiveWorkspaceKey != nil {
 		return strings.TrimSpace(*session.ActiveWorkspaceKey)
 	}
 	return ""
+}
+
+// wiredWorkspace names the workspace the bearer just wired into an agent's
+// config actually authenticates against: the saved key's own workspace when
+// that key is the bearer, the session's active workspace otherwise, and ""
+// for a bearer this run never resolved a workspace for (--api-key).
+func wiredWorkspace(state *authState) string {
+	if saved, savedWS := savedAPIKey(); saved != "" && state.bearer == saved {
+		return savedWS
+	}
+	return activeWorkspaceKey(state.session)
 }
 
 // Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
@@ -1379,6 +1429,15 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 			} else {
 				res.Provider = path
 				res.ModelCount = written
+				// Record keeping, not the wire itself: the config is already on
+				// disk, so a failure here is a warning, never res.Error. Guarded
+				// on Creds directly, not just inside recordAgentWiring: bartolo's
+				// GetProfile (behind savedGatewayKeyID) panics on a nil Creds.
+				if bartolocli.Creds != nil {
+					if err := recordAgentWiring(id, wiredWorkspace(state), savedGatewayKeyID()); err != nil {
+						rep.warn("%-8s provider  wired, but could not record the workspace: %v", id, err)
+					}
+				}
 			}
 		}
 	}

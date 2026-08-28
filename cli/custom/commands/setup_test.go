@@ -2226,6 +2226,69 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 	}
 }
 
+// recordAgentWiring/agentWiring is the storage half of "which workspace was
+// this agent wired for": a plain round trip, and a second record for the same
+// agent must overwrite rather than pile up.
+func TestRecordAndReadAgentWiring(t *testing.T) {
+	credsHarness(t)
+
+	if ws, keyID := agentWiring("kimi"); ws != "" || keyID != "" {
+		t.Fatalf("agentWiring before any record = (%q, %q), want empty", ws, keyID)
+	}
+
+	if err := recordAgentWiring("kimi", "acme", "KEYID_A"); err != nil {
+		t.Fatal(err)
+	}
+	if ws, keyID := agentWiring("kimi"); ws != "acme" || keyID != "KEYID_A" {
+		t.Errorf("agentWiring = (%q, %q), want (acme, KEYID_A)", ws, keyID)
+	}
+
+	// A second wire for the same agent — a workspace switch, or a re-mint —
+	// replaces the record rather than appending to it.
+	if err := recordAgentWiring("kimi", "beta", "KEYID_B"); err != nil {
+		t.Fatal(err)
+	}
+	if ws, keyID := agentWiring("kimi"); ws != "beta" || keyID != "KEYID_B" {
+		t.Errorf("agentWiring after overwrite = (%q, %q), want (beta, KEYID_B)", ws, keyID)
+	}
+
+	// A different agent is a separate record.
+	if ws, _ := agentWiring("claude"); ws != "" {
+		t.Errorf("claude's record = %q, want empty (unaffected by kimi's)", ws)
+	}
+}
+
+// An empty workspace is a valid, honest record — a --api-key run, or a bearer
+// this run never resolved a workspace for — and must read back as empty, not
+// as some sentinel that looks like a mismatch to a later reader.
+func TestRecordAgentWiringWithEmptyWorkspace(t *testing.T) {
+	credsHarness(t)
+
+	if err := recordAgentWiring("codex", "", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+	if ws, keyID := agentWiring("codex"); ws != "" || keyID != "KEYID" {
+		t.Errorf("agentWiring = (%q, %q), want (\"\", KEYID)", ws, keyID)
+	}
+}
+
+// clearAgentWiring is what disconnect calls once an agent's provider config is
+// gone: the record must go with it, or a later reader would report a
+// workspace for an agent orq no longer speaks for.
+func TestClearAgentWiring(t *testing.T) {
+	credsHarness(t)
+
+	if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+	if err := clearAgentWiring("kimi"); err != nil {
+		t.Fatal(err)
+	}
+	if ws, keyID := agentWiring("kimi"); ws != "" || keyID != "" {
+		t.Errorf("agentWiring after clear = (%q, %q), want empty", ws, keyID)
+	}
+}
+
 // A spend cap that stops an agent mid-task is worse than the leak it prevents
 // on a key that already expires, and budgets are a workspace-scope RPC a
 // Developer is refused. So the mint recommends and never calls.

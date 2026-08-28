@@ -115,6 +115,117 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	}
 }
 
+// Task 3 (doctor / connect --status) needs to know which workspace an agent
+// was last wired for. connect is the only place the provider config is
+// written, so it is the only place that can record it.
+func TestConnectRecordsAgentWiring(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "model") {
+			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if ws, _ := agentWiring("kimi"); ws != "acme" {
+		t.Errorf("agentWiring workspace = %q, want acme", ws)
+	}
+
+	// disconnect removes the provider config, so the wiring record must go
+	// with it: otherwise a stale record outlives the config it described.
+	dcmd := NewDisconnectCommand()
+	dcmd.SetArgs([]string{"kimi"})
+	if err := dcmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if ws, keyID := agentWiring("kimi"); ws != "" || keyID != "" {
+		t.Errorf("agentWiring after disconnect = (%q, %q), want empty", ws, keyID)
+	}
+}
+
+// --api-key supplies a bearer this run never resolves a workspace for, so the
+// honest record is an empty one — not a guess, and not the saved key's
+// workspace, which this run did not use.
+func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "model") {
+			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	t.Chdir(t.TempDir())
+
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	// A saved key with a workspace exists, but --api-key below must win as the
+	// bearer, and the record must reflect that this run used a key that is not it.
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-SUPPLIED"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if ws, _ := agentWiring("kimi"); ws != "" {
+		t.Errorf("agentWiring workspace = %q, want empty for an --api-key run", ws)
+	}
+}
+
 // tracing is vocabulary, not behaviour: it parses, says so, and alone it does
 // nothing at exit 0.
 func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
