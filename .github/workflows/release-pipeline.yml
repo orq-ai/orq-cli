@@ -72,7 +72,6 @@ jobs:
 
       - name: Install bartolo
         run: |
-          workdir="${MODULE_DIR:-.}"
           go install "github.com/orq-ai/bartolo@v0.4.6"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
@@ -169,7 +168,32 @@ jobs:
           # gh creates the tag itself (at the current HEAD, already pushed to main
           # by the commit-back step) and publishes the release — no separate
           # `git tag`/`git push` needed.
+          #
+          # --generate-notes with no start tag lets GitHub pick the previous release, and
+          # the RC and stable tags interleave (v4.15.0-rc.5 was published after v4.14.3), so
+          # it jumps tracks: rc.4 and v4.14.1 shipped byte-identical bodies. Anchor each
+          # release to the last tag of its own stream.
+          #
+          # This assumes a single stable release line: the stable anchor is the highest-sorting
+          # stable tag, not the nearest ancestor, so a backport hotfix cut from an older branch
+          # would anchor to a newer tag and generate an empty changelog.
+          #
+          # -v:refname, not -creatordate: every tag here is lightweight, so creatordate is
+          # the underlying commit's date rather than the tag's, and the offsets already
+          # disagree (+0000 vs +0200).
+          #
+          # `|| true` on each pipeline: this step has no `shell:`/`defaults.run.shell`
+          # and sets no `set -o pipefail`, so it runs as `bash -e` and the pipeline's
+          # status is `head -1`'s (0 on empty input) — the guard is defensive only, in
+          # case pipefail is ever turned on here and a grep legitimately matches nothing.
+          if [ "$PRERELEASE" = "true" ]; then
+            start_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)"
+          else
+            start_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-rc\.' | grep -v "^${TAG}$" | head -1 || true)"
+          fi
           flags=(--title "$TAG" --target "$(git rev-parse HEAD)" --generate-notes)
+          # No start tag means this is the first release of its stream; let GitHub choose.
+          [ -n "$start_tag" ] && flags+=(--notes-start-tag "$start_tag")
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$TAG" "${flags[@]}"
 

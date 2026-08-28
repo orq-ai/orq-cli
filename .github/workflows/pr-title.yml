@@ -1,0 +1,46 @@
+name: PR title
+
+# Validate the title independently of build and test checks. pull_request_target
+# uses the default-branch workflow, so forked PRs receive the same title check.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  # Cancelled, unlike label-pr.yml. The verdict is a pure function of the current
+  # title with no partial state to protect, so a superseded run has nothing worth
+  # finishing and every reason not to post its stale answer last on what is meant
+  # to be a required check. The labeler is the opposite case: it mutates label
+  # state in two steps, and a run killed between them leaves the PR in two
+  # release categories.
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: pr title is a conventional commit
+    # This workflow reads PR metadata only. Do not add a checkout or run
+    # executable code from the pull request in this pull_request_target context.
+    # Asserted by .github/scripts/check-release-label-config.js, which fails CI
+    # on a checkout step, a `ref:`, or a trigger other than pull_request_target
+    # in this file.
+    permissions:
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
