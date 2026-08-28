@@ -241,6 +241,7 @@ jobs:
           fi
 
       - name: Create GitHub release
+        id: release_state
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -297,31 +298,68 @@ jobs:
           # points at no published assets until the last step.
           flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
-          # A retry may find the draft left by the failed attempt. Remove that
-          # record while retaining the immutable tag, then recreate it with the
-          # complete notes and fresh assets. A *published* release is already
-          # installable and is never deleted: retain it and let the upload steps
-          # refresh its assets. This makes retries idempotent without regressing
-          # /releases/latest for everyone while the tag stays immutable.
-          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
-          case "$draft" in
-            true)
-              gh release delete "$TAG" --yes
-              gh release create "$TAG" "${flags[@]}"
-              ;;
-            missing)
-              gh release create "$TAG" "${flags[@]}"
-              ;;
-            *)       echo "Release $TAG is already published; reusing it for this retry." ;;
-          esac
+          # Published releases are immutable: inspect them and finish as a
+          # successful no-op only when every expected asset is present. This
+          # avoids replacing live binaries one at a time with --clobber.
+          required_assets=(
+            orq-darwin-arm64 orq-darwin-arm64.sha256
+            orq-darwin-x64 orq-darwin-x64.sha256
+            orq-linux-arm64 orq-linux-arm64.sha256
+            orq-linux-x64 orq-linux-x64.sha256
+            orq-win32-x64.exe orq-win32-x64.exe.sha256
+            orq-man-pages.tar.gz orq-man-pages.tar.gz.sha256
+            install.sh install.sh.sha256
+          )
+          release_json="$(mktemp)"
+          release_error="$(mktemp)"
+          if gh api "repos/$REPO/releases/tags/$TAG" >"$release_json" 2>"$release_error"; then
+            release_draft="$(jq -r '.draft' "$release_json")"
+            release_prerelease="$(jq -r '.prerelease' "$release_json")"
+            if [ "$release_draft" != "true" ]; then
+              if [ "$release_draft" != "false" ] || [ "$release_prerelease" != "$PRERELEASE" ]; then
+                echo "error: existing release $TAG has unexpected draft/prerelease state" >&2
+                jq '{draft, prerelease, tag_name}' "$release_json" >&2
+                exit 1
+              fi
+              missing_assets=""
+              release_assets="$(jq -r '.assets[].name' "$release_json")"
+              for asset in "${required_assets[@]}"; do
+                if ! grep -Fxq "$asset" <<<"$release_assets"; then
+                  missing_assets+=" $asset"
+                fi
+              done
+              if [ -n "$missing_assets" ]; then
+                echo "error: published release $TAG is missing immutable assets:$missing_assets" >&2
+                echo "Refusing to modify a published release; repair it manually or cut a new version." >&2
+                exit 1
+              fi
+              echo "Published release $TAG is complete; nothing to upload."
+              echo "complete=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # A draft is safe to replace before publication.
+            gh release delete "$TAG" --yes
+          else
+            if grep -q 'HTTP 404' "$release_error"; then
+              :
+            else
+              cat "$release_error" >&2
+              exit 1
+            fi
+          fi
+
+          echo "complete=false" >> "$GITHUB_OUTPUT"
+          gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
+        if: steps.release_state.outputs.complete != 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           API_VERSION: ${{ steps.version.outputs.api_version }}
         run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}" "$API_VERSION"
 
       - name: Stage raw binaries for GitHub Release
+        if: steps.release_state.outputs.complete != 'true'
         run: |
           set -e
           mkdir -p dist
@@ -337,6 +375,7 @@ jobs:
           ls -la dist/
 
       - name: Generate man pages
+        if: steps.release_state.outputs.complete != 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -349,6 +388,7 @@ jobs:
           rm -rf dist/man
 
       - name: Generate checksums
+        if: steps.release_state.outputs.complete != 'true'
         run: |
           set -e
           # Per-asset sha256 files; install.sh downloads and verifies them.
@@ -360,6 +400,7 @@ jobs:
           ls -la
 
       - name: Upload raw binaries to GitHub Release
+        if: steps.release_state.outputs.complete != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -369,6 +410,7 @@ jobs:
 
       # Per-tag release asset, not a branch head: a bad commit there would break every install with no version to roll back to.
       - name: Publish install.sh to GitHub Release
+        if: steps.release_state.outputs.complete != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -383,6 +425,7 @@ jobs:
           gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --clobber
 
       - name: Publish the GitHub release
+        if: steps.release_state.outputs.complete != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
