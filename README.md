@@ -296,6 +296,10 @@ orq launch pi                     # Pi Coding Agent
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
 
+**Launch follows the workspace you are in now.** If `ORQ_API_KEY` holds the key `orq setup` minted and you have since run `orq workspace use <other>`, launch uses the workspace you switched to for that run and says so, rather than silently running against the one the key was minted for. Nothing on disk changes: the agent's own config, `~/.orq/env` and `credentials.json` are untouched, and `orq connect` stays the only thing that repoints an agent. A key you exported yourself still wins outright — its workspace is unknowable, so CI and bring-your-own-key setups are unaffected.
+
+Agents stay pinned to whatever `orq connect` wired them against. `orq connect --status` names that workspace per agent, and `orq doctor` says so too when it differs from your active one, with the commands to move it.
+
 The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
 orq's skills are linked into the agent's own skills directory **for the session only**; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
