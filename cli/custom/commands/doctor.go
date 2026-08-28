@@ -93,7 +93,7 @@ func NewDoctorCommand() *cobra.Command {
 			// Coding-agent wiring rides in the same doctor rather than its own
 			// subcommand: a user with a broken setup should not need to know
 			// which doctor to run. All local stat + parse, so unconditional.
-			checks = append(checks, codingAgentChecks()...)
+			checks = append(checks, codingAgentChecks(activeWorkspaceKey(inspect.Session))...)
 			// Same reasoning as the agent wiring above, and the same cost:
 			// a manifest read plus one Lstat per recorded link.
 			if sk, ok := skillsCheck(); ok {

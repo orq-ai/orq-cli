@@ -1215,7 +1215,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
 
 	// Nothing installed: no checks at all.
-	if got := codingAgentChecks(); len(got) != 0 {
+	if got := codingAgentChecks(""); len(got) != 0 {
 		t.Fatalf("no agents installed but got %d checks: %+v", len(got), got)
 	}
 
@@ -1224,7 +1224,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	checks := codingAgentChecks()
+	checks := codingAgentChecks("")
 	if len(checks) != 2 || checks[0].ID != "coding_agent_kimi" || checks[1].ID != "coding_agents" {
 		t.Fatalf("want a kimi check plus the summary, got %+v", checks)
 	}
@@ -1241,7 +1241,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
 		t.Fatal(err)
 	}
-	checks = codingAgentChecks()
+	checks = codingAgentChecks("")
 	if len(checks) != 2 || checks[0].Status != "pass" {
 		t.Fatalf("wired agent should pass, got %+v", checks)
 	}
@@ -1259,10 +1259,130 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	if _, err := writeOpenCodeProviderJSON(ocPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range codingAgentChecks() {
+	for _, c := range codingAgentChecks("") {
 		if c.ID == "coding_agent_opencode" && c.Status != "pass" {
 			t.Fatalf("wired opencode should pass, got %+v", c)
 		}
+	}
+}
+
+// Task 3: a wired agent with a recorded workspace (see recordAgentWiring)
+// carries it in details["workspace"] and names it in the pass message. An
+// agent with no record — wired before the field existed, or via --api-key —
+// gets neither, and the message is unchanged.
+func TestCodingAgentChecksReportRecordedWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
+	chdir(t, t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+	credsHarness(t)
+
+	providerPath := filepath.Join(home, ".kimi-code", "config.toml")
+	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	find := func() doctorCheck {
+		t.Helper()
+		for _, c := range codingAgentChecks("") {
+			if c.ID == "coding_agent_kimi" {
+				return c
+			}
+		}
+		t.Fatal("no kimi row")
+		return doctorCheck{}
+	}
+
+	// No record yet: neither the detail nor the parenthetical.
+	unrecorded := find()
+	if _, ok := unrecorded.Details["workspace"]; ok {
+		t.Errorf("workspace detail present with no record: %+v", unrecorded)
+	}
+	if strings.Contains(unrecorded.Message, "workspace") {
+		t.Errorf("pass message mentions a workspace with no record: %q", unrecorded.Message)
+	}
+
+	if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+	recorded := find()
+	if recorded.Details["workspace"] != "acme" {
+		t.Errorf("workspace detail = %v, want acme", recorded.Details["workspace"])
+	}
+	if recorded.Status != "pass" || recorded.Message != "Kimi Code is wired to orq (workspace acme)" {
+		t.Errorf("pass message = %+v, want the workspace parenthetical", recorded)
+	}
+}
+
+// Agents are pinned by design: a recorded workspace differing from the
+// session's active one is information, not a fault. It must produce exactly
+// one info row naming 'orq connect <id>', and never a warn — the reviewer's
+// note on Task 2's storage (blank fields, not a deleted block) means an
+// unwired agent can still carry a stale record, so the row requires "wired"
+// too, not just "record present".
+func TestCodingAgentChecksReportsWorkspaceMismatchAsInfo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-in-this-shell")
+	chdir(t, t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+	credsHarness(t)
+
+	providerPath := filepath.Join(home, ".kimi-code", "config.toml")
+	models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+	if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+
+	countMismatchRows := func(checks []doctorCheck) (info, warn int) {
+		for _, c := range checks {
+			if c.ID != "coding_agent_kimi_workspace" {
+				continue
+			}
+			switch c.Status {
+			case "info":
+				info++
+			case "warn":
+				warn++
+			}
+		}
+		return
+	}
+
+	// Same workspace: no row.
+	if info, warn := countMismatchRows(codingAgentChecks("acme")); info != 0 || warn != 0 {
+		t.Errorf("matching workspace produced a row: info=%d warn=%d", info, warn)
+	}
+	// Unknown active workspace: no row either — "" never proves a mismatch.
+	if info, warn := countMismatchRows(codingAgentChecks("")); info != 0 || warn != 0 {
+		t.Errorf("unknown active workspace produced a row: info=%d warn=%d", info, warn)
+	}
+
+	// Different workspace: exactly one info row, never a warn, naming the fix.
+	checks := codingAgentChecks("beta")
+	info, warn := countMismatchRows(checks)
+	if info != 1 || warn != 0 {
+		t.Fatalf("mismatch rows: info=%d warn=%d, want info=1 warn=0 (checks: %+v)", info, warn, checks)
+	}
+	var row doctorCheck
+	for _, c := range checks {
+		if c.ID == "coding_agent_kimi_workspace" {
+			row = c
+		}
+	}
+	if !strings.Contains(row.Message, "orq connect kimi") {
+		t.Errorf("mismatch row does not name the fix: %q", row.Message)
 	}
 }
 
@@ -1290,7 +1410,7 @@ func TestDoctorWarnsWhenAWiredAgentHasNoKeyInTheEnvironment(t *testing.T) {
 
 	find := func() doctorCheck {
 		t.Helper()
-		for _, c := range codingAgentChecks() {
+		for _, c := range codingAgentChecks("") {
 			if c.ID == "coding_agent_opencode" {
 				return c
 			}
@@ -1450,7 +1570,7 @@ func TestDoctorWarnsWhenAnAgentHoldsAnOlderKey(t *testing.T) {
 
 	find := func() doctorCheck {
 		t.Helper()
-		for _, c := range codingAgentChecks() {
+		for _, c := range codingAgentChecks("") {
 			if c.ID == "coding_agent_kimi" {
 				return c
 			}

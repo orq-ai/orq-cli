@@ -201,6 +201,94 @@ func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	}
 }
 
+// connectStatusHarness sets up bartolo state without a network round trip,
+// for status tests that only need agentWiring's record and files already on
+// disk — the full connect flow that writes both is exercised elsewhere.
+func connectStatusHarness(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+	return home
+}
+
+// Task 3: --status renders the workspace Task 2 recorded, but only for a
+// gateway row with a record — an agent wired with no record (wired before
+// this field existed, or via --api-key) gets an empty cell, not a guess, and
+// a machine with no recorded workspace at all gets no column.
+func TestConnectStatusShowsWorkspaceColumn(t *testing.T) {
+	home := connectStatusHarness(t)
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kimiPath := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(kimiPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+	ocPath := filepath.Join(home, ".config", "opencode", "opencode.json")
+	if _, err := writeOpenCodeProviderJSON(ocPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	// opencode is wired but carries no record — the "no record" case.
+
+	out := captureOutput(t, func() {
+		cmd := NewConnectCommand()
+		cmd.SetArgs([]string{"--status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "WORKSPACE") {
+		t.Fatalf("no WORKSPACE column with a recorded workspace present:\n%s", out)
+	}
+	if !strings.Contains(out, "acme") {
+		t.Errorf("kimi's recorded workspace not shown:\n%s", out)
+	}
+}
+
+// A wholly unwired-for-workspace machine (no agent has a record) renders
+// neither the column nor a value: the conditional is per-table, not per-row.
+func TestConnectStatusOmitsWorkspaceColumnWithNoRecords(t *testing.T) {
+	home := connectStatusHarness(t)
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kimiPath := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(kimiPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		cmd := NewConnectCommand()
+		cmd.SetArgs([]string{"--status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "WORKSPACE") {
+		t.Errorf("WORKSPACE column rendered with no agent carrying a record:\n%s", out)
+	}
+}
+
 // tracing is vocabulary, not behaviour: it parses, says so, and alone it does
 // nothing at exit 0.
 func TestConnectTracingIsReservedNotImplemented(t *testing.T) {

@@ -790,7 +790,11 @@ func normalizeTOMLHeaderSegments(header string) []string {
 // choice, and only the states that actually break something (wired without
 // ORQ_API_KEY, or wired with a superseded key) warn. Statuses never drive
 // doctor's exit code.
-func codingAgentChecks() []doctorCheck {
+//
+// activeWorkspace is the session's current workspace, used only to flag a
+// wired agent pinned elsewhere; "" (no session, or an env/--api-key bearer
+// with no resolvable workspace) means unknown and never produces that row.
+func codingAgentChecks(activeWorkspace string) []doctorCheck {
 	var checks []doctorCheck
 	var wiredIDs []string
 	detected, fullyWired := 0, 0
@@ -811,6 +815,15 @@ func codingAgentChecks() []doctorCheck {
 			details["provider"] = path
 		}
 		details["api_key_in_env"] = keyExported
+		// Neither field is a secret (see recordAgentWiring); a record can
+		// outlive its config if a user deletes it by hand, so its presence
+		// here is informational and never proof of wiring on its own.
+		recordedWS, _ := agentWiring(spec.ID)
+		wsNote := ""
+		if recordedWS != "" {
+			details["workspace"] = recordedWS
+			wsNote = " (workspace " + recordedWS + ")"
+		}
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
 
 		detected++
@@ -821,7 +834,7 @@ func codingAgentChecks() []doctorCheck {
 		switch {
 		case !wired:
 			check.Status = "info"
-			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
+			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'" + wsNote
 		case wired && staleEmbeddedKey(spec, path, savedKey):
 			// A config holding the key literally cannot follow a renewal. Wiring
 			// one agent renews for all of them, so an agent left out of that run
@@ -830,17 +843,28 @@ func codingAgentChecks() []doctorCheck {
 			details["stale_key"] = true
 			check.Status = "warn"
 			check.Message = spec.Label + " holds an older key than the one saved — it will stop authenticating. " +
-				"Run 'orq connect " + spec.ID + "' to rewire it"
+				"Run 'orq connect " + spec.ID + "' to rewire it" + wsNote
 		// kimi's provider TOML holds the key literally, so an unexported ORQ_API_KEY breaks nothing.
 		case keyExported || spec.providerEmbedsKey:
 			check.Status = "pass"
-			check.Message = spec.Label + " is wired to orq"
+			check.Message = spec.Label + " is wired to orq" + wsNote
 		default:
 			check.Status = "warn"
 			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
 				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell"
 		}
 		checks = append(checks, check)
+		// Agents are pinned by design, so a different workspace is
+		// information, not a fault — never warn, and only when both sides
+		// are actually known (keyWorkspaceMismatch treats "" as unknown).
+		if wired && keyWorkspaceMismatch(recordedWS, activeWorkspace) {
+			checks = append(checks, doctorCheck{
+				ID:     "coding_agent_" + spec.ID + "_workspace",
+				Status: "info",
+				Message: spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " +
+					"run 'orq connect " + spec.ID + "' to move it to " + activeWorkspace,
+			})
+		}
 	}
 	if detected > 0 {
 		checks = append(checks, codingAgentsSummary(detected, fullyWired, wiredIDs))
