@@ -83,114 +83,119 @@ func TestResolveCredentialsSession(t *testing.T) {
 	}
 }
 
-// TestResolveCredentialsSupersededWorkspace exercises the fall-through: an
-// exported ORQ_API_KEY that matches the key we minted for a workspace the
-// session has since left must not win — the session's active workspace does,
-// with SupersededWorkspace naming the one the key was actually minted for.
-func TestResolveCredentialsSupersededWorkspace(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
-			"id":         "u1",
-			"email":      "user@example.com",
-			"workspaces": []map[string]any{{"key": "other"}},
-		}})
-	}))
-	defer srv.Close()
-
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "sk-minted")
-	t.Setenv("ORQ_API_BASE_URL", "")
-	t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
-
+// seedProfile points the default profile's gateway_key and workspace at the
+// given values, the way `orq setup` leaves them on disk.
+func seedProfile(t *testing.T, key, ws string) {
+	t.Helper()
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("profile", "") })
-	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-minted")
+	bartolocli.Creds.Set("profiles.default.gateway_key", key)
 	bartolocli.Creds.Set("profiles.default.api_key", "")
-	bartolocli.Creds.Set("profiles.default.workspace", "acme")
-
-	future := time.Now().Add(time.Hour).Format(time.RFC3339)
-	writeSessionFile(t, home, map[string]any{
-		"version":            1,
-		"apiBaseUrl":         srv.URL,
-		"v1BaseUrl":          srv.URL,
-		"authBaseUrl":        srv.URL,
-		"profileBaseUrl":     srv.URL,
-		"activeWorkspaceKey": "other",
-		"refreshToken":       "refresh-token",
-		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
-		"workspaceTokens":    map[string]any{"other": map[string]any{"token": "session-token-for-other", "expiresAt": future}},
-	})
-
-	creds, err := ResolveCredentials(os.Getenv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if creds.APIKey != "session-token-for-other" {
-		t.Fatalf("expected the session's token for the active workspace, got %+v", creds)
-	}
-	if creds.Kind != CredentialSessionToken {
-		t.Errorf("expected CredentialSessionToken, got %v", creds.Kind)
-	}
-	if creds.Workspace != "other" {
-		t.Errorf("expected Workspace=other, got %q", creds.Workspace)
-	}
-	if creds.SupersededWorkspace != "acme" {
-		t.Errorf("expected SupersededWorkspace=acme, got %q", creds.SupersededWorkspace)
-	}
-	if creds.ShadowsSession {
-		t.Error("a superseded key must not also report ShadowsSession")
-	}
+	bartolocli.Creds.Set("profiles.default.workspace", ws)
 }
 
-// TestResolveCredentialsSavedKeyMatchesActiveWorkspace covers the boundary
-// beside the superseded case: the exported key is the one we minted, and it
-// still matches the session's active workspace, so it must win outright.
-func TestResolveCredentialsSavedKeyMatchesActiveWorkspace(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "sk-minted")
-	t.Setenv("ORQ_API_BASE_URL", "")
-
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", "") })
-	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-minted")
-	bartolocli.Creds.Set("profiles.default.api_key", "")
-	bartolocli.Creds.Set("profiles.default.workspace", "acme")
-
+// TestResolveCredentialsSupersession covers ResolveCredentials' fall-through
+// decision for an exported ORQ_API_KEY that matches the key we minted: it
+// must lose only when the session has since moved to a different workspace.
+func TestResolveCredentialsSupersession(t *testing.T) {
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
-	writeSessionFile(t, home, map[string]any{
-		"version":            1,
-		"activeWorkspaceKey": "acme",
-		"apiBaseUrl":         "https://api.orq.ai",
-		"v1BaseUrl":          "https://api.orq.ai",
-		"authBaseUrl":        "https://api.orq.ai",
-		"profileBaseUrl":     "https://api.orq.ai/me",
-		"refreshToken":       "rt",
-		"bootstrapToken":     map[string]any{"token": "bt", "expiresAt": future},
-		"workspaceTokens":    map[string]any{"acme": map[string]any{"token": "session-token", "expiresAt": future}},
-	})
 
-	creds, err := ResolveCredentials(os.Getenv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if creds.APIKey != "sk-minted" || creds.Kind != CredentialAPIKey {
-		t.Fatalf("expected the exported key to win, got %+v", creds)
-	}
-	if creds.Workspace != "acme" {
-		t.Errorf("expected Workspace=acme, got %q", creds.Workspace)
-	}
-	if creds.SupersededWorkspace != "" {
-		t.Errorf("expected nothing superseded, got %q", creds.SupersededWorkspace)
+	for _, tc := range []struct {
+		name     string
+		savedWS  string
+		activeWS string
+		// newServer builds the profile-fetch stub this case needs, or nil when
+		// the case never reaches the network (the same-workspace short-circuit
+		// returns before ResolveCredentials reads the session at all).
+		newServer      func(t *testing.T) *httptest.Server
+		wantKey        string
+		wantKind       CredentialKind
+		wantWorkspace  string
+		wantSuperseded string
+	}{
+		{
+			// exported key == saved key, saved workspace != active: the
+			// session's token for the active workspace wins.
+			name:     "superseded workspace",
+			savedWS:  "acme",
+			activeWS: "other",
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+						"id":         "u1",
+						"email":      "user@example.com",
+						"workspaces": []map[string]any{{"key": "other"}},
+					}})
+				}))
+			},
+			wantKey:        "session-token-for-other",
+			wantKind:       CredentialSessionToken,
+			wantWorkspace:  "other",
+			wantSuperseded: "acme",
+		},
+		{
+			// exported key == saved key, saved workspace == active: the
+			// env key wins outright, nothing superseded.
+			name:          "saved key matches active workspace",
+			savedWS:       "acme",
+			activeWS:      "acme",
+			wantKey:       "sk-minted",
+			wantKind:      CredentialAPIKey,
+			wantWorkspace: "acme",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			apiBase := "https://api.orq.ai"
+			if tc.newServer != nil {
+				srv := tc.newServer(t)
+				defer srv.Close()
+				apiBase = srv.URL
+				t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+			}
+
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ORQ_API_KEY", "sk-minted")
+			t.Setenv("ORQ_API_BASE_URL", "")
+
+			seedProfile(t, "sk-minted", tc.savedWS)
+
+			writeSessionFile(t, home, map[string]any{
+				"version":            1,
+				"apiBaseUrl":         apiBase,
+				"v1BaseUrl":          apiBase,
+				"authBaseUrl":        apiBase,
+				"profileBaseUrl":     apiBase,
+				"activeWorkspaceKey": tc.activeWS,
+				"refreshToken":       "refresh-token",
+				"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+				"workspaceTokens":    map[string]any{tc.activeWS: map[string]any{"token": "session-token-for-" + tc.activeWS, "expiresAt": future}},
+			})
+
+			creds, err := ResolveCredentials(os.Getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if creds.APIKey != tc.wantKey {
+				t.Errorf("APIKey = %q, want %q", creds.APIKey, tc.wantKey)
+			}
+			if creds.Kind != tc.wantKind {
+				t.Errorf("Kind = %v, want %v", creds.Kind, tc.wantKind)
+			}
+			if creds.Workspace != tc.wantWorkspace {
+				t.Errorf("Workspace = %q, want %q", creds.Workspace, tc.wantWorkspace)
+			}
+			if creds.SupersededWorkspace != tc.wantSuperseded {
+				t.Errorf("SupersededWorkspace = %q, want %q", creds.SupersededWorkspace, tc.wantSuperseded)
+			}
+			if tc.wantSuperseded != "" && creds.ShadowsSession {
+				t.Error("a superseded key must not also report ShadowsSession")
+			}
+		})
 	}
 }
 

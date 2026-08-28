@@ -88,7 +88,7 @@ func shadowsSession(key string, session *auth.Session) bool {
 //
 // Narrower than shadowsSession on purpose: a key we did not mint has an unknowable workspace,
 // so it keeps winning.
-func supersededBySession(key string, session *auth.Session) (mintedFor string, superseded bool) {
+func supersededBySession(key string, session *auth.Session, savedKey, savedWS string) (mintedFor string, superseded bool) {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return "", false
 	}
@@ -99,7 +99,6 @@ func supersededBySession(key string, session *auth.Session) (mintedFor string, s
 	if isSessionWorkspaceToken(key, session) {
 		return "", false
 	}
-	savedKey, savedWS := auth.SavedAgentKey()
 	if savedWS == "" || savedKey != key {
 		return "", false
 	}
@@ -141,18 +140,21 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
 
 	var supersededWorkspace string
+	var session *auth.Session
 	if key := getenv("ORQ_API_KEY"); key != "" {
-		session, _ := auth.ReadSession()
-		if mintedFor, superseded := supersededBySession(key, session); superseded {
-			supersededWorkspace = mintedFor
-		} else {
+		// Error ignored here on purpose: an unreadable session must not block a
+		// valid exported key from winning below.
+		session, _ = auth.ReadSession()
+		savedKey, savedWS := auth.SavedAgentKey()
+		mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
+		if !superseded {
 			creds := &Credentials{
 				APIKey:         key,
 				APIBaseURL:     apiBase,
 				Kind:           CredentialAPIKey,
 				ShadowsSession: shadowsSession(key, session),
 			}
-			if savedKey, savedWS := auth.SavedAgentKey(); savedWS != "" && savedKey == key {
+			if savedWS != "" && savedKey == key {
 				creds.Workspace = savedWS
 			}
 			// installSessionPreRun injects the session's own workspace token into
@@ -164,13 +166,19 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 			}
 			return creds, nil
 		}
+		// superseded implies session != nil (supersededBySession requires it), so
+		// the read below is skipped and this run makes exactly one ReadSession call.
+		supersededWorkspace = mintedFor
 	}
 
-	session, err := auth.ReadSession()
-	if err != nil {
-		// Unreadable or corrupt session ≠ not logged in — telling the user to
-		// log in again would loop without surfacing the real cause.
-		return nil, fmt.Errorf("cannot read login session: %w (fix the session file or export ORQ_API_KEY)", err)
+	if session == nil {
+		var err error
+		session, err = auth.ReadSession()
+		if err != nil {
+			// Unreadable or corrupt session ≠ not logged in — telling the user to
+			// log in again would loop without surfacing the real cause.
+			return nil, fmt.Errorf("cannot read login session: %w (fix the session file or export ORQ_API_KEY)", err)
+		}
 	}
 	if session == nil {
 		return nil, errNotLoggedIn

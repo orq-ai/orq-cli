@@ -165,7 +165,7 @@ func TestSupersededBySession(t *testing.T) {
 			if tc.activeWS != nil {
 				session = &auth.Session{ActiveWorkspaceKey: tc.activeWS, WorkspaceTokens: tc.workspaceTok}
 			}
-			mintedFor, superseded := supersededBySession(tc.envKey, session)
+			mintedFor, superseded := supersededBySession(tc.envKey, session, tc.savedKey, tc.savedWS)
 			if mintedFor != tc.wantMintedFor || superseded != tc.wantSuper {
 				t.Errorf("supersededBySession = (%q, %v), want (%q, %v)", mintedFor, superseded, tc.wantMintedFor, tc.wantSuper)
 			}
