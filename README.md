@@ -250,7 +250,7 @@ surface changes are always a reviewed diff.
 | `orq workspace use <key>` | Switch active workspace |
 | `orq doctor` | Diagnose config, auth, reachability |
 | `orq update` | Update this binary to the latest release (`--check` reports only) |
-| `orq version` | Print the CLI version, the orq API version it was built against, and the install channel |
+| `orq version` | Print the CLI version, the orq API version it was built against, and the install method |
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
@@ -361,9 +361,9 @@ Sandboxed execution is not available in this version.
 ### Versions
 
 `orq version` prints the CLI version, the orq API version the build was
-generated against, and the channel it was installed through; `--json` gives
-`cli`, `api` and `channel`. `orq --version` remains the compact CLI-version
-line used by installers and scripts.
+generated against, and the install method it was installed through; `--json`
+gives `cli`, `api_version` and `install_method`. `orq --version` remains the
+compact CLI-version line used by installers and scripts.
 
 The CLI's version is its own — it does not track the orq API version, which is
 why the API line has to be reported rather than read off the tag. `--channel rc`
@@ -372,7 +372,7 @@ installs the pre-release line, built from the staging API schema.
 ### Updating
 
 `orq update` replaces this binary with the latest published release through the
-channel it was installed with: an npm install runs `npm install -g
+install method it was installed with: an npm install runs `npm install -g
 @orq-ai/cli@<version>`, an `install.sh` install re-runs the installer pinned to
 that same version, which verifies the release checksum and swaps the binary in
 atomically. An rc build follows the rc line rather than being moved onto the

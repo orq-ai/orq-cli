@@ -11,14 +11,14 @@ import (
 )
 
 func TestVersionCommandReportsBothVersions(t *testing.T) {
-	orig, origDetect, origHuman, origAPI := bartolocli.Stdout, detectChannel, humanOutput, apiVersion
+	orig, origDetect, origHuman, origAPI := bartolocli.Stdout, detectInstallMethod, humanOutput, apiVersion
 	t.Cleanup(func() {
-		bartolocli.Stdout, detectChannel, humanOutput, apiVersion = orig, origDetect, origHuman, origAPI
+		bartolocli.Stdout, detectInstallMethod, humanOutput, apiVersion = orig, origDetect, origHuman, origAPI
 	})
 	out := &bytes.Buffer{}
 	bartolocli.Stdout = out
 	humanOutput = func() bool { return true }
-	detectChannel = func() (updateChannel, string) { return channelInstaller, "/somewhere/orq" }
+	detectInstallMethod = func() (installMethod, string) { return methodInstaller, "/somewhere/orq" }
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
 	SetAPIVersion(root, "4.13.22")
 	root.AddCommand(NewVersionCommand())
@@ -58,14 +58,14 @@ func TestVersionFlagPrintsAPIVersionVerbatim(t *testing.T) {
 // renamed or dropped key is a breaking change and has to show up as a failing
 // test rather than in someone's broken script.
 func TestVersionCommandJSONShape(t *testing.T) {
-	origFormatter, origDetect, origHuman, origAPI := bartolocli.Formatter, detectChannel, humanOutput, apiVersion
+	origFormatter, origDetect, origHuman, origAPI := bartolocli.Formatter, detectInstallMethod, humanOutput, apiVersion
 	t.Cleanup(func() {
-		bartolocli.Formatter, detectChannel, humanOutput, apiVersion = origFormatter, origDetect, origHuman, origAPI
+		bartolocli.Formatter, detectInstallMethod, humanOutput, apiVersion = origFormatter, origDetect, origHuman, origAPI
 	})
 	captured := &capturingFormatter{}
 	bartolocli.Formatter = captured
 	humanOutput = func() bool { return false }
-	detectChannel = func() (updateChannel, string) { return channelInstaller, "/somewhere/orq" }
+	detectInstallMethod = func() (installMethod, string) { return methodInstaller, "/somewhere/orq" }
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
 	SetAPIVersion(root, "4.13.22")
 	root.AddCommand(NewVersionCommand())
@@ -74,7 +74,7 @@ func TestVersionCommandJSONShape(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("version: %v", err)
 	}
-	want := map[string]any{"cli": "5.0.0", "api": "4.13.22", "channel": "installer"}
+	want := map[string]any{"cli": "5.0.0", "api_version": "4.13.22", "install_method": "installer"}
 	if !reflect.DeepEqual(captured.value, want) {
 		t.Fatalf("version --json = %#v, want %#v", captured.value, want)
 	}

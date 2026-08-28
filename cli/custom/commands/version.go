@@ -50,16 +50,16 @@ func NewVersionCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cli := currentVersion(cmd)
-			channel, _ := detectChannel()
+			installMethod, _ := detectInstallMethod()
 			if !wantsHumanView(cmd) {
 				return emit(map[string]any{
-					"cli":     cli,
-					"api":     apiVersion,
-					"channel": string(channel),
+					"cli":            cli,
+					"api_version":    apiVersion,
+					"install_method": string(installMethod),
 				})
 			}
 			fmt.Fprintf(bartolocli.Stdout, "%s version %s\n%s\ninstalled via %s\n",
-				cmd.Root().Name(), cli, APIVersionLine(), channel)
+				cmd.Root().Name(), cli, APIVersionLine(), installMethod)
 			return nil
 		},
 	}

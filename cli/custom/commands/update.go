@@ -35,7 +35,7 @@ func NewUpdateCommand() *cobra.Command {
 		Use:   "update",
 		Short: "Update the CLI to the latest published version",
 		Long: "Replace this binary with the latest published release, using the " +
-			"channel it was installed through: npm, or install.sh. --check reports " +
+			"install method it was installed through: npm, or install.sh. --check reports " +
 			"what is available and changes nothing.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,7 +51,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 	if _, ok := parseSemver(current); !ok {
 		return fmt.Errorf("this is a %s build, not a published release; update it by rebuilding from source", current)
 	}
-	channel, path := detectChannel()
+	installMethod, path := detectInstallMethod()
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), updateFetchTimeout)
 	latest, err := fetchLatestVersion(ctx, current)
@@ -69,24 +69,24 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 		writeUpdateCache(current, latest)
 	}
 	if checkOnly {
-		return reportUpdateCheck(cmd, current, latest, channel, available)
+		return reportUpdateCheck(cmd, current, latest, installMethod, available)
 	}
 	if !available {
 		if wantsHumanView(cmd) {
 			fmt.Fprintf(bartolocli.Stdout, "orq %s is already the latest version.\n", current)
 			return nil
 		}
-		return emit(map[string]any{"channel": string(channel), "from": current, "to": current, "updated": false})
+		return emit(map[string]any{"install_method": string(installMethod), "from": current, "to": current, "updated": false})
 	}
 
-	// Both channels install this exact version rather than resolving "newest" a
-	// second time from their own source. The version reported here is then the
+	// Both install methods install this exact version rather than resolving
+	// "newest" a second time from their own source. The version reported here is then the
 	// version that lands, and an rc build is not silently swapped for the older
 	// stable release that "latest" means to npm and to install.sh.
-	switch channel {
-	case channelNPM:
+	switch installMethod {
+	case methodNPM:
 		err = updateViaNPM(cmd.Context(), latest)
-	case channelInstaller:
+	case methodInstaller:
 		err = updateViaInstaller(cmd.Context(), latest)
 	default:
 		return fmt.Errorf("cannot update: this binary was not installed by install.sh or npm (found at %s)\n"+
@@ -97,25 +97,25 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 		return err
 	}
 	if !wantsHumanView(cmd) {
-		return emit(map[string]any{"channel": string(channel), "from": current, "to": latest, "updated": true})
+		return emit(map[string]any{"install_method": string(installMethod), "from": current, "to": latest, "updated": true})
 	}
 	fmt.Fprintf(bartolocli.Stdout, "\nUpdated orq %s -> %s\n  Release notes: https://github.com/orq-ai/orq-cli/releases/tag/v%s\n", current, latest, latest)
 	return nil
 }
 
-func reportUpdateCheck(cmd *cobra.Command, current, latest string, channel updateChannel, available bool) error {
+func reportUpdateCheck(cmd *cobra.Command, current, latest string, method installMethod, available bool) error {
 	if !wantsHumanView(cmd) {
 		return emit(map[string]any{
-			"channel":          string(channel),
+			"install_method":   string(method),
 			"current":          current,
 			"latest":           latest,
 			"update_available": available,
 		})
 	}
 	if available {
-		fmt.Fprintf(bartolocli.Stdout, "orq %s (%s); latest %s. Run 'orq update'\n", current, channel, latest)
+		fmt.Fprintf(bartolocli.Stdout, "orq %s (%s); latest %s. Run 'orq update'\n", current, method, latest)
 	} else {
-		fmt.Fprintf(bartolocli.Stdout, "orq %s (%s); up to date\n", current, channel)
+		fmt.Fprintf(bartolocli.Stdout, "orq %s (%s); up to date\n", current, method)
 	}
 	return nil
 }

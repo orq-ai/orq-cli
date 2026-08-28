@@ -93,7 +93,7 @@ at release time, so they have to already exist.
 The orq API version a build was generated against is recorded, not encoded:
 
 - `orq --version` prints it under the CLI version, and `orq version` reports
-  both plus the install channel (`--json` for scripts).
+  both plus the install method (`--json` for scripts).
 - Every GitHub release's notes open with **Built against orq API <version>**.
 - `orq doctor` carries it as `binary.api_version` in the structured report
   (`--json`) and in the `--report` bug-report body.
@@ -185,10 +185,11 @@ controls on surface changes, whichever side they originate from.
   endpoint. Both appear under **AI Gateway** in `orq --help`, where the docs put
   them.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
-  build was generated against, and the channel it was installed through
-  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
-  `channel`. `orq --version` keeps `orq version <semver>` as its first line, so
-  anything parsing that line is unaffected, and prints the API line under it —
+  build was generated against, and the install method it was installed through
+  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api_version` and
+  `install_method`. `orq --version` keeps `orq version <semver>` as its first
+  line, so anything parsing that line is unaffected, and prints the API line
+  under it —
   a script that reads the whole output rather than the first line will now see
   two lines.
 - **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
@@ -256,10 +257,10 @@ controls on surface changes, whichever side they originate from.
   Gateway** in `orq --help`, where the docs put them. The commands themselves
   shipped in 4.14.0, from that release's orq API schema.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
-  build was generated against, and the channel it was installed through
-  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
-  `channel`. `orq --version` remains `orq version <semver>`, so scripts can
-  continue to parse its single line.
+  build was generated against, and the install method it was installed through
+  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api_version` and
+  `install_method`. `orq --version` remains `orq version <semver>`, so scripts
+  can continue to parse its single line.
 - **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
   pre-release line instead of the stable one. The default is unchanged.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
@@ -267,23 +268,23 @@ controls on surface changes, whichever side they originate from.
   a script saw exit 0 while kimi's config still held the key. The `--json`
   payload gains `coding_agents_remove_failed`.
 - **Added:** `orq update`. Replaces this binary with the latest published
-  release through the channel it was installed with: npm installs get
+  release through the install method it was installed with: npm installs get
   `npm install -g @orq-ai/cli@<version>`, install.sh installs re-run install.sh
   with `--version` set to that same version, and it verifies the release's
-  published `.sha256` and swaps the binary in atomically. Both channels are
-  given the exact version the check resolved rather than resolving "newest"
+  published `.sha256` and swaps the binary in atomically. Both install methods
+  are given the exact version the check resolved rather than resolving "newest"
   again, so what lands is what was reported — and an rc build updates along the
   rc line instead of being silently moved onto the older stable release. A
   binary that arrived any other way is refused, naming its path and both
-  channels' commands, rather than overwritten. `--check` reports current,
-  latest and channel and changes nothing; `--json` carries `update_available`
-  for scripts. npm's and the installer's own progress goes to stderr, so
-  `--json` stdout stays parseable. A dev build refuses and says to rebuild.
+  install methods' commands, rather than overwritten. `--check` reports
+  current, latest and install method and changes nothing; `--json` carries
+  `update_available` for scripts. npm's and the installer's own progress goes to
+  stderr, so `--json` stdout stays parseable. A dev build refuses and says to rebuild.
 - **Added:** update notice. Once every 24 hours, after a command has finished
   successfully, the CLI compares its own version against the npm dist-tag for
   its release line (`latest`, or `rc` for an rc build) and prints one stderr
   line naming the newer version and the command that installs it: `orq update`,
-  or the `install.sh` one-liner when the binary arrived through a channel
+  or the `install.sh` one-liner when the binary arrived through an install method
   `orq update` cannot act on. The check is skipped entirely, with no network request, when
   `ORQ_NO_UPDATE_CHECK` or `CI` is set, when stdout is not a terminal, when
   `--json`/`-o` asked for a machine format, and for unstamped dev builds. Any
