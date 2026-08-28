@@ -279,6 +279,15 @@ orq files                    orq human-evals
 orq human-review-sets
 ```
 
+**Deleting requires confirmation.** Generated `delete` commands prompt before
+acting, and refuse to run when there is no terminal. Pass `--force` to skip the
+prompt — scripts and CI need it:
+
+```sh
+orq datasets delete <id>           # asks first
+orq datasets delete <id> --force   # required in CI
+```
+
 ---
 
 ## Launch
@@ -463,13 +472,10 @@ make doctor             # run the doctor command
 
 ### Contributing
 
-PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`). Title
-validation runs when a PR is opened, edited, reopened, or synchronized, so invalid
-titles fail CI. A recognised title receives a dedicated `release:*` automation
-label; these labels are provisioned explicitly, so their colour and description are
-ours, and they do not replace ordinary human labels. A PR with no automation label
-falls into the `Other Changes` catch-all if merged. See [AGENTS.md](AGENTS.md) for
-the full type → label table and the rest of the repo conventions.
+PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`) — CI
+fails otherwise, and the type decides which release-notes section the PR lands
+in. See [AGENTS.md](AGENTS.md) for the type → label table and the rest of the
+repo conventions.
 
 ### Regenerating from OpenAPI
 
