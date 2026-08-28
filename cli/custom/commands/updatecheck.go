@@ -31,21 +31,21 @@ const (
 	updateCheckTimeout = 2 * time.Second
 )
 
-// updateChannel is how this binary arrived, which decides how it can be
+// installMethod is how this binary arrived, which decides how it can be
 // replaced. Shared by the notice and by `orq update`, so the two can never
 // disagree about what the user should run.
-type updateChannel string
+type installMethod string
 
 const (
-	channelNPM       updateChannel = "npm"
-	channelInstaller updateChannel = "installer"
-	channelUnknown   updateChannel = "unknown"
+	methodNPM       installMethod = "npm"
+	methodInstaller installMethod = "installer"
+	methodUnknown   installMethod = "unknown"
 )
 
 // updateCacheFile records the last check so the notice appears at most once a
 // day and a stale "update available" cannot outlive the update that fixed it:
 // CurrentAtCheck invalidates the entry as soon as the running version changes,
-// through whichever channel the user updated.
+// through whichever install method the user updated.
 type updateCacheFile struct {
 	Version        int       `json:"version"`
 	CheckedAt      time.Time `json:"checked_at"`
@@ -106,41 +106,41 @@ func updateCheckDisabled(cmd *cobra.Command) bool {
 }
 
 // updateHint is the command to print in the notice: `orq update` when this
-// binary is on a channel that command can act on, and the raw installer
+// binary is on an install method that command can act on, and the raw installer
 // one-liner otherwise, since telling someone to run a command that will refuse
 // is worse than telling them nothing.
 func updateHint() string {
-	if channel, _ := detectChannel(); channel == channelUnknown {
+	if method, _ := detectInstallMethod(); method == methodUnknown {
 		return installerCmd
 	}
 	return "orq update"
 }
 
-// detectChannel classifies the running binary by where it lives, and returns
+// detectInstallMethod classifies the running binary by where it lives, and returns
 // the resolved path so an error can name it. npm's launcher shim execs the
 // platform binary out of node_modules, so that path component is the npm
 // marker; the installer writes into $ORQ_CLI_INSTALL_DIR (default ~/.orq/bin).
 // Anything else - a hand-copied binary, a `go build` output, a distro package -
 // is unknown, and updating it is not ours to do.
-// ponytail: two channels, no registry until a third exists.
+// ponytail: two install methods, no registry until a third exists.
 //
-// Variable so tests can pin a channel: a test binary lives in neither place.
-var detectChannel = func() (updateChannel, string) {
+// Variable so tests can pin an install method: a test binary lives in neither place.
+var detectInstallMethod = func() (installMethod, string) {
 	path, err := osExecutable()
 	if err != nil {
-		return channelUnknown, ""
+		return methodUnknown, ""
 	}
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved
 	}
 	sep := string(os.PathSeparator)
 	if strings.Contains(path, sep+"node_modules"+sep) {
-		return channelNPM, path
+		return methodNPM, path
 	}
 	if dir := installerDir(); dir != "" && sameDir(filepath.Dir(path), dir) {
-		return channelInstaller, path
+		return methodInstaller, path
 	}
-	return channelUnknown, path
+	return methodUnknown, path
 }
 
 // installerDir mirrors install.sh's own resolution order, so a custom

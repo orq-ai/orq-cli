@@ -8,6 +8,7 @@
 #
 # Options:
 #   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
+#   --channel <c>        stable (default) or rc, the pre-release line.
 #   --install-dir <dir>  Install directory. Default: $HOME/.orq/bin.
 #   --no-modify-path     Do not touch the shell profile.
 #   --no-setup           Do not run 'orq setup' after installing.
@@ -15,6 +16,8 @@
 #
 # Environment (flags win when both are given):
 #   ORQ_CLI_VERSION       Same as --version.
+#   ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
+#                         when --version pins a release.
 #   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 #
 # This script downloads a single raw binary from the GitHub Releases page for
@@ -32,6 +35,8 @@ INSTALLER_VERSION="dev"
 REPO="orq-ai/orq-cli"
 INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
+CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
+CHANNEL_EXPLICIT=0
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
@@ -55,6 +60,7 @@ Usage:
 
 Options:
   --version <v>        Pin a specific release (e.g. v0.1.0). Default: latest.
+  --channel <c>        stable (default) or rc, the pre-release line.
   --install-dir <dir>  Install directory. Default: $HOME/.orq/bin.
   --no-modify-path     Do not touch the shell profile.
   --no-setup           Do not run 'orq setup' after installing.
@@ -62,19 +68,14 @@ Options:
 
 Environment (flags win when both are given):
   ORQ_CLI_VERSION       Same as --version.
+  ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
+                        when --version pins a release.
   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 
 For Windows, install via npm instead:
   npm install -g @orq-ai/cli
 USAGE
 }
-
-# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) ship older, so probe.
-if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
-  CURL_RETRY_ALL='--retry-all-errors'
-else
-  CURL_RETRY_ALL=''
-fi
 
 # No -f: the checksum call reads the status code out of a 404; callers needing it pass -f.
 fetch() {
@@ -97,6 +98,32 @@ require_cmd() {
   fi
 }
 
+# binary_version <path> [stderr-file]: the single semver line of `orq --version`.
+# Captured, not piped into head:
+# this sh has no pipefail, so a binary that prints a version and then exits
+# non-zero would read as healthy.
+binary_version() {
+  _bv_out="$("$1" --version 2>"${2:-/dev/null}")" || return 1
+  printf '%s\n' "$_bv_out" | head -n 1 | tr -d '\n'
+}
+
+rc_version_from_dist_tags() {
+  # Take the value after the "rc" KEY, requiring the next field to start
+  # with a colon, or a dist-tag whose *value* is "rc" matches and installs
+  # "vrc".
+  # No `exit` in the body: it closes the pipe and curl fails on every retry.
+  awk -F '"' '{for (i = 2; i < NF; i += 2) if ($i == "rc" && $(i + 1) ~ /^:/ && !v) v = $(i + 2)} END {if (v != "") print "v" v}'
+}
+
+if [ "${ORQ_CLI_LIB_ONLY:-}" = "1" ]; then return 0; fi
+
+# --retry-all-errors needs curl 7.71; RHEL 8 (7.61) and Ubuntu 20.04 (7.68) ship older, so probe.
+if curl --help all 2>/dev/null | grep -q -- --retry-all-errors; then
+  CURL_RETRY_ALL='--retry-all-errors'
+else
+  CURL_RETRY_ALL=''
+fi
+
 # --- Parse arguments -------------------------------------------------------
 
 while [ $# -gt 0 ]; do
@@ -106,6 +133,11 @@ while [ $# -gt 0 ]; do
       VERSION="$2"; shift 2 ;;
     --version=*)
       VERSION="${1#*=}"; shift ;;
+    --channel)
+      [ $# -ge 2 ] || { err "--channel needs a value"; exit 1; }
+      CHANNEL="$2"; CHANNEL_EXPLICIT=1; shift 2 ;;
+    --channel=*)
+      CHANNEL="${1#*=}"; CHANNEL_EXPLICIT=1; shift ;;
     --install-dir)
       [ $# -ge 2 ] || { err "--install-dir needs a value"; exit 1; }
       INSTALL_DIR="$2"; shift 2 ;;
@@ -123,6 +155,20 @@ while [ $# -gt 0 ]; do
       exit 1 ;;
   esac
 done
+
+case "$CHANNEL" in
+  stable|rc) ;;
+  *) err "unknown channel: $CHANNEL (expected 'stable' or 'rc')"; exit 1 ;;
+esac
+
+# A pinned version names one exact release, leaving the channel nothing to
+# resolve. Refusing beats silently ignoring one of the two flags the caller
+# passed. Only the flag counts as explicit: ORQ_CLI_CHANNEL is ambient config,
+# and `orq update` shells out with --version through the user's environment.
+if [ -n "$VERSION" ] && [ "$CHANNEL_EXPLICIT" = "1" ]; then
+  err "--channel and --version cannot be combined: --version already names a release"
+  exit 1
+fi
 
 require_cmd curl
 require_cmd uname
@@ -206,19 +252,36 @@ version_label="$VERSION"
 version_pinned=1
 if [ -z "$VERSION" ]; then
   version_pinned=0
-  # GitHub's latest-release API returns JSON; awk out the tag_name field
-  # without requiring jq. Pre-releases are excluded by the endpoint itself.
-  # awk drains the stream: exiting on the match closes the pipe mid-body and
-  # curl reports a write failure per retry.
-  api_url="https://api.github.com/repos/$REPO/releases/latest"
-  VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
-
-  if [ -z "$VERSION" ]; then
-    err "failed to determine latest release from $api_url"
-    err "You can pin one explicitly: --version v0.1.0"
-    exit 1
+  if [ "$CHANNEL" = "rc" ]; then
+    # The rc line is a GitHub pre-release, which /releases/latest deliberately
+    # skips, so it is resolved from the npm dist-tag instead - the same source
+    # `orq update` uses, so the two never disagree about what "rc" means.
+    api_url="https://registry.npmjs.org/-/package/@orq-ai/cli/dist-tags"
+    if ! dist_tags="$(fetch -fsS "$api_url")"; then
+      err "failed to fetch rc release metadata from $api_url"
+      err "check your network connection and try again, or use --version <version> to skip rc resolution"
+      exit 1
+    fi
+    VERSION="$(printf '%s\n' "$dist_tags" | rc_version_from_dist_tags)"
+    if [ -z "$VERSION" ]; then
+      err "no rc release is published at $api_url"
+      err "wait for an rc release, or use --version <version> for a known release"
+      exit 1
+    fi
+  else
+    # awk out tag_name without requiring jq; the endpoint excludes prereleases.
+    # awk drains the stream, because exiting on the match closes the pipe
+    # mid-body and curl reports a write failure per retry.
+    api_url="https://api.github.com/repos/$REPO/releases/latest"
+    VERSION="$(fetch -fsS "$api_url" | awk -F '"' '/"tag_name":/ && !v {v=$4} END {print v}')"
+    if [ -z "$VERSION" ]; then
+      err "failed to determine the latest $CHANNEL release from $api_url"
+      err "You can pin one explicitly: --version v0.1.0"
+      exit 1
+    fi
   fi
-  version_label="$VERSION (latest)"
+
+  version_label="$VERSION (latest $CHANNEL)"
 fi
 
 asset="orq-${os}-${arch}"
@@ -239,10 +302,9 @@ printf '\n'
 # The binary reports a bare semver; release tags carry a leading v.
 expected_version="${VERSION#v}"
 if [ -x "$target" ]; then
-  # Exit status required, and the version token compared whole: a substring
-  # match reports 4.13.10 as satisfying a pinned 4.13.1 and installs nothing.
-  if current="$("$target" --version 2>/dev/null)"; then
-    current="$(printf '%s' "$current" | tr -d '\n')"
+  # The version token is compared whole: a substring match reports 4.13.10 as
+  # satisfying a pinned 4.13.1 and installs nothing.
+  if current="$(binary_version "$target")"; then
     current_version="$(printf '%s' "$current" | awk '{print $NF}')"
   else
     current=""
@@ -401,9 +463,7 @@ if [ "${already_current:-0}" != "1" ]; then
   # non-zero is broken, and `|| echo ''` accepted it. Stderr is kept so the
   # failure branches can quote the real reason instead of guessing at it.
   probe_err="$(mktemp -t orq-probe.XXXXXX)"
-  if installed_version="$("$target" --version 2>"$probe_err")"; then
-    installed_version="$(printf '%s' "$installed_version" | tr -d '\n')"
-  else
+  if ! installed_version="$(binary_version "$target" "$probe_err")"; then
     installed_version=""
   fi
   probe_reason="$(tr -d '\r' < "$probe_err" | head -3)"

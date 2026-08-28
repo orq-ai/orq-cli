@@ -13,21 +13,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Run is the shared entrypoint for both the stable (cmd/orq) and RC
-// (packages/orq-rc/cmd/orq) mains, which differ only in which generated command
-// tree they register. It owns the signal handling and the exit-code contract so
-// the two modules cannot drift apart again:
+// Run is the shared entrypoint for both mains, which differ only in the
+// generated tree they register. It owns signal handling and the exit-code
+// contract - 0 ok, 1 command error, 130 SIGINT, 143 SIGTERM, and a second
+// signal kills immediately rather than waiting on a stuck cleanup - so the two
+// modules cannot drift apart again.
 //
-//   - SIGINT/SIGTERM cancel the command context so streaming/long-running
-//     commands clean up; a second signal restores default handling and kills
-//     the process immediately instead of waiting on a stuck cleanup.
-//   - Exit codes: 0 ok, 1 on a command error (cobra already printed it), 130 on
-//     SIGINT, 143 on SIGTERM (the 128+N convention), so scripts and supervisors
-//     can tell a failure and an interrupt apart.
-//
-// registerGenerated attaches the module's own generated commands onto the root
-// before the custom commands are wired on top.
-func Run(version string, registerGenerated func(root *cobra.Command)) {
+// apiVersion is the orq API line the generated commands came from. It stays out
+// of root.Version, which install.sh and the update check parse as a bare semver,
+// and is surfaced through the version template and `orq version` instead.
+func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigCh := make(chan os.Signal, 1)
@@ -47,6 +42,8 @@ func Run(version string, registerGenerated func(root *cobra.Command)) {
 		DefaultOutputFormat: "toon",
 		Version:             version,
 	})
+
+	commands.SetAPIVersion(bartolocli.Root, apiVersion)
 
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root)

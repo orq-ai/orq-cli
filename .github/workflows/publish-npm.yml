@@ -1,0 +1,129 @@
+name: Publish npm packages
+
+# npm is deliberately downstream of the GitHub release. If this workflow is
+# retried, the tag and release identity are already fixed and packages that
+# made it to npm are skipped rather than turning an immutable-version collision
+# into a failed release.
+#
+# Called by release-pipeline.yml rather than triggered by `release: published`:
+# GitHub does not start a workflow run from an event raised with GITHUB_TOKEN,
+# and the pipeline publishes the release with exactly that token. workflow_dispatch
+# is the manual retry for a release whose npm half failed on its own.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish to npm"
+        type: string
+        required: true
+      prerelease:
+        description: "Publish under the rc dist-tag instead of latest"
+        type: boolean
+        required: false
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to npm"
+        type: string
+        required: true
+      prerelease:
+        description: "Publish under the rc dist-tag instead of latest"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: startsWith(inputs.tag, 'v')
+    runs-on: macos-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      DIST_TAG: ${{ inputs.prerelease && 'rc' || 'latest' }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Download and stage release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          module_dir=""
+          if [ "$PRERELEASE" = "true" ]; then
+            module_dir=packages/orq-rc
+          fi
+          workdir="${module_dir:-.}"
+          api_version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf "$download_dir"' EXIT
+          gh release download "$TAG" -p 'orq-*' --dir "$download_dir"
+
+          for pkgdir in npm/cli-*/; do
+            package="${pkgdir%/}"
+            target="${package##*/}"
+            suffix="${target#cli-}"
+            asset="orq-$suffix"
+            executable="orq"
+            if [ "$suffix" = "win32-x64" ]; then
+              asset="$asset.exe"
+              executable="orq.exe"
+            fi
+
+            binary="$download_dir/$asset"
+            checksum="$binary.sha256"
+            if [ ! -f "$binary" ] || [ ! -f "$checksum" ]; then
+              echo "error: release is missing $asset or $asset.sha256" >&2
+              exit 1
+            fi
+            expected="$(awk 'NF { print $1; exit }' "$checksum")"
+            actual="$(shasum -a 256 "$binary" | awk '{ print $1 }')"
+            if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+              echo "error: checksum mismatch for $asset" >&2
+              echo "  expected: $expected" >&2
+              echo "  actual:   $actual" >&2
+              exit 1
+            fi
+            echo "  sha256 verified $asset: $actual"
+
+            mkdir -p "$pkgdir/bin"
+            cp "$binary" "$pkgdir/bin/$executable"
+            chmod +x "$pkgdir/bin/$executable"
+          done
+
+          ./scripts/release-build.sh --stamp-only "$version" "$api_version"
+
+      - name: Publish packages that are not in npm yet
+        run: |
+          set -euo pipefail
+
+          publish_if_missing() {
+            package_dir="$1"
+            package_name="$(node -p "require('./$package_dir/package.json').name")"
+            package_version="$(node -p "require('./$package_dir/package.json').version")"
+            if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+              echo "=== $package_name@$package_version already published; skipping ==="
+              return
+            fi
+            echo "=== Publishing $package_name@$package_version @ dist-tag $DIST_TAG ==="
+            (cd "$package_dir" && npm publish --access public --tag "$DIST_TAG")
+          }
+
+          for package_dir in npm/cli-*/; do
+            publish_if_missing "${package_dir%/}"
+          done
+          publish_if_missing npm/cli

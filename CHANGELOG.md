@@ -38,13 +38,72 @@ What you may depend on, and what you may not:
 
 ## Versioning
 
-The CLI version tracks the orq API line it was generated against (see
-`app_version` in `.bartolo.json`, stamped by the release pipeline). This means
-a CLI minor bump can carry surface changes originating in the API. The
-`surface.json` gate plus this file are the compensating controls: any surface
-change is visible in review and recorded here. Decoupling the CLI onto its own
-semver is an open team decision (RES-1133); until then, treat the API line as
-the version and this changelog as the source of truth for breaking changes.
+The CLI has its own semver, independent of the orq API line (RES-1434). The line
+starts at `5.0.0`: everything at `4.12.x`–`4.15.0-rc.x` was the orq API's number
+rather than the CLI's, and starting above all of it means no release this line
+ever cuts can collide with a version npm has already published.
+
+The tag `v<version>` is the authority — the release pipeline creates it, and
+writes the same number back to `VERSION` at the repo root so a checkout knows
+what it last shipped. You never tag by hand, and hand edits to `VERSION` are for
+one case only (below). A pre-release build of the next minor is published on the
+`rc` line.
+
+### What moves the version
+
+Every release takes the larger of two answers:
+
+- **What the orq API did** — the CLI moves the same field the orq API version
+  moved: their major is our major, their minor our minor, their patch our patch.
+  The API is the contract these commands are generated from, so the size of
+  their change is the size of ours. A schema republished at the same
+  `app_version` contributes nothing above a patch.
+- **What our own commits did** — read from their conventional-commit types since
+  the last release: a `!` or a `BREAKING CHANGE:` footer earns a major, `feat:` a
+  minor, everything else a patch. The type table is in `CLAUDE.md`, next to the
+  commit rules, so it is read while the commit is being written.
+
+So an orq patch release carrying a `feat:` of ours is a minor, and a `fix:` on
+its own is a patch.
+
+`VERSION` is the record of what was last released on this line — the pipeline
+writes it on every release — and the bump is applied to it exactly once, rather
+than to whatever the highest tag happens to be. Applying it to a tag range the
+bump was itself derived from is what would count the same commits twice.
+
+A `VERSION` with no tag of its own means the line has not started yet — that is
+how `5.0.0` is published as `5.0.0` and not as `5.0.1` — or that someone is
+forcing a number the rules would not reach on their own. That hand edit is the
+one case for touching the file. The pipeline takes the next free tag from what
+you write, so it is a floor rather than a promise — and it refuses to release at
+all when what it resolves would sort below a version already published, which is
+what a stale or mis-merged `VERSION` looks like.
+
+### Release notes
+
+The `## Unreleased` section below is the release notes. At release time the
+pipeline renames it to the version being cut, opens a fresh empty one, commits
+that back to `main`, and puts the section at the top of the GitHub release —
+above the generated commit list, under the orq API line. An empty section is
+left alone, and that release carries the generated list alone.
+
+That is the whole reason entries are written per PR: nobody writes release notes
+at release time, so they have to already exist.
+
+The orq API version a build was generated against is recorded, not encoded:
+
+- `orq --version` prints it under the CLI version, and `orq version` reports
+  both plus the install method (`--json` for scripts).
+- Every GitHub release's notes open with **Built against orq API <version>**.
+- `orq doctor` carries it as `binary.api_version` in the structured report
+  (`--json`) and in the `--report` bug-report body.
+- `npm view @orq-ai/cli orqApiVersion` reads it off the published package.
+
+A release is now cut for any change that reaches a binary, including
+hand-written CLI code and `install.sh` — not only for an API schema bump, which
+used to be the sole trigger and left CLI fixes unreleased until an unrelated
+API version happened to land. The `surface.json` gate plus this file remain the
+controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
@@ -128,6 +187,15 @@ the version and this changelog as the source of truth for breaking changes.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
+- **Added:** `orq version`. Prints the CLI version, the orq API version the
+  build was generated against, and the install method it was installed through
+  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api_version` and
+  `install_method`. `orq --version` keeps `orq version <semver>` as its first
+  line, so anything parsing that line is unaffected, and prints the API line
+  under it — a script that reads the whole output rather than the first line
+  will now see two lines.
+- **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
+  pre-release line instead of the stable one. The default is unchanged.
 - **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
   logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
   doctor`. The CLI had two names for one value: those six commands took
@@ -174,28 +242,44 @@ the version and this changelog as the source of truth for breaking changes.
   release. It also reaches the generated API commands for the first time, which
   never honored it. Set `ORQ_SERVER` instead.
 
+- **Changed:** the CLI version no longer tracks the orq API version. See
+  [Versioning](#versioning) above. The first decoupled release is `5.0.0` — the
+  first number above everything the old `4.12.x`–`4.15.0-rc.x` line ever
+  published, so the sequence only ever moves forward and no future release can
+  collide with a version npm already holds (npm never allows a version string to
+  be reused, and a collision fails the publish mid-release). Nothing about a
+  version number tells you the API line any more — `orq version` does.
+
+  **If you installed through npm, this one release needs `npm install -g
+  @orq-ai/cli@latest`.** `npm update -g` treats a global install as pinned to a
+  caret range of the installed version, so a machine on `4.x` will report itself
+  up to date forever rather than crossing into `5.x`. `orq update` and
+  `install.sh` are unaffected — both resolve and install an exact version.
+- **Changed:** `orq mcp-servers` and `orq mcp-gateways` now appear under **AI
+  Gateway** in `orq --help`, where the docs put them. The commands themselves
+  shipped in 4.14.0, from that release's orq API schema.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`
   payload gains `coding_agents_remove_failed`.
 - **Added:** `orq update`. Replaces this binary with the latest published
-  release through the channel it was installed with: npm installs get
+  release through the install method it was installed with: npm installs get
   `npm install -g @orq-ai/cli@<version>`, install.sh installs re-run install.sh
   with `--version` set to that same version, and it verifies the release's
-  published `.sha256` and swaps the binary in atomically. Both channels are
-  given the exact version the check resolved rather than resolving "newest"
+  published `.sha256` and swaps the binary in atomically. Both install methods
+  are given the exact version the check resolved rather than resolving "newest"
   again, so what lands is what was reported — and an rc build updates along the
   rc line instead of being silently moved onto the older stable release. A
   binary that arrived any other way is refused, naming its path and both
-  channels' commands, rather than overwritten. `--check` reports current,
-  latest and channel and changes nothing; `--json` carries `update_available`
-  for scripts. npm's and the installer's own progress goes to stderr, so
-  `--json` stdout stays parseable. A dev build refuses and says to rebuild.
+  install methods' commands, rather than overwritten. `--check` reports
+  current, latest and install method and changes nothing; `--json` carries
+  `update_available` for scripts. npm's and the installer's own progress goes to
+  stderr, so `--json` stdout stays parseable. A dev build refuses and says to rebuild.
 - **Added:** update notice. Once every 24 hours, after a command has finished
   successfully, the CLI compares its own version against the npm dist-tag for
   its release line (`latest`, or `rc` for an rc build) and prints one stderr
   line naming the newer version and the command that installs it: `orq update`,
-  or the `install.sh` one-liner when the binary arrived through a channel
+  or the `install.sh` one-liner when the binary arrived through an install method
   `orq update` cannot act on. The check is skipped entirely, with no network request, when
   `ORQ_NO_UPDATE_CHECK` or `CI` is set, when stdout is not a terminal, when
   `--json`/`-o` asked for a machine format, and for unstamped dev builds. Any
@@ -308,13 +392,11 @@ the version and this changelog as the source of truth for breaking changes.
   `ORQ_API_KEY` was being compared against the saved key as though the user had
   exported it. The credential lookup now lives in one place (`auth.SavedAgentKey`)
   that `launch`, `setup` and `doctor` share.
-- **Fixed:** `orq launch` recognises the session's own workspace token again.
-  The CLI injects it into `ORQ_API_KEY`, and `launch` was treating that as a key
-  you had exported, which left it marked as "not from a session" — so every
-  decision keyed on where the credential came from was made on the wrong answer.
-  (The MCP scope warning this originally restored is gone with the credential:
-  MCP entries carry none, so the login session no longer decides whether MCP
-  works.)
+- **Fixed:** `orq launch --mcp` warns again when your login predates MCP scopes.
+  The CLI injects the session's own workspace token into `ORQ_API_KEY`, and
+  `launch` was treating that as a key you had exported — which left it marked as
+  "not from a session", so the scope check could never fire and the MCP server
+  rejected the call instead with an unexplained `insufficient_scope`.
 - **Fixed:** `orq setup --api-key <key>` is no longer silently overridden. A
   previously minted `gateway_key` outranks `api_key`, so the supplied key was
   used for that run and then ignored by the next `orq connect`. Saving an
@@ -372,15 +454,11 @@ the version and this changelog as the source of truth for breaking changes.
   `./.mcp.json`, `~/.kimi-code/mcp.json`, `~/.config/opencode/opencode.json`,
   `~/.config/kilo/kilo.json`, and the `[mcp_servers.orq]` table in codex's
   `config.toml`. `orq launch --mcp` is unaffected: it wires MCP for a single
-  session using your login, and writes nothing to disk. *(Superseded before
-  release for MCP: the capability returns, writing a URL and no credential. The
-  v4.13.10 entries this describes are still yours to delete — the new writer
-  replaces the `orq-workspace` entry, not the old `orq` one.)*
+  session using your login, and writes nothing to disk.
 - **Removed (breaking):** `--global` and `--local` on `orq connect` and
   `orq disconnect`. No provider config is project-scoped — every agent reads its
   gateway configuration from one absolute path — so both flags had no effect
-  once MCP was removed. *(Superseded before release: both flags return with the
-  `mcp` capability.)*
+  once MCP was removed.
 - **Changed:** `orq connect` no longer offers Claude Code, and `--status` no
   longer reports it as unwired. Claude reads its endpoint from the environment
   and has no gateway provider config, so with MCP gone there is nothing to
@@ -436,9 +514,7 @@ the version and this changelog as the source of truth for breaking changes.
   to be wired on every launch with `--no-mcp` to decline; it is now off unless
   you pass `--mcp`, and `--no-mcp` is accepted but does nothing. The skills
   plugin follows MCP, so it is off by default too. A wrapper relying on the old
-  default gets an agent with no orq tools and no error. *(Superseded before
-  release: MCP is on by default again, and `--no-mcp` declines. See the entry at
-  the top of this section.)*
+  default gets an agent with no orq tools and no error.
 - **Changed:** the API key `orq setup` mints is owned by you, not by a service
   account. Service accounts can only be created by workspace admins, so the old
   behaviour failed for Developer and Researcher members of an Enterprise

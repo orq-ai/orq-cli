@@ -1,14 +1,10 @@
 name: Release Pipeline
 
-# Reusable release pipeline, called by release-stable.yml (prod, root module)
-# and release-pre-release.yml (rc, packages/orq-rc module). It regenerates the
-# CLI from the OpenAPI schema that orquesta-web committed, syncs the generated
-# code back to main, tags + publishes a GitHub release, cross-compiles every
-# platform binary, and publishes @orq-ai/cli to npm under the given dist-tag.
-#
-# The version is read from the module's .bartolo.json app_version (bumped by
-# orquesta-web); the tag is derived as v<app_version>. rc versions carry an
-# -rc.N suffix and produce a prerelease.
+# Reusable release pipeline, called twice by release.yml: the root module under
+# npm dist-tag latest, packages/orq-rc under rc. It regenerates from the schema,
+# commits that back to main, tags and publishes a GitHub release with every
+# platform binary, then calls publish-npm.yml. Version rules, and what the orq API version means here:
+# CHANGELOG.md#versioning.
 on:
   workflow_call:
     inputs:
@@ -17,14 +13,17 @@ on:
         type: string
         required: false
         default: ''
-      npm_dist_tag:
-        description: "npm dist-tag to publish under (latest for prod, rc for pre-release)"
+      version:
+        description: "Resolved CLI version to verify and release"
+        type: string
+        required: true
+      api_version:
+        description: "Resolved orq API app_version to stamp into the release"
         type: string
         required: true
 
-# Serialize releases per module so two pushes can't race the commit-back/tag.
 concurrency:
-  group: release-${{ inputs.module_dir || 'root' }}
+  group: release-${{ inputs.module_dir || 'stable' }}
   cancel-in-progress: false
 
 env:
@@ -32,6 +31,10 @@ env:
 
 jobs:
   release:
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
     # macOS runner so `codesign` is available for ad-hoc signing the two darwin
     # binaries. Go's cross toolchain builds linux/windows fine from macOS.
     runs-on: macos-latest
@@ -49,6 +52,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          # Explicit, because the next free patch version is resolved from the
+          # local tag set: no tags would silently mean "v<base> is free".
+          fetch-tags: true
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -75,23 +81,42 @@ jobs:
           go install "github.com/orq-ai/bartolo@v0.6.0"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Resolve version
+      - name: Verify version
         id: version
+        env:
+          VERSION: ${{ inputs.version }}
+          API_VERSION: ${{ inputs.api_version }}
         run: |
+          set -euo pipefail
+          # detect-changes resolved these against the push SHA; this job runs on
+          # main, which may have moved. A schema push in between would ship
+          # regenerated commands stamped with the API version we were handed.
           workdir="${MODULE_DIR:-.}"
-          version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
-          if [ -z "$version" ] || [ "$version" = "null" ]; then
-            echo "error: app_version missing in $workdir/.bartolo.json" >&2
+          checked_out_api="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          if [ "$checked_out_api" != "$API_VERSION" ]; then
+            echo "error: main moved: $workdir/.bartolo.json is $checked_out_api, this run was resolved for $API_VERSION" >&2
             exit 1
           fi
-          tag="v$version"
-          if [[ "$version" == *-rc.* ]]; then prerelease=true; else prerelease=false; fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-            echo "prerelease=$prerelease"
-          } >> "$GITHUB_OUTPUT"
-          echo "Releasing $tag (prerelease=$prerelease) from module '${MODULE_DIR:-root}'"
+          tags_file="$(mktemp)"
+          git tag --list 'v*' > "$tags_file"
+          # A tag on this very commit is our own earlier attempt, not a
+          # collision: the tag step is resumable, and verify must not be what
+          # stops a retry from reaching it.
+          if [ "$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)" = "$(git rev-parse HEAD)" ]; then
+            echo "note: resuming a run that already tagged v$VERSION"
+            { grep -vx "v$VERSION" "$tags_file" || true; } > "$tags_file.tmp"
+            mv "$tags_file.tmp" "$tags_file"
+          fi
+          if [ -n "${MODULE_DIR:-}" ]; then
+            channel=rc
+          else
+            channel=stable
+          fi
+          go_output="$(go run ./cmd/release-version \
+            --verify "$VERSION" --channel "$channel" --tags-file "$tags_file")"
+          printf '%s\n' "$go_output" >> "$GITHUB_OUTPUT"
+          echo "api_version=$API_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Verifying v$(printf '%s\n' "$go_output" | awk -F= '$1 == "version" { print $2 }') (channel=$channel, orq API $API_VERSION)"
 
       - name: Regenerate CLI from schema
         run: |
@@ -106,119 +131,189 @@ jobs:
             go run ./cmd/surface-dump -write
           fi
 
+      - name: Record the resolved version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # VERSION is the record of what this line last released: the next run
+        # bumps from it, and detect-changes ranges from its tag. Written here so
+        # the commit-back below carries it.
+        # Stable only - an rc is cut from the stable line's VERSION and does not
+        # move it.
+        if: ${{ inputs.module_dir == '' }}
+        run: printf '%s\n' "$VERSION" > VERSION
+
+      - name: Stamp the changelog
+        # Stable only: an rc is a preview of the same entries, and stamping them
+        # under an rc number would leave the stable release with nothing to say.
+        if: ${{ inputs.module_dir == '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # "## Unreleased" is written by hand, one entry per PR, and is the only
+          # description of a release anyone writes on purpose. Here it is renamed
+          # to the version being cut and becomes the notes.
+          python3 scripts/stamp-changelog.py "$VERSION" "$(date -u +%Y-%m-%d)" > release-notes-changelog.md
+          echo "--- changelog section for $VERSION ---"
+          cat release-notes-changelog.md
+
       - name: Commit regenerated code to main
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           workdir="${MODULE_DIR:-.}"
-          git add "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json 2>/dev/null || true
+          # Per path, because a single `git add a b c || true` cannot tell a
+          # missing optional path (rc has no surface.json) from a real failure,
+          # and swallowing the latter releases the previous generated tree.
+          for path in "$workdir/cli/generated" "$workdir/examples" "$workdir/README.md" "$workdir/go.mod" "$workdir/go.sum" surface.json VERSION CHANGELOG.md; do
+            if [ -e "$path" ]; then git add "$path"; fi
+          done
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
-            exit 0
+            new_commit="$(git rev-parse HEAD)"
+          else
+            # main requires verified signatures, so we cannot `git push` an unsigned
+            # commit from the runner. Commits created through the GitHub Git Data API
+            # with GITHUB_TOKEN are GPG-signed by GitHub and show up as Verified, so
+            # we build the commit server-side and fast-forward the ref to it.
+            base_sha="$(git rev-parse HEAD)"
+            base_tree="$(git rev-parse 'HEAD^{tree}')"
+            for attempt in 1 2 3; do
+              # One tree entry per staged path. Existing files become a base64 blob;
+              # deleted files carry a null sha so the API drops them from the tree.
+              : > tree-items.jsonl
+              while IFS= read -r path; do
+                [ -z "$path" ] && continue
+                if [ -f "$path" ]; then
+                  mode=100644
+                  [ -x "$path" ] && mode=100755
+                  base64 < "$path" | tr -d '\n' > blob.b64
+                  blob_sha="$(jq -n --rawfile c blob.b64 '{content:$c, encoding:"base64"}' \
+                    | gh api "repos/$REPO/git/blobs" --input - --jq .sha)"
+                  jq -nc --arg p "$path" --arg m "$mode" --arg s "$blob_sha" \
+                    '{path:$p, mode:$m, type:"blob", sha:$s}' >> tree-items.jsonl
+                else
+                  jq -nc --arg p "$path" \
+                    '{path:$p, mode:"100644", type:"blob", sha:null}' >> tree-items.jsonl
+                fi
+              done < <(git diff --cached --name-only)
+
+              new_tree="$(jq -sc --arg base "$base_tree" '{base_tree:$base, tree:.}' tree-items.jsonl \
+                | gh api "repos/$REPO/git/trees" --input - --jq .sha)"
+              new_commit="$(gh api "repos/$REPO/git/commits" \
+                -f message="Regenerate CLI for $VERSION" \
+                -f tree="$new_tree" \
+                -f "parents[]=$base_sha" \
+                --jq .sha)"
+              if gh api --method PATCH "repos/$REPO/git/refs/heads/main" -f sha="$new_commit"; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "error: main moved during commit-back after 3 attempts" >&2
+                exit 1
+              fi
+              echo "main moved during commit-back; retrying (attempt $((attempt + 1))/3)" >&2
+              git fetch origin main
+              base_sha="$(git rev-parse origin/main)"
+              base_tree="$(git rev-parse 'origin/main^{tree}')"
+            done
+
+            # Point local HEAD at the verified commit before creating its tag.
+            git fetch origin main
+            git reset --hard "$new_commit"
           fi
 
-          # main requires verified signatures, so we cannot `git push` an unsigned
-          # commit from the runner. Commits created through the GitHub Git Data API
-          # with GITHUB_TOKEN are GPG-signed by GitHub and show up as Verified, so
-          # we build the commit server-side and fast-forward the ref to it.
-          base_sha="$(git rev-parse HEAD)"
-          base_tree="$(git rev-parse 'HEAD^{tree}')"
-
-          # One tree entry per staged path. Existing files become a base64 blob;
-          # deleted files carry a null sha so the API drops them from the tree.
-          : > tree-items.jsonl
-          while IFS= read -r path; do
-            [ -z "$path" ] && continue
-            if [ -f "$path" ]; then
-              mode=100644
-              [ -x "$path" ] && mode=100755
-              base64 < "$path" | tr -d '\n' > blob.b64
-              blob_sha="$(jq -n --rawfile c blob.b64 '{content:$c, encoding:"base64"}' \
-                | gh api "repos/$REPO/git/blobs" --input - --jq .sha)"
-              jq -nc --arg p "$path" --arg m "$mode" --arg s "$blob_sha" \
-                '{path:$p, mode:$m, type:"blob", sha:$s}' >> tree-items.jsonl
-            else
-              jq -nc --arg p "$path" \
-                '{path:$p, mode:"100644", type:"blob", sha:null}' >> tree-items.jsonl
-            fi
-          done < <(git diff --cached --name-only)
-
-          new_tree="$(jq -sc --arg base "$base_tree" '{base_tree:$base, tree:.}' tree-items.jsonl \
-            | gh api "repos/$REPO/git/trees" --input - --jq .sha)"
-          new_commit="$(gh api "repos/$REPO/git/commits" \
-            -f message="Regenerate CLI for $VERSION" \
-            -f tree="$new_tree" \
-            -f "parents[]=$base_sha" \
-            --jq .sha)"
-          gh api --method PATCH "repos/$REPO/git/refs/heads/main" -f sha="$new_commit"
-
-          # Point local HEAD at the verified commit so the release is tagged there.
-          git fetch origin main
-          git reset --hard "$new_commit"
+          # VERSION and its tag are created together from the verified commit.
+          # A tag can briefly exist without assets, but it cannot be mistaken for
+          # an unreleased VERSION on the next detect-changes run.
+          target="$(git rev-parse HEAD)"
+          tagged="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)"
+          if [ -n "$tagged" ]; then
+            [ "$tagged" = "$target" ] || { echo "error: $TAG already points at $tagged, not $target" >&2; exit 1; }
+          else
+            git tag "$TAG" "$target"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
+          API_VERSION: ${{ steps.version.outputs.api_version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          # gh creates the tag itself (at the current HEAD, already pushed to main
-          # by the commit-back step) and publishes the release — no separate
-          # `git tag`/`git push` needed.
+          # The tag already points at the verified commit-back HEAD. Notes go
+          # through the API rather than --generate-notes so the orq API line can
+          # be prepended: it is no longer inferable from the version number.
+          target="$(git rev-parse HEAD)"
           #
-          # --generate-notes with no start tag lets GitHub pick the previous release, and
-          # the RC and stable tags interleave (v4.15.0-rc.5 was published after v4.14.3), so
-          # it jumps tracks: rc.4 and v4.14.1 shipped byte-identical bodies. Anchor each
-          # release to the last tag of its own stream.
+          # Without a start tag GitHub picks the previous release, and the rc and
+          # stable tags interleave (v4.15.0-rc.5 was published after v4.14.3), so
+          # the notes jump tracks: rc.4 and v4.14.1 shipped byte-identical bodies.
+          # Anchor each release to the last tag of its own stream.
           #
-          # This assumes a single stable release line: the stable anchor is the highest-sorting
-          # stable tag, not the nearest ancestor, so a backport hotfix cut from an older branch
-          # would anchor to a newer tag and generate an empty changelog.
+          # This assumes a single stable release line: the stable anchor is the
+          # highest-sorting stable tag, not the nearest ancestor, so a backport
+          # hotfix cut from an older branch would anchor to a newer tag and
+          # generate an empty changelog.
           #
-          # -v:refname, not -creatordate: every tag here is lightweight, so creatordate is
-          # the underlying commit's date rather than the tag's, and the offsets already
-          # disagree (+0000 vs +0200).
+          # -v:refname, not -creatordate: every tag here is lightweight, so
+          # creatordate is the underlying commit's date rather than the tag's,
+          # and the offsets already disagree (+0000 vs +0200).
           #
-          # `|| true` on each pipeline: this step has no `shell:`/`defaults.run.shell`
-          # and sets no `set -o pipefail`, so it runs as `bash -e` and the pipeline's
-          # status is `head -1`'s (0 on empty input) — the guard is defensive only, in
-          # case pipefail is ever turned on here and a grep legitimately matches nothing.
+          # `|| true` on each pipeline: this step sets no `set -o pipefail`, so
+          # the pipeline's status is `head -1`'s (0 on empty input) — the guard
+          # is defensive only, in case pipefail is ever turned on here and a grep
+          # legitimately matches nothing.
           if [ "$PRERELEASE" = "true" ]; then
             start_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)"
           else
             start_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-rc\.' | grep -v "^${TAG}$" | head -1 || true)"
           fi
-          flags=(--title "$TAG" --target "$(git rev-parse HEAD)" --generate-notes)
           # No start tag means this is the first release of its stream; let GitHub choose.
-          [ -n "$start_tag" ] && flags+=(--notes-start-tag "$start_tag")
+          notes_args=(-f tag_name="$TAG" -f target_commitish="$target")
+          if [ -n "$start_tag" ]; then notes_args+=(-f previous_tag_name="$start_tag"); fi
+          {
+            printf 'Built against **orq API %s**.\n\n' "$API_VERSION"
+            # The hand-written changelog section first - what changed, in the
+            # words of whoever changed it - then the generated commit/PR list
+            # under it as the detail nobody writes by hand.
+            if [ -s release-notes-changelog.md ]; then
+              cat release-notes-changelog.md
+              printf '\n'
+            fi
+            gh api --method POST "repos/$REPO/releases/generate-notes" \
+              "${notes_args[@]}" --jq .body
+          } > release-notes.md
+          #
+          # A draft is not returned by /releases/latest, so nothing can install
+          # the release before its assets are up. The tag already exists, but it
+          # points at no published assets until the last step.
+          flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # A retry may find the draft left by the failed attempt. Remove that
+          # record while retaining the immutable tag, then recreate it with the
+          # complete notes and fresh assets. A *published* release is already
+          # installable and is never deleted: doing so would regress
+          # /releases/latest for everyone while the tag stayed immutable.
+          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
+          case "$draft" in
+            true)    gh release delete "$TAG" --yes ;;
+            missing) ;;
+            *)       echo "error: $TAG is already published; delete it by hand if that is really what you want" >&2; exit 1 ;;
+          esac
           gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}"
-
-      - name: Publish platform packages to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          set -e
-          for pkgdir in npm/cli-*/; do
-            echo "=== Publishing $(basename "$pkgdir") @ dist-tag $DIST_TAG ==="
-            (cd "$pkgdir" && npm publish --access public --tag "$DIST_TAG")
-          done
-
-      - name: Publish wrapper package to npm
-        env:
-          DIST_TAG: ${{ inputs.npm_dist_tag }}
-        run: |
-          cd npm/cli
-          echo "=== Publishing @orq-ai/cli @ dist-tag $DIST_TAG ==="
-          npm publish --access public --tag "$DIST_TAG"
+          API_VERSION: ${{ steps.version.outputs.api_version }}
+        run: ./scripts/release-build.sh "$VERSION" "${MODULE_DIR}" "$API_VERSION"
 
       - name: Stage raw binaries for GitHub Release
         run: |
@@ -280,3 +375,25 @@ jobs:
           # cd first: shasum records the path as written, so `shasum -c` from elsewhere would look for dist/.
           ( cd dist && shasum -a 256 install.sh > install.sh.sha256 )
           gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --clobber
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # Publish only once every asset is attached. The tag already exists;
+          # npm publication runs in the publish-npm job below.
+          gh release edit "$TAG" --draft=false
+
+  # Downstream of the published release, so a half-uploaded release never
+  # reaches npm. Re-runnable on its own: publish-npm skips versions already
+  # in the registry.
+  publish-npm:
+    needs: release
+    uses: ./.github/workflows/publish-npm.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+      prerelease: ${{ needs.release.outputs.prerelease == 'true' }}

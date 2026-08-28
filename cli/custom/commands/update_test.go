@@ -14,23 +14,23 @@ import (
 )
 
 // updateCmdEnv wires the fake registry and scratch HOME from updateTestEnv,
-// then pins the channel and captures whatever the command would have executed
+// then pins the install method and captures whatever the command would have executed
 // instead of really running npm or the installer.
-func updateCmdEnv(t *testing.T, channel updateChannel, latest string) (stdout *bytes.Buffer, ran *[]string) {
+func updateCmdEnv(t *testing.T, method installMethod, latest string) (stdout *bytes.Buffer, ran *[]string) {
 	t.Helper()
-	return updateCmdEnvTags(t, channel, map[string]string{"latest": latest})
+	return updateCmdEnvTags(t, method, map[string]string{"latest": latest})
 }
 
-func updateCmdEnvTags(t *testing.T, channel updateChannel, tags map[string]string) (stdout *bytes.Buffer, ran *[]string) {
+func updateCmdEnvTags(t *testing.T, method installMethod, tags map[string]string) (stdout *bytes.Buffer, ran *[]string) {
 	t.Helper()
 	if _, hits := updateTestEnv(t, tags); hits == nil {
 		t.Fatal("test env not wired")
 	}
 	stdout = &bytes.Buffer{}
-	origOut, origDetect, origRun := bartolocli.Stdout, detectChannel, runUpdateCommand
-	t.Cleanup(func() { bartolocli.Stdout, detectChannel, runUpdateCommand = origOut, origDetect, origRun })
+	origOut, origDetect, origRun := bartolocli.Stdout, detectInstallMethod, runUpdateCommand
+	t.Cleanup(func() { bartolocli.Stdout, detectInstallMethod, runUpdateCommand = origOut, origDetect, origRun })
 	bartolocli.Stdout = stdout
-	detectChannel = func() (updateChannel, string) { return channel, "/somewhere/orq" }
+	detectInstallMethod = func() (installMethod, string) { return method, "/somewhere/orq" }
 	executed := []string{}
 	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
 		executed = append(executed, strings.Join(append([]string{name}, args...), " "))
@@ -51,7 +51,7 @@ func runUpdateCmd(t *testing.T, version string, args ...string) error {
 }
 
 func TestUpdateRefusesDevBuild(t *testing.T) {
-	_, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	err := runUpdateCmd(t, "dev")
 	if err == nil || !strings.Contains(err.Error(), "rebuilding from source") {
 		t.Fatalf("dev build error = %v, want a refusal naming the rebuild", err)
@@ -61,8 +61,8 @@ func TestUpdateRefusesDevBuild(t *testing.T) {
 	}
 }
 
-func TestUpdateViaNPMChannel(t *testing.T) {
-	stdout, ran := updateCmdEnv(t, channelNPM, "4.13.22")
+func TestUpdateViaNPMInstallMethod(t *testing.T) {
+	stdout, ran := updateCmdEnv(t, methodNPM, "4.13.22")
 	stubOnPath(t, "npm")
 
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
@@ -77,7 +77,7 @@ func TestUpdateViaNPMChannel(t *testing.T) {
 }
 
 func TestUpdateViaNPMWithoutNPMPrintsTheCommand(t *testing.T) {
-	_, ran := updateCmdEnv(t, channelNPM, "4.13.22")
+	_, ran := updateCmdEnv(t, methodNPM, "4.13.22")
 	t.Setenv("PATH", t.TempDir()) // no npm here
 
 	err := runUpdateCmd(t, "4.13.18")
@@ -102,8 +102,8 @@ func stubOnPath(t *testing.T, names ...string) {
 	t.Setenv("PATH", dir)
 }
 
-func TestUpdateViaInstallerChannel(t *testing.T) {
-	_, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+func TestUpdateViaInstallerInstallMethod(t *testing.T) {
+	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
 
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
@@ -126,7 +126,7 @@ func TestUpdateViaInstallerChannel(t *testing.T) {
 }
 
 func TestUpdateAbortsWhenTheInstallerCannotBeDownloaded(t *testing.T) {
-	_, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
 	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
 		*ran = append(*ran, name)
@@ -148,7 +148,7 @@ func TestUpdateAbortsWhenTheInstallerCannotBeDownloaded(t *testing.T) {
 }
 
 func TestUpdateInstallsTheRCLineForAnRCBuild(t *testing.T) {
-	_, ran := updateCmdEnvTags(t, channelNPM, map[string]string{"latest": "4.13.22", "rc": "4.14.0-rc.48"})
+	_, ran := updateCmdEnvTags(t, methodNPM, map[string]string{"latest": "4.13.22", "rc": "4.14.0-rc.48"})
 	stubOnPath(t, "npm")
 
 	if err := runUpdateCmd(t, "4.14.0-rc.47"); err != nil {
@@ -159,11 +159,11 @@ func TestUpdateInstallsTheRCLineForAnRCBuild(t *testing.T) {
 	}
 }
 
-func TestUpdateUnknownChannelRefuses(t *testing.T) {
-	_, ran := updateCmdEnv(t, channelUnknown, "4.13.22")
+func TestUpdateUnknownInstallMethodRefuses(t *testing.T) {
+	_, ran := updateCmdEnv(t, methodUnknown, "4.13.22")
 	err := runUpdateCmd(t, "4.13.18")
 	if err == nil {
-		t.Fatal("unknown channel updated silently, want a refusal")
+		t.Fatal("unknown install method updated silently, want a refusal")
 	}
 	for _, want := range []string{"/somewhere/orq", "npm install -g", "install.sh"} {
 		if !strings.Contains(err.Error(), want) {
@@ -176,7 +176,7 @@ func TestUpdateUnknownChannelRefuses(t *testing.T) {
 }
 
 func TestUpdateUpToDateDoesNothing(t *testing.T) {
-	stdout, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+	stdout, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	if err := runUpdateCmd(t, "4.13.22"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestUpdateUpToDateDoesNothing(t *testing.T) {
 }
 
 func TestUpdateCheckReportsWithoutInstalling(t *testing.T) {
-	stdout, ran := updateCmdEnv(t, channelInstaller, "4.13.22")
+	stdout, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	if err := runUpdateCmd(t, "4.13.18", "--check"); err != nil {
 		t.Fatalf("update --check: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestUpdateCheckReportsWithoutInstalling(t *testing.T) {
 }
 
 func TestUpdatePropagatesInstallerFailure(t *testing.T) {
-	_, _ = updateCmdEnv(t, channelInstaller, "4.13.22")
+	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
 	runUpdateCommand = func(_ context.Context, name string, _ ...string) error {
 		if name == "sh" {
@@ -222,43 +222,43 @@ func TestUpdatePropagatesInstallerFailure(t *testing.T) {
 	}
 }
 
-func TestUpdateHintFollowsChannel(t *testing.T) {
-	orig := detectChannel
-	t.Cleanup(func() { detectChannel = orig })
+func TestUpdateHintFollowsInstallMethod(t *testing.T) {
+	orig := detectInstallMethod
+	t.Cleanup(func() { detectInstallMethod = orig })
 
 	for _, c := range []struct {
-		channel updateChannel
-		want    string
+		method installMethod
+		want   string
 	}{
-		{channelNPM, "orq update"},
-		{channelInstaller, "orq update"},
-		{channelUnknown, installerCmd},
+		{methodNPM, "orq update"},
+		{methodInstaller, "orq update"},
+		{methodUnknown, installerCmd},
 	} {
-		detectChannel = func() (updateChannel, string) { return c.channel, "/somewhere/orq" }
+		detectInstallMethod = func() (installMethod, string) { return c.method, "/somewhere/orq" }
 		if got := updateHint(); got != c.want {
-			t.Errorf("updateHint() on %s = %q, want %q", c.channel, got, c.want)
+			t.Errorf("updateHint() on %s = %q, want %q", c.method, got, c.want)
 		}
 	}
 }
 
-func TestDetectChannel(t *testing.T) {
+func TestDetectInstallMethod(t *testing.T) {
 	home := t.TempDir()
-	origHome, origExec, origDetect := updateHomeDir, osExecutable, detectChannel
-	t.Cleanup(func() { updateHomeDir, osExecutable, detectChannel = origHome, origExec, origDetect })
+	origHome, origExec, origDetect := updateHomeDir, osExecutable, detectInstallMethod
+	t.Cleanup(func() { updateHomeDir, osExecutable, detectInstallMethod = origHome, origExec, origDetect })
 	updateHomeDir = func() (string, error) { return home, nil }
-	detectChannel = origDetect
+	detectInstallMethod = origDetect
 
 	cases := []struct {
 		name       string
 		path       string
 		installDir string
-		want       updateChannel
+		want       installMethod
 	}{
-		{"npm shim", filepath.Join(home, "n/lib/node_modules/@orq-ai/cli-darwin-arm64/bin/orq"), "", channelNPM},
-		{"default install dir", filepath.Join(home, ".orq", "bin", "orq"), "", channelInstaller},
-		{"custom install dir", filepath.Join(home, "opt", "orq"), filepath.Join(home, "opt"), channelInstaller},
-		{"hand-copied binary", filepath.Join(home, "usr-local-bin", "orq"), "", channelUnknown},
-		{"go build output", filepath.Join(home, "src", "orq-cli", "orq"), "", channelUnknown},
+		{"npm shim", filepath.Join(home, "n/lib/node_modules/@orq-ai/cli-darwin-arm64/bin/orq"), "", methodNPM},
+		{"default install dir", filepath.Join(home, ".orq", "bin", "orq"), "", methodInstaller},
+		{"custom install dir", filepath.Join(home, "opt", "orq"), filepath.Join(home, "opt"), methodInstaller},
+		{"hand-copied binary", filepath.Join(home, "usr-local-bin", "orq"), "", methodUnknown},
+		{"go build output", filepath.Join(home, "src", "orq-cli", "orq"), "", methodUnknown},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -270,15 +270,15 @@ func TestDetectChannel(t *testing.T) {
 			}
 			t.Setenv("ORQ_CLI_INSTALL_DIR", c.installDir)
 			osExecutable = func() (string, error) { return c.path, nil }
-			if got, _ := detectChannel(); got != c.want {
-				t.Errorf("detectChannel() for %s = %s, want %s", c.path, got, c.want)
+			if got, _ := detectInstallMethod(); got != c.want {
+				t.Errorf("detectInstallMethod() for %s = %s, want %s", c.path, got, c.want)
 			}
 		})
 	}
 }
 
 func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
-	stdout, _ := updateCmdEnv(t, channelInstaller, "4.13.22")
+	stdout, _ := updateCmdEnv(t, methodInstaller, "4.13.22")
 	ensureFormatter(t)
 	origHuman := humanOutput
 	t.Cleanup(func() { humanOutput = origHuman })
@@ -288,10 +288,13 @@ func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
 		t.Fatalf("update --check: %v", err)
 	}
 	got := stdout.String()
-	for _, want := range []string{"update_available", "true", "4.13.22", "installer"} {
+	for _, want := range []string{"install_method", "update_available", "true", "4.13.22", "installer"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("machine-format payload %q missing %q", got, want)
 		}
+	}
+	if strings.Contains(got, `"channel"`) {
+		t.Errorf("machine-format payload %q still carries the old channel key", got)
 	}
 	if strings.Contains(got, "Run 'orq update'") {
 		t.Errorf("machine-format payload %q carries the human sentence", got)
@@ -299,7 +302,7 @@ func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
 }
 
 func TestUpdateFailureLeavesTheNoticeArmed(t *testing.T) {
-	_, _ = updateCmdEnv(t, channelInstaller, "4.13.22")
+	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
 	runUpdateCommand = func(context.Context, string, ...string) error { return errors.New("exit status 1") }
 

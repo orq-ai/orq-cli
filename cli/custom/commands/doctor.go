@@ -147,8 +147,9 @@ func NewDoctorCommand() *cobra.Command {
 
 			report := doctorReport{
 				Binary: map[string]string{
-					"name":    "orq",
-					"version": bartolocli.Root.Version,
+					"name":        "orq",
+					"version":     bartolocli.Root.Version,
+					"api_version": apiVersion,
 				},
 				Runtime: map[string]string{
 					"name":     "go",
@@ -195,12 +196,13 @@ func emitBugReport(cmd *cobra.Command) error {
 	body := fmt.Sprintf(
 		"### Environment\n\n"+
 			"- orq version: %s\n"+
+			"- orq API: %s\n"+
 			"- platform: %s/%s\n"+
 			"- go runtime: %s\n"+
 			"- profile: %s\n\n"+
 			"### What happened\n\n<!-- steps to reproduce, actual output -->\n\n"+
 			"### What you expected\n",
-		cmd.Root().Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
+		cmd.Root().Version, apiVersion, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
 	)
 	// Leave the title empty so GitHub shows its placeholder and the user writes
 	// a real one; a literal "bug: " prefill just becomes the issue title verbatim.

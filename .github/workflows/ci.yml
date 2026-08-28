@@ -93,6 +93,74 @@ jobs:
         run: go test ./...
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
+      - name: changelog stamping
+        run: python3 scripts/stamp-changelog.py --self-test
+      - name: stamp-only release packages stay aligned
+        run: |
+          set -euo pipefail
+          version="5.0.0"
+          api_version="4.13.22"
+
+          for pkgdir in npm/cli-*/; do
+            package="${pkgdir%/}"
+            target="${package##*/}"
+            suffix="${target#cli-}"
+            executable="orq"
+            if [ "$suffix" = "win32-x64" ]; then
+              executable="orq.exe"
+            fi
+            mkdir -p "$pkgdir/bin"
+            printf 'fake' > "$pkgdir/bin/$executable"
+          done
+
+          ./scripts/release-build.sh --stamp-only "$version" "$api_version"
+
+          VERSION="$version" API_VERSION="$api_version" node <<'NODE'
+          const fs = require("node:fs");
+          const dirs = [
+            "npm/cli",
+            "npm/cli-darwin-arm64",
+            "npm/cli-darwin-x64",
+            "npm/cli-linux-x64",
+            "npm/cli-linux-arm64",
+            "npm/cli-win32-x64",
+          ];
+          const version = process.env.VERSION;
+          const apiVersion = process.env.API_VERSION;
+          const packages = dirs.map((dir) => ({
+            dir,
+            package: JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")),
+          }));
+
+          for (const { dir, package: pkg } of packages) {
+            if (pkg.version !== version || pkg.orqApiVersion !== apiVersion) {
+              throw new Error(`${dir} has the wrong version metadata`);
+            }
+          }
+
+          const wrapper = packages[0].package;
+          const expectedDependencies = dirs.slice(1).map((dir) => {
+            const suffix = dir.slice("npm/cli-".length);
+            return `@orq-ai/cli-${suffix}`;
+          });
+          for (const name of expectedDependencies) {
+            if (wrapper.optionalDependencies[name] !== version) {
+              throw new Error(`${name} is not pinned to ${version}`);
+            }
+          }
+          for (const [name, dependencyVersion] of Object.entries(wrapper.optionalDependencies)) {
+            if (!name.startsWith("@orq-ai/cli-") || dependencyVersion !== version) {
+              throw new Error(`${name} is not pinned to ${version}`);
+            }
+          }
+          NODE
+
+          missing="npm/cli-linux-arm64/bin/orq"
+          rm "$missing"
+          if ./scripts/release-build.sh --stamp-only "$version" "$api_version"; then
+            echo "stamp-only succeeded without $missing" >&2
+            exit 1
+          fi
 
   windows:
     name: skills on windows
@@ -119,6 +187,29 @@ jobs:
       - uses: actions/checkout@v7
       - name: parse under dash
         run: dash -n install.sh
+      - name: test rc resolver fixtures under dash
+        run: |
+          dash <<'SH'
+          set -eu
+          ORQ_CLI_LIB_ONLY=1 . ./install.sh
+
+          assert_fixture() {
+            input="$1"
+            expected="$2"
+            actual="$(printf '%s' "$input" | rc_version_from_dist_tags)"
+            printf 'input: %s\n' "$input"
+            printf 'output: %s\n' "${actual:-<empty>}"
+            if [ "$actual" != "$expected" ]; then
+              printf 'expected: %s\n' "${expected:-<empty>}" >&2
+              exit 1
+            fi
+          }
+
+          assert_fixture '{"latest":"4.14.3","rc":"5.1.0-rc.1"}' 'v5.1.0-rc.1'
+          assert_fixture '{"stable":"rc","rc":"5.1.0-rc.1"}' 'v5.1.0-rc.1'
+          assert_fixture '{"latest":"4.14.3"}' ''
+          assert_fixture '' ''
+          SH
       - name: install with no controlling terminal
         # setsid = no controlling terminal (the CI/Docker/ssh case), which fails only at runtime.
         # A full install, not --help: --help returns before the first have_tty call.
@@ -129,6 +220,21 @@ jobs:
           SHELL=/bin/bash setsid dash install.sh \
             --no-setup --install-dir "$HOME/orq" < /dev/null
           test -x "$HOME/orq/orq"
+      - name: install the rc channel
+        if: github.event_name == 'push'
+        # The rc line is a GitHub pre-release, which /releases/latest never
+        # returns, so --channel rc resolves the version from the npm rc
+        # dist-tag instead - a separate code path with its own failure modes.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/rc-home"
+          mkdir -p "$HOME"
+          SHELL=/bin/bash setsid dash install.sh --channel rc \
+            --no-setup --no-modify-path --install-dir "$HOME/orq" < /dev/null
+          # Captured, not piped: sh has no pipefail, so a binary that printed a
+          # version and then failed would be judged by head's exit status.
+          rc_version="$("$HOME/orq/orq" --version)"
+          printf '%s\n' "$rc_version" | head -n 1 | grep -q -- '-rc\.'
       - name: upgrade over an existing install
         # The first job installs into a fresh dir, so `previous` stays empty and
         # the whole upgrade/rollback block never runs. This one exercises it.
