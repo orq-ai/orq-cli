@@ -1,0 +1,34 @@
+# Categories GitHub uses for the auto-generated release notes ("What's Changed" +
+# contributor list) that `gh release create --generate-notes` writes in
+# .github/workflows/release-pipeline.yml. Those notes are PR-based with
+# attributions; CHANGELOG.md remains the hand-written source of truth for the
+# stability contract.
+#
+# The release:* namespace is reserved for .github/workflows/label-pr.yml.
+# .github/scripts/check-release-label-config.js fails CI if these workflow-owned
+# labels drift from that workflow's mapping, so this is enforced, not a duty.
+# The "*" catch-all is load-bearing: without it a PR the labeler left unlabelled
+# disappears from the release body instead of landing in Other Changes.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot[bot]
+      - dependabot
+  categories:
+    - title: 🚀 Features
+      labels:
+        - release:features
+    - title: 🐛 Bug Fixes
+      labels:
+        - release:bug-fixes
+    - title: 📚 Documentation
+      labels:
+        - release:documentation
+    - title: 🧰 Maintenance
+      labels:
+        - release:maintenance
+    - title: Other Changes
+      labels:
+        - "*"

@@ -18,6 +18,50 @@ permissions:
   contents: read
 
 jobs:
+  # Separate from `stable`: neither step needs Go, and a workflow-only PR
+  # should not have to wait for the Go build to learn its workflows are broken.
+  workflows:
+    name: workflow and release-label validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: release-label configuration
+        run: node .github/scripts/check-release-label-config.js
+      - name: label-pr unit tests
+        # Explicit file: `node --test <dir>` requires the directory as one
+        # module rather than scanning it, and a glob that matches nothing exits
+        # 0. A missing file here exits 1, which is what a rename should do.
+        run: node --test .github/scripts/label-pr.test.js
+      - name: actionlint
+        env:
+          # Bump both together: ACTIONLINT_SHA256 is the sha256 of
+          # actionlint_<version>_linux_amd64.tar.gz, taken from the release's
+          # published checksums.txt. Changing only the version fails the
+          # checksum step below.
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --retry 3 --retry-all-errors --show-error --silent \
+            --output "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          # No --status: on a mismatch the only useful signal is the FAILED line
+          # it prints, and this step is otherwise silent.
+          if ! printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check; then
+            echo "actionlint ${ACTIONLINT_VERSION} checksum mismatch: expected ${ACTIONLINT_SHA256}." >&2
+            echo "Bump ACTIONLINT_SHA256 from the release's checksums.txt, or treat this as a tampered download." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          # ShellCheck runs too, on the `run:` blocks in these workflows only —
+          # it is the runner's copy rather than a pinned one, so a runner
+          # upgrade can surface new warnings. install.sh and scripts/*.sh are
+          # not linted here; they carry their own shellcheck disable directives
+          # for whoever adds that step.
+          "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
+
   stable:
     name: build, vet, test, surface (stable module)
     runs-on: ubuntu-latest
@@ -29,6 +73,14 @@ jobs:
       - name: gofmt
         run: |
           set -euo pipefail
+          # xargs runs its command once even on empty input, and gofmt with no
+          # file arguments reads stdin and exits 0 — so an empty list would
+          # report success without having examined anything. Fail on it instead.
+          if [ "$(git ls-files '*.go' | wc -l)" -eq 0 ]; then
+            echo "no Go files found; the pathspec or the tree is wrong"; exit 1
+          fi
+          # -z/-0 rather than a shell variable: command substitution drops NUL
+          # bytes, so capturing the list first would splice two names together.
           unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"; echo "$unformatted"; exit 1

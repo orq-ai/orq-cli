@@ -458,6 +458,16 @@ make tidy               # go mod tidy
 make doctor             # run the doctor command
 ```
 
+### Contributing
+
+PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`). Title
+validation runs when a PR is opened, edited, reopened, or synchronized, so invalid
+titles fail CI. A recognised title receives a dedicated `release:*` automation
+label; these labels are provisioned explicitly, so their colour and description are
+ours, and they do not replace ordinary human labels. A PR with no automation label
+falls into the `Other Changes` catch-all if merged. See [AGENTS.md](AGENTS.md) for
+the full type → label table and the rest of the repo conventions.
+
 ### Regenerating from OpenAPI
 
 ```sh

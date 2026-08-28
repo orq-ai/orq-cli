@@ -251,6 +251,33 @@ jobs:
           # through the API rather than --generate-notes so the orq API line can
           # be prepended: it is no longer inferable from the version number.
           target="$(git rev-parse HEAD)"
+          #
+          # Without a start tag GitHub picks the previous release, and the rc and
+          # stable tags interleave (v4.15.0-rc.5 was published after v4.14.3), so
+          # the notes jump tracks: rc.4 and v4.14.1 shipped byte-identical bodies.
+          # Anchor each release to the last tag of its own stream.
+          #
+          # This assumes a single stable release line: the stable anchor is the
+          # highest-sorting stable tag, not the nearest ancestor, so a backport
+          # hotfix cut from an older branch would anchor to a newer tag and
+          # generate an empty changelog.
+          #
+          # -v:refname, not -creatordate: every tag here is lightweight, so
+          # creatordate is the underlying commit's date rather than the tag's,
+          # and the offsets already disagree (+0000 vs +0200).
+          #
+          # `|| true` on each pipeline: this step sets no `set -o pipefail`, so
+          # the pipeline's status is `head -1`'s (0 on empty input) — the guard
+          # is defensive only, in case pipefail is ever turned on here and a grep
+          # legitimately matches nothing.
+          if [ "$PRERELEASE" = "true" ]; then
+            start_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)"
+          else
+            start_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-rc\.' | grep -v "^${TAG}$" | head -1 || true)"
+          fi
+          # No start tag means this is the first release of its stream; let GitHub choose.
+          notes_args=(-f tag_name="$TAG" -f target_commitish="$target")
+          if [ -n "$start_tag" ]; then notes_args+=(-f previous_tag_name="$start_tag"); fi
           {
             printf 'Built against **orq API %s**.\n\n' "$API_VERSION"
             # The hand-written changelog section first - what changed, in the
@@ -261,7 +288,7 @@ jobs:
               printf '\n'
             fi
             gh api --method POST "repos/$REPO/releases/generate-notes" \
-              -f tag_name="$TAG" -f target_commitish="$target" --jq .body
+              "${notes_args[@]}" --jq .body
           } > release-notes.md
           #
           # A draft is not returned by /releases/latest, so nothing can install
