@@ -108,6 +108,9 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		name     string
 		savedWS  string
 		activeWS string
+		// savedKey is the key seedProfile records as minted; empty means "same
+		// as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
+		savedKey string
 		// newServer builds the profile-fetch stub this case needs, or nil when
 		// the case never reaches the network (the same-workspace short-circuit
 		// returns before ResolveCredentials reads the session at all).
@@ -116,6 +119,7 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		wantKind       CredentialKind
 		wantWorkspace  string
 		wantSuperseded string
+		wantShadows    bool
 	}{
 		{
 			// exported key == saved key, saved workspace != active: the
@@ -140,12 +144,33 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		{
 			// exported key == saved key, saved workspace == active: the
 			// env key wins outright, nothing superseded.
-			name:          "saved key matches active workspace",
+			name:     "saved key matches active workspace",
+			savedWS:  "acme",
+			activeWS: "acme",
+			// The env key must win before ResolveCredentials ever dials out;
+			// if the short-circuit regresses, failing the request here beats
+			// silently dialing the real production API.
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Errorf("unexpected request to %s; env key should have short-circuited", r.URL.Path)
+				}))
+			},
+			wantKey:       "sk-minted",
+			wantKind:      CredentialAPIKey,
+			wantWorkspace: "acme",
+		},
+		{
+			// exported key != saved key: a key we did not mint has an
+			// unknowable workspace, so it wins outright and shadows the
+			// session rather than getting superseded.
+			name:          "exported key not the one we minted",
+			savedKey:      "sk-different",
 			savedWS:       "acme",
 			activeWS:      "acme",
 			wantKey:       "sk-minted",
 			wantKind:      CredentialAPIKey,
-			wantWorkspace: "acme",
+			wantWorkspace: "",
+			wantShadows:   true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,7 +187,11 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			t.Setenv("ORQ_API_KEY", "sk-minted")
 			t.Setenv("ORQ_API_BASE_URL", "")
 
-			seedProfile(t, "sk-minted", tc.savedWS)
+			savedKey := tc.savedKey
+			if savedKey == "" {
+				savedKey = "sk-minted"
+			}
+			seedProfile(t, savedKey, tc.savedWS)
 
 			writeSessionFile(t, home, map[string]any{
 				"version":            1,
@@ -191,6 +220,9 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			}
 			if creds.SupersededWorkspace != tc.wantSuperseded {
 				t.Errorf("SupersededWorkspace = %q, want %q", creds.SupersededWorkspace, tc.wantSuperseded)
+			}
+			if creds.ShadowsSession != tc.wantShadows {
+				t.Errorf("ShadowsSession = %v, want %v", creds.ShadowsSession, tc.wantShadows)
 			}
 			if tc.wantSuperseded != "" && creds.ShadowsSession {
 				t.Error("a superseded key must not also report ShadowsSession")

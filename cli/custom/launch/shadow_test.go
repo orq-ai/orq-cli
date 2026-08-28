@@ -151,16 +151,6 @@ func TestSupersededBySession(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if bartolocli.Creds == nil {
-				bartolocli.Creds = newTestCreds(t)
-				t.Cleanup(func() { bartolocli.Creds = nil })
-			}
-			viper.Set("profile", "default")
-			t.Cleanup(func() { viper.Set("profile", "") })
-			bartolocli.Creds.Set("profiles.default.gateway_key", tc.savedKey)
-			bartolocli.Creds.Set("profiles.default.api_key", "")
-			bartolocli.Creds.Set("profiles.default.workspace", tc.savedWS)
-
 			var session *auth.Session
 			if tc.activeWS != nil {
 				session = &auth.Session{ActiveWorkspaceKey: tc.activeWS, WorkspaceTokens: tc.workspaceTok}
