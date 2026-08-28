@@ -173,25 +173,13 @@ controls on surface changes, whichever side they originate from.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
-- **Changed (versioning):** the CLI version no longer tracks the orq API
-  version. See [Versioning](#versioning) above. The first decoupled release is
-  `5.0.0` — the first number above everything the old `4.12.x`–`4.14.x` line
-  ever published, so the sequence only ever moves forward and no future release
-  can collide with a version npm already holds (npm never allows a version
-  string to be reused, and a collision fails the publish mid-release). Nothing
-  about a version number tells you the API line any more — `orq version` does.
-- **Added:** `orq mcp-servers` and `orq mcp-gateways`, from the orq API 4.14.0
-  schema — manage MCP servers and the gateways that bundle them behind one
-  endpoint. Both appear under **AI Gateway** in `orq --help`, where the docs put
-  them.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the install method it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api_version` and
   `install_method`. `orq --version` keeps `orq version <semver>` as its first
   line, so anything parsing that line is unaffected, and prints the API line
-  under it —
-  a script that reads the whole output rather than the first line will now see
-  two lines.
+  under it — a script that reads the whole output rather than the first line
+  will now see two lines.
 - **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
   pre-release line instead of the stable one. The default is unchanged.
 - **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
@@ -256,13 +244,6 @@ controls on surface changes, whichever side they originate from.
 - **Changed:** `orq mcp-servers` and `orq mcp-gateways` now appear under **AI
   Gateway** in `orq --help`, where the docs put them. The commands themselves
   shipped in 4.14.0, from that release's orq API schema.
-- **Added:** `orq version`. Prints the CLI version, the orq API version the
-  build was generated against, and the install method it was installed through
-  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api_version` and
-  `install_method`. `orq --version` remains `orq version <semver>`, so scripts
-  can continue to parse its single line.
-- **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
-  pre-release line instead of the stable one. The default is unchanged.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from
   a coding agent. It previously printed the failure and then reported success, so
   a script saw exit 0 while kimi's config still held the key. The `--json`

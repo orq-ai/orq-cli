@@ -30,10 +30,15 @@ type result struct {
 	Prerelease  bool
 }
 
+const preIdent = `(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)`
+
 var (
 	versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 	rcPattern      = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.[1-9][0-9]*$`)
-	apiPattern     = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$`)
+	// The prerelease part follows semver strictly - no leading-zero numeric
+	// identifiers - so a malformed app_version is caught here rather than in
+	// release-build.sh, after the tag and the release are already immutable.
+	apiPattern     = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-` + preIdent + `(\.` + preIdent + `)*)?$`)
 	majorCommit    = regexp.MustCompile(`^[a-z]+(?:\([^)]*\))?!:`)
 	featureCommit  = regexp.MustCompile(`^feat(?:\([^)]*\))?:`)
 	breakingFooter = regexp.MustCompile(`^BREAKING[ -]CHANGE:`)

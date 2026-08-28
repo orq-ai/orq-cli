@@ -88,8 +88,25 @@ jobs:
           API_VERSION: ${{ inputs.api_version }}
         run: |
           set -euo pipefail
+          # detect-changes resolved these against the push SHA; this job runs on
+          # main, which may have moved. A schema push in between would ship
+          # regenerated commands stamped with the API version we were handed.
+          workdir="${MODULE_DIR:-.}"
+          checked_out_api="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          if [ "$checked_out_api" != "$API_VERSION" ]; then
+            echo "error: main moved: $workdir/.bartolo.json is $checked_out_api, this run was resolved for $API_VERSION" >&2
+            exit 1
+          fi
           tags_file="$(mktemp)"
           git tag --list 'v*' > "$tags_file"
+          # A tag on this very commit is our own earlier attempt, not a
+          # collision: the tag step is resumable, and verify must not be what
+          # stops a retry from reaching it.
+          if [ "$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)" = "$(git rev-parse HEAD)" ]; then
+            echo "note: resuming a run that already tagged v$VERSION"
+            { grep -vx "v$VERSION" "$tags_file" || true; } > "$tags_file.tmp"
+            mv "$tags_file.tmp" "$tags_file"
+          fi
           if [ -n "${MODULE_DIR:-}" ]; then
             channel=rc
           else

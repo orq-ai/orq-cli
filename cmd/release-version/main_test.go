@@ -167,6 +167,8 @@ func TestResolveRejectsInvalidInput(t *testing.T) {
 		{Version: "5.01.0", API: "4.15.0", Channel: "stable"},
 		{Version: "5.0.0", API: "", Channel: "stable"},
 		{Version: "5.0.0", API: "4.x", Channel: "stable"},
+		{Version: "5.0.0", API: "4.15.0-01", Channel: "stable"},
+		{Version: "5.0.0", API: "4.15.0", ReleasedAPI: "4.14.0-01", Channel: "stable"},
 		{Version: "5.0.0", API: "4.15.0", Channel: "nightly"},
 	} {
 		if _, err := resolve(in); err == nil {
