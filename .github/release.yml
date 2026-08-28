@@ -4,8 +4,11 @@
 # attributions; CHANGELOG.md remains the hand-written source of truth for the
 # stability contract.
 #
-# The release:* namespace is reserved for .github/workflows/label-pr.yml. Keep
-# these workflow-owned labels synchronized with that workflow's mapping.
+# The release:* namespace is reserved for .github/workflows/label-pr.yml.
+# .github/scripts/check-release-label-config.js fails CI if these workflow-owned
+# labels drift from that workflow's mapping, so this is enforced, not a duty.
+# The "*" catch-all is load-bearing: without it a PR the labeler left unlabelled
+# disappears from the release body instead of landing in Other Changes.
 changelog:
   exclude:
     labels:
