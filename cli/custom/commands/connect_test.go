@@ -1164,6 +1164,26 @@ func TestConnectStatusWarnsAboutForeignSkillLinks(t *testing.T) {
 	if got := statusRow(t, out, "config.toml"); !strings.HasPrefix(got, "  ✓  ") {
 		t.Errorf("a probed gateway lost its pass glyph to another row's breakage: %q", got)
 	}
+	// A warned row without a reason is a warning the user cannot act on.
+	if !strings.Contains(out, "orq did not put there") {
+		t.Errorf("the foreign link got a warn glyph but no cause:\n%s", out)
+	}
+	if !strings.Contains(out, "orq disconnect skills") {
+		t.Errorf("the foreign link got no remedy — connect cannot repair a path orq does not own:\n%s", out)
+	}
+
+	// The foreign report is scoped like the missing one: kimi is not a shared
+	// reader, so naming it must not surface claude's broken link.
+	scoped := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"kimi", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status kimi skills: %v", err)
+		}
+	})
+	if strings.Contains(scoped, "orq did not put there") {
+		t.Errorf("status kimi surfaced claude's foreign link:\n%s", scoped)
+	}
 }
 
 // A stale fingerprint means the installed set is from an older CLI. It is the
@@ -1208,6 +1228,13 @@ func TestConnectStatusWarnsAboutStaleSkillInstall(t *testing.T) {
 	// wrong, so a glyph derived from link state alone would read as healthy.
 	if got := statusRow(t, out, "~/.claude/skills"); !strings.HasPrefix(got, "  !  ") {
 		t.Errorf("a stale install read as healthy: %q", got)
+	}
+	if !strings.Contains(out, "older CLI version") {
+		t.Errorf("the stale install got a warn glyph but no cause:\n%s", out)
+	}
+	// Nothing is missing, so the missing-link wording must not appear.
+	if strings.Contains(out, "recorded but not installed") {
+		t.Errorf("a stale install was reported as a missing one:\n%s", out)
 	}
 }
 

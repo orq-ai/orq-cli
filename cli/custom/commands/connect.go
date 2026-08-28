@@ -144,7 +144,7 @@ func agentsToInspect(caps []string) []string {
 // links for. A link with an empty Agent is the shared agents-spec directory,
 // which no single agent owns; it is attributed to every shared reader, since
 // naming any one of them is what reaches it (the same membership rule Remove
-// and reportMissingSkillLinks apply).
+// and reportBrokenSkillLinks apply).
 func manifestSkillAgents() []string {
 	m, err := skills.LoadManifest()
 	if err != nil || m == nil {
@@ -410,7 +410,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	// kimi, or a run that never asked about skills at all, must not surface
 	// another agent's or another capability's broken links.
 	if hasCap(caps, capSkills) {
-		reportMissingSkillLinks(rep, agents)
+		reportBrokenSkillLinks(rep, agents)
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
@@ -1116,22 +1116,19 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 	return out
 }
 
-// reportMissingSkillLinks warns about manifest entries whose path is gone,
-// scoped to the agents actually asked about — the same membership rule
-// skills.Remove applies to links whose Agent is empty (the shared
-// agents-spec directory): they belong to the request whenever any named
-// agent is a shared reader.
+// reportBrokenSkillLinks warns about every recorded link the table renders a
+// "!" for, so a warned row carries its cause and its remedy. The three states
+// have three different remedies, and doctor's single check row can only name
+// the first that applies; here they are separate lines and all of them print.
+//
+// Scoped to the agents actually asked about — the same membership rule
+// skills.Remove applies to links whose Agent is empty (the shared agents-spec
+// directory): they belong to the request whenever any named agent is a shared
+// reader.
 //
 // Session-scoped links are excluded: they are created and destroyed by a
 // live `orq launch` and their absence between sessions is not breakage.
-//
-// Missing entries are collapsed per directory rather than printed one per
-// file: deleting a whole skills directory recorded a dozen links, and a
-// dozen identical warnings each pointing at the same remedy tell the user
-// nothing a single line with a count would not. A directory with exactly one
-// missing entry keeps the original, more specific phrasing — a count of one
-// reads worse than naming the thing that is actually missing.
-func reportMissingSkillLinks(rep *reporter, agents []string) {
+func reportBrokenSkillLinks(rep *reporter, agents []string) {
 	status, err := skills.ReadStatus()
 	if err != nil || status == nil {
 		return
@@ -1142,35 +1139,67 @@ func reportMissingSkillLinks(rep *reporter, agents []string) {
 		wanted[id] = true
 		sharedWanted = sharedWanted || skills.SharedReader(id)
 	}
-	missingByDir := map[string][]string{}
-	var dirOrder []string
-	for _, l := range status.Links {
+	inScope := func(l skills.LinkStatus) bool {
 		if l.Agent == "" {
-			if !sharedWanted {
+			return sharedWanted
+		}
+		return wanted[l.Agent]
+	}
+	// Entries are collapsed per directory rather than printed one per file:
+	// deleting a whole skills directory recorded a dozen links, and a dozen
+	// identical warnings each pointing at the same remedy tell the user
+	// nothing a single line with a count would not. A directory with exactly
+	// one entry keeps the more specific phrasing — a count of one reads worse
+	// than naming the thing that is actually broken.
+	fold := func(state skills.LinkState) ([]string, map[string][]string) {
+		var order []string
+		byDir := map[string][]string{}
+		for _, l := range status.Links {
+			if !inScope(l) || l.State != state {
 				continue
 			}
-		} else if !wanted[l.Agent] {
-			continue
+			dir := filepath.Dir(l.Path)
+			if _, seen := byDir[dir]; !seen {
+				order = append(order, dir)
+			}
+			byDir[dir] = append(byDir[dir], l.Path)
 		}
-		if l.State != skills.LinkMissing {
-			continue
-		}
-		dir := filepath.Dir(l.Path)
-		if _, seen := missingByDir[dir]; !seen {
-			dirOrder = append(dirOrder, dir)
-		}
-		missingByDir[dir] = append(missingByDir[dir], l.Path)
+		return order, byDir
 	}
-	for _, dir := range dirOrder {
-		missing := missingByDir[dir]
-		if len(missing) == 1 {
+
+	missingOrder, missingByDir := fold(skills.LinkMissing)
+	for _, dir := range missingOrder {
+		if paths := missingByDir[dir]; len(paths) == 1 {
 			// Not "restore": refresh does not respect a deletion, it
 			// reprojects every recorded link on the next fingerprint change.
 			// Saying restore promises the file stays gone until asked for.
-			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(missing[0]))
-			continue
+			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(paths[0]))
+		} else {
+			rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(paths))
 		}
-		rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(missing))
+	}
+
+	foreignOrder, foreignByDir := fold(skills.LinkForeign)
+	for _, dir := range foreignOrder {
+		// disconnect, not connect: every projector refuses to touch a path it
+		// does not own, so the only move orq has left is to stop recording it.
+		if paths := foreignByDir[dir]; len(paths) == 1 {
+			rep.warn("skills   %s holds something orq did not put there — orq will not update or delete it. Run 'orq disconnect skills' to stop tracking it", tilde(paths[0]))
+		} else {
+			rep.warn("skills   %s: %d recorded skills are no longer ours — orq will not update or delete them. Run 'orq disconnect skills' to stop tracking them", tilde(dir), len(paths))
+		}
+	}
+
+	// Staleness is a property of the manifest, not of any one directory, so it
+	// is one line rather than one per directory. It stays silent when the
+	// request reaches no recorded link at all: nothing was warned about.
+	if status.Stale {
+		for _, l := range status.Links {
+			if inScope(l) {
+				rep.warn("skills   the installed skills are from an older CLI version — run 'orq connect skills' to update them")
+				break
+			}
+		}
 	}
 }
 
