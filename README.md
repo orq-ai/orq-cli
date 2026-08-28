@@ -198,6 +198,7 @@ orq doctor --json          # machine-readable
 - Auth status (authenticated / missing / invalid / unreadable), user email, active workspace
 - Reachability probes against each endpoint
 - Bootstrap token freshness
+- Credential file permissions under `~/.orq` (Unix only)
 
 ---
 
