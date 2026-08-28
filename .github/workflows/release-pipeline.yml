@@ -298,9 +298,10 @@ jobs:
           # points at no published assets until the last step.
           flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
-          # Published releases are immutable: inspect them and finish as a
-          # successful no-op only when every expected asset is present. This
-          # avoids replacing live binaries one at a time with --clobber.
+          # A published release is already installable and is never rewritten:
+          # deleting or clobbering it would regress /releases/latest for everyone
+          # while the tag stayed immutable. A retry that finds a complete one
+          # finishes as a no-op so publish-npm below can still run.
           required_assets=(
             orq-darwin-arm64 orq-darwin-arm64.sha256
             orq-darwin-x64 orq-darwin-x64.sha256
@@ -310,19 +311,23 @@ jobs:
             orq-man-pages.tar.gz orq-man-pages.tar.gz.sha256
             install.sh install.sh.sha256
           )
-          release_json="$(mktemp)"
           release_error="$(mktemp)"
-          if gh api "repos/$REPO/releases/tags/$TAG" >"$release_json" 2>"$release_error"; then
-            release_draft="$(jq -r '.draft' "$release_json")"
-            release_prerelease="$(jq -r '.prerelease' "$release_json")"
+          # gh release view rather than the /releases/tags REST endpoint: REST
+          # returns only published releases, and a retry must also see the draft
+          # left by a failed attempt (gh resolves drafts through GraphQL).
+          if release_json="$(gh release view "$TAG" --json isDraft,isPrerelease,assets 2>"$release_error")"; then
+            release_draft="$(jq -r '.isDraft' <<<"$release_json")"
+            release_prerelease="$(jq -r '.isPrerelease' <<<"$release_json")"
             if [ "$release_draft" != "true" ]; then
               if [ "$release_draft" != "false" ] || [ "$release_prerelease" != "$PRERELEASE" ]; then
                 echo "error: existing release $TAG has unexpected draft/prerelease state" >&2
-                jq '{draft, prerelease, tag_name}' "$release_json" >&2
+                jq '{isDraft, isPrerelease}' <<<"$release_json" >&2
                 exit 1
               fi
               missing_assets=""
-              release_assets="$(jq -r '.assets[].name' "$release_json")"
+              # The name alone is not proof of an asset: an interrupted upload
+              # leaves a record with the right name in state "starter".
+              release_assets="$(jq -r '.assets[] | select(.state == "uploaded" and .size > 0) | .name' <<<"$release_json")"
               for asset in "${required_assets[@]}"; do
                 if ! grep -Fxq "$asset" <<<"$release_assets"; then
                   missing_assets+=" $asset"
@@ -338,17 +343,12 @@ jobs:
               exit 0
             fi
             # A draft is safe to replace before publication.
-            gh release delete "$TAG" --yes
-          else
-            if grep -q 'HTTP 404' "$release_error"; then
-              :
-            else
-              cat "$release_error" >&2
-              exit 1
-            fi
+            gh release delete "$TAG" --yes || { echo "error: could not remove draft $TAG" >&2; exit 1; }
+          elif ! grep -q 'release not found' "$release_error"; then
+            cat "$release_error" >&2
+            exit 1
           fi
 
-          echo "complete=false" >> "$GITHUB_OUTPUT"
           gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
@@ -404,9 +404,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          # --clobber to overwrite asset already exist
-          gh release upload "$TAG" dist/orq-* --clobber
+        run: gh release upload "$TAG" dist/orq-* --clobber
 
       # Per-tag release asset, not a branch head: a bad commit there would break every install with no version to roll back to.
       - name: Publish install.sh to GitHub Release
