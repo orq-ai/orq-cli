@@ -538,7 +538,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("a broken symlink is skipped silently", func(t *testing.T) {
+	t.Run("a broken symlink leaves a structured clean result", func(t *testing.T) {
 		dir, _ := setupConfig(t)
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
@@ -546,8 +546,9 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Symlink(filepath.Join(t.TempDir(), "gone.json"), filepath.Join(dir, "credentials.json")); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok, _ := credentialPermsCheck(false); ok {
-			t.Fatalf("a broken symlink reported: %+v", check)
+		check, ok, err := credentialPermsCheck(false)
+		if !ok || err != nil || check.Status != "pass" {
+			t.Fatalf("broken symlink result = ok=%v check=%+v err=%v, want structured pass", ok, check, err)
 		}
 	})
 
@@ -593,8 +594,9 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if !ok || len(loose) != 0 {
 			t.Errorf("details[loose] = %v, want empty after a successful fix", check.Details["loose"])
 		}
-		if _, again, _ := credentialPermsCheck(false); again {
-			t.Error("a re-run after --fix still reports a finding")
+		again, ok, err := credentialPermsCheck(false)
+		if !ok || err != nil || again.Status != "pass" {
+			t.Errorf("a re-run after --fix = ok=%v check=%+v err=%v, want structured pass", ok, again, err)
 		}
 	})
 
