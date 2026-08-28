@@ -330,6 +330,10 @@ func TestConnectStatusIsReadOnly(t *testing.T) {
 	if !strings.Contains(out.String(), "detected but not wired") {
 		t.Errorf("detected agents not named:\n%s", out.String())
 	}
+	// A header with no rows under it is a table claiming to list something.
+	if strings.Contains(out.String(), "CAPABILITY") {
+		t.Errorf("an unwired machine got a table header with no rows:\n%s", out.String())
+	}
 
 	path := filepath.Join(home, ".kimi-code", "config.toml")
 	if _, err := writeKimiProviderTOML(path, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
@@ -344,6 +348,12 @@ func TestConnectStatusIsReadOnly(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "kimi") || !strings.Contains(out.String(), "config.toml") {
 		t.Errorf("wired path not shown:\n%s", out.String())
+	}
+	// The glyph is set where the target is built, from the probe that found
+	// the file; a row rendering the unknown-state marker means no probe
+	// reached it.
+	if got := statusRow(t, out.String(), "config.toml"); !strings.HasPrefix(got, "  ✓  ") {
+		t.Errorf("a probed gateway did not render the pass glyph: %q", got)
 	}
 	if got := string(mustRead(t, path)); got != before {
 		t.Errorf("--status changed a config file:\n%s", got)
@@ -1069,6 +1079,162 @@ func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
 	}
 	if !strings.Contains(out, "orq connect skills") {
 		t.Errorf("status did not point at the fix:\n%s", out)
+	}
+	if got := statusRow(t, out, "~/.claude/skills"); !strings.HasPrefix(got, "  !  ") {
+		t.Errorf("skills row did not carry the warn glyph: %q", got)
+	}
+}
+
+// statusRow returns the --status table row naming want. Table rows are
+// indented under the marker gutter and the reporter's own warn/info lines
+// start at column zero, so an assertion that greps the whole capture for a
+// glyph cannot tell the two apart — and would go green on a hardcoded row
+// glyph the moment the reporter's lines are indented to match the table.
+func statusRow(t *testing.T, out, want string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  ") && strings.Contains(line, want) {
+			return line
+		}
+	}
+	t.Fatalf("no table row naming %q:\n%s", want, out)
+	return ""
+}
+
+// A foreign link is the case with no warning line at all: the missing-link
+// report covers only LinkMissing, so the table row's glyph is the sole place
+// the breakage can surface. It must warn, not claim health nobody measured.
+//
+// A gateway is wired alongside it to pin the other half of the rule: one bad
+// skills directory taints its own row and no other, and a row whose probe did
+// succeed still says so.
+func TestConnectStatusWarnsAboutForeignSkillLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	for _, d := range []string{".claude", ".kimi-code"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	gateway := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(gateway, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil || len(m.Links) == 0 {
+		t.Fatalf("expected a populated manifest, got %+v, err=%v", m, err)
+	}
+	taken := m.Links[0]
+	if err := os.RemoveAll(taken.Path); err != nil {
+		t.Fatal(err)
+	}
+	// Something else now occupies the recorded path: neither our symlink nor
+	// a copy carrying our marker.
+	if err := os.MkdirAll(taken.Path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "recorded but not installed") {
+		t.Fatalf("a foreign link is not a missing one; the premise of this test is off:\n%s", out)
+	}
+	if got := statusRow(t, out, "~/.claude/skills"); !strings.HasPrefix(got, "  !  ") {
+		t.Errorf("skills row did not carry the warn glyph: %q", got)
+	}
+	if got := statusRow(t, out, "config.toml"); !strings.HasPrefix(got, "  ✓  ") {
+		t.Errorf("a probed gateway lost its pass glyph to another row's breakage: %q", got)
+	}
+	// A warned row without a reason is a warning the user cannot act on.
+	if !strings.Contains(out, "orq did not put there") {
+		t.Errorf("the foreign link got a warn glyph but no cause:\n%s", out)
+	}
+	if !strings.Contains(out, "orq disconnect skills") {
+		t.Errorf("the foreign link got no remedy — connect cannot repair a path orq does not own:\n%s", out)
+	}
+
+	// The foreign report is scoped like the missing one: kimi is not a shared
+	// reader, so naming it must not surface claude's broken link.
+	scoped := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"kimi", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status kimi skills: %v", err)
+		}
+	})
+	if strings.Contains(scoped, "orq did not put there") {
+		t.Errorf("status kimi surfaced claude's foreign link:\n%s", scoped)
+	}
+}
+
+// A stale fingerprint means the installed set is from an older CLI. It is the
+// third state that must not read as healthy, and unlike missing and foreign it
+// taints every recorded directory at once rather than one of them.
+func TestConnectStatusWarnsAboutStaleSkillInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	m, err := skills.LoadManifest()
+	if err != nil || m == nil {
+		t.Fatalf("expected a manifest, got %+v, err=%v", m, err)
+	}
+	m.Fingerprint = "an-older-release"
+	if err := skills.SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	// Every link is still installed and ours: staleness is the only thing
+	// wrong, so a glyph derived from link state alone would read as healthy.
+	if got := statusRow(t, out, "~/.claude/skills"); !strings.HasPrefix(got, "  !  ") {
+		t.Errorf("a stale install read as healthy: %q", got)
+	}
+	if !strings.Contains(out, "older CLI version") {
+		t.Errorf("the stale install got a warn glyph but no cause:\n%s", out)
+	}
+	// Nothing is missing, so the missing-link wording must not appear.
+	if strings.Contains(out, "recorded but not installed") {
+		t.Errorf("a stale install was reported as a missing one:\n%s", out)
 	}
 }
 
@@ -1866,6 +2032,10 @@ func TestDisconnectRemovesMCPFromBothScopes(t *testing.T) {
 	for _, want := range []string{"local", "global"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status did not name the %s scope:\n%s", want, out)
+		}
+		// Both rows exist because mcpPresent found the entry, so both say so.
+		if got := statusRow(t, out, want); !strings.HasPrefix(got, "  ✓  ") {
+			t.Errorf("the %s MCP row did not render the pass glyph: %q", want, got)
 		}
 	}
 

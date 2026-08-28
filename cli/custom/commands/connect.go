@@ -144,7 +144,7 @@ func agentsToInspect(caps []string) []string {
 // links for. A link with an empty Agent is the shared agents-spec directory,
 // which no single agent owns; it is attributed to every shared reader, since
 // naming any one of them is what reaches it (the same membership rule Remove
-// and reportMissingSkillLinks apply).
+// and reportBrokenSkillLinks apply).
 func manifestSkillAgents() []string {
 	m, err := skills.LoadManifest()
 	if err != nil || m == nil {
@@ -405,24 +405,12 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 		byAgent[key] = append(byAgent[key], w)
 	}
-	for _, agent := range order {
-		rep.info("%s", agent)
-		for _, w := range byAgent[agent] {
-			// Naming the scope where there are two: "~/.claude.json" and
-			// "./.mcp.json" are the same capability wired two different ways,
-			// and the path alone leaves the reader to work out which.
-			if w.scope != "" {
-				rep.info("  %-9s %-6s %s", w.capability, w.scope, tilde(w.path))
-				continue
-			}
-			rep.info("  %-9s %s", w.capability, tilde(w.path))
-		}
-	}
+	printWiredTable(rep, order, byAgent)
 	// Scoped like the rest of this function: `--status kimi` naming only
 	// kimi, or a run that never asked about skills at all, must not surface
 	// another agent's or another capability's broken links.
 	if hasCap(caps, capSkills) {
-		reportMissingSkillLinks(rep, agents)
+		reportBrokenSkillLinks(rep, agents)
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
@@ -437,9 +425,48 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
+		rep.blank()
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
+}
+
+// printWiredTable prints one row per capability, with the agent name on the
+// first of its group: repeating it on every row is noise the alignment already
+// carries.
+func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTarget) {
+	if len(order) == 0 {
+		return
+	}
+	// Only mcp carries a scope, so a machine wired for gateway or skills alone
+	// gets no empty column for it.
+	scoped := false
+	for _, agent := range order {
+		for _, w := range byAgent[agent] {
+			if w.scope != "" {
+				scoped = true
+			}
+		}
+	}
+	headers := []string{"AGENT", "CAPABILITY", "LOCATION"}
+	if scoped {
+		headers = []string{"AGENT", "CAPABILITY", "SCOPE", "LOCATION"}
+	}
+	var rows []tableRow
+	for _, agent := range order {
+		for i, w := range byAgent[agent] {
+			name := agent
+			if i > 0 {
+				name = ""
+			}
+			cells := []string{name, w.capability, tilde(w.path)}
+			if scoped {
+				cells = []string{name, w.capability, w.scope, tilde(w.path)}
+			}
+			rows = append(rows, tableRow{marker: statusGlyph(w.status), cells: cells})
+		}
+	}
+	printTable(rep.w, headers, rows)
 }
 
 func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bool) error {
@@ -1003,7 +1030,8 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 // wiredTarget is one agent's capability and the file holding it. scope is set
 // only for the capabilities that have two, so a report can say which of them an
 // entry was found in; the file alone does not always say.
-type wiredTarget struct{ agent, capability, path, scope string }
+// status is a statusGlyph state: "pass" or "warn".
+type wiredTarget struct{ agent, capability, path, scope, status string }
 
 // wiredMCPTargets lists the scopes holding this agent's MCP entry. wiredPath
 // answers "is it wired at all" and stops at the first hit, which is right for
@@ -1032,7 +1060,7 @@ func wiredMCPTargets(id string, spec agentSpec, opts *setupOptions) []wiredTarge
 			continue
 		}
 		seen[path] = true
-		out = append(out, wiredTarget{agent: id, capability: capMCP, path: path, scope: scopeLabel(global)})
+		out = append(out, wiredTarget{agent: id, capability: capMCP, path: path, scope: scopeLabel(global), status: "pass"})
 	}
 	return out
 }
@@ -1048,7 +1076,7 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 		if hasCap(caps, capGateway) {
 			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
-				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path})
+				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path, status: "pass"})
 			}
 		}
 		if hasCap(caps, capMCP) {
@@ -1056,50 +1084,51 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	if hasCap(caps, capSkills) {
-		m, err := skills.LoadManifest()
-		if err == nil && m != nil {
-			seen := map[string]bool{}
+		// A skills row carries the same ✓ the disk-probed rows do, so it rests
+		// on the same kind of evidence: ReadStatus probes each recorded link
+		// rather than trusting the manifest that records it.
+		status, err := skills.ReadStatus()
+		if err == nil && status != nil {
+			idx := map[string]int{}
 			wanted := map[string]bool{}
 			for _, id := range agents {
 				wanted[id] = true
 			}
-			for _, l := range m.Links {
-				if l.Session {
-					continue
-				}
+			for _, l := range status.Links {
 				// An empty agent is the shared directory, which serves any
 				// selected agent that reads it.
 				if l.Agent != "" && !wanted[l.Agent] {
 					continue
 				}
 				dir := filepath.Dir(l.Path)
-				if seen[dir] {
-					continue
+				i, seen := idx[dir]
+				if !seen {
+					out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir, status: "pass"})
+					i = len(out) - 1
+					idx[dir] = i
 				}
-				seen[dir] = true
-				out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir})
+				if l.State != skills.LinkInstalled || status.Stale {
+					out[i].status = "warn"
+				}
 			}
 		}
 	}
 	return out
 }
 
-// reportMissingSkillLinks warns about manifest entries whose path is gone,
-// scoped to the agents actually asked about — the same membership rule
-// skills.Remove applies to links whose Agent is empty (the shared
-// agents-spec directory): they belong to the request whenever any named
-// agent is a shared reader.
+// reportBrokenSkillLinks warns about every recorded link the table renders a
+// "!" for, so a warned row carries its cause and its remedy. The three states
+// have three different remedies, and doctor's single check row can only name
+// the first that applies; here they are separate lines and all of them print.
+//
+// Scoped to the agents actually asked about — the same membership rule
+// skills.Remove applies to links whose Agent is empty (the shared agents-spec
+// directory): they belong to the request whenever any named agent is a shared
+// reader.
 //
 // Session-scoped links are excluded: they are created and destroyed by a
 // live `orq launch` and their absence between sessions is not breakage.
-//
-// Missing entries are collapsed per directory rather than printed one per
-// file: deleting a whole skills directory recorded a dozen links, and a
-// dozen identical warnings each pointing at the same remedy tell the user
-// nothing a single line with a count would not. A directory with exactly one
-// missing entry keeps the original, more specific phrasing — a count of one
-// reads worse than naming the thing that is actually missing.
-func reportMissingSkillLinks(rep *reporter, agents []string) {
+func reportBrokenSkillLinks(rep *reporter, agents []string) {
 	status, err := skills.ReadStatus()
 	if err != nil || status == nil {
 		return
@@ -1110,35 +1139,67 @@ func reportMissingSkillLinks(rep *reporter, agents []string) {
 		wanted[id] = true
 		sharedWanted = sharedWanted || skills.SharedReader(id)
 	}
-	missingByDir := map[string][]string{}
-	var dirOrder []string
-	for _, l := range status.Links {
+	inScope := func(l skills.LinkStatus) bool {
 		if l.Agent == "" {
-			if !sharedWanted {
+			return sharedWanted
+		}
+		return wanted[l.Agent]
+	}
+	// Entries are collapsed per directory rather than printed one per file:
+	// deleting a whole skills directory recorded a dozen links, and a dozen
+	// identical warnings each pointing at the same remedy tell the user
+	// nothing a single line with a count would not. A directory with exactly
+	// one entry keeps the more specific phrasing — a count of one reads worse
+	// than naming the thing that is actually broken.
+	fold := func(state skills.LinkState) ([]string, map[string][]string) {
+		var order []string
+		byDir := map[string][]string{}
+		for _, l := range status.Links {
+			if !inScope(l) || l.State != state {
 				continue
 			}
-		} else if !wanted[l.Agent] {
-			continue
+			dir := filepath.Dir(l.Path)
+			if _, seen := byDir[dir]; !seen {
+				order = append(order, dir)
+			}
+			byDir[dir] = append(byDir[dir], l.Path)
 		}
-		if l.State != skills.LinkMissing {
-			continue
-		}
-		dir := filepath.Dir(l.Path)
-		if _, seen := missingByDir[dir]; !seen {
-			dirOrder = append(dirOrder, dir)
-		}
-		missingByDir[dir] = append(missingByDir[dir], l.Path)
+		return order, byDir
 	}
-	for _, dir := range dirOrder {
-		missing := missingByDir[dir]
-		if len(missing) == 1 {
+
+	missingOrder, missingByDir := fold(skills.LinkMissing)
+	for _, dir := range missingOrder {
+		if paths := missingByDir[dir]; len(paths) == 1 {
 			// Not "restore": refresh does not respect a deletion, it
 			// reprojects every recorded link on the next fingerprint change.
 			// Saying restore promises the file stays gone until asked for.
-			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(missing[0]))
-			continue
+			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(paths[0]))
+		} else {
+			rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(paths))
 		}
-		rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(missing))
+	}
+
+	foreignOrder, foreignByDir := fold(skills.LinkForeign)
+	for _, dir := range foreignOrder {
+		// disconnect, not connect: every projector refuses to touch a path it
+		// does not own, so the only move orq has left is to stop recording it.
+		if paths := foreignByDir[dir]; len(paths) == 1 {
+			rep.warn("skills   %s holds something orq did not put there — orq will not update or delete it. Run 'orq disconnect skills' to stop tracking it", tilde(paths[0]))
+		} else {
+			rep.warn("skills   %s: %d recorded skills are no longer ours — orq will not update or delete them. Run 'orq disconnect skills' to stop tracking them", tilde(dir), len(paths))
+		}
+	}
+
+	// Staleness is a property of the manifest, not of any one directory, so it
+	// is one line rather than one per directory. It stays silent when the
+	// request reaches no recorded link at all: nothing was warned about.
+	if status.Stale {
+		for _, l := range status.Links {
+			if inScope(l) {
+				rep.warn("skills   the installed skills are from an older CLI version — run 'orq connect skills' to update them")
+				break
+			}
+		}
 	}
 }
 

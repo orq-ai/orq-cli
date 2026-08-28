@@ -3,7 +3,6 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"unicode/utf8"
 
 	"orq/cli/custom/auth"
 
@@ -51,7 +50,6 @@ func newWorkspaceListCommand() *cobra.Command {
 				activeKey = *session.ActiveWorkspaceKey
 			}
 			rows := make([]workspaceRow, 0, len(session.Workspaces))
-			nameWidth := 0
 			for _, w := range session.Workspaces {
 				ws := workspaceFromMap(w)
 				rows = append(rows, workspaceRow{
@@ -61,12 +59,9 @@ func newWorkspaceListCommand() *cobra.Command {
 					TotalMembers: ws.TotalMembers,
 					Active:       ws.Key == activeKey,
 				})
-				if n := utf8.RuneCountInString(ws.Name); n > nameWidth {
-					nameWidth = n
-				}
 			}
 			if wantsHumanView(cmd) {
-				printWorkspaceList(rows, nameWidth)
+				printWorkspaceList(rows)
 				return nil
 			}
 			return emit(map[string]any{
@@ -151,42 +146,26 @@ func newWorkspaceUseCommand() *cobra.Command {
 	return cmd
 }
 
-// printWorkspaceList renders the workspace roster as an aligned table: a dim
-// header row, a green dot on the active workspace, and right-aligned member
-// counts. Column widths grow to fit the data.
-func printWorkspaceList(rows []workspaceRow, nameWidth int) {
+// printWorkspaceList renders the workspace roster, with a dot on the active
+// workspace.
+func printWorkspaceList(rows []workspaceRow) {
 	const memHdr = "MEMBERS"
-	keyWidth := len("KEY")
-	for _, r := range rows {
-		if n := utf8.RuneCountInString(r.Key); n > keyWidth {
-			keyWidth = n
-		}
-	}
-	if nameWidth < len("NAME") {
-		nameWidth = len("NAME")
-	}
 	out := bartolocli.Stdout
 	heading("Workspaces")
-	// Header row. The 2-space gutter lines up with the active-marker column.
-	fmt.Fprintf(out, "  %s%s  %s  %s\n",
-		"  ",
-		paint(ansiDim, pad("NAME", nameWidth)),
-		paint(ansiDim, pad("KEY", keyWidth)),
-		paint(ansiDim, memHdr))
 	anyActive := false
+	table := make([]tableRow, 0, len(rows))
 	for _, r := range rows {
-		marker := "  "
+		marker := ""
 		if r.Active {
-			marker = paint(ansiOK, "● ")
+			marker = paint(ansiOK, "●")
 			anyActive = true
 		}
-		members := fmt.Sprintf("%*d", len(memHdr), r.TotalMembers)
-		fmt.Fprintf(out, "  %s%s  %s  %s\n",
-			marker,
-			pad(r.Name, nameWidth),
-			pad(r.Key, keyWidth),
-			paint(ansiDim, members))
+		// The last column is never padded, so the right-alignment is this
+		// sprintf's job rather than the table's.
+		members := paint(ansiDim, fmt.Sprintf("%*d", len(memHdr), r.TotalMembers))
+		table = append(table, tableRow{marker: marker, cells: []string{r.Name, r.Key, members}})
 	}
+	printTable(out, []string{"NAME", "KEY", memHdr}, table)
 	if anyActive {
 		fmt.Fprintln(out, paint(ansiDim, "\n● active"))
 	}

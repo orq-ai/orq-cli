@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -160,4 +161,72 @@ func statusGlyph(status string) string {
 	default:
 		return "-"
 	}
+}
+
+// ============================================================================
+// Tables
+// ============================================================================
+
+// tableRow is one line of a table: an optional marker glyph and one cell per
+// header. Only the last cell may arrive pre-colored: every earlier cell is
+// padded, and pad counts the characters of an ANSI escape as visible width.
+type tableRow struct {
+	marker string // a single visible rune, already painted, or "" for none
+	// One cell per header. A short row renders the missing columns blank
+	// rather than panicking; extra cells past the last header are dropped.
+	cells []string
+}
+
+// printTable renders the CLI's one table shape: a marker column, a dim header
+// row, and every column but the last sized to its widest value — the last is
+// emitted verbatim, since nothing follows it to line up with.
+func printTable(w io.Writer, headers []string, rows []tableRow) {
+	if len(headers) == 0 {
+		return
+	}
+	widths := make([]int, len(headers)-1)
+	for i := range widths {
+		widths[i] = utf8.RuneCountInString(headers[i])
+		for _, r := range rows {
+			if n := utf8.RuneCountInString(cellAt(r.cells, i)); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+	// The marker occupies one rune between two-space gutters; the header's
+	// blank marker cell keeps its columns over the rows' columns.
+	fmt.Fprint(w, "     ")
+	printCells(w, widths, headers, true)
+	for _, r := range rows {
+		marker := r.marker
+		if marker == "" {
+			marker = " "
+		}
+		fmt.Fprintf(w, "  %s  ", marker)
+		printCells(w, widths, r.cells, false)
+	}
+}
+
+func printCells(w io.Writer, widths []int, cells []string, dim bool) {
+	for i := 0; i <= len(widths); i++ {
+		if i > 0 {
+			fmt.Fprint(w, "  ")
+		}
+		cell := cellAt(cells, i)
+		if i < len(widths) {
+			cell = pad(cell, widths[i])
+		}
+		if dim {
+			cell = paint(ansiDim, cell)
+		}
+		fmt.Fprint(w, cell)
+	}
+	fmt.Fprintln(w)
+}
+
+func cellAt(cells []string, i int) string {
+	if i < len(cells) {
+		return cells[i]
+	}
+	return ""
 }
