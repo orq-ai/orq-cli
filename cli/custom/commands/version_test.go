@@ -20,7 +20,7 @@ func TestVersionCommandReportsBothVersions(t *testing.T) {
 	humanOutput = func() bool { return true }
 	detectChannel = func() (updateChannel, string) { return channelInstaller, "/somewhere/orq" }
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
-	SetAPIVersion("4.13.22")
+	SetAPIVersion(root, "4.13.22")
 	root.AddCommand(NewVersionCommand())
 	root.SetArgs([]string{"version"})
 	root.SetOut(&bytes.Buffer{})
@@ -35,19 +35,22 @@ func TestVersionCommandReportsBothVersions(t *testing.T) {
 	}
 }
 
-func TestVersionFlagPrintsOnlyCLIVersion(t *testing.T) {
+// The API version reaches the version template as data, so a value that looks
+// like template syntax must print verbatim rather than be parsed - or panic
+// template.Must, which would take every `orq --version` with it.
+func TestVersionFlagPrintsAPIVersionVerbatim(t *testing.T) {
 	orig := apiVersion
 	t.Cleanup(func() { apiVersion = orig })
 	out := &bytes.Buffer{}
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
 	root.SetOut(out)
 	root.SetArgs([]string{"--version"})
-	SetAPIVersion("4.13.22")
+	SetAPIVersion(root, "4.13.22{{.Bogus}}")
 	if err := root.Execute(); err != nil {
 		t.Fatalf("--version: %v", err)
 	}
-	if got := out.String(); got != "orq version 5.0.0\n" {
-		t.Fatalf("--version printed %q, want only the CLI version", got)
+	if got := out.String(); got != "orq version 5.0.0\nbuilt against orq API 4.13.22{{.Bogus}}\n" {
+		t.Fatalf("--version printed %q, want the semver line then the API version verbatim", got)
 	}
 }
 
@@ -64,7 +67,7 @@ func TestVersionCommandJSONShape(t *testing.T) {
 	humanOutput = func() bool { return false }
 	detectChannel = func() (updateChannel, string) { return channelInstaller, "/somewhere/orq" }
 	root := &cobra.Command{Use: "orq", Version: "5.0.0"}
-	SetAPIVersion("4.13.22")
+	SetAPIVersion(root, "4.13.22")
 	root.AddCommand(NewVersionCommand())
 	root.SetArgs([]string{"version"})
 	root.SetOut(&bytes.Buffer{})

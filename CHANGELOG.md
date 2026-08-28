@@ -92,8 +92,8 @@ at release time, so they have to already exist.
 
 The orq API version a build was generated against is recorded, not encoded:
 
-- `orq version` reports it alongside the CLI version and install channel
-  (`--json` for scripts); `orq --version` remains a compact CLI-version line.
+- `orq --version` prints it under the CLI version, and `orq version` reports
+  both plus the install channel (`--json` for scripts).
 - Every GitHub release's notes open with **Built against orq API <version>**.
 - `orq doctor` carries it as `binary.api_version` in the structured report
   (`--json`) and in the `--report` bug-report body.
@@ -173,6 +173,26 @@ controls on surface changes, whichever side they originate from.
   installed skills as well as gateway configuration, matching what a bare
   `orq connect` writes. The consent prompt is unchanged, and the preview lists
   every file before anything is removed.
+- **Changed (versioning):** the CLI version no longer tracks the orq API
+  version. See [Versioning](#versioning) above. The first decoupled release is
+  `5.0.0` — the first number above everything the old `4.12.x`–`4.14.x` line
+  ever published, so the sequence only ever moves forward and no future release
+  can collide with a version npm already holds (npm never allows a version
+  string to be reused, and a collision fails the publish mid-release). Nothing
+  about a version number tells you the API line any more — `orq version` does.
+- **Added:** `orq mcp-servers` and `orq mcp-gateways`, from the orq API 4.14.0
+  schema — manage MCP servers and the gateways that bundle them behind one
+  endpoint. Both appear under **AI Gateway** in `orq --help`, where the docs put
+  them.
+- **Added:** `orq version`. Prints the CLI version, the orq API version the
+  build was generated against, and the channel it was installed through
+  (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
+  `channel`. `orq --version` keeps `orq version <semver>` as its first line, so
+  anything parsing that line is unaffected, and prints the API line under it —
+  a script that reads the whole output rather than the first line will now see
+  two lines.
+- **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
+  pre-release line instead of the stable one. The default is unchanged.
 - **Deprecated:** the `--api-base-url` flag on `orq auth login`, `orq auth
   logout`, `orq whoami`, `orq workspace list`, `orq workspace use` and `orq
   doctor`. The CLI had two names for one value: those six commands took
