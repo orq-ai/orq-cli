@@ -271,7 +271,6 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 			continue
 		}
 		if !c.AlwaysShow && strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
-		if !c.AlwaysShow && strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
 			continue
 		}
 		rows = append(rows, tableRow{marker: statusGlyph(c.Status), cells: []string{c.ID, c.Message}})
