@@ -44,20 +44,10 @@ type Credentials struct {
 	SupersededWorkspace string
 }
 
-// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is the
-// session's own cached token for its *active* workspace rather than a key the
-// user exported.
-//
-// Active only, so this agrees with shadowsSession, which reads
-// WorkspaceTokens[active] alone. Scanning every cached token made the two
-// disagree on one input: a token cached for a workspace the session has left
-// counted as the session's own here while shadowsSession called it a mismatch,
-// so it was labelled CredentialSessionToken and the shadow note never fired.
-//
-// Whether such a stale token should also lose to the session's current one is a
-// separate question — it needs provenance this function does not have, since
-// installSessionPreRun caches a deliberate `--workspace` override under a
-// non-active key too. Left for RES-1464's follow-up rather than decided here.
+// isSessionWorkspaceToken reports whether ORQ_API_KEY holds the session's own
+// token for its active workspace rather than a key the user exported. Active
+// only, so it agrees with shadowsSession, which also reads
+// WorkspaceTokens[active] alone.
 func isSessionWorkspaceToken(key string, session *auth.Session) bool {
 	if session.ActiveWorkspaceKey == nil {
 		return false
@@ -220,17 +210,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
-		// Only the superseded path earns the re-login advice: there a working
-		// exported key was set aside in favour of the session, so the session
-		// failing leaves the user with nothing and no next step.
-		//
-		// The plain session path returns the error untouched, as it did before
-		// this branch. This call reaches two HTTP round trips, a token exchange
-		// and a session write, so it also fails for DNS, 5xx and disk reasons,
-		// and it can surface the API's own "run 'orq workspace use <key>'
-		// first" — telling the user to re-login on any of those sends them the
-		// wrong way, and on the last it ships two contradictory remedies in one
-		// string.
+		// Only the superseded path earns the re-login advice: a working exported
+		// key was set aside for the session, so its failure leaves no next step.
+		// Elsewhere this call also fails for network, server and disk reasons,
+		// which re-login does not fix.
 		if supersededWorkspace != "" {
 			return nil, fmt.Errorf("%w (run 'orq auth login' to re-authenticate)", err)
 		}

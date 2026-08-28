@@ -126,8 +126,7 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		// envKey overrides the exported ORQ_API_KEY; empty means "sk-minted",
 		// the ordinary case.
 		envKey string
-		// extraTokens caches workspace tokens beyond the active one, for the
-		// stale-token case.
+		// extraTokens caches workspace tokens beyond the active one.
 		extraTokens map[string]string
 		// newServer builds the profile-fetch stub this case needs, or nil when
 		// the case never reaches the network (the same-workspace short-circuit
@@ -224,14 +223,9 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			wantWorkspace: "",
 		},
 		{
-			// a token cached for a workspace the session has LEFT is not the
-			// session's own current credential. It still wins the run — its
-			// provenance is unknowable here, since installSessionPreRun caches
-			// a deliberate `--workspace` override under a non-active key too —
-			// but it must be reported as an exported key that shadows the
-			// session, not labelled CredentialSessionToken and passed over in
-			// silence. That mislabelling is what the narrowed
-			// isSessionWorkspaceToken fixes.
+			// A token cached for a workspace the session has left still wins the
+			// run, but must be reported as an exported key that shadows the
+			// session rather than as the session's own.
 			name:        "exported key is a cached token for a workspace the session left",
 			envKey:      "session-token-for-alpha",
 			extraTokens: map[string]string{"alpha": "session-token-for-alpha"},
@@ -315,12 +309,8 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 	}
 }
 
-// A failed token fetch reads differently depending on why the session was
-// being consulted. On the superseded path a working exported key was set
-// aside, so the user is left with nothing and the error must name the way
-// back. On the plain session path the same call fails for network, disk and
-// server reasons too, so the error passes through untouched — advising
-// re-login on a 5xx sends the user the wrong way.
+// A failed token fetch names the way back only on the superseded path, where a
+// working exported key was set aside. Elsewhere the error passes through.
 func TestResolveCredentialsTokenFetchFailure(t *testing.T) {
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
 	seed := func(t *testing.T, withEnvKey bool) {
