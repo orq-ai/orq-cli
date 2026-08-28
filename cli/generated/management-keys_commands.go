@@ -59,7 +59,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Permission preset. Defaults to MANAGEMENT_PERMISSION_MODE_ALL when omitted.",
 							Enum: []string{
 								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 								"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -111,7 +111,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Permission preset. Defaults to MANAGEMENT_PERMISSION_MODE_ALL when omitted.",
 					Enum: []string{
 						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 						"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -141,7 +141,10 @@ func registermanagementKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a management key. Cache entries are invalidated immediately so an in-flight token cannot ride out the TTL. The response body is empty on success."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiManagementKeyDelete(args[0], params)
 				if err != nil {
@@ -152,9 +155,11 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		managementKeysCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -216,7 +221,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -257,7 +262,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -320,7 +325,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
 							Type:        "enum-string",
-							Description: "",
+							Description: "New permission preset. Omit to keep current.",
 							Enum: []string{
 								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 								"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -332,7 +337,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "status",
 							FlagName:    "status",
 							Type:        "enum-string",
-							Description: "",
+							Description: "New lifecycle status. Omit to keep current.",
 							Enum: []string{
 								"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 								"MANAGEMENT_KEY_STATUS_ACTIVE",
@@ -390,7 +395,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
 					Type:        "enum-string",
-					Description: "",
+					Description: "New permission preset. Omit to keep current.",
 					Enum: []string{
 						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 						"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -402,7 +407,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "status",
 					FlagName:    "status",
 					Type:        "enum-string",
-					Description: "",
+					Description: "New lifecycle status. Omit to keep current.",
 					Enum: []string{
 						"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 						"MANAGEMENT_KEY_STATUS_ACTIVE",

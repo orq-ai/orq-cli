@@ -47,7 +47,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "cache",
 							FlagName:    "cache",
 							Type:        "json",
-							Description: "",
+							Description: "Exact-match response cache configuration for this request.",
 						},
 						{
 							Name:        "cache_control",
@@ -59,7 +59,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "conversation",
 							FlagName:    "conversation",
 							Type:        "json",
-							Description: "",
+							Description: "Conversation context for multi-turn interactions.",
 						},
 						{
 							Name:        "fallbacks",
@@ -83,7 +83,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "identity",
 							FlagName:    "identity",
 							Type:        "json",
-							Description: "",
+							Description: "Identity/contact information for the end-user.",
 						},
 						{
 							Name:        "input",
@@ -107,13 +107,13 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "limits",
 							FlagName:    "limits",
 							Type:        "json",
-							Description: "",
+							Description: "Bound agent-loop execution. Fields: max_iterations (LLM turns), max_execution_time (seconds), max_cost (USD; send 0 to disable a manifest-configured cap), max_depth (sub-agent nesting), tool_timeout (seconds). Body values override agent-manifest defaults.",
 						},
 						{
 							Name:        "load_balancer",
 							FlagName:    "load-balancer",
 							Type:        "json",
-							Description: "",
+							Description: "Load balancing configuration for selecting among multiple models.",
 						},
 						{
 							Name:        "max_output_tokens",
@@ -131,7 +131,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "memory",
 							FlagName:    "memory",
 							Type:        "json",
-							Description: "",
+							Description: "Attach a memory store entity to enable persistent memory across requests. See Memory Stores documentation for setup.",
 						},
 						{
 							Name:        "metadata",
@@ -179,13 +179,13 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "reasoning",
 							FlagName:    "reasoning",
 							Type:        "json",
-							Description: "",
+							Description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost.",
 						},
 						{
 							Name:        "retry",
 							FlagName:    "retry",
 							Type:        "json",
-							Description: "",
+							Description: "Retry configuration. Specify the number of retries and which HTTP status codes should trigger a retry.",
 						},
 						{
 							Name:        "safety_identifier",
@@ -197,7 +197,7 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "security",
 							FlagName:    "security",
 							Type:        "json",
-							Description: "",
+							Description: "Trace masking configuration for request and response data.",
 						},
 						{
 							Name:        "service_tier",
@@ -270,13 +270,13 @@ func registerresponsesCommands(root *cobra.Command) {
 							Name:        "thread",
 							FlagName:    "thread",
 							Type:        "json",
-							Description: "",
+							Description: "Thread for grouping related requests.",
 						},
 						{
 							Name:        "timeout",
 							FlagName:    "timeout",
 							Type:        "json",
-							Description: "",
+							Description: "Provider call timeout configuration in milliseconds.",
 						},
 						{
 							Name:        "tool_choice",
@@ -346,7 +346,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "cache",
 					FlagName:    "cache",
 					Type:        "json",
-					Description: "",
+					Description: "Exact-match response cache configuration for this request.",
 				},
 				{
 					Name:        "cache_control",
@@ -358,7 +358,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "conversation",
 					FlagName:    "conversation",
 					Type:        "json",
-					Description: "",
+					Description: "Conversation context for multi-turn interactions.",
 				},
 				{
 					Name:        "fallbacks",
@@ -382,7 +382,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "identity",
 					FlagName:    "identity",
 					Type:        "json",
-					Description: "",
+					Description: "Identity/contact information for the end-user.",
 				},
 				{
 					Name:        "input",
@@ -406,13 +406,13 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "limits",
 					FlagName:    "limits",
 					Type:        "json",
-					Description: "",
+					Description: "Bound agent-loop execution. Fields: max_iterations (LLM turns), max_execution_time (seconds), max_cost (USD; send 0 to disable a manifest-configured cap), max_depth (sub-agent nesting), tool_timeout (seconds). Body values override agent-manifest defaults.",
 				},
 				{
 					Name:        "load_balancer",
 					FlagName:    "load-balancer",
 					Type:        "json",
-					Description: "",
+					Description: "Load balancing configuration for selecting among multiple models.",
 				},
 				{
 					Name:        "max_output_tokens",
@@ -430,7 +430,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "memory",
 					FlagName:    "memory",
 					Type:        "json",
-					Description: "",
+					Description: "Attach a memory store entity to enable persistent memory across requests. See Memory Stores documentation for setup.",
 				},
 				{
 					Name:        "metadata",
@@ -478,13 +478,13 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "reasoning",
 					FlagName:    "reasoning",
 					Type:        "json",
-					Description: "",
+					Description: "Configure reasoning behavior. Set effort (none, minimal, low, medium, high, xhigh, max) to control how much the model thinks before answering. Higher effort means more reasoning tokens and better answers for complex tasks, at higher cost.",
 				},
 				{
 					Name:        "retry",
 					FlagName:    "retry",
 					Type:        "json",
-					Description: "",
+					Description: "Retry configuration. Specify the number of retries and which HTTP status codes should trigger a retry.",
 				},
 				{
 					Name:        "safety_identifier",
@@ -496,7 +496,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "security",
 					FlagName:    "security",
 					Type:        "json",
-					Description: "",
+					Description: "Trace masking configuration for request and response data.",
 				},
 				{
 					Name:        "service_tier",
@@ -569,13 +569,13 @@ func registerresponsesCommands(root *cobra.Command) {
 					Name:        "thread",
 					FlagName:    "thread",
 					Type:        "json",
-					Description: "",
+					Description: "Thread for grouping related requests.",
 				},
 				{
 					Name:        "timeout",
 					FlagName:    "timeout",
 					Type:        "json",
-					Description: "",
+					Description: "Provider call timeout configuration in milliseconds.",
 				},
 				{
 					Name:        "tool_choice",
@@ -642,7 +642,7 @@ func registerresponsesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 

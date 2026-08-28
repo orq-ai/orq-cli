@@ -359,7 +359,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteKnowledge(args[0], params)
 				if err != nil {
@@ -370,9 +373,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -393,7 +398,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes a chunk from the datasource and its vector index."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteChunk(args[0], args[1], args[2], params)
 				if err != nil {
@@ -404,9 +412,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -429,9 +439,9 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes up to 100 chunks and reports IDs that were not found or could not be deleted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunk_ids` (array, required)\n\nRequired fields: `chunk_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
 				if bartolocli.PrintBodyExample(params, "{\n  \"chunk_ids\": [\n    \"chunk_ids\"\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
@@ -446,6 +456,9 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteChunks(args[0], args[1], params, body)
 				if err != nil {
@@ -456,9 +469,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -491,7 +506,10 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes a datasource from a knowledge base. Deleting a datasource will remove it from the knowledge base and all associated chunks. This action is irreversible and cannot be undone."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteDatasource(args[0], args[1], params)
 				if err != nil {
@@ -502,9 +520,11 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -634,7 +654,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -676,7 +696,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -842,7 +862,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -916,7 +936,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -950,7 +970,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1018,7 +1038,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1048,7 +1068,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
-				if bartolocli.PrintBodyExample(params, "{\n  \"query\": \"query\",\n  \"search_type\": \"vector_search\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"query\": \"query\",\n  \"search_type\": \"hybrid_search\"\n}") {
 					return
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1093,7 +1113,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "search_type",
 							FlagName:    "search-type",
 							Type:        "enum-string",
-							Description: "",
+							Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
 							Enum: []string{
 								"vector_search",
 								"keyword_search",
@@ -1174,7 +1194,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "search_type",
 					FlagName:    "search-type",
 					Type:        "enum-string",
-					Description: "",
+					Description: "The type of search to perform. If not provided, will default to the knowledge base configured `retrieval_type`",
 					Enum: []string{
 						"vector_search",
 						"keyword_search",

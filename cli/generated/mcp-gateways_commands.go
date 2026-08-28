@@ -59,7 +59,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Name:        "mode",
 							FlagName:    "mode",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Shape of the tool surface presented to MCP clients: CODE or DIRECT. Defaults to CODE.",
 							Enum: []string{
 								"MCP_GATEWAY_MODE_UNSPECIFIED",
 								"MCP_GATEWAY_MODE_CODE",
@@ -82,7 +82,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Name:        "tool_naming",
 							FlagName:    "tool-naming",
 							Type:        "enum-string",
-							Description: "",
+							Description: "How upstream tool names are namespaced before they are exposed. Defaults to PREFIX_ON_COLLISION.",
 							Enum: []string{
 								"MCP_TOOL_NAMING_UNSPECIFIED",
 								"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
@@ -133,7 +133,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Name:        "mode",
 					FlagName:    "mode",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Shape of the tool surface presented to MCP clients: CODE or DIRECT. Defaults to CODE.",
 					Enum: []string{
 						"MCP_GATEWAY_MODE_UNSPECIFIED",
 						"MCP_GATEWAY_MODE_CODE",
@@ -156,7 +156,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Name:        "tool_naming",
 					FlagName:    "tool-naming",
 					Type:        "enum-string",
-					Description: "",
+					Description: "How upstream tool names are namespaced before they are exposed. Defaults to PREFIX_ON_COLLISION.",
 					Enum: []string{
 						"MCP_TOOL_NAMING_UNSPECIFIED",
 						"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
@@ -185,7 +185,10 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes an MCP gateway from the workspace. The response body is empty when the delete succeeds."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiMcpGatewayDelete(args[0], params)
 				if err != nil {
@@ -196,9 +199,11 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		mcpGatewaysCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -226,7 +231,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -266,7 +271,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -368,7 +373,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Name:        "mode",
 							FlagName:    "mode",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Shape of the tool surface presented to MCP clients: CODE or DIRECT.",
 							Enum: []string{
 								"MCP_GATEWAY_MODE_UNSPECIFIED",
 								"MCP_GATEWAY_MODE_CODE",
@@ -391,7 +396,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Name:        "status",
 							FlagName:    "status",
 							Type:        "enum-string",
-							Description: "",
+							Description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration.",
 							Enum: []string{
 								"MCP_GATEWAY_STATUS_UNSPECIFIED",
 								"MCP_GATEWAY_STATUS_ACTIVE",
@@ -402,7 +407,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 							Name:        "tool_naming",
 							FlagName:    "tool-naming",
 							Type:        "enum-string",
-							Description: "",
+							Description: "How upstream tool names are namespaced before they are exposed.",
 							Enum: []string{
 								"MCP_TOOL_NAMING_UNSPECIFIED",
 								"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",
@@ -459,7 +464,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Name:        "mode",
 					FlagName:    "mode",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Shape of the tool surface presented to MCP clients: CODE or DIRECT.",
 					Enum: []string{
 						"MCP_GATEWAY_MODE_UNSPECIFIED",
 						"MCP_GATEWAY_MODE_CODE",
@@ -482,7 +487,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Name:        "status",
 					FlagName:    "status",
 					Type:        "enum-string",
-					Description: "",
+					Description: "ACTIVE serves MCP traffic; DISABLED rejects it while keeping the configuration.",
 					Enum: []string{
 						"MCP_GATEWAY_STATUS_UNSPECIFIED",
 						"MCP_GATEWAY_STATUS_ACTIVE",
@@ -493,7 +498,7 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					Name:        "tool_naming",
 					FlagName:    "tool-naming",
 					Type:        "enum-string",
-					Description: "",
+					Description: "How upstream tool names are namespaced before they are exposed.",
 					Enum: []string{
 						"MCP_TOOL_NAMING_UNSPECIFIED",
 						"MCP_TOOL_NAMING_PREFIX_WITH_SERVER_KEY",

@@ -53,7 +53,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Name:        "profile",
 							FlagName:    "body-profile",
 							Type:        "enum-string",
-							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+							Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
 								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
@@ -99,7 +99,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Name:        "profile",
 					FlagName:    "body-profile",
 					Type:        "enum-string",
-					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+					Description: "Routing preference: quality favors more capable models, cost favors less expensive models, and balanced trades off both. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
 						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",
@@ -129,7 +129,10 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a Smart Router and removes its AI Gateway model configuration. A Smart Router referenced by an experiment cannot be deleted."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiSmartRouterDelete(args[0], params)
 				if err != nil {
@@ -140,9 +143,11 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		smartRoutersCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -204,7 +209,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -216,7 +221,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "")
 		cmd.Flags().String("ending-before", "", "")
 		cmd.Flags().String("search", "", "")
-		cmd.Flags().String("param-profile", "", " (parameter \"profile\", renamed to keep the global --profile flag available)")
+		cmd.Flags().String("param-profile", "", " (parameter \"profile\", renamed to keep the reserved --profile flag available)")
 		cmd.Flags().String("enabled", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -256,7 +261,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 							Name:        "profile",
 							FlagName:    "body-profile",
 							Type:        "enum-string",
-							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+							Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 							Enum: []string{
 								"SMART_ROUTER_PROFILE_UNSPECIFIED",
 								"SMART_ROUTER_PROFILE_QUALITY",
@@ -296,7 +301,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					Name:        "profile",
 					FlagName:    "body-profile",
 					Type:        "enum-string",
-					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+					Description: "New routing preference. Omit to keep the current profile. (body field \"profile\", renamed to keep the reserved --profile flag available)",
 					Enum: []string{
 						"SMART_ROUTER_PROFILE_UNSPECIFIED",
 						"SMART_ROUTER_PROFILE_QUALITY",

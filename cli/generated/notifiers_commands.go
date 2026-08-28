@@ -77,7 +77,7 @@ func registernotifiersCommands(root *cobra.Command) {
 							Name:        "type",
 							FlagName:    "type",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Required. Destination type. Use `NOTIFIER_TYPE_EMAIL`, `NOTIFIER_TYPE_SLACK_WEBHOOK`, or `NOTIFIER_TYPE_WEBHOOK`.",
 							Enum: []string{
 								"NOTIFIER_TYPE_UNSPECIFIED",
 								"NOTIFIER_TYPE_EMAIL",
@@ -153,7 +153,7 @@ func registernotifiersCommands(root *cobra.Command) {
 					Name:        "type",
 					FlagName:    "type",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Required. Destination type. Use `NOTIFIER_TYPE_EMAIL`, `NOTIFIER_TYPE_SLACK_WEBHOOK`, or `NOTIFIER_TYPE_WEBHOOK`.",
 					Enum: []string{
 						"NOTIFIER_TYPE_UNSPECIFIED",
 						"NOTIFIER_TYPE_EMAIL",
@@ -189,7 +189,10 @@ func registernotifiersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes an existing notifier by ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiNotifierDelete(args[0], params)
 				if err != nil {
@@ -200,9 +203,11 @@ func registernotifiersCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		notifiersCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -264,7 +269,7 @@ func registernotifiersCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -346,7 +351,7 @@ func registernotifiersCommands(root *cobra.Command) {
 							Name:        "type",
 							FlagName:    "type",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Optional. New destination type. When provided, also provide the destination field required by the new type.",
 							Enum: []string{
 								"NOTIFIER_TYPE_UNSPECIFIED",
 								"NOTIFIER_TYPE_EMAIL",
@@ -422,7 +427,7 @@ func registernotifiersCommands(root *cobra.Command) {
 					Name:        "type",
 					FlagName:    "type",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Optional. New destination type. When provided, also provide the destination field required by the new type.",
 					Enum: []string{
 						"NOTIFIER_TYPE_UNSPECIFIED",
 						"NOTIFIER_TYPE_EMAIL",

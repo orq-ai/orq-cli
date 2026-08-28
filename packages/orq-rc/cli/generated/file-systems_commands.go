@@ -227,7 +227,10 @@ func registerfileSystemsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a file system and every file stored in it. This cannot be undone."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteFileSystem(args[0], params)
 				if err != nil {
@@ -238,9 +241,11 @@ func registerfileSystemsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		fileSystemsCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -261,7 +266,10 @@ func registerfileSystemsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Deletes one file or folder. A folder that still has content is refused unless recursive is set."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteFile(args[0], params)
 				if err != nil {
@@ -272,9 +280,11 @@ func registerfileSystemsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		fileSystemsCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		cmd.Flags().String("path", "", "")
 		cmd.Flags().String("recursive", "", "")
@@ -305,7 +315,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -345,7 +355,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
