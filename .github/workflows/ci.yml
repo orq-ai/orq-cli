@@ -26,9 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: release-label configuration
-        run: |
-          node .github/scripts/check-release-label-config.js
-          node .github/scripts/check-release-label-config.js --mutation-test
+        run: node .github/scripts/check-release-label-config.js
       - name: actionlint
         env:
           ACTIONLINT_VERSION: "1.7.12"

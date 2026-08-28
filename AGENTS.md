@@ -32,21 +32,32 @@ groups the release body by that label:
 | `chore`, `build`, `test`, `style`, `ci`, `refactor` | `release:maintenance` | 🧰 Maintenance        |
 
 The `release:*` namespace is reserved for this automation. On PR open, edit, or
-reopen, the labeler creates a missing release label (an existing one is left alone,
-colour and description included), adds it, and only then removes the stale ones —
-that order means an interrupted run leaves too many release labels rather than none.
-Retitling a mapped PR replaces its previous automation label; an invalid or unmapped
-title removes all automation labels. Ordinary, human-applied labels are preserved.
-An invalid title fails title-validation CI and carries no automation label, so if it
-is merged anyway its PR falls through `.github/release.yml`'s `"*"` catch-all into
-`Other Changes`.
+reopen, the labeler provisions a missing release label, adds it, and only then
+removes the stale ones. That order matters: a run that dies mid-transition leaves
+too many release labels rather than none, and too many is what the next edit
+repairs. `addLabels` would create a missing label by itself, but with a colour
+GitHub picks and no description; provisioning first is what makes both ours.
+
+Retitling a mapped PR replaces its previous automation label. A title the labeler
+cannot parse, or whose type is unmapped, removes all automation labels. Ordinary,
+human-applied labels are preserved. A PR with no automation label falls through
+`.github/release.yml`'s `"*"` catch-all into `Other Changes`.
+
+The labeler is deliberately more lenient than the validator: it lowercases the
+type and does not require a subject, so `FEAT: x` is labelled but still fails the
+title check. Passing CI, not carrying a label, is the thing to go by.
 
 Adding a type or renaming a label means keeping `label-pr.yml`, `pr-title.yml`, and
 `.github/release.yml` synchronized. You do not have to remember to: the `workflow
 and release-label validation` CI job runs
 `.github/scripts/check-release-label-config.js`, which fails when the three
-disagree — an allowed type with no mapping, a mapped label missing from the release
-categories, or a mapped label with no colour and description.
+disagree. It checks an allowed type with no mapping, a mapped label missing from
+the release categories, a mapped label whose `labelDetails` entry has no six-digit
+hex colour or no description, a missing `"*"` catch-all, and the labeler's own
+wiring (the `edited` trigger, the two write permissions, the SHA pin).
+
+It does not check how `label-pr.yml` is written, only what it configures. Renaming
+a variable there is not a regression.
 
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.

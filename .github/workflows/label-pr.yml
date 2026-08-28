@@ -10,7 +10,9 @@ name: Label PR
 # intentionally remain separate from repository and human-applied labels.
 on:
   pull_request_target:
-    # No `synchronize`: pushes cannot change the title, only `edited` can.
+    # No `synchronize`: the label is a pure function of the title, so re-running
+    # per push is cost with no effect. pr-title.yml keeps it so a required check
+    # exists on each new head SHA.
     types: [opened, edited, reopened]
 
 permissions:
@@ -21,7 +23,10 @@ permissions:
 
 concurrency:
   group: label-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # Not cancelled: two API calls are cheap, and a run killed between adding the
+  # new label and removing the stale one leaves a PR in two release categories
+  # that nothing reconciles.
+  cancel-in-progress: false
 
 jobs:
   label:
@@ -62,9 +67,11 @@ jobs:
                 description: 'Automated release-notes label for maintenance.',
               },
             };
-            // Look the label up before creating it: an existing label is left
-            // exactly as it is, colour and description included, rather than
-            // having a creation error interpreted as success.
+            // `addLabels` would create a missing label on its own, but with a
+            // colour GitHub picks and no description. Provisioning first is what
+            // makes both ours. Looking it up first keeps the common
+            // already-exists case a clean 200, so the 422 below is reserved for
+            // the genuine race.
             const provisionLabel = async (name) => {
               const repository = { owner: context.repo.owner, repo: context.repo.repo };
               try {
@@ -77,26 +84,27 @@ jobs:
                 await github.rest.issues.createLabel({ ...repository, name, ...labelDetails[name] });
                 core.info(`Provisioned release label: ${name}`);
               } catch (createError) {
-                // Another pull request's run created it in between.
-                if (createError.status !== 422) throw createError;
+                // Only an already-exists 422 is another run creating it in
+                // between. Every other 422 is a malformed labelDetails entry.
+                const errors = createError.response?.data?.errors || [];
+                if (!errors.some((entry) => entry.code === 'already_exists')) throw createError;
                 core.info(`Release label created concurrently: ${name}`);
               }
             };
 
-            // Fetch current state rather than trusting the event payload, then
-            // touch only labels this workflow owns.
             const current = await github.paginate(
               github.rest.issues.listLabelsOnIssue,
               issue,
             );
             const title = context.payload.pull_request.title || '';
             const m = title.match(/^(\w+)(\([^)]*\))?!?:/);
-            const label = m && MAP[m[1].toLowerCase()];
+            // Object.hasOwn, because a bare lookup reads through the prototype:
+            // a title like `constructor:` would resolve to a truthy non-label
+            // and crash the run before the stale-label cleanup below.
+            const type = m && m[1].toLowerCase();
+            const label = type && Object.hasOwn(MAP, type) ? MAP[type] : undefined;
 
-            // Add before removing. `cancel-in-progress` can kill this job
-            // mid-transition; leaving a superset of the right labels is
-            // recoverable, leaving none silently ships the PR under
-            // "Other Changes".
+            // Add before removing; see AGENTS.md.
             if (label) {
               await provisionLabel(label);
               if (current.some((currentLabel) => currentLabel.name === label)) {
@@ -120,7 +128,6 @@ jobs:
                 await github.rest.issues.removeLabel({ ...issue, name: stale });
                 core.info(`Removed stale label: ${stale}`);
               } catch (removeError) {
-                // Already gone is the desired state.
                 if (removeError.status !== 404) throw removeError;
                 core.info(`Stale label already removed: ${stale}`);
               }
