@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
+
+	"github.com/spf13/viper"
 )
 
 // The human view keeps one row per fault and one coding_agents summary;
@@ -284,6 +288,141 @@ func TestSkillsCheck(t *testing.T) {
 		}
 		if _, ok := skillsCheck(); ok {
 			t.Error("a session link between launches was reported as a problem")
+		}
+	})
+}
+
+// TestCredentialPermsCheck exercises the loose-permission diagnostic on
+// Unix; the check is entirely absent on Windows, where these bits do not
+// mean anything.
+func TestCredentialPermsCheck(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+
+	// setupConfig points both viper's config-directory and the auth
+	// package's HOME-derived sessions dir at a fresh temp tree, and returns
+	// the config directory and the path where the active profile's session
+	// file would live.
+	setupConfig := func(t *testing.T) (dir, sessionsDir string) {
+		t.Helper()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		dir = t.TempDir()
+		viper.Set("config-directory", dir)
+		t.Cleanup(func() { viper.Set("config-directory", "") })
+		return dir, filepath.Dir(auth.SessionFilePath())
+	}
+
+	t.Run("loose credentials.json warns and names the fix", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, credPath) {
+			t.Errorf("message does not name %s: %q", credPath, check.Message)
+		}
+		if !strings.Contains(check.Message, "chmod 600 "+credPath) {
+			t.Errorf("message missing the chmod 600 remedy: %q", check.Message)
+		}
+		if !strings.Contains(check.Message, "orq setup") {
+			t.Errorf("message does not mention rotation via orq setup: %q", check.Message)
+		}
+	})
+
+	t.Run("0600 credentials.json in a 0700 dir passes", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "pass" {
+			t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
+		}
+	})
+
+	t.Run("a loose session file is reported", func(t *testing.T) {
+		dir, sessionsDir := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(sessionsDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		sessionPath := filepath.Join(sessionsDir, auth.ActiveProfile()+".json")
+		if err := os.WriteFile(sessionPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, sessionPath) {
+			t.Errorf("message does not name the loose session file %s: %q", sessionPath, check.Message)
+		}
+	})
+
+	t.Run("a loose config directory is reported with chmod 700", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, "chmod 700 "+dir) {
+			t.Errorf("message missing the chmod 700 remedy for %s: %q", dir, check.Message)
+		}
+	})
+
+	t.Run("an empty config dir with no credential files passes", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "pass" {
+			t.Fatalf("got ok=%v status=%q, want a pass, not a warn", ok, check.Status)
+		}
+	})
+
+	t.Run("two loose files are both named in the one message", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		envPath := filepath.Join(dir, "env")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(envPath, []byte(""), 0o640); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		for _, p := range []string{credPath, envPath} {
+			if !strings.Contains(check.Message, p) {
+				t.Errorf("message does not name %s: %q", p, check.Message)
+			}
+		}
+		loose, ok := check.Details["loose"].([]map[string]any)
+		if !ok || len(loose) != 2 {
+			t.Fatalf("details[loose] = %v, want 2 entries", check.Details["loose"])
 		}
 	})
 }

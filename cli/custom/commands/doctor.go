@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type doctorCheck struct {
@@ -95,6 +97,9 @@ func NewDoctorCommand() *cobra.Command {
 			}
 			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
 				checks = append(checks, expiry)
+			}
+			if perms, ok := credentialPermsCheck(); ok {
+				checks = append(checks, perms)
 			}
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", http.MethodGet, client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", http.MethodGet, client.URLs.AuthBaseURL, ""))
@@ -480,4 +485,114 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 		check.Message = fmt.Sprintf("The gateway key expires in %d days", days)
 	}
 	return check, true
+}
+
+// loosePermPath is one credential path found readable or writable by group
+// or other (mode & 0o077 != 0).
+type loosePermPath struct {
+	path string
+	mode os.FileMode
+	fix  string
+}
+
+// credentialPermsCheck reports credential files and directories left with
+// group/other permission bits set. Bartolo v0.6.0 already writes every
+// credentials.json as 0600, so a loose file here is leftover from an older
+// CLI version rather than something this CLI would produce today — this is
+// a diagnostic, not a repair: doctor never chmods anything itself.
+//
+// Unix only: Windows ACLs do not map onto the Unix permission bits this
+// check reads, so the check is absent there rather than reporting a
+// meaningless pass.
+func credentialPermsCheck() (doctorCheck, bool) {
+	if runtime.GOOS == "windows" {
+		return doctorCheck{}, false
+	}
+	dir := viper.GetString("config-directory")
+	if dir == "" {
+		return doctorCheck{}, false
+	}
+
+	type candidate struct {
+		path  string
+		isDir bool
+	}
+	candidates := []candidate{
+		{dir, true},
+		{filepath.Join(dir, "credentials.json"), false},
+		{filepath.Join(dir, "env"), false},
+		{filepath.Join(dir, "env.fish"), false},
+	}
+	// Derived from auth.SessionFilePath rather than hardcoded so this check
+	// cannot drift from wherever the auth package actually keeps sessions.
+	sessionsDir := filepath.Dir(auth.SessionFilePath())
+	if entries, err := os.ReadDir(sessionsDir); err == nil {
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".json") {
+				candidates = append(candidates, candidate{filepath.Join(sessionsDir, entry.Name()), false})
+			}
+		}
+	}
+
+	var loose []loosePermPath
+	checked := 0
+	for _, c := range candidates {
+		// Lstat, not Stat: a symlinked credential file must be judged on its
+		// own mode, not silently swapped for whatever it points at.
+		info, err := os.Lstat(c.path)
+		if err != nil {
+			// Missing is not a finding: nothing to leak.
+			continue
+		}
+		if c.isDir {
+			if !info.IsDir() {
+				continue
+			}
+		} else if !info.Mode().IsRegular() {
+			// Symlinks and anything else are skipped: only real files carry
+			// credential contents.
+			continue
+		}
+		checked++
+		perm := info.Mode().Perm()
+		if perm&0o077 == 0 {
+			continue
+		}
+		fix := fmt.Sprintf("chmod 600 %s", c.path)
+		if c.isDir {
+			fix = fmt.Sprintf("chmod 700 %s", c.path)
+		}
+		loose = append(loose, loosePermPath{path: c.path, mode: perm, fix: fix})
+	}
+
+	if len(loose) == 0 {
+		return doctorCheck{
+			ID:      "credential_permissions",
+			Status:  "pass",
+			Message: "Credential files are not readable by other accounts",
+			Details: map[string]any{"checked": checked, "loose": []map[string]any{}},
+		}, true
+	}
+
+	details := make([]map[string]any, 0, len(loose))
+	messages := make([]string, 0, len(loose))
+	for _, l := range loose {
+		details = append(details, map[string]any{
+			"path": l.path,
+			"mode": fmt.Sprintf("%04o", l.mode),
+			"fix":  l.fix,
+		})
+		messages = append(messages, fmt.Sprintf("%s is mode %04o — run '%s'", l.path, l.mode, l.fix))
+	}
+	// A key that leaked to other local accounts is compromised the moment it
+	// was readable, not just when it is found; the fix is a fresh key, not a
+	// permission change on the old one.
+	messages = append(messages, "treat any exposed key as compromised and run 'orq setup' to mint a new one")
+
+	return doctorCheck{
+		ID:      "credential_permissions",
+		Status:  "warn",
+		Message: strings.Join(messages, "; "),
+		Details: map[string]any{"checked": checked, "loose": details},
+	}, true
 }
