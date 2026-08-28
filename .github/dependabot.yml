@@ -1,0 +1,32 @@
+# Dependabot's default title is "Bump x from a to b", which is not a conventional
+# commit, so .github/workflows/pr-title.yml fails it. prefix + scope produces
+# "chore(deps): bump x from a to b", which passes and maps to release:maintenance
+# through .github/scripts/label-pr.js. These settings apply to security updates
+# too, which is what PRs #1, #2 and #4 were.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: gomod
+    directory: /packages/orq-rc
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # The workflows mix SHA pins with floating @v4/@v5 refs. Pins go stale silently;
+  # this is what surfaces them as reviewable PRs.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
