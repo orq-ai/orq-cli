@@ -107,6 +107,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.1) — 2026-08-28
+
 - **Changed:** `orq launch` now follows your login's active workspace. When the
   exported `ORQ_API_KEY` is the key `orq setup` minted and your session has
   since moved to a different workspace (`orq workspace use`), launch uses the
