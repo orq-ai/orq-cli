@@ -58,28 +58,25 @@ the version and this changelog as the source of truth for breaking changes.
   versions could leave it at 0644 permanently, not just briefly. `orq setup`
   chmodded the file after writing it, but `orq auth add-profile` did not chmod
   at all, so a file created by that command has been world-readable ever since,
-  with the key in plaintext. This release does not repair an existing file: it
-  keeps whatever mode it has until the next successful save. If yours is 0644,
-  run `chmod 600 ~/.orq/credentials.json`, and treat any key in it as exposed
-  to other accounts on that machine.
-- **Added:** `orq doctor` checks `~/.orq` itself, `credentials.json`, `env`,
-  `env.fish`, each per-profile file under `sessions/`, and the legacy
-  `session.json`, for group- or other-accessible permission bits, so the
-  manual check the entry above asks for now runs on every `orq doctor`. A
-  symlinked path (chezmoi, stow) is judged on its target's mode, since that is
-  what the CLI actually reads. A hit names the exact path, its mode, and the
-  `chmod` to fix it, and tells you to treat the key as compromised: revoke it
-  in the dashboard, delete it from `credentials.json`, then run `orq setup` to
-  mint a new one — `orq setup` on its own reuses a saved, still-valid key
-  rather than rotating it. A clean run says nothing at all; the check only
-  appears when there is a finding.
+  with the key in plaintext. This release does not repair an existing file
+  automatically: it keeps whatever mode it has until the next successful save.
+  If yours is 0644, run `chmod 600 ~/.orq/credentials.json` (or let
+  `orq doctor --fix` do it, below), and treat any key in it as exposed to other
+  accounts on that machine.
+- **Added:** `orq doctor` runs the manual check the entry above asks for, on
+  every run, over `~/.orq` itself, `credentials.json`, `env`, `env.fish`, each
+  per-profile file under `sessions/`, and the legacy `session.json`. A finding
+  names the path, its mode and the `chmod` that fixes it, plus what to do about
+  the credential that leaked: revoke and replace an API key, `orq auth logout`
+  for a session file. A symlinked path is judged on its target, since that is
+  what the CLI reads. A clean run says nothing at all. Unix only.
 - **Added:** `orq doctor --fix` chmods what that check flags — 0600 for files,
-  0700 for directories — and reports each path it changed. Doctor still repairs
-  nothing on its own; without the flag it only reports. A chmod that fails is
-  reported as a failure naming the path and the error. The rotation advice
-  stands after a repair: a chmod cannot un-expose a key that was already
-  readable. Both the check and `--fix` are Unix only — Windows ACLs do not map
-  onto the bits this check reads, so neither exists there.
+  0700 for directories — and reports each path it changed. Without the flag
+  doctor still repairs nothing. A chmod that fails is reported as a failure
+  naming the path and the error, and the advice stands after a repair: a chmod
+  cannot un-expose a credential that was already readable. Both the check and
+  `--fix` are Unix only — Windows ACLs do not map onto the bits this check
+  reads, so neither exists there.
 - **Changed (security):** `orq auth list-profiles` masks stored credentials.
   It previously printed the full API key in plaintext, so keys reached terminal
   scrollback, CI logs and screen recordings. Keys now render as

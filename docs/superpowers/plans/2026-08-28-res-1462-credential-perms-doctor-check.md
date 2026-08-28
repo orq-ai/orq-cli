@@ -2,9 +2,9 @@
 
 ## Decisions after review
 
-Three calls made after the plan below was written. They override the Global
-Constraints and Context sections that follow; the original text is left intact
-as the record of what was planned first.
+Three calls made after the plan below was written. The task text further down
+has been updated to match them; this section stays as the record of what was
+decided and why.
 
 1. **`orq doctor --fix` exists.** Doctor still repairs nothing on its own, but
    an opt-in flag chmods the flagged paths (0600 files, 0700 directories) and
@@ -33,26 +33,35 @@ created by an earlier `orq auth add-profile` stays 0644 — with the API key in
 plaintext — until the next successful save, which for a user who authenticated
 once may be never.
 
-The decision made with the ticket's owner: **report, do not repair.** A silent
-`os.Chmod` cannot un-expose a key that has been readable for weeks, and it
-mutates a user-owned file on every command run. Doctor warns, names the exact
-`chmod`, and tells the user to rotate.
+The decision made with the ticket's owner: **report by default, repair only on
+request.** A silent `os.Chmod` cannot un-expose a key that has been readable for
+weeks, and it must not mutate a user-owned file on every command run. Doctor
+warns, names the exact `chmod`, and tells the user what to rotate; `--fix`
+performs the chmod when the user asks for it.
 
 ## Global Constraints
 
-- Report only. No `os.Chmod`, no auto-repair, no `--fix` flag anywhere in this
-  change.
+- No automatic repair. Doctor only reports unless the user passes `--fix`,
+  which chmods the flagged paths (0600 files, 0700 directories) and reports
+  what it changed.
 - Unix only. When `runtime.GOOS == "windows"` the check must not appear at all
   (Go's mode bits do not map to Windows ACLs). Do not report a `pass` there
   either — the check is absent.
-- Never read, log, or include the contents of any credential file. Only
-  `os.Stat` metadata.
-- A missing file is not a finding: skip it silently.
+- Never read, log, or include the contents of any credential file. Only its
+  metadata (the descriptor is opened to stat and chmod it, never to read it).
+- A missing file (including a broken symlink) is not a finding: skip it
+  silently. A path that exists but is not the kind of thing it should be (a
+  FIFO, a device, a directory where a file belongs) *is* a finding, and is
+  never chmodded.
 - The check follows the existing `(doctorCheck, bool)` shape used by
   `mcpCheck`, `gatewayKeyShadowsSessionCheck` and `gatewayKeyExpiryCheck` in
   `cli/custom/commands/doctor.go`, and is wired into `RunE` alongside them so
   it appears in both the human table and `--json`.
-- Do not change how any file is written. This change is read-only diagnostics.
+- Do not change how any file is written. The only mutation in this change is
+  the opt-in `--fix` chmod.
+- `--fix` must judge and repair through a single open file descriptor
+  (`f.Stat` then `f.Chmod`), so a swapped symlink or parent directory cannot
+  redirect the chmod between the two steps.
 
 ## Task 1 — `credentialPermsCheck` in doctor
 
@@ -61,7 +70,7 @@ File: `cli/custom/commands/doctor.go` (plus `doctor_test.go`).
 Add:
 
 ```go
-func credentialPermsCheck() (doctorCheck, bool)
+func credentialPermsCheck(fix bool) (doctorCheck, bool)
 ```
 
 Behavior:
@@ -75,22 +84,28 @@ Behavior:
   - `<dir>/credentials.json`
   - `<dir>/env`
   - `<dir>/env.fish`
-  - every `*.json` under the sessions directory. Derive that directory from
-    `auth.SessionFilePath()` (`filepath.Dir`) rather than hardcoding a name, so
-    it cannot drift from the auth package. Enumerate with `os.ReadDir`; if the
-    directory is absent, skip it.
+  - the sessions directory itself, and every `*.json` under it, plus the legacy
+    `~/.orq/session.json`. Take the directory from `auth.SessionsDir()` rather
+    than hardcoding a name, so it cannot drift from the auth package. Enumerate
+    with `os.ReadDir`; if the directory is absent, skip it; if the listing
+    fails partway, audit the entries it did return *and* report the incomplete
+    scan.
   For files, loose is `info.Mode().Perm()&0o077 != 0`; the fix is
   `chmod 600 <file>`.
-- Only regular files are checked (`info.Mode().IsRegular()`), plus the config
-  directory itself. Symlinks and anything else are skipped.
-- With no loose paths: return a `pass` check, ID `credential_permissions`,
-  message along the lines of `Credential files are not readable by other
-  accounts`.
+- Only regular files are checked, plus the two directories. Symlinks are
+  followed and judged on their target; anything else is reported as a
+  wrong-typed path.
+- Skip the check entirely when `os.UserHomeDir()` fails: the auth package falls
+  back to a relative `.orq/...` there, which `--fix` must not chmod.
+- With no loose paths and nothing that failed inspection: return
+  `doctorCheck{}, false` and print no row at all, as `mcpCheck` does.
 - With one or more loose paths: `warn`, ID `credential_permissions`. The message
-  must name every loose path and give the exact command to run for each, and end
-  with a rotation hint — a key that was world-readable should be treated as
-  exposed, and `orq setup` mints a new one. Keep it one line, `; `-joined, like
-  `mcpCheck` does.
+  must name every loose path and give the exact command to run for each
+  (unwrapped, with the path shell-quoted so it survives a home directory with a
+  space), and end with advice matched to what leaked: an API-key path is
+  revoked and replaced, a session file is cleared with `orq auth logout`, which
+  revokes the refresh token — `orq setup` does not. Keep it one line,
+  `; `-joined, like `mcpCheck` does.
 - `Details` carries a machine-readable list for `--json`: for each loose path,
   its path, its octal mode as a string (e.g. `"0644"`), and the `chmod` command.
   Use a key such as `loose` holding a slice of maps, plus a `checked` count.
@@ -105,14 +120,22 @@ as `connect_test.go` does):
 - Skip the whole test with `t.Skip` when `runtime.GOOS == "windows"`.
 - A 0644 `credentials.json` produces a `warn` naming that path and
   `chmod 600`, and mentions rotation.
-- A 0600 `credentials.json` (in a 0700 dir) produces `pass`.
+- A 0600 `credentials.json` (in a 0700 dir) produces no check at all.
 - A loose sessions file (`<sessions dir>/<profile>.json` at 0644) is reported —
   this is the case that proves the sessions directory is actually scanned.
 - A loose config directory (0755) is reported with `chmod 700`.
-- An empty config dir with no credential files produces `pass`, not a warn.
+- An empty config dir with no credential files produces no check at all.
 - Two loose files are both named in the single message.
+- A `credentials.json` that is a directory is reported, not skipped, and is not
+  chmodded by `--fix`.
+- `--fix` repairs a loose file and a loose directory, including through a
+  symlink, and a re-run then reports nothing.
+- One test drives the real command (`NewDoctorCommand`, cobra `Execute`) rather
+  than calling `credentialPermsCheck` directly, so the wiring and the `--fix`
+  flag binding are covered.
 
-Verify with `go test ./cli/custom/commands/ -run Perm` and `go vet ./...`.
+Verify with `go test ./cli/custom/...`, `go vet ./...` and
+`go run ./cmd/surface-dump -check`.
 
 ## Task 2 — CHANGELOG and README
 
@@ -126,5 +149,6 @@ Files: `CHANGELOG.md`, `README.md`.
   check automatic.
 - `README.md`, in the `doctor` reports list under `## Diagnostics`: one bullet
   for the credential-permissions check.
-- No other docs changes. Do not touch `surface.json` — no command or flag
-  changed.
+- `surface.json`: regenerate it. `--fix` is a new flag, and the CI gate fails
+  if the recorded surface does not carry it.
+- No other docs changes.
