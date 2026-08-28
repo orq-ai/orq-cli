@@ -76,11 +76,12 @@ jobs:
           # xargs runs its command once even on empty input, and gofmt with no
           # file arguments reads stdin and exits 0 — so an empty list would
           # report success without having examined anything. Fail on it instead.
-          files="$(git ls-files '*.go')"
-          if [ -z "$files" ]; then
+          if [ "$(git ls-files '*.go' | wc -l)" -eq 0 ]; then
             echo "no Go files found; the pathspec or the tree is wrong"; exit 1
           fi
-          unformatted="$(printf '%s\n' "$files" | xargs gofmt -l)"
+          # -z/-0 rather than a shell variable: command substitution drops NUL
+          # bytes, so capturing the list first would splice two names together.
+          unformatted="$(git ls-files -z '*.go' | xargs -0 gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"; echo "$unformatted"; exit 1
           fi
