@@ -281,7 +281,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently delete a memory store, including memories and documents."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteMemoryStore(args[0], params)
 				if err != nil {
@@ -292,9 +295,11 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		memoryStoresCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -315,7 +320,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a specific memory document.\n\nUse this endpoint to:\n- Remove a document from a memory\n- Clean up unused documents\n- Manage document storage space"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteMemoryDocument(args[0], args[1], args[2], params)
 				if err != nil {
@@ -326,9 +334,11 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		memoryStoresCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -349,7 +359,10 @@ func registermemoryStoresCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a specific memory.\n\nUse this endpoint to:\n- Remove a memory from the store\n- Clean up unused memories\n- Manage memory storage space"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteMemory(args[0], args[1], params)
 				if err != nil {
@@ -360,9 +373,11 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		memoryStoresCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -390,7 +405,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -431,7 +446,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -471,7 +486,7 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 

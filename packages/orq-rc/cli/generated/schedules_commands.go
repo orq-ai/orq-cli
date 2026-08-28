@@ -61,7 +61,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "payload",
 							FlagName:    "payload",
 							Type:        "json",
-							Description: "",
+							Description: "Invocation payload delivered to the agent on every firing.",
 						},
 						{
 							Name:        "type",
@@ -116,7 +116,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "payload",
 					FlagName:    "payload",
 					Type:        "json",
-					Description: "",
+					Description: "Invocation payload delivered to the agent on every firing.",
 				},
 				{
 					Name:        "type",
@@ -149,7 +149,10 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently removes the schedule. It will not run again."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteAgentSchedule(args[0], args[1], params)
 				if err != nil {
@@ -160,9 +163,11 @@ func registerschedulesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		schedulesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -190,7 +195,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -323,7 +328,7 @@ func registerschedulesCommands(root *cobra.Command) {
 							Name:        "payload",
 							FlagName:    "payload",
 							Type:        "json",
-							Description: "",
+							Description: "Update the invocation payload. Payload-only changes do not reset the firing cadence or bump generation.",
 						},
 						{
 							Name:        "type",
@@ -384,7 +389,7 @@ func registerschedulesCommands(root *cobra.Command) {
 					Name:        "payload",
 					FlagName:    "payload",
 					Type:        "json",
-					Description: "",
+					Description: "Update the invocation payload. Payload-only changes do not reset the firing cadence or bump generation.",
 				},
 				{
 					Name:        "type",

@@ -43,7 +43,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 							Name:        "cache",
 							FlagName:    "cache",
 							Type:        "json",
-							Description: "",
+							Description: "Cache configuration for the request.",
 						},
 						{
 							Name:        "dimensions",
@@ -77,7 +77,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 							Name:        "load_balancer",
 							FlagName:    "load-balancer",
 							Type:        "json",
-							Description: "",
+							Description: "Load balancer configuration for the request.",
 						},
 						{
 							Name:        "model",
@@ -95,19 +95,19 @@ func registerembeddingsCommands(root *cobra.Command) {
 							Name:        "orq",
 							FlagName:    "orq",
 							Type:        "json",
-							Description: "",
+							Description: "Orq platform extension parameters. Top-level equivalents take priority when both are set.",
 						},
 						{
 							Name:        "retry",
 							FlagName:    "retry",
 							Type:        "json",
-							Description: "",
+							Description: "Retry configuration for the request.",
 						},
 						{
 							Name:        "timeout",
 							FlagName:    "timeout",
 							Type:        "json",
-							Description: "",
+							Description: "Timeout configuration to apply to the request.",
 						},
 						{
 							Name:        "user",
@@ -141,7 +141,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 					Name:        "cache",
 					FlagName:    "cache",
 					Type:        "json",
-					Description: "",
+					Description: "Cache configuration for the request.",
 				},
 				{
 					Name:        "dimensions",
@@ -175,7 +175,7 @@ func registerembeddingsCommands(root *cobra.Command) {
 					Name:        "load_balancer",
 					FlagName:    "load-balancer",
 					Type:        "json",
-					Description: "",
+					Description: "Load balancer configuration for the request.",
 				},
 				{
 					Name:        "model",
@@ -193,19 +193,19 @@ func registerembeddingsCommands(root *cobra.Command) {
 					Name:        "orq",
 					FlagName:    "orq",
 					Type:        "json",
-					Description: "",
+					Description: "Orq platform extension parameters. Top-level equivalents take priority when both are set.",
 				},
 				{
 					Name:        "retry",
 					FlagName:    "retry",
 					Type:        "json",
-					Description: "",
+					Description: "Retry configuration for the request.",
 				},
 				{
 					Name:        "timeout",
 					FlagName:    "timeout",
 					Type:        "json",
-					Description: "",
+					Description: "Timeout configuration to apply to the request.",
 				},
 				{
 					Name:        "user",

@@ -48,6 +48,20 @@ the version and this changelog as the source of truth for breaking changes.
 
 ## Unreleased
 
+- **Fixed (security):** path parameters are URL-escaped and rejected when
+  empty. `orq datasets retrieve '../../etc/passwd'` used to be pasted into the
+  request path verbatim, so a crafted id could traverse to a different endpoint
+  and return data the command was never meant to reach (BACK-2115); it now
+  requests `/v2/datasets/..%2F..%2Fetc%2Fpasswd` and 404s. An empty id, which
+  previously built a collection URL — `orq agents delete ""` hitting
+  `/v2/agents` — now fails client-side before any request. This lands through
+  the bartolo generator (0.4.6 to 0.6.0), so it covers every generated command.
+- **Changed (breaking):** generated DELETE commands now ask for confirmation
+  and refuse to run without `--force` when there is no terminal, matching the
+  `orq request DELETE` change below. 40 commands are affected — `orq agents
+  delete`, `orq datasets delete`, `orq prompts delete` and the rest. CI jobs
+  calling any of them exit non-zero until `--force` is added.
+
 - **Fixed (security):** `~/.orq/credentials.json` is no longer written
   world-readable. On Unix it is now 0600 from the moment the file exists and is
   swapped in by rename, so there is no window in which the key is readable by

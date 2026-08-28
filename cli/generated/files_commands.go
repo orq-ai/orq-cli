@@ -63,7 +63,10 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently deletes a file and its stored content from the project."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiFileDelete(args[0], params)
 				if err != nil {
@@ -74,9 +77,11 @@ func registerfilesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		filesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -138,7 +143,7 @@ func registerfilesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -271,7 +276,7 @@ func registerfilesCommands(root *cobra.Command) {
 							Name:        "purpose",
 							FlagName:    "purpose",
 							Type:        "enum-string",
-							Description: "",
+							Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
 							Enum: []string{
 								"FILE_PURPOSE_UNSPECIFIED",
 								"FILE_PURPOSE_RETRIEVAL",
@@ -330,7 +335,7 @@ func registerfilesCommands(root *cobra.Command) {
 					Name:        "purpose",
 					FlagName:    "purpose",
 					Type:        "enum-string",
-					Description: "",
+					Description: "Intended usage category for the uploaded file. Defaults to retrieval\n when omitted.",
 					Enum: []string{
 						"FILE_PURPOSE_UNSPECIFIED",
 						"FILE_PURPOSE_RETRIEVAL",

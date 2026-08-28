@@ -36,7 +36,7 @@ func registerevalsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -114,7 +114,10 @@ func registerevalsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Delete an evaluator by its unique identifier."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteEval(args[0], params)
 				if err != nil {
@@ -125,9 +128,11 @@ func registerevalsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		evalsCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -449,7 +454,7 @@ func registerevalsCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 

@@ -243,9 +243,9 @@ func registertracesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Remove one or more annotations from a specific span by their evaluator keys, or remove corrections by the eval ids of their parent annotations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `keys` (array)\n- `metadata` (object)\n- `parent_annotation_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
 				if bartolocli.PrintBodyExample(params, "{\n  \"keys\": [\n    \"keys\"\n  ],\n  \"metadata\": {\n    \"identity_id\": \"identity_id\"\n  },\n  \"parent_annotation_ids\": [\n    \"parent_annotation_ids\"\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
@@ -272,6 +272,9 @@ func registertracesCommands(root *cobra.Command) {
 				if err != nil {
 					log.Fatal().Err(err).Msg("unable to get body")
 				}
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiDeleteAnnotation(args[0], args[1], params, body)
 				if err != nil {
@@ -282,9 +285,11 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		tracesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -507,7 +512,7 @@ func registertracesCommands(root *cobra.Command) {
 							Name:        "profile",
 							FlagName:    "body-profile",
 							Type:        "int64",
-							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+							Description: "profile (body field \"profile\", renamed to keep the reserved --profile flag available)",
 						},
 						{
 							Name:        "sampling_percentage",
@@ -607,7 +612,7 @@ func registertracesCommands(root *cobra.Command) {
 					Name:        "profile",
 					FlagName:    "body-profile",
 					Type:        "int64",
-					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+					Description: "profile (body field \"profile\", renamed to keep the reserved --profile flag available)",
 				},
 				{
 					Name:        "sampling_percentage",
@@ -649,7 +654,10 @@ func registertracesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown(""),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiInsightsServiceDeleteRun(args[0], args[1], params)
 				if err != nil {
@@ -660,9 +668,11 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		tracesCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -690,7 +700,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -826,7 +836,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -864,7 +874,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -904,7 +914,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -942,7 +952,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1292,7 +1302,7 @@ func registertracesCommands(root *cobra.Command) {
 							Name:        "profile",
 							FlagName:    "body-profile",
 							Type:        "int64",
-							Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+							Description: "profile (body field \"profile\", renamed to keep the reserved --profile flag available)",
 						},
 						{
 							Name:        "sampling_percentage",
@@ -1392,7 +1402,7 @@ func registertracesCommands(root *cobra.Command) {
 					Name:        "profile",
 					FlagName:    "body-profile",
 					Type:        "int64",
-					Description: "profile (body field \"profile\", renamed to keep the global --profile flag available)",
+					Description: "profile (body field \"profile\", renamed to keep the reserved --profile flag available)",
 				},
 				{
 					Name:        "sampling_percentage",
@@ -1443,7 +1453,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1482,7 +1492,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1516,7 +1526,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
@@ -1550,7 +1560,7 @@ func registertracesCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 

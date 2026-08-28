@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	neturl "net/url"
+
 	"github.com/orq-ai/bartolo/apikey"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/pkg/errors"
@@ -34,10 +36,7 @@ func initGeneratedRuntime() {
 // OpenapiCreateAgentRequest Create agent
 func OpenapiCreateAgentRequest(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents"
 
@@ -75,13 +74,13 @@ func OpenapiCreateAgentRequest(params *viper.Viper, body string) (*gentleman.Res
 // OpenapiDeleteAgent Delete agent
 func OpenapiDeleteAgent(paramAgentKey string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "agents delete agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{agent_key}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -113,14 +112,17 @@ func OpenapiDeleteAgent(paramAgentKey string, params *viper.Viper) (*gentleman.R
 // OpenapiGetAgentResponse Get response
 func OpenapiGetAgentResponse(paramAgentKey string, paramTaskId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "agents get-response agent-key task-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{agent_key}/responses/{task_id}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
-	url = strings.Replace(url, "{task_id}", paramTaskId, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	if paramTaskId == "" {
+		return nil, nil, errors.Errorf("path parameter task_id cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{task_id}", neturl.PathEscape(paramTaskId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -152,13 +154,13 @@ func OpenapiGetAgentResponse(paramAgentKey string, paramTaskId string, params *v
 // OpenapiInvokeAgent Execute an agent task
 func OpenapiInvokeAgent(paramKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents invoke key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{key}/task"
-	url = strings.Replace(url, "{key}", paramKey, 1)
+	if paramKey == "" {
+		return nil, nil, errors.Errorf("path parameter key cannot be empty")
+	}
+	url = strings.Replace(url, "{key}", neturl.PathEscape(paramKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -194,10 +196,7 @@ func OpenapiInvokeAgent(paramKey string, params *viper.Viper, body string) (*gen
 // OpenapiListAgents List agents
 func OpenapiListAgents(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents"
 
@@ -248,13 +247,13 @@ func OpenapiListAgents(params *viper.Viper) (*gentleman.Response, map[string]int
 // OpenapiRetrieveAgentRequest Retrieve agent
 func OpenapiRetrieveAgentRequest(paramAgentKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents retrieve agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{agent_key}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -286,10 +285,7 @@ func OpenapiRetrieveAgentRequest(paramAgentKey string, params *viper.Viper) (*ge
 // OpenapiRunAgent Run an agent with configuration
 func OpenapiRunAgent(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents run"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/run"
 
@@ -327,13 +323,13 @@ func OpenapiRunAgent(params *viper.Viper, body string) (*gentleman.Response, map
 // OpenapiStreamAgent Stream agent execution in real-time
 func OpenapiStreamAgent(paramKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents stream key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{key}/stream-task"
-	url = strings.Replace(url, "{key}", paramKey, 1)
+	if paramKey == "" {
+		return nil, nil, errors.Errorf("path parameter key cannot be empty")
+	}
+	url = strings.Replace(url, "{key}", neturl.PathEscape(paramKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -369,10 +365,7 @@ func OpenapiStreamAgent(paramKey string, params *viper.Viper, body string) (*gen
 // OpenapiStreamRunAgent Run agent with streaming response
 func OpenapiStreamRunAgent(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents stream-run"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/stream-run"
 
@@ -410,13 +403,13 @@ func OpenapiStreamRunAgent(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiUpdateAgent Update agent
 func OpenapiUpdateAgent(paramAgentKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents update agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{agent_key}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -452,13 +445,13 @@ func OpenapiUpdateAgent(paramAgentKey string, params *viper.Viper, body string) 
 // OpenapiCreateAgentResponseRequest Create response
 func OpenapiCreateAgentResponseRequest(paramAgentKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "agents-responses create agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/agents/{agent_key}/responses"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -494,10 +487,7 @@ func OpenapiCreateAgentResponseRequest(paramAgentKey string, params *viper.Viper
 // OpenapiAlertCreate Create an alert
 func OpenapiAlertCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts"
 
@@ -535,13 +525,13 @@ func OpenapiAlertCreate(params *viper.Viper, body string) (*gentleman.Response, 
 // OpenapiAlertDelete Delete an alert
 func OpenapiAlertDelete(paramAlertId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts delete alert-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts/{alert_id}"
-	url = strings.Replace(url, "{alert_id}", paramAlertId, 1)
+	if paramAlertId == "" {
+		return nil, nil, errors.Errorf("path parameter alert_id cannot be empty")
+	}
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -573,13 +563,13 @@ func OpenapiAlertDelete(paramAlertId string, params *viper.Viper) (*gentleman.Re
 // OpenapiAlertGet Retrieve an alert
 func OpenapiAlertGet(paramAlertId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts get alert-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts/{alert_id}"
-	url = strings.Replace(url, "{alert_id}", paramAlertId, 1)
+	if paramAlertId == "" {
+		return nil, nil, errors.Errorf("path parameter alert_id cannot be empty")
+	}
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -611,10 +601,7 @@ func OpenapiAlertGet(paramAlertId string, params *viper.Viper) (*gentleman.Respo
 // OpenapiAlertList List alerts
 func OpenapiAlertList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts"
 
@@ -665,14 +652,17 @@ func OpenapiAlertList(params *viper.Viper) (*gentleman.Response, map[string]inte
 // OpenapiAlertListTriggerEvents List alert trigger events
 func OpenapiAlertListTriggerEvents(paramAlertId string, paramTriggerId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts list-trigger-events alert-id trigger-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts/{alert_id}/triggers/{trigger_id}/events"
-	url = strings.Replace(url, "{alert_id}", paramAlertId, 1)
-	url = strings.Replace(url, "{trigger_id}", paramTriggerId, 1)
+	if paramAlertId == "" {
+		return nil, nil, errors.Errorf("path parameter alert_id cannot be empty")
+	}
+	if paramTriggerId == "" {
+		return nil, nil, errors.Errorf("path parameter trigger_id cannot be empty")
+	}
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
+	url = strings.Replace(url, "{trigger_id}", neturl.PathEscape(paramTriggerId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -717,13 +707,13 @@ func OpenapiAlertListTriggerEvents(paramAlertId string, paramTriggerId string, p
 // OpenapiAlertListTriggers List alert triggers
 func OpenapiAlertListTriggers(paramAlertId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts list-triggers alert-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts/{alert_id}/triggers"
-	url = strings.Replace(url, "{alert_id}", paramAlertId, 1)
+	if paramAlertId == "" {
+		return nil, nil, errors.Errorf("path parameter alert_id cannot be empty")
+	}
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -768,13 +758,13 @@ func OpenapiAlertListTriggers(paramAlertId string, params *viper.Viper) (*gentle
 // OpenapiAlertUpdate Update an alert
 func OpenapiAlertUpdate(paramAlertId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "alerts update alert-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/alerts/{alert_id}"
-	url = strings.Replace(url, "{alert_id}", paramAlertId, 1)
+	if paramAlertId == "" {
+		return nil, nil, errors.Errorf("path parameter alert_id cannot be empty")
+	}
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -810,13 +800,13 @@ func OpenapiAlertUpdate(paramAlertId string, params *viper.Viper, body string) (
 // OpenapiAddAnnotationQueueItems Add items to an annotation queue
 func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues add-items annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}/items"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -852,13 +842,13 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 // OpenapiClearAnnotationQueue Clear an annotation queue
 func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues clear annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}/clear"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -890,10 +880,7 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 // OpenapiCreateAnnotationQueue Create an annotation queue
 func OpenapiCreateAnnotationQueue(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues"
 
@@ -931,13 +918,13 @@ func OpenapiCreateAnnotationQueue(params *viper.Viper, body string) (*gentleman.
 // OpenapiDeleteAnnotationQueue Delete an annotation queue
 func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues delete annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -969,13 +956,13 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 // OpenapiRetrieveAnnotationQueue Retrieve an annotation queue
 func OpenapiRetrieveAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues get annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -1007,14 +994,17 @@ func OpenapiRetrieveAnnotationQueue(paramAnnotationQueueId string, params *viper
 // OpenapiRetrieveAnnotationQueueItem Retrieve an annotation queue item
 func OpenapiRetrieveAnnotationQueueItem(paramAnnotationQueueId string, paramItemId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues get-item annotation-queue-id item-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}/items/{item_id}"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
-	url = strings.Replace(url, "{item_id}", paramItemId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	if paramItemId == "" {
+		return nil, nil, errors.Errorf("path parameter item_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
+	url = strings.Replace(url, "{item_id}", neturl.PathEscape(paramItemId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -1046,10 +1036,7 @@ func OpenapiRetrieveAnnotationQueueItem(paramAnnotationQueueId string, paramItem
 // OpenapiListAnnotationQueues List annotation queues
 func OpenapiListAnnotationQueues(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues"
 
@@ -1104,13 +1091,13 @@ func OpenapiListAnnotationQueues(params *viper.Viper) (*gentleman.Response, map[
 // OpenapiListAnnotationQueueItems Query items from an annotation queue
 func OpenapiListAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues query-items annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}/items"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -1155,13 +1142,13 @@ func OpenapiListAnnotationQueueItems(paramAnnotationQueueId string, params *vipe
 // OpenapiRemoveAnnotationQueueItems Remove items from an annotation queue
 func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues remove-items annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}/items/remove"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -1197,13 +1184,13 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 // OpenapiUpdateAnnotationQueue Update an annotation queue
 func OpenapiUpdateAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "annotation-queues update annotation-queue-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/annotation-queues/{annotation_queue_id}"
-	url = strings.Replace(url, "{annotation_queue_id}", paramAnnotationQueueId, 1)
+	if paramAnnotationQueueId == "" {
+		return nil, nil, errors.Errorf("path parameter annotation_queue_id cannot be empty")
+	}
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -1239,10 +1226,7 @@ func OpenapiUpdateAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 // OpenapiApiKeyCreate Create a new API key
 func OpenapiApiKeyCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "api-keys create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys"
 
@@ -1280,13 +1264,13 @@ func OpenapiApiKeyCreate(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiApiKeyDelete Delete an API key
 func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys delete api-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys/{api_key_id}"
-	url = strings.Replace(url, "{api_key_id}", paramApiKeyId, 1)
+	if paramApiKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter api_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{api_key_id}", neturl.PathEscape(paramApiKeyId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -1318,13 +1302,13 @@ func OpenapiApiKeyDelete(paramApiKeyId string, params *viper.Viper) (*gentleman.
 // OpenapiApiKeyGet Retrieve an API key
 func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "api-keys get api-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys/{api_key_id}"
-	url = strings.Replace(url, "{api_key_id}", paramApiKeyId, 1)
+	if paramApiKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter api_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{api_key_id}", neturl.PathEscape(paramApiKeyId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -1361,10 +1345,7 @@ func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Res
 // OpenapiApiKeyList List API keys
 func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "api-keys list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys"
 
@@ -1435,10 +1416,7 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, e
 // OpenapiApiKeyListCapabilities List capability catalog
 func OpenapiApiKeyListCapabilities(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "api-keys list-capabilities"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys/capabilities"
 
@@ -1472,13 +1450,13 @@ func OpenapiApiKeyListCapabilities(params *viper.Viper) (*gentleman.Response, ma
 // OpenapiApiKeyUpdate Update an API key
 func OpenapiApiKeyUpdate(paramApiKeyId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "api-keys update api-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/api-keys/{api_key_id}"
-	url = strings.Replace(url, "{api_key_id}", paramApiKeyId, 1)
+	if paramApiKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter api_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{api_key_id}", neturl.PathEscape(paramApiKeyId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -1514,10 +1492,7 @@ func OpenapiApiKeyUpdate(paramApiKeyId string, params *viper.Viper, body string)
 // OpenapiBudgetCreate Create a new budget
 func OpenapiBudgetCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets"
 
@@ -1555,13 +1530,13 @@ func OpenapiBudgetCreate(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiBudgetDelete Delete a budget
 func OpenapiBudgetDelete(paramBudgetId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets delete budget-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets/{budget_id}"
-	url = strings.Replace(url, "{budget_id}", paramBudgetId, 1)
+	if paramBudgetId == "" {
+		return nil, nil, errors.Errorf("path parameter budget_id cannot be empty")
+	}
+	url = strings.Replace(url, "{budget_id}", neturl.PathEscape(paramBudgetId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -1593,13 +1568,13 @@ func OpenapiBudgetDelete(paramBudgetId string, params *viper.Viper) (*gentleman.
 // OpenapiBudgetGet Retrieve a budget
 func OpenapiBudgetGet(paramBudgetId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets get budget-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets/{budget_id}"
-	url = strings.Replace(url, "{budget_id}", paramBudgetId, 1)
+	if paramBudgetId == "" {
+		return nil, nil, errors.Errorf("path parameter budget_id cannot be empty")
+	}
+	url = strings.Replace(url, "{budget_id}", neturl.PathEscape(paramBudgetId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -1631,10 +1606,7 @@ func OpenapiBudgetGet(paramBudgetId string, params *viper.Viper) (*gentleman.Res
 // OpenapiBudgetList List budgets
 func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets"
 
@@ -1705,13 +1677,13 @@ func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]int
 // OpenapiBudgetResetConsumption Reset budget consumption
 func OpenapiBudgetResetConsumption(paramBudgetId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets reset-consumption budget-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets/{budget_id}/reset-consumption"
-	url = strings.Replace(url, "{budget_id}", paramBudgetId, 1)
+	if paramBudgetId == "" {
+		return nil, nil, errors.Errorf("path parameter budget_id cannot be empty")
+	}
+	url = strings.Replace(url, "{budget_id}", neturl.PathEscape(paramBudgetId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -1747,13 +1719,13 @@ func OpenapiBudgetResetConsumption(paramBudgetId string, params *viper.Viper, bo
 // OpenapiBudgetUpdate Update a budget
 func OpenapiBudgetUpdate(paramBudgetId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets update budget-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/budgets/{budget_id}"
-	url = strings.Replace(url, "{budget_id}", paramBudgetId, 1)
+	if paramBudgetId == "" {
+		return nil, nil, errors.Errorf("path parameter budget_id cannot be empty")
+	}
+	url = strings.Replace(url, "{budget_id}", neturl.PathEscape(paramBudgetId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -1789,10 +1761,7 @@ func OpenapiBudgetUpdate(paramBudgetId string, params *viper.Viper, body string)
 // OpenapiParse Parse text
 func OpenapiParse(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "chunking parse"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/chunking"
 
@@ -1830,13 +1799,13 @@ func OpenapiParse(params *viper.Viper, body string) (*gentleman.Response, map[st
 // OpenapiClearDataset Delete all datapoints
 func OpenapiClearDataset(paramDatasetId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "datasets clear dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/clear"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -1868,10 +1837,7 @@ func OpenapiClearDataset(paramDatasetId string, params *viper.Viper) (*gentleman
 // OpenapiCreateDataset Create a dataset
 func OpenapiCreateDataset(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets"
 
@@ -1909,13 +1875,13 @@ func OpenapiCreateDataset(params *viper.Viper, body string) (*gentleman.Response
 // OpenapiCreateDatasetItem Create a datapoint
 func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "datasets create-datapoint dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -1951,13 +1917,13 @@ func OpenapiCreateDatasetItem(paramDatasetId string, params *viper.Viper, body s
 // OpenapiDeleteDataset Delete a dataset
 func OpenapiDeleteDataset(paramDatasetId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "datasets delete dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -1989,14 +1955,17 @@ func OpenapiDeleteDataset(paramDatasetId string, params *viper.Viper) (*gentlema
 // OpenapiDeleteDatapoint Delete a datapoint
 func OpenapiDeleteDatapoint(paramDatasetId string, paramDatapointId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "datasets delete-datapoint dataset-id datapoint-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints/{datapoint_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
-	url = strings.Replace(url, "{datapoint_id}", paramDatapointId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	if paramDatapointId == "" {
+		return nil, nil, errors.Errorf("path parameter datapoint_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
+	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -2028,10 +1997,7 @@ func OpenapiDeleteDatapoint(paramDatasetId string, paramDatapointId string, para
 // OpenapiListDatasets List datasets
 func OpenapiListDatasets(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets"
 
@@ -2086,13 +2052,13 @@ func OpenapiListDatasets(params *viper.Viper) (*gentleman.Response, map[string]i
 // OpenapiListDatasetDatapoints List datapoints
 func OpenapiListDatasetDatapoints(paramDatasetId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets list-datapoints dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2137,13 +2103,13 @@ func OpenapiListDatasetDatapoints(paramDatasetId string, params *viper.Viper) (*
 // OpenapiRetrieveDataset Retrieve a dataset
 func OpenapiRetrieveDataset(paramDatasetId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets retrieve dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2175,14 +2141,17 @@ func OpenapiRetrieveDataset(paramDatasetId string, params *viper.Viper) (*gentle
 // OpenapiRetrieveDatapoint Retrieve a datapoint
 func OpenapiRetrieveDatapoint(paramDatasetId string, paramDatapointId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets retrieve-datapoint dataset-id datapoint-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints/{datapoint_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
-	url = strings.Replace(url, "{datapoint_id}", paramDatapointId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	if paramDatapointId == "" {
+		return nil, nil, errors.Errorf("path parameter datapoint_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
+	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2214,13 +2183,13 @@ func OpenapiRetrieveDatapoint(paramDatasetId string, paramDatapointId string, pa
 // OpenapiUpdateDataset Update a dataset
 func OpenapiUpdateDataset(paramDatasetId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets update dataset-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -2256,14 +2225,17 @@ func OpenapiUpdateDataset(paramDatasetId string, params *viper.Viper, body strin
 // OpenapiUpdateDatapoint Update a datapoint
 func OpenapiUpdateDatapoint(paramDatasetId string, paramDatapointId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "datasets update-datapoint dataset-id datapoint-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/datasets/{dataset_id}/datapoints/{datapoint_id}"
-	url = strings.Replace(url, "{dataset_id}", paramDatasetId, 1)
-	url = strings.Replace(url, "{datapoint_id}", paramDatapointId, 1)
+	if paramDatasetId == "" {
+		return nil, nil, errors.Errorf("path parameter dataset_id cannot be empty")
+	}
+	if paramDatapointId == "" {
+		return nil, nil, errors.Errorf("path parameter datapoint_id cannot be empty")
+	}
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
+	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -2299,10 +2271,7 @@ func OpenapiUpdateDatapoint(paramDatasetId string, paramDatapointId string, para
 // OpenapiDeploymentGetConfig Get config
 func OpenapiDeploymentGetConfig(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "deployments get-config"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/deployments/get_config"
 
@@ -2340,10 +2309,7 @@ func OpenapiDeploymentGetConfig(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiDeployments List all deployments
 func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "deployments list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/deployments"
 
@@ -2390,10 +2356,7 @@ func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]in
 // OpenapiDocumentationSearch Search documentation
 func OpenapiDocumentationSearch(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "documentation search"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/documentation/search"
 
@@ -2431,10 +2394,7 @@ func OpenapiDocumentationSearch(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiGetEvals Get all Evaluators
 func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals all"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators"
 
@@ -2493,10 +2453,7 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 // OpenapiCreateEval Create an Evaluator
 func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators"
 
@@ -2534,13 +2491,13 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, m
 // OpenapiDeleteEval Delete an Evaluator
 func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -2572,13 +2529,13 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 // OpenapiDuplicateEval Duplicate an Evaluator
 func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals duplicate id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}/duplicate"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -2614,13 +2571,13 @@ func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*ge
 // OpenapiGetEval Retrieve an Evaluator
 func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2652,14 +2609,17 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, m
 // OpenapiGetEvalVersion Get evaluator version
 func OpenapiGetEvalVersion(paramId string, paramVersionId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals get-version id version-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}/versions/{version_id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
-	url = strings.Replace(url, "{version_id}", paramVersionId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	if paramVersionId == "" {
+		return nil, nil, errors.Errorf("path parameter version_id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
+	url = strings.Replace(url, "{version_id}", neturl.PathEscape(paramVersionId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2691,13 +2651,13 @@ func OpenapiGetEvalVersion(paramId string, paramVersionId string, params *viper.
 // OpenapiInvokeEval Invoke a Custom Evaluator
 func OpenapiInvokeEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals invoke id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/evaluators/{id}/invoke"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -2733,13 +2693,13 @@ func OpenapiInvokeEval(paramId string, params *viper.Viper, body string) (*gentl
 // OpenapiListEvalVersions List evaluator versions
 func OpenapiListEvalVersions(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals list-versions id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}/versions"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -2784,13 +2744,13 @@ func OpenapiListEvalVersions(paramId string, params *viper.Viper) (*gentleman.Re
 // OpenapiUpdateEval Update an Evaluator
 func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "evals update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/evaluators/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -2826,10 +2786,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 // OpenapiPostV2Feedback Create
 func OpenapiPostV2Feedback(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "feedback create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/feedback"
 
@@ -2867,10 +2824,7 @@ func OpenapiPostV2Feedback(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiPostV2FeedbackRemove Delete
 func OpenapiPostV2FeedbackRemove(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "feedback delete"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/feedback/remove"
 
@@ -2908,10 +2862,7 @@ func OpenapiPostV2FeedbackRemove(params *viper.Viper, body string) (*gentleman.R
 // OpenapiPostV2FeedbackEvaluation Evaluation
 func OpenapiPostV2FeedbackEvaluation(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "feedback evaluation"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/feedback/evaluation"
 
@@ -2949,10 +2900,7 @@ func OpenapiPostV2FeedbackEvaluation(params *viper.Viper, body string) (*gentlem
 // OpenapiPostV2FeedbackEvaluationRemove Evaluation Remove
 func OpenapiPostV2FeedbackEvaluationRemove(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "feedback evaluation-remove"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/feedback/evaluation/remove"
 
@@ -2990,10 +2938,7 @@ func OpenapiPostV2FeedbackEvaluationRemove(params *viper.Viper, body string) (*g
 // OpenapiCreateFileSystem Create file system
 func OpenapiCreateFileSystem(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems"
 
@@ -3031,13 +2976,13 @@ func OpenapiCreateFileSystem(params *viper.Viper, body string) (*gentleman.Respo
 // OpenapiCreateFolder Create folder
 func OpenapiCreateFolder(paramFileSystemKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems create-folder file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}/folders"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -3073,13 +3018,13 @@ func OpenapiCreateFolder(paramFileSystemKey string, params *viper.Viper, body st
 // OpenapiDeleteFileSystem Delete file system
 func OpenapiDeleteFileSystem(paramFileSystemKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems delete file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -3111,13 +3056,13 @@ func OpenapiDeleteFileSystem(paramFileSystemKey string, params *viper.Viper) (*g
 // OpenapiDeleteFile Delete file
 func OpenapiDeleteFile(paramFileSystemKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems delete-file file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}/files"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -3158,10 +3103,7 @@ func OpenapiDeleteFile(paramFileSystemKey string, params *viper.Viper) (*gentlem
 // OpenapiListFileSystems List file systems
 func OpenapiListFileSystems(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems"
 
@@ -3216,13 +3158,13 @@ func OpenapiListFileSystems(params *viper.Viper) (*gentleman.Response, map[strin
 // OpenapiListFiles List files
 func OpenapiListFiles(paramFileSystemKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems list-files file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}/files"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3267,13 +3209,13 @@ func OpenapiListFiles(paramFileSystemKey string, params *viper.Viper) (*gentlema
 // OpenapiMoveFile Move file
 func OpenapiMoveFile(paramFileSystemKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems move-file file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}/files/move"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -3309,13 +3251,13 @@ func OpenapiMoveFile(paramFileSystemKey string, params *viper.Viper, body string
 // OpenapiRetrieveFileSystem Retrieve file system
 func OpenapiRetrieveFileSystem(paramFileSystemKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems retrieve file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3347,13 +3289,13 @@ func OpenapiRetrieveFileSystem(paramFileSystemKey string, params *viper.Viper) (
 // OpenapiStatFile Stat file
 func OpenapiStatFile(paramFileSystemKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems stat-file file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}/files/stat"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3390,13 +3332,13 @@ func OpenapiStatFile(paramFileSystemKey string, params *viper.Viper) (*gentleman
 // OpenapiUpdateFileSystem Update file system
 func OpenapiUpdateFileSystem(paramFileSystemKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "file-systems update file-system-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/file-systems/{file_system_key}"
-	url = strings.Replace(url, "{file_system_key}", paramFileSystemKey, 1)
+	if paramFileSystemKey == "" {
+		return nil, nil, errors.Errorf("path parameter file_system_key cannot be empty")
+	}
+	url = strings.Replace(url, "{file_system_key}", neturl.PathEscape(paramFileSystemKey), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -3432,13 +3374,13 @@ func OpenapiUpdateFileSystem(paramFileSystemKey string, params *viper.Viper, bod
 // OpenapiFileContent Download file content
 func OpenapiFileContent(paramFileIdOrPath string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files content file-id-or-path"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files/{file_id_or_path}/content"
-	url = strings.Replace(url, "{file_id_or_path}", paramFileIdOrPath, 1)
+	if paramFileIdOrPath == "" {
+		return nil, nil, errors.Errorf("path parameter file_id_or_path cannot be empty")
+	}
+	url = strings.Replace(url, "{file_id_or_path}", neturl.PathEscape(paramFileIdOrPath), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3470,13 +3412,13 @@ func OpenapiFileContent(paramFileIdOrPath string, params *viper.Viper) (*gentlem
 // OpenapiFileDelete Delete a file
 func OpenapiFileDelete(paramFileId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files delete file-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files/{file_id}"
-	url = strings.Replace(url, "{file_id}", paramFileId, 1)
+	if paramFileId == "" {
+		return nil, nil, errors.Errorf("path parameter file_id cannot be empty")
+	}
+	url = strings.Replace(url, "{file_id}", neturl.PathEscape(paramFileId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -3508,13 +3450,13 @@ func OpenapiFileDelete(paramFileId string, params *viper.Viper) (*gentleman.Resp
 // OpenapiFileGet Retrieve a file
 func OpenapiFileGet(paramFileId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files get file-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files/{file_id}"
-	url = strings.Replace(url, "{file_id}", paramFileId, 1)
+	if paramFileId == "" {
+		return nil, nil, errors.Errorf("path parameter file_id cannot be empty")
+	}
+	url = strings.Replace(url, "{file_id}", neturl.PathEscape(paramFileId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3546,10 +3488,7 @@ func OpenapiFileGet(paramFileId string, params *viper.Viper) (*gentleman.Respons
 // OpenapiFileList List all files
 func OpenapiFileList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files"
 
@@ -3604,13 +3543,13 @@ func OpenapiFileList(params *viper.Viper) (*gentleman.Response, map[string]inter
 // OpenapiFileUpdate Update a file
 func OpenapiFileUpdate(paramFileId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files update file-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files/{file_id}"
-	url = strings.Replace(url, "{file_id}", paramFileId, 1)
+	if paramFileId == "" {
+		return nil, nil, errors.Errorf("path parameter file_id cannot be empty")
+	}
+	url = strings.Replace(url, "{file_id}", neturl.PathEscape(paramFileId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -3646,10 +3585,7 @@ func OpenapiFileUpdate(paramFileId string, params *viper.Viper, body string) (*g
 // OpenapiFileUpload Upload a file
 func OpenapiFileUpload(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "files upload"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/files"
 
@@ -3687,13 +3623,13 @@ func OpenapiFileUpload(params *viper.Viper, body string) (*gentleman.Response, m
 // OpenapiGetFinderEntity Retrieve a finder entity
 func OpenapiGetFinderEntity(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "finder get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/finder/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -3725,10 +3661,7 @@ func OpenapiGetFinderEntity(paramId string, params *viper.Viper) (*gentleman.Res
 // OpenapiListFinderEntities List finder entities
 func OpenapiListFinderEntities(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "finder list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/finder"
 
@@ -3771,10 +3704,7 @@ func OpenapiListFinderEntities(params *viper.Viper) (*gentleman.Response, map[st
 // OpenapiGuardrailRuleCreate Create a guardrail rule
 func OpenapiGuardrailRuleCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules"
 
@@ -3812,13 +3742,13 @@ func OpenapiGuardrailRuleCreate(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiGuardrailRuleDelete Delete a guardrail rule
 func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules delete guardrail-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules/{guardrail_rule_id}"
-	url = strings.Replace(url, "{guardrail_rule_id}", paramGuardrailRuleId, 1)
+	if paramGuardrailRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter guardrail_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{guardrail_rule_id}", neturl.PathEscape(paramGuardrailRuleId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -3850,10 +3780,7 @@ func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper
 // OpenapiGuardrailRuleList List guardrail rules
 func OpenapiGuardrailRuleList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules"
 
@@ -3920,10 +3847,7 @@ func OpenapiGuardrailRuleList(params *viper.Viper) (*gentleman.Response, map[str
 // OpenapiGuardrailRuleListUsedGuardrails List guardrails used by guardrail rules
 func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules list-used-guardrails"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules/used-guardrails"
 
@@ -3962,13 +3886,13 @@ func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Res
 // OpenapiGuardrailRuleGet Retrieve a guardrail rule
 func OpenapiGuardrailRuleGet(paramGuardrailRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules retrieve guardrail-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules/{guardrail_rule_id}"
-	url = strings.Replace(url, "{guardrail_rule_id}", paramGuardrailRuleId, 1)
+	if paramGuardrailRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter guardrail_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{guardrail_rule_id}", neturl.PathEscape(paramGuardrailRuleId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -4000,13 +3924,13 @@ func OpenapiGuardrailRuleGet(paramGuardrailRuleId string, params *viper.Viper) (
 // OpenapiGuardrailRuleUpdate Update a guardrail rule
 func OpenapiGuardrailRuleUpdate(paramGuardrailRuleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "guardrail-rules update guardrail-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/guardrail-rules/{guardrail_rule_id}"
-	url = strings.Replace(url, "{guardrail_rule_id}", paramGuardrailRuleId, 1)
+	if paramGuardrailRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter guardrail_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{guardrail_rule_id}", neturl.PathEscape(paramGuardrailRuleId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -4042,10 +3966,7 @@ func OpenapiGuardrailRuleUpdate(paramGuardrailRuleId string, params *viper.Viper
 // OpenapiPostV2HumanEvalSets Create a human review set
 func OpenapiPostV2HumanEvalSets(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "human-review-sets create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/human-eval-sets"
 
@@ -4083,13 +4004,13 @@ func OpenapiPostV2HumanEvalSets(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiDeleteV2HumanEvalSetsId Delete a human review set
 func OpenapiDeleteV2HumanEvalSetsId(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "human-review-sets delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/human-eval-sets/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4121,13 +4042,13 @@ func OpenapiDeleteV2HumanEvalSetsId(paramId string, params *viper.Viper) (*gentl
 // OpenapiGetV2HumanEvalSetsId Get a human review set by ID
 func OpenapiGetV2HumanEvalSetsId(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "human-review-sets get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/human-eval-sets/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -4159,10 +4080,7 @@ func OpenapiGetV2HumanEvalSetsId(paramId string, params *viper.Viper) (*gentlema
 // OpenapiGetV2HumanEvalSets Get all human review sets
 func OpenapiGetV2HumanEvalSets(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "human-review-sets list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/human-eval-sets"
 
@@ -4201,13 +4119,13 @@ func OpenapiGetV2HumanEvalSets(params *viper.Viper) (*gentleman.Response, interf
 // OpenapiPatchV2HumanEvalSetsId Update a human review set
 func OpenapiPatchV2HumanEvalSetsId(paramId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "human-review-sets update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/human-eval-sets/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -4243,10 +4161,7 @@ func OpenapiPatchV2HumanEvalSetsId(paramId string, params *viper.Viper, body str
 // OpenapiCreateIdentity Create an identity
 func OpenapiCreateIdentity(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "identities create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/identities"
 
@@ -4284,13 +4199,13 @@ func OpenapiCreateIdentity(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiDeleteIdentity Delete an identity
 func OpenapiDeleteIdentity(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "identities delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/identities/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4322,10 +4237,7 @@ func OpenapiDeleteIdentity(paramId string, params *viper.Viper) (*gentleman.Resp
 // OpenapiListIdentities List identities
 func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "identities list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/identities"
 
@@ -4392,13 +4304,13 @@ func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string
 // OpenapiRetrieveIdentity Retrieve an identity
 func OpenapiRetrieveIdentity(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "identities retrieve id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/identities/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -4439,13 +4351,13 @@ func OpenapiRetrieveIdentity(paramId string, params *viper.Viper) (*gentleman.Re
 // OpenapiUpdateIdentity Update an identity
 func OpenapiUpdateIdentity(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "identities update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/identities/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -4481,10 +4393,7 @@ func OpenapiUpdateIdentity(paramId string, params *viper.Viper, body string) (*g
 // OpenapiCreateKnowledge Create a knowledge
 func OpenapiCreateKnowledge(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge"
 
@@ -4522,14 +4431,17 @@ func OpenapiCreateKnowledge(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiCreateChunk Create chunks for a datasource
 func OpenapiCreateChunk(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases create-chunks knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -4565,13 +4477,13 @@ func OpenapiCreateChunk(paramKnowledgeId string, paramDatasourceId string, param
 // OpenapiCreateDatasource Create a new datasource
 func OpenapiCreateDatasource(paramKnowledgeId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases create-datasource knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -4607,13 +4519,13 @@ func OpenapiCreateDatasource(paramKnowledgeId string, params *viper.Viper, body 
 // OpenapiDeleteKnowledge Deletes a knowledge
 func OpenapiDeleteKnowledge(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases delete knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4645,15 +4557,21 @@ func OpenapiDeleteKnowledge(paramKnowledgeId string, params *viper.Viper) (*gent
 // OpenapiDeleteChunk Delete a chunk
 func OpenapiDeleteChunk(paramKnowledgeId string, paramDatasourceId string, paramChunkId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases delete-chunk knowledge-id datasource-id chunk-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
-	url = strings.Replace(url, "{chunk_id}", paramChunkId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	if paramChunkId == "" {
+		return nil, nil, errors.Errorf("path parameter chunk_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
+	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4685,14 +4603,17 @@ func OpenapiDeleteChunk(paramKnowledgeId string, paramDatasourceId string, param
 // OpenapiDeleteChunks Delete multiple chunks
 func OpenapiDeleteChunks(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases delete-chunks knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4728,14 +4649,17 @@ func OpenapiDeleteChunks(paramKnowledgeId string, paramDatasourceId string, para
 // OpenapiDeleteDatasource Deletes a datasource
 func OpenapiDeleteDatasource(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases delete-datasource knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -4767,14 +4691,17 @@ func OpenapiDeleteDatasource(paramKnowledgeId string, paramDatasourceId string, 
 // OpenapiGetChunksCount Get chunks total count
 func OpenapiGetChunksCount(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases get-chunks-count knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/count"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -4810,10 +4737,7 @@ func OpenapiGetChunksCount(paramKnowledgeId string, paramDatasourceId string, pa
 // OpenapiListKnowledgeBases List all knowledge bases
 func OpenapiListKnowledgeBases(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge"
 
@@ -4876,14 +4800,17 @@ func OpenapiListKnowledgeBases(params *viper.Viper) (*gentleman.Response, map[st
 // OpenapiListChunks List all chunks for a datasource
 func OpenapiListChunks(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases list-chunks knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -4936,14 +4863,17 @@ func OpenapiListChunks(paramKnowledgeId string, paramDatasourceId string, params
 // OpenapiListChunksPaginated List chunks with offset-based pagination
 func OpenapiListChunksPaginated(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases list-chunks-paginated knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/list"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -4979,13 +4909,13 @@ func OpenapiListChunksPaginated(paramKnowledgeId string, paramDatasourceId strin
 // OpenapiListDatasources List all datasources
 func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases list-datasources knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5038,13 +4968,13 @@ func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gent
 // OpenapiGetOneKnowledge Retrieves a knowledge base
 func OpenapiGetOneKnowledge(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases retrieve knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5076,15 +5006,21 @@ func OpenapiGetOneKnowledge(paramKnowledgeId string, params *viper.Viper) (*gent
 // OpenapiGetOneChunk Retrieve a chunk
 func OpenapiGetOneChunk(paramKnowledgeId string, paramDatasourceId string, paramChunkId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases retrieve-chunk knowledge-id datasource-id chunk-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
-	url = strings.Replace(url, "{chunk_id}", paramChunkId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	if paramChunkId == "" {
+		return nil, nil, errors.Errorf("path parameter chunk_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
+	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5116,14 +5052,17 @@ func OpenapiGetOneChunk(paramKnowledgeId string, paramDatasourceId string, param
 // OpenapiRetrieveDatasource Retrieve a datasource
 func OpenapiRetrieveDatasource(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases retrieve-datasource knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5155,13 +5094,13 @@ func OpenapiRetrieveDatasource(paramKnowledgeId string, paramDatasourceId string
 // OpenapiGetOneFileUploadUrl Retrieve a file upload URL
 func OpenapiGetOneFileUploadUrl(paramKnowledgeId string, paramFileName string, paramContentType string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases retrieve-file-url knowledge-id file-name content-type datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/upload-file"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5199,14 +5138,17 @@ func OpenapiGetOneFileUploadUrl(paramKnowledgeId string, paramFileName string, p
 // OpenapiGetOneDatasourceProcessingStatus Retrieve datasource processing status
 func OpenapiGetOneDatasourceProcessingStatus(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases retrieve-processing-status knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/datasource-processing-status"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5238,13 +5180,13 @@ func OpenapiGetOneDatasourceProcessingStatus(paramKnowledgeId string, paramDatas
 // OpenapiSearchKnowledge Search knowledge base
 func OpenapiSearchKnowledge(paramKnowledgeId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases search knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/search"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -5280,15 +5222,21 @@ func OpenapiSearchKnowledge(paramKnowledgeId string, params *viper.Viper, body s
 // OpenapiUpdateChunkEnabled Set a chunk's enabled status
 func OpenapiUpdateChunkEnabled(paramKnowledgeId string, paramDatasourceId string, paramChunkId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases toggle-chunk knowledge-id datasource-id chunk-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}/enabled"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
-	url = strings.Replace(url, "{chunk_id}", paramChunkId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	if paramChunkId == "" {
+		return nil, nil, errors.Errorf("path parameter chunk_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
+	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5324,13 +5272,13 @@ func OpenapiUpdateChunkEnabled(paramKnowledgeId string, paramDatasourceId string
 // OpenapiUpdateKnowledge Updates a knowledge
 func OpenapiUpdateKnowledge(paramKnowledgeId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases update knowledge-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5366,15 +5314,21 @@ func OpenapiUpdateKnowledge(paramKnowledgeId string, params *viper.Viper, body s
 // OpenapiUpdateChunk Update a chunk
 func OpenapiUpdateChunk(paramKnowledgeId string, paramDatasourceId string, paramChunkId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases update-chunk knowledge-id datasource-id chunk-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
-	url = strings.Replace(url, "{chunk_id}", paramChunkId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	if paramChunkId == "" {
+		return nil, nil, errors.Errorf("path parameter chunk_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
+	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5410,14 +5364,17 @@ func OpenapiUpdateChunk(paramKnowledgeId string, paramDatasourceId string, param
 // OpenapiUpdateDatasource Update a datasource
 func OpenapiUpdateDatasource(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "knowledge-bases update-datasource knowledge-id datasource-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/knowledge/{knowledge_id}/datasources/{datasource_id}"
-	url = strings.Replace(url, "{knowledge_id}", paramKnowledgeId, 1)
-	url = strings.Replace(url, "{datasource_id}", paramDatasourceId, 1)
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	if paramDatasourceId == "" {
+		return nil, nil, errors.Errorf("path parameter datasource_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5453,10 +5410,7 @@ func OpenapiUpdateDatasource(paramKnowledgeId string, paramDatasourceId string, 
 // OpenapiManagementKeyCreate Create a new management key
 func OpenapiManagementKeyCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys"
 
@@ -5494,13 +5448,13 @@ func OpenapiManagementKeyCreate(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiManagementKeyDelete Delete a management key
 func OpenapiManagementKeyDelete(paramManagementKeyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys delete management-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys/{management_key_id}"
-	url = strings.Replace(url, "{management_key_id}", paramManagementKeyId, 1)
+	if paramManagementKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter management_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{management_key_id}", neturl.PathEscape(paramManagementKeyId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -5532,13 +5486,13 @@ func OpenapiManagementKeyDelete(paramManagementKeyId string, params *viper.Viper
 // OpenapiManagementKeyGet Retrieve a management key
 func OpenapiManagementKeyGet(paramManagementKeyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys get management-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys/{management_key_id}"
-	url = strings.Replace(url, "{management_key_id}", paramManagementKeyId, 1)
+	if paramManagementKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter management_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{management_key_id}", neturl.PathEscape(paramManagementKeyId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5570,10 +5524,7 @@ func OpenapiManagementKeyGet(paramManagementKeyId string, params *viper.Viper) (
 // OpenapiManagementKeyList List management keys
 func OpenapiManagementKeyList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys"
 
@@ -5632,10 +5583,7 @@ func OpenapiManagementKeyList(params *viper.Viper) (*gentleman.Response, map[str
 // OpenapiManagementKeyListCapabilities List management capability catalog
 func OpenapiManagementKeyListCapabilities(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys list-capabilities"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys/capabilities"
 
@@ -5669,13 +5617,13 @@ func OpenapiManagementKeyListCapabilities(params *viper.Viper) (*gentleman.Respo
 // OpenapiManagementKeyUpdate Update a management key
 func OpenapiManagementKeyUpdate(paramManagementKeyId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "management-keys update management-key-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/management-keys/{management_key_id}"
-	url = strings.Replace(url, "{management_key_id}", paramManagementKeyId, 1)
+	if paramManagementKeyId == "" {
+		return nil, nil, errors.Errorf("path parameter management_key_id cannot be empty")
+	}
+	url = strings.Replace(url, "{management_key_id}", neturl.PathEscape(paramManagementKeyId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5711,10 +5659,7 @@ func OpenapiManagementKeyUpdate(paramManagementKeyId string, params *viper.Viper
 // OpenapiMcpGatewayCreate Create an MCP gateway
 func OpenapiMcpGatewayCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways"
 
@@ -5752,13 +5697,13 @@ func OpenapiMcpGatewayCreate(params *viper.Viper, body string) (*gentleman.Respo
 // OpenapiMcpGatewayDelete Delete an MCP gateway
 func OpenapiMcpGatewayDelete(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -5790,10 +5735,7 @@ func OpenapiMcpGatewayDelete(paramId string, params *viper.Viper) (*gentleman.Re
 // OpenapiMcpGatewayList List MCP gateways
 func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways"
 
@@ -5848,13 +5790,13 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 // OpenapiMcpGatewayListTools List exposed tools for a gateway
 func OpenapiMcpGatewayListTools(paramGatewayId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways list-tools gateway-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways/{gateway_id}/tools"
-	url = strings.Replace(url, "{gateway_id}", paramGatewayId, 1)
+	if paramGatewayId == "" {
+		return nil, nil, errors.Errorf("path parameter gateway_id cannot be empty")
+	}
+	url = strings.Replace(url, "{gateway_id}", neturl.PathEscape(paramGatewayId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5903,13 +5845,13 @@ func OpenapiMcpGatewayListTools(paramGatewayId string, params *viper.Viper) (*ge
 // OpenapiMcpGatewayGet Retrieve an MCP gateway
 func OpenapiMcpGatewayGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways retrieve id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -5941,13 +5883,13 @@ func OpenapiMcpGatewayGet(paramId string, params *viper.Viper) (*gentleman.Respo
 // OpenapiMcpGatewayUpdate Update an MCP gateway
 func OpenapiMcpGatewayUpdate(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-gateways update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-gateways/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -5983,10 +5925,7 @@ func OpenapiMcpGatewayUpdate(paramId string, params *viper.Viper, body string) (
 // OpenapiMcpServerCreate Create an MCP server
 func OpenapiMcpServerCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers"
 
@@ -6024,13 +5963,13 @@ func OpenapiMcpServerCreate(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiMcpServerDelete Delete an MCP server
 func OpenapiMcpServerDelete(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -6062,10 +6001,7 @@ func OpenapiMcpServerDelete(paramId string, params *viper.Viper) (*gentleman.Res
 // OpenapiMcpServerList List MCP servers
 func OpenapiMcpServerList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers"
 
@@ -6116,13 +6052,13 @@ func OpenapiMcpServerList(params *viper.Viper) (*gentleman.Response, map[string]
 // OpenapiMcpServerGet Retrieve an MCP server
 func OpenapiMcpServerGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers retrieve id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6154,13 +6090,13 @@ func OpenapiMcpServerGet(paramId string, params *viper.Viper) (*gentleman.Respon
 // OpenapiMcpServerSync Sync an MCP server
 func OpenapiMcpServerSync(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers sync id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers/{id}:sync"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -6196,13 +6132,13 @@ func OpenapiMcpServerSync(paramId string, params *viper.Viper, body string) (*ge
 // OpenapiMcpServerTestTool Test an MCP server tool
 func OpenapiMcpServerTestTool(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers test-tool id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers/{id}/tools:test"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -6238,13 +6174,13 @@ func OpenapiMcpServerTestTool(paramId string, params *viper.Viper, body string) 
 // OpenapiMcpServerUpdate Update an MCP server
 func OpenapiMcpServerUpdate(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "mcp-servers update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/mcp-servers/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -6280,10 +6216,7 @@ func OpenapiMcpServerUpdate(paramId string, params *viper.Viper, body string) (*
 // OpenapiCreateMemoryStore Create memory store
 func OpenapiCreateMemoryStore(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores"
 
@@ -6321,14 +6254,17 @@ func OpenapiCreateMemoryStore(params *viper.Viper, body string) (*gentleman.Resp
 // OpenapiCreateMemoryDocument Create a new memory document
 func OpenapiCreateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores create-document memory-store-key memory-entity-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}/documents"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -6364,13 +6300,13 @@ func OpenapiCreateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 // OpenapiCreateMemory Create a new memory
 func OpenapiCreateMemory(paramMemoryStoreKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores create-memory memory-store-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -6406,13 +6342,13 @@ func OpenapiCreateMemory(paramMemoryStoreKey string, params *viper.Viper, body s
 // OpenapiDeleteMemoryStore Delete memory store
 func OpenapiDeleteMemoryStore(paramMemoryStoreKey string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "memory-stores delete memory-store-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -6444,15 +6380,21 @@ func OpenapiDeleteMemoryStore(paramMemoryStoreKey string, params *viper.Viper) (
 // OpenapiDeleteMemoryDocument Delete a specific memory document
 func OpenapiDeleteMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId string, paramDocumentId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "memory-stores delete-document memory-store-key memory-entity-id document-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}/documents/{document_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
-	url = strings.Replace(url, "{document_id}", paramDocumentId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	if paramDocumentId == "" {
+		return nil, nil, errors.Errorf("path parameter document_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
+	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -6484,14 +6426,17 @@ func OpenapiDeleteMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 // OpenapiDeleteMemory Delete a specific memory
 func OpenapiDeleteMemory(paramMemoryStoreKey string, paramMemoryEntityId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "memory-stores delete-memory memory-store-key memory-entity-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -6523,10 +6468,7 @@ func OpenapiDeleteMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 // OpenapiGetAllMemoryStores List memory stores
 func OpenapiGetAllMemoryStores(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores"
 
@@ -6585,14 +6527,17 @@ func OpenapiGetAllMemoryStores(params *viper.Viper) (*gentleman.Response, map[st
 // OpenapiGetAllMemoryDocuments List all documents for a memory
 func OpenapiGetAllMemoryDocuments(paramMemoryStoreKey string, paramMemoryEntityId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores list-documents memory-store-key memory-entity-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}/documents"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6645,13 +6590,13 @@ func OpenapiGetAllMemoryDocuments(paramMemoryStoreKey string, paramMemoryEntityI
 // OpenapiGetAllMemories List all memories
 func OpenapiGetAllMemories(paramMemoryStoreKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores list-memories memory-store-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6700,13 +6645,13 @@ func OpenapiGetAllMemories(paramMemoryStoreKey string, params *viper.Viper) (*ge
 // OpenapiRetrieveMemoryStore Retrieve memory store
 func OpenapiRetrieveMemoryStore(paramMemoryStoreKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores retrieve memory-store-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6738,15 +6683,21 @@ func OpenapiRetrieveMemoryStore(paramMemoryStoreKey string, params *viper.Viper)
 // OpenapiRetrieveMemoryDocument Retrieve a specific memory document
 func OpenapiRetrieveMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId string, paramDocumentId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores retrieve-document memory-store-key memory-entity-id document-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}/documents/{document_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
-	url = strings.Replace(url, "{document_id}", paramDocumentId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	if paramDocumentId == "" {
+		return nil, nil, errors.Errorf("path parameter document_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
+	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6778,14 +6729,17 @@ func OpenapiRetrieveMemoryDocument(paramMemoryStoreKey string, paramMemoryEntity
 // OpenapiRetrieveMemory Retrieve a specific memory
 func OpenapiRetrieveMemory(paramMemoryStoreKey string, paramMemoryEntityId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores retrieve-memory memory-store-key memory-entity-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6817,13 +6771,13 @@ func OpenapiRetrieveMemory(paramMemoryStoreKey string, paramMemoryEntityId strin
 // OpenapiUpdateMemoryStore Update memory store
 func OpenapiUpdateMemoryStore(paramMemoryStoreKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores update memory-store-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -6859,15 +6813,21 @@ func OpenapiUpdateMemoryStore(paramMemoryStoreKey string, params *viper.Viper, b
 // OpenapiUpdateMemoryDocument Update a specific memory document
 func OpenapiUpdateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId string, paramDocumentId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores update-document memory-store-key memory-entity-id document-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}/documents/{document_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
-	url = strings.Replace(url, "{document_id}", paramDocumentId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	if paramDocumentId == "" {
+		return nil, nil, errors.Errorf("path parameter document_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
+	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -6903,14 +6863,17 @@ func OpenapiUpdateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 // OpenapiUpdateMemory Update a specific memory
 func OpenapiUpdateMemory(paramMemoryStoreKey string, paramMemoryEntityId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "memory-stores update-memory memory-store-key memory-entity-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/memory-stores/{memory_store_key}/memories/{memory_entity_id}"
-	url = strings.Replace(url, "{memory_store_key}", paramMemoryStoreKey, 1)
-	url = strings.Replace(url, "{memory_entity_id}", paramMemoryEntityId, 1)
+	if paramMemoryStoreKey == "" {
+		return nil, nil, errors.Errorf("path parameter memory_store_key cannot be empty")
+	}
+	if paramMemoryEntityId == "" {
+		return nil, nil, errors.Errorf("path parameter memory_entity_id cannot be empty")
+	}
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -6946,13 +6909,13 @@ func OpenapiUpdateMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 // OpenapiModelCatalogGet Retrieve a model catalog entry
 func OpenapiModelCatalogGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "model-catalog get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/model-catalog/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -6984,10 +6947,7 @@ func OpenapiModelCatalogGet(paramId string, params *viper.Viper) (*gentleman.Res
 // OpenapiModelCatalogList List the model catalog
 func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "model-catalog list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/model-catalog"
 
@@ -7082,13 +7042,13 @@ func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[stri
 // OpenapiModelCatalogListOfferings List model catalog offerings
 func OpenapiModelCatalogListOfferings(paramModel string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "model-catalog list-offerings model"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/model-catalog/{model}/offerings"
-	url = strings.Replace(url, "{model}", paramModel, 1)
+	if paramModel == "" {
+		return nil, nil, errors.Errorf("path parameter model cannot be empty")
+	}
+	url = strings.Replace(url, "{model}", neturl.PathEscape(paramModel), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -7177,10 +7137,7 @@ func OpenapiModelCatalogListOfferings(paramModel string, params *viper.Viper) (*
 // OpenapiModelAzureFoundryDeployments List Azure Foundry deployments under a resource
 func OpenapiModelAzureFoundryDeployments(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models azure-foundry-deployments"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/azure-foundry/deployments"
 
@@ -7218,10 +7175,7 @@ func OpenapiModelAzureFoundryDeployments(params *viper.Viper, body string) (*gen
 // OpenapiModelCreate Create custom model
 func OpenapiModelCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models"
 
@@ -7259,10 +7213,7 @@ func OpenapiModelCreate(params *viper.Viper, body string) (*gentleman.Response, 
 // OpenapiModelCreateAwsBedrock Create AWS Bedrock custom model
 func OpenapiModelCreateAwsBedrock(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models create-aws-bedrock"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/aws-bedrock"
 
@@ -7300,10 +7251,7 @@ func OpenapiModelCreateAwsBedrock(params *viper.Viper, body string) (*gentleman.
 // OpenapiModelCreateOpenAILike Create OpenAI-compatible custom model
 func OpenapiModelCreateOpenAILike(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models create-openai-like"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/openai-like"
 
@@ -7341,10 +7289,7 @@ func OpenapiModelCreateOpenAILike(params *viper.Viper, body string) (*gentleman.
 // OpenapiModelCreateVertex Create Vertex AI custom model
 func OpenapiModelCreateVertex(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models create-vertex"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/vertex"
 
@@ -7382,13 +7327,13 @@ func OpenapiModelCreateVertex(params *viper.Viper, body string) (*gentleman.Resp
 // OpenapiModelDelete Delete custom model
 func OpenapiModelDelete(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -7420,13 +7365,13 @@ func OpenapiModelDelete(paramId string, params *viper.Viper) (*gentleman.Respons
 // OpenapiModelDisable Disable model for workspace
 func OpenapiModelDisable(paramModelId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models disable model-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/workspace-models/{model_id}"
-	url = strings.Replace(url, "{model_id}", paramModelId, 1)
+	if paramModelId == "" {
+		return nil, nil, errors.Errorf("path parameter model_id cannot be empty")
+	}
+	url = strings.Replace(url, "{model_id}", neturl.PathEscape(paramModelId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -7458,10 +7403,7 @@ func OpenapiModelDisable(paramModelId string, params *viper.Viper) (*gentleman.R
 // OpenapiModelEnable Enable model for workspace
 func OpenapiModelEnable(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models enable"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/workspace-models"
 
@@ -7499,10 +7441,7 @@ func OpenapiModelEnable(params *viper.Viper, body string) (*gentleman.Response, 
 // OpenapiModelLiteLLMImport Import models from LiteLLM
 func OpenapiModelLiteLLMImport(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models import-litellm"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/litellm/import"
 
@@ -7540,10 +7479,7 @@ func OpenapiModelLiteLLMImport(params *viper.Viper, body string) (*gentleman.Res
 // OpenapiModelList List models
 func OpenapiModelList(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models"
 
@@ -7577,10 +7513,7 @@ func OpenapiModelList(params *viper.Viper) (*gentleman.Response, interface{}, er
 // OpenapiListModels List models
 func OpenapiListModels(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/router/models"
 
@@ -7614,10 +7547,7 @@ func OpenapiListModels(params *viper.Viper) (*gentleman.Response, map[string]int
 // OpenapiModelListLitellm List models from configured LiteLLM instance
 func OpenapiModelListLitellm(params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models list-litellm"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/litellm/models"
 
@@ -7651,13 +7581,13 @@ func OpenapiModelListLitellm(params *viper.Viper) (*gentleman.Response, interfac
 // OpenapiModelUpdate Update custom model
 func OpenapiModelUpdate(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -7693,13 +7623,13 @@ func OpenapiModelUpdate(paramId string, params *viper.Viper, body string) (*gent
 // OpenapiModelUpdateAwsBedrock Update AWS Bedrock custom model
 func OpenapiModelUpdateAwsBedrock(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models update-aws-bedrock id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/aws-bedrock/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -7735,13 +7665,13 @@ func OpenapiModelUpdateAwsBedrock(paramId string, params *viper.Viper, body stri
 // OpenapiModelUpdateOpenAILike Update OpenAI-compatible custom model
 func OpenapiModelUpdateOpenAILike(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "models update-openai-like id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/openai-like/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -7777,10 +7707,7 @@ func OpenapiModelUpdateOpenAILike(paramId string, params *viper.Viper, body stri
 // OpenapiModelValidate Validate model endpoint
 func OpenapiModelValidate(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models validate"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/validate"
 
@@ -7818,10 +7745,7 @@ func OpenapiModelValidate(params *viper.Viper, body string) (*gentleman.Response
 // OpenapiModelValidateAwsBedrock Validate AWS Bedrock inference profile
 func OpenapiModelValidateAwsBedrock(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "models validate-aws-bedrock"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/aws-bedrock/validate"
 
@@ -7859,13 +7783,13 @@ func OpenapiModelValidateAwsBedrock(params *viper.Viper, body string) (*gentlema
 // OpenapiModelSharingSet Set a model's sharing config
 func OpenapiModelSharingSet(paramModelId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "model-sharing set model-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/models/{model_id}/sharing"
-	url = strings.Replace(url, "{model_id}", paramModelId, 1)
+	if paramModelId == "" {
+		return nil, nil, errors.Errorf("path parameter model_id cannot be empty")
+	}
+	url = strings.Replace(url, "{model_id}", neturl.PathEscape(paramModelId), 1)
 
 	req := bartolocli.Client.Put().URL(url)
 
@@ -7901,10 +7825,7 @@ func OpenapiModelSharingSet(paramModelId string, params *viper.Viper, body strin
 // OpenapiNotifierCreate Create a notifier
 func OpenapiNotifierCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "notifiers create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/notifiers"
 
@@ -7942,13 +7863,13 @@ func OpenapiNotifierCreate(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiNotifierDelete Delete a notifier
 func OpenapiNotifierDelete(paramNotifierId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "notifiers delete notifier-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/notifiers/{notifier_id}"
-	url = strings.Replace(url, "{notifier_id}", paramNotifierId, 1)
+	if paramNotifierId == "" {
+		return nil, nil, errors.Errorf("path parameter notifier_id cannot be empty")
+	}
+	url = strings.Replace(url, "{notifier_id}", neturl.PathEscape(paramNotifierId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -7980,13 +7901,13 @@ func OpenapiNotifierDelete(paramNotifierId string, params *viper.Viper) (*gentle
 // OpenapiNotifierGet Retrieve a notifier
 func OpenapiNotifierGet(paramNotifierId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "notifiers get notifier-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/notifiers/{notifier_id}"
-	url = strings.Replace(url, "{notifier_id}", paramNotifierId, 1)
+	if paramNotifierId == "" {
+		return nil, nil, errors.Errorf("path parameter notifier_id cannot be empty")
+	}
+	url = strings.Replace(url, "{notifier_id}", neturl.PathEscape(paramNotifierId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8018,10 +7939,7 @@ func OpenapiNotifierGet(paramNotifierId string, params *viper.Viper) (*gentleman
 // OpenapiNotifierList List notifiers
 func OpenapiNotifierList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "notifiers list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/notifiers"
 
@@ -8080,13 +7998,13 @@ func OpenapiNotifierList(params *viper.Viper) (*gentleman.Response, map[string]i
 // OpenapiNotifierUpdate Update a notifier
 func OpenapiNotifierUpdate(paramNotifierId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "notifiers update notifier-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/notifiers/{notifier_id}"
-	url = strings.Replace(url, "{notifier_id}", paramNotifierId, 1)
+	if paramNotifierId == "" {
+		return nil, nil, errors.Errorf("path parameter notifier_id cannot be empty")
+	}
+	url = strings.Replace(url, "{notifier_id}", neturl.PathEscape(paramNotifierId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -8122,10 +8040,7 @@ func OpenapiNotifierUpdate(paramNotifierId string, params *viper.Viper, body str
 // OpenapiPIIDetect Detect PII
 func OpenapiPIIDetect(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "pii detect"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/pii/detect"
 
@@ -8163,10 +8078,7 @@ func OpenapiPIIDetect(params *viper.Viper, body string) (*gentleman.Response, ma
 // OpenapiPIIRedact Redact PII
 func OpenapiPIIRedact(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "pii redact"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/pii/redact"
 
@@ -8204,10 +8116,7 @@ func OpenapiPIIRedact(params *viper.Viper, body string) (*gentleman.Response, ma
 // OpenapiPIIRestore Restore redacted text
 func OpenapiPIIRestore(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "pii restore"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/pii/restore"
 
@@ -8245,10 +8154,7 @@ func OpenapiPIIRestore(params *viper.Viper, body string) (*gentleman.Response, m
 // OpenapiPolicyCreate Create policy
 func OpenapiPolicyCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "policies create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/policies"
 
@@ -8286,13 +8192,13 @@ func OpenapiPolicyCreate(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiPolicyDelete Delete policy
 func OpenapiPolicyDelete(paramPolicyId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "policies delete policy-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/policies/{policy_id}"
-	url = strings.Replace(url, "{policy_id}", paramPolicyId, 1)
+	if paramPolicyId == "" {
+		return nil, nil, errors.Errorf("path parameter policy_id cannot be empty")
+	}
+	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -8324,10 +8230,7 @@ func OpenapiPolicyDelete(paramPolicyId string, params *viper.Viper) (*gentleman.
 // OpenapiPolicyList List policies
 func OpenapiPolicyList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "policies list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/policies"
 
@@ -8378,13 +8281,13 @@ func OpenapiPolicyList(params *viper.Viper) (*gentleman.Response, map[string]int
 // OpenapiPolicyGet Get policy
 func OpenapiPolicyGet(paramPolicyId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "policies retrieve policy-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/policies/{policy_id}"
-	url = strings.Replace(url, "{policy_id}", paramPolicyId, 1)
+	if paramPolicyId == "" {
+		return nil, nil, errors.Errorf("path parameter policy_id cannot be empty")
+	}
+	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8416,13 +8319,13 @@ func OpenapiPolicyGet(paramPolicyId string, params *viper.Viper) (*gentleman.Res
 // OpenapiPolicyUpdate Update policy
 func OpenapiPolicyUpdate(paramPolicyId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "policies update policy-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/policies/{policy_id}"
-	url = strings.Replace(url, "{policy_id}", paramPolicyId, 1)
+	if paramPolicyId == "" {
+		return nil, nil, errors.Errorf("path parameter policy_id cannot be empty")
+	}
+	url = strings.Replace(url, "{policy_id}", neturl.PathEscape(paramPolicyId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -8458,10 +8361,7 @@ func OpenapiPolicyUpdate(paramPolicyId string, params *viper.Viper, body string)
 // OpenapiProjectCreate Create a new project
 func OpenapiProjectCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/projects"
 
@@ -8499,13 +8399,13 @@ func OpenapiProjectCreate(params *viper.Viper, body string) (*gentleman.Response
 // OpenapiProjectDelete Delete a project
 func OpenapiProjectDelete(paramProjectId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects delete project-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/projects/{project_id}"
-	url = strings.Replace(url, "{project_id}", paramProjectId, 1)
+	if paramProjectId == "" {
+		return nil, nil, errors.Errorf("path parameter project_id cannot be empty")
+	}
+	url = strings.Replace(url, "{project_id}", neturl.PathEscape(paramProjectId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -8537,13 +8437,13 @@ func OpenapiProjectDelete(paramProjectId string, params *viper.Viper) (*gentlema
 // OpenapiProjectGet Retrieve a project
 func OpenapiProjectGet(paramProjectId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects get project-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/projects/{project_id}"
-	url = strings.Replace(url, "{project_id}", paramProjectId, 1)
+	if paramProjectId == "" {
+		return nil, nil, errors.Errorf("path parameter project_id cannot be empty")
+	}
+	url = strings.Replace(url, "{project_id}", neturl.PathEscape(paramProjectId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8575,10 +8475,7 @@ func OpenapiProjectGet(paramProjectId string, params *viper.Viper) (*gentleman.R
 // OpenapiProjectList List all projects
 func OpenapiProjectList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/projects"
 
@@ -8625,13 +8522,13 @@ func OpenapiProjectList(params *viper.Viper) (*gentleman.Response, map[string]in
 // OpenapiProjectUpdate Update a project
 func OpenapiProjectUpdate(paramProjectId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "projects update project-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/projects/{project_id}"
-	url = strings.Replace(url, "{project_id}", paramProjectId, 1)
+	if paramProjectId == "" {
+		return nil, nil, errors.Errorf("path parameter project_id cannot be empty")
+	}
+	url = strings.Replace(url, "{project_id}", neturl.PathEscape(paramProjectId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -8667,10 +8564,7 @@ func OpenapiProjectUpdate(paramProjectId string, params *viper.Viper, body strin
 // OpenapiCreatePrompt Create a prompt
 func OpenapiCreatePrompt(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "prompts create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts"
 
@@ -8708,13 +8602,13 @@ func OpenapiCreatePrompt(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiDeletePrompt Delete a prompt
 func OpenapiDeletePrompt(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "prompts delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -8746,14 +8640,17 @@ func OpenapiDeletePrompt(paramId string, params *viper.Viper) (*gentleman.Respon
 // OpenapiGetPromptVersion Retrieve a prompt version
 func OpenapiGetPromptVersion(paramPromptId string, paramVersionId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "prompts get-version prompt-id version-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts/{prompt_id}/versions/{version_id}"
-	url = strings.Replace(url, "{prompt_id}", paramPromptId, 1)
-	url = strings.Replace(url, "{version_id}", paramVersionId, 1)
+	if paramPromptId == "" {
+		return nil, nil, errors.Errorf("path parameter prompt_id cannot be empty")
+	}
+	if paramVersionId == "" {
+		return nil, nil, errors.Errorf("path parameter version_id cannot be empty")
+	}
+	url = strings.Replace(url, "{prompt_id}", neturl.PathEscape(paramPromptId), 1)
+	url = strings.Replace(url, "{version_id}", neturl.PathEscape(paramVersionId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8785,10 +8682,7 @@ func OpenapiGetPromptVersion(paramPromptId string, paramVersionId string, params
 // OpenapiGetAllPrompts List all prompts
 func OpenapiGetAllPrompts(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "prompts list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts"
 
@@ -8835,13 +8729,13 @@ func OpenapiGetAllPrompts(params *viper.Viper) (*gentleman.Response, map[string]
 // OpenapiListPromptVersions List all prompt versions
 func OpenapiListPromptVersions(paramPromptId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "prompts list-versions prompt-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts/{prompt_id}/versions"
-	url = strings.Replace(url, "{prompt_id}", paramPromptId, 1)
+	if paramPromptId == "" {
+		return nil, nil, errors.Errorf("path parameter prompt_id cannot be empty")
+	}
+	url = strings.Replace(url, "{prompt_id}", neturl.PathEscape(paramPromptId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8886,13 +8780,13 @@ func OpenapiListPromptVersions(paramPromptId string, params *viper.Viper) (*gent
 // OpenapiGetOnePrompt Retrieve a prompt
 func OpenapiGetOnePrompt(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "prompts retrieve id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -8924,13 +8818,13 @@ func OpenapiGetOnePrompt(paramId string, params *viper.Viper) (*gentleman.Respon
 // OpenapiUpdatePrompt Update a prompt
 func OpenapiUpdatePrompt(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "prompts update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/prompts/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -8966,10 +8860,7 @@ func OpenapiUpdatePrompt(paramId string, params *viper.Viper, body string) (*gen
 // OpenapiReportingQuery Query reporting metrics
 func OpenapiReportingQuery(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "reporting query"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/reporting"
 
@@ -9007,10 +8898,7 @@ func OpenapiReportingQuery(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiCreateSpeech Create speech
 func OpenapiCreateSpeech(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "speech create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/audio/speech"
 
@@ -9048,10 +8936,7 @@ func OpenapiCreateSpeech(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiCreateTranscription Create transcription
 func OpenapiCreateTranscription(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "transcriptions create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/audio/transcriptions"
 
@@ -9089,10 +8974,7 @@ func OpenapiCreateTranscription(params *viper.Viper, body string) (*gentleman.Re
 // OpenapiCreateTranslation Create translation
 func OpenapiCreateTranslation(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "translations create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/audio/translations"
 
@@ -9130,10 +9012,7 @@ func OpenapiCreateTranslation(params *viper.Viper, body string) (*gentleman.Resp
 // OpenapiCreateChatCompletion Create chat completion
 func OpenapiCreateChatCompletion(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "chat create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/chat/completions"
 
@@ -9171,10 +9050,7 @@ func OpenapiCreateChatCompletion(params *viper.Viper, body string) (*gentleman.R
 // OpenapiCreateCompletion Create completion
 func OpenapiCreateCompletion(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "completions create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/completions"
 
@@ -9212,10 +9088,7 @@ func OpenapiCreateCompletion(params *viper.Viper, body string) (*gentleman.Respo
 // OpenapiCreateEmbedding Create embeddings
 func OpenapiCreateEmbedding(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "embeddings create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/embeddings"
 
@@ -9253,10 +9126,7 @@ func OpenapiCreateEmbedding(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiCreateImageEdit Create image edit
 func OpenapiCreateImageEdit(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "images edit"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/images/edits"
 
@@ -9294,10 +9164,7 @@ func OpenapiCreateImageEdit(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiCreateImage Create image
 func OpenapiCreateImage(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "images generate"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/images/generations"
 
@@ -9335,10 +9202,7 @@ func OpenapiCreateImage(params *viper.Viper, body string) (*gentleman.Response, 
 // OpenapiCreateImageVariation Create image variation
 func OpenapiCreateImageVariation(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "images variation"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/images/variations"
 
@@ -9376,10 +9240,7 @@ func OpenapiCreateImageVariation(params *viper.Viper, body string) (*gentleman.R
 // OpenapiCreateModeration Create moderation
 func OpenapiCreateModeration(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "moderations create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/moderations"
 
@@ -9417,10 +9278,7 @@ func OpenapiCreateModeration(params *viper.Viper, body string) (*gentleman.Respo
 // OpenapiPostV2RouterOcr Ocr
 func OpenapiPostV2RouterOcr(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "ocr ocr"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/ocr"
 
@@ -9458,10 +9316,7 @@ func OpenapiPostV2RouterOcr(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiCreateRerank Create rerank
 func OpenapiCreateRerank(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "rerank create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/router/rerank"
 
@@ -9499,10 +9354,7 @@ func OpenapiCreateRerank(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiRoutingRuleCreate Create a routing rule
 func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules"
 
@@ -9540,13 +9392,13 @@ func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Resp
 // OpenapiRoutingRuleDelete Delete a routing rule
 func OpenapiRoutingRuleDelete(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "routing-rules delete routing-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules/{routing_rule_id}"
-	url = strings.Replace(url, "{routing_rule_id}", paramRoutingRuleId, 1)
+	if paramRoutingRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter routing_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{routing_rule_id}", neturl.PathEscape(paramRoutingRuleId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -9578,10 +9430,7 @@ func OpenapiRoutingRuleDelete(paramRoutingRuleId string, params *viper.Viper) (*
 // OpenapiRoutingRuleList List routing rules
 func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules"
 
@@ -9644,10 +9493,7 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 // OpenapiRoutingRuleListUsedModels List models used by routing rules
 func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules list-used-models"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules/used-models"
 
@@ -9686,13 +9532,13 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 // OpenapiRoutingRuleGet Retrieve a routing rule
 func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules retrieve routing-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules/{routing_rule_id}"
-	url = strings.Replace(url, "{routing_rule_id}", paramRoutingRuleId, 1)
+	if paramRoutingRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter routing_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{routing_rule_id}", neturl.PathEscape(paramRoutingRuleId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -9724,13 +9570,13 @@ func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gen
 // OpenapiRoutingRuleUpdate Update a routing rule
 func OpenapiRoutingRuleUpdate(paramRoutingRuleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "routing-rules update routing-rule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/routing-rules/{routing_rule_id}"
-	url = strings.Replace(url, "{routing_rule_id}", paramRoutingRuleId, 1)
+	if paramRoutingRuleId == "" {
+		return nil, nil, errors.Errorf("path parameter routing_rule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{routing_rule_id}", neturl.PathEscape(paramRoutingRuleId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -9766,10 +9612,7 @@ func OpenapiRoutingRuleUpdate(paramRoutingRuleId string, params *viper.Viper, bo
 // OpenapiSkillCreate Create a new skill
 func OpenapiSkillCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "skills create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/skills"
 
@@ -9807,13 +9650,13 @@ func OpenapiSkillCreate(params *viper.Viper, body string) (*gentleman.Response, 
 // OpenapiSkillDelete Delete a skill
 func OpenapiSkillDelete(paramSkillId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "skills delete skill-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/skills/{skill_id}"
-	url = strings.Replace(url, "{skill_id}", paramSkillId, 1)
+	if paramSkillId == "" {
+		return nil, nil, errors.Errorf("path parameter skill_id cannot be empty")
+	}
+	url = strings.Replace(url, "{skill_id}", neturl.PathEscape(paramSkillId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -9845,13 +9688,13 @@ func OpenapiSkillDelete(paramSkillId string, params *viper.Viper) (*gentleman.Re
 // OpenapiSkillGet Retrieve a skill
 func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "skills get skill-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/skills/{skill_id}"
-	url = strings.Replace(url, "{skill_id}", paramSkillId, 1)
+	if paramSkillId == "" {
+		return nil, nil, errors.Errorf("path parameter skill_id cannot be empty")
+	}
+	url = strings.Replace(url, "{skill_id}", neturl.PathEscape(paramSkillId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -9883,10 +9726,7 @@ func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Respo
 // OpenapiSkillList List all skills
 func OpenapiSkillList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "skills list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/skills"
 
@@ -9933,13 +9773,13 @@ func OpenapiSkillList(params *viper.Viper) (*gentleman.Response, map[string]inte
 // OpenapiSkillUpdate Update a skill
 func OpenapiSkillUpdate(paramSkillId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "skills update skill-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/skills/{skill_id}"
-	url = strings.Replace(url, "{skill_id}", paramSkillId, 1)
+	if paramSkillId == "" {
+		return nil, nil, errors.Errorf("path parameter skill_id cannot be empty")
+	}
+	url = strings.Replace(url, "{skill_id}", neturl.PathEscape(paramSkillId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -9975,10 +9815,7 @@ func OpenapiSkillUpdate(paramSkillId string, params *viper.Viper, body string) (
 // OpenapiSmartRouterCreate Create a Smart Router
 func OpenapiSmartRouterCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "smart-routers create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/smart-routers"
 
@@ -10016,13 +9853,13 @@ func OpenapiSmartRouterCreate(params *viper.Viper, body string) (*gentleman.Resp
 // OpenapiSmartRouterDelete Delete a Smart Router
 func OpenapiSmartRouterDelete(paramSmartRouterId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "smart-routers delete smart-router-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/smart-routers/{smart_router_id}"
-	url = strings.Replace(url, "{smart_router_id}", paramSmartRouterId, 1)
+	if paramSmartRouterId == "" {
+		return nil, nil, errors.Errorf("path parameter smart_router_id cannot be empty")
+	}
+	url = strings.Replace(url, "{smart_router_id}", neturl.PathEscape(paramSmartRouterId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -10054,13 +9891,13 @@ func OpenapiSmartRouterDelete(paramSmartRouterId string, params *viper.Viper) (*
 // OpenapiSmartRouterGet Retrieve a Smart Router
 func OpenapiSmartRouterGet(paramSmartRouterId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "smart-routers get smart-router-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/smart-routers/{smart_router_id}"
-	url = strings.Replace(url, "{smart_router_id}", paramSmartRouterId, 1)
+	if paramSmartRouterId == "" {
+		return nil, nil, errors.Errorf("path parameter smart_router_id cannot be empty")
+	}
+	url = strings.Replace(url, "{smart_router_id}", neturl.PathEscape(paramSmartRouterId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10092,10 +9929,7 @@ func OpenapiSmartRouterGet(paramSmartRouterId string, params *viper.Viper) (*gen
 // OpenapiSmartRouterList List Smart Routers
 func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "smart-routers list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/smart-routers"
 
@@ -10154,13 +9988,13 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 // OpenapiSmartRouterUpdate Update a Smart Router
 func OpenapiSmartRouterUpdate(paramSmartRouterId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "smart-routers update smart-router-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/smart-routers/{smart_router_id}"
-	url = strings.Replace(url, "{smart_router_id}", paramSmartRouterId, 1)
+	if paramSmartRouterId == "" {
+		return nil, nil, errors.Errorf("path parameter smart_router_id cannot be empty")
+	}
+	url = strings.Replace(url, "{smart_router_id}", neturl.PathEscape(paramSmartRouterId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -10196,10 +10030,7 @@ func OpenapiSmartRouterUpdate(paramSmartRouterId string, params *viper.Viper, bo
 // OpenapiCreateTool Create tool
 func OpenapiCreateTool(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "tools create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools"
 
@@ -10237,13 +10068,13 @@ func OpenapiCreateTool(params *viper.Viper, body string) (*gentleman.Response, i
 // OpenapiDeleteTool Delete tool
 func OpenapiDeleteTool(paramToolId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "tools delete tool-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools/{tool_id}"
-	url = strings.Replace(url, "{tool_id}", paramToolId, 1)
+	if paramToolId == "" {
+		return nil, nil, errors.Errorf("path parameter tool_id cannot be empty")
+	}
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -10275,14 +10106,17 @@ func OpenapiDeleteTool(paramToolId string, params *viper.Viper) (*gentleman.Resp
 // OpenapiGetV2ToolsToolIdVersionsVersionId Get tool version
 func OpenapiGetV2ToolsToolIdVersionsVersionId(paramToolId string, paramVersionId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "tools get-version tool-id version-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools/{tool_id}/versions/{version_id}"
-	url = strings.Replace(url, "{tool_id}", paramToolId, 1)
-	url = strings.Replace(url, "{version_id}", paramVersionId, 1)
+	if paramToolId == "" {
+		return nil, nil, errors.Errorf("path parameter tool_id cannot be empty")
+	}
+	if paramVersionId == "" {
+		return nil, nil, errors.Errorf("path parameter version_id cannot be empty")
+	}
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
+	url = strings.Replace(url, "{version_id}", neturl.PathEscape(paramVersionId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10314,10 +10148,7 @@ func OpenapiGetV2ToolsToolIdVersionsVersionId(paramToolId string, paramVersionId
 // OpenapiGetAllTools List tools
 func OpenapiGetAllTools(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "tools list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools"
 
@@ -10364,13 +10195,13 @@ func OpenapiGetAllTools(params *viper.Viper) (*gentleman.Response, map[string]in
 // OpenapiGetV2ToolsToolIdVersions List tool versions
 func OpenapiGetV2ToolsToolIdVersions(paramToolId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "tools list-versions tool-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools/{tool_id}/versions"
-	url = strings.Replace(url, "{tool_id}", paramToolId, 1)
+	if paramToolId == "" {
+		return nil, nil, errors.Errorf("path parameter tool_id cannot be empty")
+	}
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10415,13 +10246,13 @@ func OpenapiGetV2ToolsToolIdVersions(paramToolId string, params *viper.Viper) (*
 // OpenapiRetrieveTool Retrieve tool
 func OpenapiRetrieveTool(paramToolId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "tools retrieve tool-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools/{tool_id}"
-	url = strings.Replace(url, "{tool_id}", paramToolId, 1)
+	if paramToolId == "" {
+		return nil, nil, errors.Errorf("path parameter tool_id cannot be empty")
+	}
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10453,13 +10284,13 @@ func OpenapiRetrieveTool(paramToolId string, params *viper.Viper) (*gentleman.Re
 // OpenapiUpdateTool Update tool
 func OpenapiUpdateTool(paramToolId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "tools update tool-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/tools/{tool_id}"
-	url = strings.Replace(url, "{tool_id}", paramToolId, 1)
+	if paramToolId == "" {
+		return nil, nil, errors.Errorf("path parameter tool_id cannot be empty")
+	}
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -10495,10 +10326,7 @@ func OpenapiUpdateTool(paramToolId string, params *viper.Viper, body string) (*g
 // OpenapiTracesAggregate Aggregate traces
 func OpenapiTracesAggregate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces aggregate"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/aggregate"
 
@@ -10536,14 +10364,17 @@ func OpenapiTracesAggregate(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiCreateAnnotation Annotate a span
 func OpenapiCreateAnnotation(paramTraceId string, paramSpanId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "traces create trace-id span-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/{trace_id}/spans/{span_id}/annotation"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
-	url = strings.Replace(url, "{span_id}", paramSpanId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	if paramSpanId == "" {
+		return nil, nil, errors.Errorf("path parameter span_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
+	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -10579,14 +10410,17 @@ func OpenapiCreateAnnotation(paramTraceId string, paramSpanId string, params *vi
 // OpenapiDeleteAnnotation Remove an annotation from a span
 func OpenapiDeleteAnnotation(paramTraceId string, paramSpanId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "traces delete trace-id span-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/{trace_id}/spans/{span_id}/annotation"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
-	url = strings.Replace(url, "{span_id}", paramSpanId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	if paramSpanId == "" {
+		return nil, nil, errors.Errorf("path parameter span_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
+	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -10622,13 +10456,13 @@ func OpenapiDeleteAnnotation(paramTraceId string, paramSpanId string, params *vi
 // OpenapiTracesGet Get trace
 func OpenapiTracesGet(paramTraceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces get trace-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/{trace_id}"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10660,14 +10494,17 @@ func OpenapiTracesGet(paramTraceId string, params *viper.Viper) (*gentleman.Resp
 // OpenapiTracesGetSpan Get trace span
 func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces get-span trace-id span-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/{trace_id}/spans/{span_id}"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
-	url = strings.Replace(url, "{span_id}", paramSpanId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	if paramSpanId == "" {
+		return nil, nil, errors.Errorf("path parameter span_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
+	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10699,14 +10536,17 @@ func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper
 // OpenapiInsightsServiceCancelRun Insights Service Cancel Run
 func OpenapiInsightsServiceCancelRun(paramInsightId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-cancel-run insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}:cancel"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -10742,10 +10582,7 @@ func OpenapiInsightsServiceCancelRun(paramInsightId string, paramRunId string, p
 // OpenapiInsightsServiceCreateInsight Insights Service Create Insight
 func OpenapiInsightsServiceCreateInsight(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-create-insight"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights"
 
@@ -10783,14 +10620,17 @@ func OpenapiInsightsServiceCreateInsight(params *viper.Viper, body string) (*gen
 // OpenapiInsightsServiceDeleteRun Insights Service Delete Run
 func OpenapiInsightsServiceDeleteRun(paramInsightId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-delete-run insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -10822,15 +10662,21 @@ func OpenapiInsightsServiceDeleteRun(paramInsightId string, paramRunId string, p
 // OpenapiInsightsServiceGetCluster Insights Service Get Cluster
 func OpenapiInsightsServiceGetCluster(paramInsightId string, paramRunId string, paramClusterId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-get-cluster insight-id run-id cluster-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}/clusters/{cluster_id}"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
-	url = strings.Replace(url, "{cluster_id}", paramClusterId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	if paramClusterId == "" {
+		return nil, nil, errors.Errorf("path parameter cluster_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
+	url = strings.Replace(url, "{cluster_id}", neturl.PathEscape(paramClusterId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10862,13 +10708,13 @@ func OpenapiInsightsServiceGetCluster(paramInsightId string, paramRunId string, 
 // OpenapiInsightsServiceGetInsight Insights Service Get Insight
 func OpenapiInsightsServiceGetInsight(paramInsightId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-get-insight insight-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10900,14 +10746,17 @@ func OpenapiInsightsServiceGetInsight(paramInsightId string, params *viper.Viper
 // OpenapiInsightsServiceGetRun Insights Service Get Run
 func OpenapiInsightsServiceGetRun(paramInsightId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-get-run insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10939,14 +10788,17 @@ func OpenapiInsightsServiceGetRun(paramInsightId string, paramRunId string, para
 // OpenapiInsightsServiceGetRunArtifacts Insights Service Get Run Artifacts
 func OpenapiInsightsServiceGetRunArtifacts(paramInsightId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-get-run-artifacts insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}/artifacts"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -10978,15 +10830,21 @@ func OpenapiInsightsServiceGetRunArtifacts(paramInsightId string, paramRunId str
 // OpenapiInsightsServiceListClusterConversations Insights Service List Cluster Conversations
 func OpenapiInsightsServiceListClusterConversations(paramInsightId string, paramRunId string, paramClusterId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-list-cluster-conversations insight-id run-id cluster-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}/clusters/{cluster_id}/conversations"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
-	url = strings.Replace(url, "{cluster_id}", paramClusterId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	if paramClusterId == "" {
+		return nil, nil, errors.Errorf("path parameter cluster_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
+	url = strings.Replace(url, "{cluster_id}", neturl.PathEscape(paramClusterId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11031,14 +10889,17 @@ func OpenapiInsightsServiceListClusterConversations(paramInsightId string, param
 // OpenapiInsightsServiceListClusters Insights Service List Clusters
 func OpenapiInsightsServiceListClusters(paramInsightId string, paramRunId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-list-clusters insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}/clusters"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11091,10 +10952,7 @@ func OpenapiInsightsServiceListClusters(paramInsightId string, paramRunId string
 // OpenapiInsightsServiceListInsights Insights Service List Insights
 func OpenapiInsightsServiceListInsights(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-list-insights"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights"
 
@@ -11141,13 +10999,13 @@ func OpenapiInsightsServiceListInsights(params *viper.Viper) (*gentleman.Respons
 // OpenapiInsightsServiceListRuns Insights Service List Runs
 func OpenapiInsightsServiceListRuns(paramInsightId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-list-runs insight-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11196,10 +11054,7 @@ func OpenapiInsightsServiceListRuns(paramInsightId string, params *viper.Viper) 
 // OpenapiInsightsServicePreviewInsightCandidates Insights Service Preview Insight Candidates
 func OpenapiInsightsServicePreviewInsightCandidates(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-preview-insight-candidates"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights:previewCandidates"
 
@@ -11237,14 +11092,17 @@ func OpenapiInsightsServicePreviewInsightCandidates(params *viper.Viper, body st
 // OpenapiInsightsServiceReEvaluateRun Insights Service Re Evaluate Run
 func OpenapiInsightsServiceReEvaluateRun(paramInsightId string, paramRunId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-re-evaluate-run insight-id run-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs/{run_id}:reEvaluate"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
-	url = strings.Replace(url, "{run_id}", paramRunId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	if paramRunId == "" {
+		return nil, nil, errors.Errorf("path parameter run_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -11280,13 +11138,13 @@ func OpenapiInsightsServiceReEvaluateRun(paramInsightId string, paramRunId strin
 // OpenapiInsightsServiceRunAnalysis Insights Service Run Analysis
 func OpenapiInsightsServiceRunAnalysis(paramInsightId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-run-analysis insight-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}/runs"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -11322,13 +11180,13 @@ func OpenapiInsightsServiceRunAnalysis(paramInsightId string, params *viper.Vipe
 // OpenapiInsightsServiceUpdateInsight Insights Service Update Insight
 func OpenapiInsightsServiceUpdateInsight(paramInsightId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces insights-service-update-insight insight-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/traces/insights/{insight_id}"
-	url = strings.Replace(url, "{insight_id}", paramInsightId, 1)
+	if paramInsightId == "" {
+		return nil, nil, errors.Errorf("path parameter insight_id cannot be empty")
+	}
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -11369,13 +11227,13 @@ func OpenapiInsightsServiceUpdateInsight(paramInsightId string, params *viper.Vi
 // OpenapiTracesListFacetValues List trace facet values
 func OpenapiTracesListFacetValues(paramField string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces list-facet-values field"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/facets/{field}"
-	url = strings.Replace(url, "{field}", paramField, 1)
+	if paramField == "" {
+		return nil, nil, errors.Errorf("path parameter field cannot be empty")
+	}
+	url = strings.Replace(url, "{field}", neturl.PathEscape(paramField), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11424,10 +11282,7 @@ func OpenapiTracesListFacetValues(paramField string, params *viper.Viper) (*gent
 // OpenapiTracesListFacets List trace facets
 func OpenapiTracesListFacets(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces list-facets"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/facets"
 
@@ -11461,10 +11316,7 @@ func OpenapiTracesListFacets(params *viper.Viper) (*gentleman.Response, map[stri
 // OpenapiTracesListFields List trace fields
 func OpenapiTracesListFields(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces list-fields"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/fields"
 
@@ -11498,13 +11350,13 @@ func OpenapiTracesListFields(params *viper.Viper) (*gentleman.Response, map[stri
 // OpenapiTracesListSpans List trace spans
 func OpenapiTracesListSpans(paramTraceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces list-spans trace-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/{trace_id}/spans"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11545,10 +11397,7 @@ func OpenapiTracesListSpans(paramTraceId string, params *viper.Viper) (*gentlema
 // OpenapiTracesQueryOql Query traces with OQL
 func OpenapiTracesQueryOql(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces query-oql"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/query"
 
@@ -11586,10 +11435,7 @@ func OpenapiTracesQueryOql(params *viper.Viper, body string) (*gentleman.Respons
 // OpenapiTracesSearch Search traces
 func OpenapiTracesSearch(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces search"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/search"
 
@@ -11627,10 +11473,7 @@ func OpenapiTracesSearch(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiWebhookCount Count webhooks
 func OpenapiWebhookCount(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks count"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/count"
 
@@ -11664,10 +11507,7 @@ func OpenapiWebhookCount(params *viper.Viper) (*gentleman.Response, map[string]i
 // OpenapiWebhookCreate Create a webhook
 func OpenapiWebhookCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks"
 
@@ -11705,13 +11545,13 @@ func OpenapiWebhookCreate(params *viper.Viper, body string) (*gentleman.Response
 // OpenapiWebhookDelete Delete a webhook
 func OpenapiWebhookDelete(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks delete id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -11743,10 +11583,7 @@ func OpenapiWebhookDelete(paramId string, params *viper.Viper) (*gentleman.Respo
 // OpenapiWebhookGenerateSecret Generate a webhook secret
 func OpenapiWebhookGenerateSecret(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks generate-secret"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/secret"
 
@@ -11780,13 +11617,13 @@ func OpenapiWebhookGenerateSecret(params *viper.Viper) (*gentleman.Response, map
 // OpenapiWebhookGet Retrieve a webhook
 func OpenapiWebhookGet(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -11818,10 +11655,7 @@ func OpenapiWebhookGet(paramId string, params *viper.Viper) (*gentleman.Response
 // OpenapiWebhookList List webhooks
 func OpenapiWebhookList(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks list"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks"
 
@@ -11888,10 +11722,7 @@ func OpenapiWebhookList(params *viper.Viper) (*gentleman.Response, map[string]in
 // OpenapiWebhookQuery Query webhooks
 func OpenapiWebhookQuery(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks query"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/query"
 
@@ -11929,13 +11760,13 @@ func OpenapiWebhookQuery(params *viper.Viper, body string) (*gentleman.Response,
 // OpenapiWebhookUpdate Update a webhook
 func OpenapiWebhookUpdate(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "webhooks update id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/webhooks/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -11971,10 +11802,7 @@ func OpenapiWebhookUpdate(paramId string, params *viper.Viper, body string) (*ge
 // OpenapiWorkspaceSettingsGet Retrieve workspace settings
 func OpenapiWorkspaceSettingsGet(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-settings get"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/workspace-settings"
 
@@ -12008,10 +11836,7 @@ func OpenapiWorkspaceSettingsGet(params *viper.Viper) (*gentleman.Response, map[
 // OpenapiWorkspaceSettingsUpdate Update workspace settings
 func OpenapiWorkspaceSettingsUpdate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-settings update"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/workspace-settings"
 
@@ -12049,13 +11874,13 @@ func OpenapiWorkspaceSettingsUpdate(params *viper.Viper, body string) (*gentlema
 // OpenapiWorkspaceSecurityAddIPRange Add an IP range
 func OpenapiWorkspaceSecurityAddIPRange(paramWorkspaceKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security add-ip-range workspace-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/ip-allowlist/entries"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12091,13 +11916,13 @@ func OpenapiWorkspaceSecurityAddIPRange(paramWorkspaceKey string, params *viper.
 // OpenapiWorkspaceSecurityCreateDomain Add a domain
 func OpenapiWorkspaceSecurityCreateDomain(paramWorkspaceKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security create-domain workspace-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/domains"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12133,14 +11958,17 @@ func OpenapiWorkspaceSecurityCreateDomain(paramWorkspaceKey string, params *vipe
 // OpenapiWorkspaceSecurityDeleteDomain Delete a domain
 func OpenapiWorkspaceSecurityDeleteDomain(paramWorkspaceKey string, paramDomainId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "workspace-security delete-domain workspace-key domain-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/domains/{domain_id}"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
-	url = strings.Replace(url, "{domain_id}", paramDomainId, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	if paramDomainId == "" {
+		return nil, nil, errors.Errorf("path parameter domain_id cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
+	url = strings.Replace(url, "{domain_id}", neturl.PathEscape(paramDomainId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -12172,14 +12000,17 @@ func OpenapiWorkspaceSecurityDeleteDomain(paramWorkspaceKey string, paramDomainI
 // OpenapiWorkspaceSecurityDeleteIPRange Delete an IP range
 func OpenapiWorkspaceSecurityDeleteIPRange(paramWorkspaceKey string, paramRangeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "workspace-security delete-ip-range workspace-key range-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/ip-allowlist/entries/{range_id}"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
-	url = strings.Replace(url, "{range_id}", paramRangeId, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	if paramRangeId == "" {
+		return nil, nil, errors.Errorf("path parameter range_id cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
+	url = strings.Replace(url, "{range_id}", neturl.PathEscape(paramRangeId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -12211,13 +12042,13 @@ func OpenapiWorkspaceSecurityDeleteIPRange(paramWorkspaceKey string, paramRangeI
 // OpenapiWorkspaceSecurityGetIPAllowlist Retrieve the IP allowlist
 func OpenapiWorkspaceSecurityGetIPAllowlist(paramWorkspaceKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security get-ip-allowlist workspace-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/ip-allowlist"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12249,13 +12080,13 @@ func OpenapiWorkspaceSecurityGetIPAllowlist(paramWorkspaceKey string, params *vi
 // OpenapiWorkspaceSecurityListDomains List verified domains
 func OpenapiWorkspaceSecurityListDomains(paramWorkspaceKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security list-domains workspace-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/domains"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12287,13 +12118,13 @@ func OpenapiWorkspaceSecurityListDomains(paramWorkspaceKey string, params *viper
 // OpenapiWorkspaceSecurityUpdateIPAllowlist Enable or disable the IP allowlist
 func OpenapiWorkspaceSecurityUpdateIPAllowlist(paramWorkspaceKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security update-ip-allowlist workspace-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/ip-allowlist"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -12329,14 +12160,17 @@ func OpenapiWorkspaceSecurityUpdateIPAllowlist(paramWorkspaceKey string, params 
 // OpenapiWorkspaceSecurityVerifyDomain Verify a domain
 func OpenapiWorkspaceSecurityVerifyDomain(paramWorkspaceKey string, paramDomainId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-security verify-domain workspace-key domain-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v2/{workspace_key}/domains/{domain_id}/verify"
-	url = strings.Replace(url, "{workspace_key}", paramWorkspaceKey, 1)
-	url = strings.Replace(url, "{domain_id}", paramDomainId, 1)
+	if paramWorkspaceKey == "" {
+		return nil, nil, errors.Errorf("path parameter workspace_key cannot be empty")
+	}
+	if paramDomainId == "" {
+		return nil, nil, errors.Errorf("path parameter domain_id cannot be empty")
+	}
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
+	url = strings.Replace(url, "{domain_id}", neturl.PathEscape(paramDomainId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12368,13 +12202,13 @@ func OpenapiWorkspaceSecurityVerifyDomain(paramWorkspaceKey string, paramDomainI
 // OpenapiCreateAgentSchedule Create schedule
 func OpenapiCreateAgentSchedule(paramAgentKey string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "schedules create agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12410,14 +12244,17 @@ func OpenapiCreateAgentSchedule(paramAgentKey string, params *viper.Viper, body 
 // OpenapiDeleteAgentSchedule Delete schedule
 func OpenapiDeleteAgentSchedule(paramAgentKey string, paramScheduleId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "schedules delete agent-key schedule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules/{schedule_id}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
-	url = strings.Replace(url, "{schedule_id}", paramScheduleId, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	if paramScheduleId == "" {
+		return nil, nil, errors.Errorf("path parameter schedule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
 
@@ -12449,13 +12286,13 @@ func OpenapiDeleteAgentSchedule(paramAgentKey string, paramScheduleId string, pa
 // OpenapiListAgentSchedules List schedules
 func OpenapiListAgentSchedules(paramAgentKey string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "schedules list agent-key"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12487,14 +12324,17 @@ func OpenapiListAgentSchedules(paramAgentKey string, params *viper.Viper) (*gent
 // OpenapiRetrieveAgentSchedule Retrieve schedule
 func OpenapiRetrieveAgentSchedule(paramAgentKey string, paramScheduleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "schedules retrieve agent-key schedule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules/{schedule_id}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
-	url = strings.Replace(url, "{schedule_id}", paramScheduleId, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	if paramScheduleId == "" {
+		return nil, nil, errors.Errorf("path parameter schedule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12526,14 +12366,17 @@ func OpenapiRetrieveAgentSchedule(paramAgentKey string, paramScheduleId string, 
 // OpenapiTriggerAgentSchedule Trigger schedule execution
 func OpenapiTriggerAgentSchedule(paramAgentKey string, paramScheduleId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "schedules trigger agent-key schedule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules/{schedule_id}/execution"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
-	url = strings.Replace(url, "{schedule_id}", paramScheduleId, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	if paramScheduleId == "" {
+		return nil, nil, errors.Errorf("path parameter schedule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12565,14 +12408,17 @@ func OpenapiTriggerAgentSchedule(paramAgentKey string, paramScheduleId string, p
 // OpenapiUpdateAgentSchedule Update schedule
 func OpenapiUpdateAgentSchedule(paramAgentKey string, paramScheduleId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "schedules update agent-key schedule-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/agents/{agent_key}/schedules/{schedule_id}"
-	url = strings.Replace(url, "{agent_key}", paramAgentKey, 1)
-	url = strings.Replace(url, "{schedule_id}", paramScheduleId, 1)
+	if paramAgentKey == "" {
+		return nil, nil, errors.Errorf("path parameter agent_key cannot be empty")
+	}
+	if paramScheduleId == "" {
+		return nil, nil, errors.Errorf("path parameter schedule_id cannot be empty")
+	}
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
+	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
 
@@ -12608,10 +12454,7 @@ func OpenapiUpdateAgentSchedule(paramAgentKey string, paramScheduleId string, pa
 // OpenapiAggregateLogs Aggregate logs
 func OpenapiAggregateLogs(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs aggregate"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/aggregate"
 
@@ -12649,13 +12492,13 @@ func OpenapiAggregateLogs(params *viper.Viper, body string) (*gentleman.Response
 // OpenapiGetLog Get a single log
 func OpenapiGetLog(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs get id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/{id}"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12687,13 +12530,13 @@ func OpenapiGetLog(paramId string, params *viper.Viper) (*gentleman.Response, ma
 // OpenapiGetLogContext Get surrounding log context
 func OpenapiGetLogContext(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs get-context id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/{id}/context"
-	url = strings.Replace(url, "{id}", paramId, 1)
+	if paramId == "" {
+		return nil, nil, errors.Errorf("path parameter id cannot be empty")
+	}
+	url = strings.Replace(url, "{id}", neturl.PathEscape(paramId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
 
@@ -12729,10 +12572,7 @@ func OpenapiGetLogContext(paramId string, params *viper.Viper, body string) (*ge
 // OpenapiFindLogPatterns Find log patterns
 func OpenapiFindLogPatterns(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs get-patterns"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/patterns"
 
@@ -12770,13 +12610,13 @@ func OpenapiFindLogPatterns(params *viper.Viper, body string) (*gentleman.Respon
 // OpenapiListLogFacetValues List facet values
 func OpenapiListLogFacetValues(paramField string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs list-facet-values field"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/facets/{field}"
-	url = strings.Replace(url, "{field}", paramField, 1)
+	if paramField == "" {
+		return nil, nil, errors.Errorf("path parameter field cannot be empty")
+	}
+	url = strings.Replace(url, "{field}", neturl.PathEscape(paramField), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12825,10 +12665,7 @@ func OpenapiListLogFacetValues(paramField string, params *viper.Viper) (*gentlem
 // OpenapiListLogFacets List log facets
 func OpenapiListLogFacets(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs list-facets"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/facets"
 
@@ -12879,10 +12716,7 @@ func OpenapiListLogFacets(params *viper.Viper) (*gentleman.Response, map[string]
 // OpenapiListLogFields List log fields
 func OpenapiListLogFields(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs list-fields"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/fields"
 
@@ -12916,13 +12750,13 @@ func OpenapiListLogFields(params *viper.Viper) (*gentleman.Response, map[string]
 // OpenapiListTraceLogs List logs for a trace
 func OpenapiListTraceLogs(paramTraceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs list-trace trace-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/traces/{trace_id}/logs"
-	url = strings.Replace(url, "{trace_id}", paramTraceId, 1)
+	if paramTraceId == "" {
+		return nil, nil, errors.Errorf("path parameter trace_id cannot be empty")
+	}
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 
@@ -12963,10 +12797,7 @@ func OpenapiListTraceLogs(paramTraceId string, params *viper.Viper) (*gentleman.
 // OpenapiQueryLogs Query logs with OQL
 func OpenapiQueryLogs(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs query"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/query"
 
@@ -13004,10 +12835,7 @@ func OpenapiQueryLogs(params *viper.Viper, body string) (*gentleman.Response, ma
 // OpenapiSearchLogs Search logs
 func OpenapiSearchLogs(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs search"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/search"
 
@@ -13045,10 +12873,7 @@ func OpenapiSearchLogs(params *viper.Viper, body string) (*gentleman.Response, m
 // OpenapiCreateRouterResponse Create response
 func OpenapiCreateRouterResponse(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "responses create"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/router/responses"
 
@@ -13086,13 +12911,13 @@ func OpenapiCreateRouterResponse(params *viper.Viper, body string) (*gentleman.R
 // OpenapiRetrieveResponse Retrieve response
 func OpenapiRetrieveResponse(paramResponseId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "responses get response-id"
-	server := viper.GetString("server")
-	if server == "" {
-		server = servers()[viper.GetInt("server-index")]["url"]
-	}
+	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/router/responses/{response_id}"
-	url = strings.Replace(url, "{response_id}", paramResponseId, 1)
+	if paramResponseId == "" {
+		return nil, nil, errors.Errorf("path parameter response_id cannot be empty")
+	}
+	url = strings.Replace(url, "{response_id}", neturl.PathEscape(paramResponseId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
 

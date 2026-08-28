@@ -169,7 +169,10 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently removes a domain-verification record."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityDeleteDomain(args[0], args[1], params)
 				if err != nil {
@@ -180,9 +183,11 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		workspaceSecurityCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -203,7 +208,10 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Permanently removes a CIDR range from the workspace allowlist."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
+					return err
+				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityDeleteIPRange(args[0], args[1], params)
 				if err != nil {
@@ -214,9 +222,11 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 
+				return nil
 			},
 		}
 		workspaceSecurityCmd.AddCommand(cmd)
+		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -278,7 +288,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					log.Fatal().Err(err).Msg("error calling operation")
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					log.Fatal().Err(err).Msg("formatting failed")
 				}
 

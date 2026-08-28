@@ -141,7 +141,13 @@
     },
     {
       "path": "orq agents delete",
-      "use": "delete agent-key"
+      "use": "delete agent-key",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq agents get-response",
@@ -729,7 +735,13 @@
     },
     {
       "path": "orq alerts delete",
-      "use": "delete alert-id"
+      "use": "delete alert-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq alerts get",
@@ -871,7 +883,13 @@
     },
     {
       "path": "orq annotation-queues clear",
-      "use": "clear annotation-queue-id"
+      "use": "clear annotation-queue-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq annotation-queues create",
@@ -905,7 +923,13 @@
     },
     {
       "path": "orq annotation-queues delete",
-      "use": "delete annotation-queue-id"
+      "use": "delete annotation-queue-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq annotation-queues get",
@@ -1067,7 +1091,13 @@
     },
     {
       "path": "orq api-keys delete",
-      "use": "delete api-key-id"
+      "use": "delete api-key-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq api-keys get",
@@ -1319,7 +1349,13 @@
     },
     {
       "path": "orq budgets delete",
-      "use": "delete budget-id"
+      "use": "delete budget-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq budgets get",
@@ -1874,7 +1910,13 @@
     },
     {
       "path": "orq datasets clear",
-      "use": "clear dataset-id"
+      "use": "clear dataset-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq datasets create",
@@ -1922,11 +1964,23 @@
     },
     {
       "path": "orq datasets delete",
-      "use": "delete dataset-id"
+      "use": "delete dataset-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq datasets delete-datapoint",
-      "use": "delete-datapoint dataset-id datapoint-id"
+      "use": "delete-datapoint dataset-id datapoint-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq datasets list",
@@ -2540,7 +2594,13 @@
     },
     {
       "path": "orq evals delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq evals get",
@@ -2890,7 +2950,13 @@
     },
     {
       "path": "orq files delete",
-      "use": "delete file-id"
+      "use": "delete file-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq files get",
@@ -3050,7 +3116,13 @@
     {
       "path": "orq guardrail-rules delete",
       "use": "delete guardrail-rule-id",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq guardrail-rules list",
@@ -3212,7 +3284,13 @@
     {
       "path": "orq human-review-sets delete",
       "use": "delete id",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq human-review-sets get",
@@ -3325,7 +3403,13 @@
     },
     {
       "path": "orq identities delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq identities list",
@@ -3775,11 +3859,23 @@
     },
     {
       "path": "orq knowledge-bases delete",
-      "use": "delete knowledge-id"
+      "use": "delete knowledge-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq knowledge-bases delete-chunk",
-      "use": "delete-chunk knowledge-id datasource-id chunk-id"
+      "use": "delete-chunk knowledge-id datasource-id chunk-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq knowledge-bases delete-chunks",
@@ -3794,6 +3890,10 @@
           "type": "bool"
         },
         {
+          "name": "force",
+          "type": "bool"
+        },
+        {
           "name": "from-file",
           "type": "string"
         },
@@ -3805,7 +3905,13 @@
     },
     {
       "path": "orq knowledge-bases delete-datasource",
-      "use": "delete-datasource knowledge-id datasource-id"
+      "use": "delete-datasource knowledge-id datasource-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq knowledge-bases get-chunks-count",
@@ -4572,7 +4678,13 @@
     },
     {
       "path": "orq management-keys delete",
-      "use": "delete management-key-id"
+      "use": "delete management-key-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq management-keys get",
@@ -4706,7 +4818,13 @@
     },
     {
       "path": "orq mcp-gateways delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq mcp-gateways list",
@@ -4866,7 +4984,13 @@
     },
     {
       "path": "orq mcp-servers delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq mcp-servers list",
@@ -5084,15 +5208,33 @@
     },
     {
       "path": "orq memory-stores delete",
-      "use": "delete memory-store-key"
+      "use": "delete memory-store-key",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq memory-stores delete-document",
-      "use": "delete-document memory-store-key memory-entity-id document-id"
+      "use": "delete-document memory-store-key memory-entity-id document-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq memory-stores delete-memory",
-      "use": "delete-memory memory-store-key memory-entity-id"
+      "use": "delete-memory memory-store-key memory-entity-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq memory-stores list",
@@ -5781,11 +5923,23 @@
     },
     {
       "path": "orq models delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq models disable",
-      "use": "disable model-id"
+      "use": "disable model-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq models enable",
@@ -6251,7 +6405,13 @@
     },
     {
       "path": "orq notifiers delete",
-      "use": "delete notifier-id"
+      "use": "delete notifier-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq notifiers get",
@@ -6531,7 +6691,13 @@
     {
       "path": "orq policies delete",
       "use": "delete policy-id",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq policies list",
@@ -6652,7 +6818,13 @@
     },
     {
       "path": "orq projects delete",
-      "use": "delete project-id"
+      "use": "delete project-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq projects get",
@@ -6750,7 +6922,13 @@
     },
     {
       "path": "orq prompts delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq prompts get-version",
@@ -7292,7 +7470,13 @@
     {
       "path": "orq routing-rules delete",
       "use": "delete routing-rule-id",
-      "hidden": true
+      "hidden": true,
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq routing-rules list",
@@ -7440,7 +7624,13 @@
     },
     {
       "path": "orq schedules delete",
-      "use": "delete agent-key schedule-id"
+      "use": "delete agent-key schedule-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq schedules list",
@@ -7596,7 +7786,13 @@
     },
     {
       "path": "orq skills delete",
-      "use": "delete skill-id"
+      "use": "delete skill-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq skills get",
@@ -7698,7 +7894,13 @@
     },
     {
       "path": "orq smart-routers delete",
-      "use": "delete smart-router-id"
+      "use": "delete smart-router-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq smart-routers get",
@@ -7890,7 +8092,13 @@
     },
     {
       "path": "orq tools delete",
-      "use": "delete tool-id"
+      "use": "delete tool-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq tools get-version",
@@ -8087,6 +8295,10 @@
           "type": "bool"
         },
         {
+          "name": "force",
+          "type": "bool"
+        },
+        {
           "name": "from-file",
           "type": "string"
         },
@@ -8202,7 +8414,13 @@
     },
     {
       "path": "orq traces insights-service-delete-run",
-      "use": "insights-service-delete-run insight-id run-id"
+      "use": "insights-service-delete-run insight-id run-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq traces insights-service-get-cluster",
@@ -8834,7 +9052,13 @@
     },
     {
       "path": "orq webhooks delete",
-      "use": "delete id"
+      "use": "delete id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq webhooks generate-secret",
@@ -9023,11 +9247,23 @@
     },
     {
       "path": "orq workspace-security delete-domain",
-      "use": "delete-domain workspace-key domain-id"
+      "use": "delete-domain workspace-key domain-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq workspace-security delete-ip-range",
-      "use": "delete-ip-range workspace-key range-id"
+      "use": "delete-ip-range workspace-key range-id",
+      "flags": [
+        {
+          "name": "force",
+          "type": "bool"
+        }
+      ]
     },
     {
       "path": "orq workspace-security get-ip-allowlist",

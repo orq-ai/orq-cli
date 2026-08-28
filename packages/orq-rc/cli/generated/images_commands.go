@@ -341,7 +341,7 @@ func registerimagesCommands(root *cobra.Command) {
 							Name:        "output_format",
 							FlagName:    "body-output-format",
 							Type:        "string-nullable",
-							Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the global --output-format flag available)",
+							Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the reserved --output-format flag available)",
 						},
 						{
 							Name:        "plugins",
@@ -483,7 +483,7 @@ func registerimagesCommands(root *cobra.Command) {
 					Name:        "output_format",
 					FlagName:    "body-output-format",
 					Type:        "string-nullable",
-					Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the global --output-format flag available)",
+					Description: "The format in which the generated images are returned. This parameter is only supported for `openai/gpt-image-1`. (body field \"output_format\", renamed to keep the reserved --output-format flag available)",
 				},
 				{
 					Name:        "plugins",
