@@ -1,4 +1,4 @@
-name: Release Pipeline
+name: Release Build and Publish
 
 # Reusable release pipeline, called twice by release.yml: the root module under
 # npm dist-tag latest, packages/orq-rc under rc. It regenerates from the schema,
@@ -31,6 +31,7 @@ env:
 
 jobs:
   release:
+    name: build and publish
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
@@ -299,15 +300,20 @@ jobs:
           # A retry may find the draft left by the failed attempt. Remove that
           # record while retaining the immutable tag, then recreate it with the
           # complete notes and fresh assets. A *published* release is already
-          # installable and is never deleted: doing so would regress
-          # /releases/latest for everyone while the tag stayed immutable.
+          # installable and is never deleted: retain it and let the upload steps
+          # refresh its assets. This makes retries idempotent without regressing
+          # /releases/latest for everyone while the tag stays immutable.
           draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
           case "$draft" in
-            true)    gh release delete "$TAG" --yes ;;
-            missing) ;;
-            *)       echo "error: $TAG is already published; delete it by hand if that is really what you want" >&2; exit 1 ;;
+            true)
+              gh release delete "$TAG" --yes
+              gh release create "$TAG" "${flags[@]}"
+              ;;
+            missing)
+              gh release create "$TAG" "${flags[@]}"
+              ;;
+            *)       echo "Release $TAG is already published; reusing it for this retry." ;;
           esac
-          gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
         env:
