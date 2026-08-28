@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout main
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         # persist-credentials required: the commit-back + tag push below write to
         # the repo with the GITHUB_TOKEN credential (contents: write).
         # zizmor: ignore[artipacked]
