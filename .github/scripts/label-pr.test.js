@@ -213,6 +213,9 @@ test('labels exactly the titles the pr-title validator accepts', () => {
     'feat(cli): add release labels': 'release:features',
     'feat!: x': 'release:features',
     'feat(cli)!: x': 'release:features',
+    // The validator's parser captures the scope greedily, so it accepts a
+    // nested-paren scope. The labeler has to agree or this PR ships unlabelled.
+    'feat(a(b)): x': 'release:features',
     'feat:  x': 'release:features',
     'fix: rename command': 'release:bug-fixes',
     'revert: bad idea': 'release:bug-fixes',

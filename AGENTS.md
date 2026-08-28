@@ -44,11 +44,18 @@ cannot parse, or whose type is unmapped, removes all automation labels. Ordinary
 human-applied labels are preserved. A PR with no automation label falls through
 `.github/release.yml`'s `"*"` catch-all into `Other Changes`.
 
-The labeler's pattern mirrors what the validator accepts: a lowercase type, a
-literal `": "`, and a non-empty subject. A title that fails the title check gets
-no automation label either. Two degenerate cases still diverge, and CI is the
-authority in both: a nested-paren scope (`feat(a(b)): x`) passes validation but
-is not labelled.
+The labeler's pattern mirrors what the validator accepts: a lowercase type, an
+optional greedily-matched scope, a literal `": "`, and a subject with at least one
+non-space character. A title that fails the title check gets no automation label
+either. Nested-paren scopes (`feat(a(b)): x`) are labelled, because the
+validator's own parser captures the scope greedily and accepts them.
+
+One degenerate case still diverges, and nothing in CI flags it: a subject of two
+or more spaces and nothing else (`feat:` followed by three spaces) passes the
+title check — the validator rejects only an *empty* subject — while the labeler
+refuses it, so such a PR would merge unlabelled and land in `Other Changes`. The
+labeler's half of that is pinned by `label-pr.test.js`; the divergence itself is
+not asserted anywhere, and it is not reachable by a title anyone would write.
 
 Adding a type or renaming a label means keeping `label-pr.js`, `pr-title.yml`,
 `.github/release.yml`, and the table above synchronized. You do not have to
@@ -59,7 +66,10 @@ release categories, a mapped label whose `labelDetails` entry has no six-digit
 hex colour or no description, a missing `"*"` catch-all, the table above, and
 the labeler's own wiring (the `edited` trigger, the two write permissions, the
 SHA pins, and that the checkout stays `ref:`-less so a fork's code never runs in
-a job holding a write token).
+a job holding a write token). It also pins both `pull_request_target` triggers
+and asserts that `pr-title.yml` never checks anything out, since a switch to
+`pull_request` or an added checkout would put fork code inside a privileged job
+while passing every other check.
 
 It does not check how `label-pr.js` is written, only what it configures.
 Renaming a variable there is not a regression. That module's behaviour is

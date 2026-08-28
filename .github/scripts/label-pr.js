@@ -38,7 +38,15 @@ const labelDetails = {
 // case-sensitively), a literal ": ", and a subject with at least one non-space
 // character (it raises "No subject found" otherwise). Titles the validator
 // rejects therefore get no label either.
-const TITLE_PATTERN = /^([a-z]+)(\([^)]*\))?!?: (.*\S)/;
+//
+// The scope group is `\(.*\)`, not `\([^)]*\)`, because conventional-commits-parser
+// (the validator's real parser, via conventional-changelog-conventionalcommits)
+// captures the scope with a greedy `(.*)`. So it accepts a nested-paren scope such
+// as `feat(a(b)): x`; `[^)]*` would not, and that PR would pass the title check
+// while silently going unlabelled. `\(.*\)` mirrors the validator rather than
+// over- or under-accepting it — this is not a decision to make the labeler a
+// superset.
+const TITLE_PATTERN = /^([a-z]+)(\(.*\))?!?: (.*\S)/;
 
 // Object.hasOwn, because a bare lookup reads through the prototype: a title
 // like `constructor:` would resolve to a truthy non-label and crash the run.
