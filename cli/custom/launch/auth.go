@@ -37,17 +37,27 @@ type Credentials struct {
 	// session. The workspace the key belongs to is then in force instead of
 	// the one picked at login — invisible unless we say so.
 	ShadowsSession bool
+	// Workspace is the workspace this credential belongs to, when known.
+	Workspace string
+	// SupersededWorkspace names the workspace an exported key was minted for, when the session's
+	// workspace was used instead.
+	SupersededWorkspace string
 }
 
-// isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
-// session's own cached workspace tokens rather than a key the user exported.
+// isSessionWorkspaceToken reports whether ORQ_API_KEY holds the session's own
+// token for its active workspace rather than a key the user exported. Active
+// only, so it agrees with shadowsSession, which also reads
+// WorkspaceTokens[active] alone.
 func isSessionWorkspaceToken(key string, session *auth.Session) bool {
-	for _, tok := range session.WorkspaceTokens {
-		if strings.TrimSpace(tok.Token) == key {
-			return true
-		}
+	if session.ActiveWorkspaceKey == nil {
+		return false
 	}
-	return false
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return false
+	}
+	tok, ok := session.WorkspaceTokens[active]
+	return ok && strings.TrimSpace(tok.Token) == key
 }
 
 // shadowsSession reports whether the env key provably belongs to a different
@@ -74,6 +84,41 @@ func shadowsSession(key string, session *auth.Session) bool {
 	// every launch report a mismatch that was not there either.
 	savedKey, savedWS := auth.SavedAgentKey()
 	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
+}
+
+// supersededBySession reports the workspace an exported ORQ_API_KEY was minted
+// for, when the session has since moved elsewhere. Launch configures one
+// throwaway process, so the current workspace wins and nothing on disk changes.
+// A key we did not mint has an unknowable workspace, so it keeps winning.
+func supersededBySession(key string, session *auth.Session, savedKey, savedWS string) (mintedFor string, superseded bool) {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return "", false
+	}
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return "", false
+	}
+	if isSessionWorkspaceToken(key, session) {
+		return "", false
+	}
+	if savedWS == "" || savedKey != key {
+		return "", false
+	}
+	if savedWS == active {
+		return "", false
+	}
+	return savedWS, true
+}
+
+// RemedyForWorkspace is the one source for the fix-it command, so the launch
+// note and doctor's pinned-elsewhere row cannot drift. 'orq connect' only
+// rewires against a key that already exists for the active workspace, so a
+// saved key from elsewhere needs 'orq setup' first.
+func RemedyForWorkspace(id, savedWS, active string) string {
+	if savedWS != "" && savedWS != active {
+		return fmt.Sprintf("orq setup --workspace %s", active)
+	}
+	return fmt.Sprintf("orq connect %s", id)
 }
 
 // APIBaseFor is the API base a persistent artifact should be written against:
@@ -107,29 +152,43 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	resolved := firstNonEmpty(auth.Server(), envServer)
 	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
 
+	var supersededWorkspace string
+	var session *auth.Session
 	if key := getenv("ORQ_API_KEY"); key != "" {
-		session, _ := auth.ReadSession()
-		creds := &Credentials{
-			APIKey:         key,
-			APIBaseURL:     apiBase,
-			Kind:           CredentialAPIKey,
-			ShadowsSession: shadowsSession(key, session),
+		// Error ignored here on purpose: an unreadable session must not block a
+		// valid exported key from winning below.
+		session, _ = auth.ReadSession()
+		savedKey, savedWS := auth.SavedAgentKey()
+		mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
+		if !superseded {
+			creds := &Credentials{
+				APIKey:         key,
+				APIBaseURL:     apiBase,
+				Kind:           CredentialAPIKey,
+				ShadowsSession: shadowsSession(key, session),
+			}
+			if savedWS != "" && savedKey == key {
+				creds.Workspace = savedWS
+			}
+			// installSessionPreRun injects the session's own token into ORQ_API_KEY
+			// whenever no api_key is configured, which is the ordinary state.
+			if session != nil && isSessionWorkspaceToken(key, session) {
+				creds.Kind = CredentialSessionToken
+			}
+			return creds, nil
 		}
-		// installSessionPreRun injects the session's own workspace token into
-		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
-		// split made the ordinary state. Reading it as an exported key rather
-		// than as the session's own is what made ShadowsSession fire wrongly.
-		if session != nil && isSessionWorkspaceToken(key, session) {
-			creds.Kind = CredentialSessionToken
-		}
-		return creds, nil
+		// superseded implies session != nil, so the read below is skipped.
+		supersededWorkspace = mintedFor
 	}
 
-	session, err := auth.ReadSession()
-	if err != nil {
-		// Unreadable or corrupt session ≠ not logged in — telling the user to
-		// log in again would loop without surfacing the real cause.
-		return nil, fmt.Errorf("cannot read login session: %w (fix the session file or export ORQ_API_KEY)", err)
+	if session == nil {
+		var err error
+		session, err = auth.ReadSession()
+		if err != nil {
+			// Unreadable or corrupt session ≠ not logged in — telling the user to
+			// log in again would loop without surfacing the real cause.
+			return nil, fmt.Errorf("cannot read login session: %w (fix the session file or export ORQ_API_KEY)", err)
+		}
 	}
 	if session == nil {
 		return nil, errNotLoggedIn
@@ -142,12 +201,21 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
+		// Only the superseded path earns the re-login advice: a working exported
+		// key was set aside for the session, so its failure leaves no next step.
+		// Elsewhere this call also fails for network, server and disk reasons,
+		// which re-login does not fix.
+		if supersededWorkspace != "" {
+			return nil, fmt.Errorf("%w (run 'orq auth login' to re-authenticate)", err)
+		}
 		return nil, err
 	}
 	return &Credentials{
-		APIKey:     active.AccessToken,
-		APIBaseURL: apiBase,
-		Kind:       CredentialSessionToken,
+		APIKey:              active.AccessToken,
+		APIBaseURL:          apiBase,
+		Kind:                CredentialSessionToken,
+		Workspace:           active.WorkspaceKey,
+		SupersededWorkspace: supersededWorkspace,
 	}, nil
 }
 

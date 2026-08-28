@@ -53,42 +53,39 @@ func TestPartitionConnectArgs(t *testing.T) {
 	}
 }
 
+// codingModelCatalogueJSON is the one model the fixture servers below hand
+// back for a /models call: enough for writeProvider to have something to wire.
+const codingModelCatalogueJSON = `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
+ "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
+ "metadata":{"context_window":200000,"max_output_tokens":64000}}]`
+
+// connectHarness sets up an isolated $HOME, credentials store, and formatter
+// for a connect/disconnect test against srv, and returns the temp $HOME so
+// callers can inspect what got written into an agent's config file.
+func connectHarness(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	home := connectStatusHarness(t)
+	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	return home
+}
+
 // The subcommand's documented case, through the new verb: a saved key and no
 // --api-key wires the provider with the saved key.
 func TestConnectWiresTheSavedKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "model") {
-			fmt.Fprint(w, `[{"provider":"anthropic","model_id":"claude-sonnet-4-6","refId":"anthropic/claude-sonnet-4-6",
-			 "model_type":"chat","enabled":true,"is_active":true,"has_functions":true,
-			 "metadata":{"context_window":200000,"max_output_tokens":64000}}]`)
+			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
 		}
 		fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
 
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
-	t.Setenv("ORQ_API_BASE_URL", srv.URL)
-	t.Chdir(t.TempDir())
-
-	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
+	home := connectHarness(t, srv)
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", ""); err != nil {
 		t.Fatal(err)
 	}
-	resetSetupMemos(t)
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
@@ -112,6 +109,286 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "config.toml")); !os.IsNotExist(err) {
 		t.Error("provider config survives disconnect")
+	}
+}
+
+// connect is the only place the provider config is written, so it is the only
+// place that can record which workspace an agent was wired for.
+func TestConnectRecordsAgentWiring(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "model") {
+			fmt.Fprint(w, codingModelCatalogueJSON)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	connectHarness(t, srv)
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if ws, _ := agentWiring("kimi"); ws != "acme" {
+		t.Errorf("agentWiring workspace = %q, want acme", ws)
+	}
+
+	// disconnect removes the provider config, so the wiring record must go
+	// with it: otherwise a stale record outlives the config it described.
+	dcmd := NewDisconnectCommand()
+	dcmd.SetArgs([]string{"kimi"})
+	if err := dcmd.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if ws, keyID := agentWiring("kimi"); ws != "" || keyID != "" {
+		t.Errorf("agentWiring after disconnect = (%q, %q), want empty", ws, keyID)
+	}
+}
+
+// --api-key supplies a bearer with no resolvable workspace, so the record must
+// be empty rather than the saved key's workspace, which this run did not use.
+func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "model") {
+			fmt.Fprint(w, codingModelCatalogueJSON)
+			return
+		}
+		fmt.Fprint(w, `{}`)
+	}))
+	defer srv.Close()
+
+	connectHarness(t, srv)
+	// A saved key with a workspace exists, but --api-key below must win as the
+	// bearer, and the record must reflect that this run used a key that is not it.
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-SUPPLIED"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if ws, _ := agentWiring("kimi"); ws != "" {
+		t.Errorf("agentWiring workspace = %q, want empty for an --api-key run", ws)
+	}
+}
+
+// TestWorkspaceSupersessionEndToEnd walks the whole flow in one process, where
+// the other tests each cover a single seam: connect records workspace A, the
+// session moves to B, ResolveCredentials returns B's token, and
+// codingAgentChecks reports the agent still pinned to A.
+func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"A"},{"key":"B"}]}}`)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, codingModelCatalogueJSON)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	defer srv.Close()
+
+	home := connectHarness(t, srv)
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "A"); err != nil {
+		t.Fatal(err)
+	}
+
+	// connect against workspace A: no session file exists yet, so
+	// resolveConnectAuth takes the saved-key fast path and records the key's
+	// own workspace.
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if ws, _ := agentWiring("kimi"); ws != "A" {
+		t.Fatalf("agentWiring after connect = %q, want A", ws)
+	}
+
+	// The session moves to B — 'orq workspace use B' — without anyone rewiring
+	// kimi. sk-orq-SAVED, minted for A, is what's still exported.
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	dir := filepath.Join(home, ".orq", "sessions")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session, err := json.Marshal(map[string]any{
+		"version":            1,
+		"apiBaseUrl":         srv.URL,
+		"v1BaseUrl":          srv.URL,
+		"authBaseUrl":        srv.URL,
+		"profileBaseUrl":     srv.URL,
+		"activeWorkspaceKey": "B",
+		"refreshToken":       "refresh-token",
+		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+		"workspaceTokens":    map[string]any{"B": map[string]any{"token": "session-token-B", "expiresAt": future}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "default.json"), session, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A nested `orq launch` (or the doctor check below) must follow the
+	// session, not the exported key still sitting in the shell.
+	getenv := func(k string) string {
+		if k == "ORQ_API_KEY" {
+			return "sk-orq-SAVED"
+		}
+		return ""
+	}
+	creds, err := launch.ResolveCredentials(getenv)
+	if err != nil {
+		t.Fatalf("ResolveCredentials: %v", err)
+	}
+	if creds.APIKey != "session-token-B" || creds.Kind != launch.CredentialSessionToken {
+		t.Errorf("credentials did not follow the session: %+v", creds)
+	}
+	if creds.Workspace != "B" {
+		t.Errorf("Workspace = %q, want B", creds.Workspace)
+	}
+	if creds.SupersededWorkspace != "A" {
+		t.Errorf("SupersededWorkspace = %q, want A", creds.SupersededWorkspace)
+	}
+
+	// kimi's own config is untouched — still pinned to A — so doctor must
+	// name exactly one info row for it, never a warn.
+	var infoRows, warnRows int
+	for _, c := range codingAgentChecks("B") {
+		if c.ID != "agent_workspace_kimi" {
+			continue
+		}
+		switch c.Status {
+		case "info":
+			infoRows++
+		case "warn":
+			warnRows++
+		}
+	}
+	if infoRows != 1 || warnRows != 0 {
+		t.Errorf("agent_workspace_kimi rows: info=%d warn=%d, want info=1 warn=0", infoRows, warnRows)
+	}
+}
+
+// connectStatusHarness sets up bartolo state without a network round trip,
+// for status tests that only need agentWiring's record and files already on
+// disk — the full connect flow that writes both is exercised elsewhere.
+func connectStatusHarness(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	viper.Set("config-directory", t.TempDir())
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	} else {
+		// Package tests run sequentially against a shared bartolocli.Creds, and a
+		// caller of this harness routinely calls writeAPIKeyProfile afterward
+		// (connectHarness's callers do), which sets these same fields. When this
+		// call didn't create the store fresh, that later Set would otherwise leak
+		// into whichever test runs next.
+		prevKey := bartolocli.Creds.GetString("profiles.default.gateway_key")
+		prevAPIKey := bartolocli.Creds.GetString("profiles.default.api_key")
+		prevWS := bartolocli.Creds.GetString("profiles.default.workspace")
+		t.Cleanup(func() {
+			bartolocli.Creds.Set("profiles.default.gateway_key", prevKey)
+			bartolocli.Creds.Set("profiles.default.api_key", prevAPIKey)
+			bartolocli.Creds.Set("profiles.default.workspace", prevWS)
+		})
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+	return home
+}
+
+// --status renders the recorded workspace, but only for a
+// gateway row with a record — an agent wired with no record (wired before
+// this field existed, or via --api-key) gets an empty cell, not a guess, and
+// a machine with no recorded workspace at all gets no column.
+func TestConnectStatusShowsWorkspaceColumn(t *testing.T) {
+	home := connectStatusHarness(t)
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kimiPath := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(kimiPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
+		t.Fatal(err)
+	}
+	ocPath := filepath.Join(home, ".config", "opencode", "opencode.json")
+	if _, err := writeOpenCodeProviderJSON(ocPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	// opencode is wired but carries no record — the "no record" case.
+
+	out := captureOutput(t, func() {
+		cmd := NewConnectCommand()
+		cmd.SetArgs([]string{"--status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "WORKSPACE") {
+		t.Fatalf("no WORKSPACE column with a recorded workspace present:\n%s", out)
+	}
+	if !strings.Contains(out, "acme") {
+		t.Errorf("kimi's recorded workspace not shown:\n%s", out)
+	}
+	// opencode is wired too, but carries no record, so it must render no
+	// workspace value of its own — "acme" appearing more than once would mean
+	// opencode's empty cell leaked kimi's value into its row.
+	if n := strings.Count(out, "acme"); n != 1 {
+		t.Errorf("\"acme\" appears %d times, want exactly 1 (opencode's row should render no workspace):\n%s", n, out)
+	}
+}
+
+// A wholly unwired-for-workspace machine (no agent has a record) renders
+// neither the column nor a value: the conditional is per-table, not per-row.
+func TestConnectStatusOmitsWorkspaceColumnWithNoRecords(t *testing.T) {
+	home := connectStatusHarness(t)
+	if err := os.MkdirAll(filepath.Join(home, ".kimi-code"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	kimiPath := filepath.Join(home, ".kimi-code", "config.toml")
+	if _, err := writeKimiProviderTOML(kimiPath, "https://api.orq.ai/v3/router", "sk-k", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		cmd := NewConnectCommand()
+		cmd.SetArgs([]string{"--status"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "WORKSPACE") {
+		t.Errorf("WORKSPACE column rendered with no agent carrying a record:\n%s", out)
 	}
 }
 

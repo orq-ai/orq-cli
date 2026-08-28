@@ -800,13 +800,47 @@ func clearAPIKeyProfile() (bool, error) {
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
 func savedGatewayKeyID() string {
-	// bartolo's GetProfile dereferences Creds, which only the CLI's own
-	// startup initializes; a caller reached before that (or from a test) must
-	// not take a nil dereference for an unset key.
+	// bartolo's GetProfile panics on a nil Creds; guard once for every caller.
 	if bartolocli.Creds == nil {
 		return ""
 	}
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
+}
+
+// recordAgentWiring notes which workspace an agent was wired against. Stored at
+// agents.<id>, not per profile: the config connect writes is machine-global.
+// Holds no key material.
+func recordAgentWiring(id, workspace, keyID string) error {
+	if bartolocli.Creds == nil {
+		return nil
+	}
+	bartolocli.Creds.Set("agents."+id+".workspace", workspace)
+	bartolocli.Creds.Set("agents."+id+".gateway_key_id", keyID)
+	bartolocli.Creds.Set("agents."+id+".wired_at", time.Now().UTC().Format(time.RFC3339))
+	return saveCreds()
+}
+
+// agentWiring reads back what recordAgentWiring stored. Empty means unrecorded,
+// which callers must treat as unknown rather than as a mismatch.
+func agentWiring(id string) (workspace, keyID string) {
+	if bartolocli.Creds == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(bartolocli.Creds.GetString("agents." + id + ".workspace")),
+		strings.TrimSpace(bartolocli.Creds.GetString("agents." + id + ".gateway_key_id"))
+}
+
+// clearAgentWiring drops the record when disconnect removes a provider config.
+// Blanks the fields rather than deleting the block, matching how
+// clearAPIKeyProfile treats "present but empty" as not-configured.
+func clearAgentWiring(id string) error {
+	if bartolocli.Creds == nil {
+		return nil
+	}
+	bartolocli.Creds.Set("agents."+id+".workspace", "")
+	bartolocli.Creds.Set("agents."+id+".gateway_key_id", "")
+	bartolocli.Creds.Set("agents."+id+".wired_at", "")
+	return saveCreds()
 }
 
 func activeWorkspaceKey(session *auth.Session) string {
@@ -814,6 +848,20 @@ func activeWorkspaceKey(session *auth.Session) string {
 		return strings.TrimSpace(*session.ActiveWorkspaceKey)
 	}
 	return ""
+}
+
+// wiredWorkspace names the workspace the bearer authenticates against: the
+// saved key's own workspace when that key is the bearer, the session's active
+// workspace otherwise. An exported ORQ_API_KEY returns "" — its workspace is
+// unknowable, and naming the login's would be a confident wrong answer.
+func wiredWorkspace(state *authState) string {
+	if saved, savedWS := savedAPIKey(); saved != "" && state.bearer == saved {
+		return savedWS
+	}
+	if envKey := UserEnvAPIKey(); envKey != "" && state.bearer == envKey {
+		return ""
+	}
+	return activeWorkspaceKey(state.session)
 }
 
 // Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
@@ -1379,6 +1427,11 @@ func writeAgentProvider(rep *reporter, client *auth.Client, state *authState, op
 			} else {
 				res.Provider = path
 				res.ModelCount = written
+				// Record keeping, not the wire itself: the config is already on
+				// disk, so a failure here is a warning, never res.Error.
+				if err := recordAgentWiring(id, wiredWorkspace(state), savedGatewayKeyID()); err != nil {
+					rep.warn("%-8s provider  wired, but could not record the workspace: %v", id, err)
+				}
 			}
 		}
 	}

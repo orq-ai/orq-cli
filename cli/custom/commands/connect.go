@@ -438,20 +438,27 @@ func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTa
 	if len(order) == 0 {
 		return
 	}
-	// Only mcp carries a scope, so a machine wired for gateway or skills alone
-	// gets no empty column for it.
-	scoped := false
+	// Only mcp carries a scope, and only gateway carries a workspace, so a
+	// machine wired for one alone gets no empty column for the other.
+	scoped, workspaced := false, false
 	for _, agent := range order {
 		for _, w := range byAgent[agent] {
 			if w.scope != "" {
 				scoped = true
 			}
+			if w.workspace != "" {
+				workspaced = true
+			}
 		}
 	}
-	headers := []string{"AGENT", "CAPABILITY", "LOCATION"}
+	headers := []string{"AGENT", "CAPABILITY"}
 	if scoped {
-		headers = []string{"AGENT", "CAPABILITY", "SCOPE", "LOCATION"}
+		headers = append(headers, "SCOPE")
 	}
+	if workspaced {
+		headers = append(headers, "WORKSPACE")
+	}
+	headers = append(headers, "LOCATION")
 	var rows []tableRow
 	for _, agent := range order {
 		for i, w := range byAgent[agent] {
@@ -459,10 +466,14 @@ func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTa
 			if i > 0 {
 				name = ""
 			}
-			cells := []string{name, w.capability, tilde(w.path)}
+			cells := []string{name, w.capability}
 			if scoped {
-				cells = []string{name, w.capability, w.scope, tilde(w.path)}
+				cells = append(cells, w.scope)
 			}
+			if workspaced {
+				cells = append(cells, w.workspace)
+			}
+			cells = append(cells, tilde(w.path))
 			rows = append(rows, tableRow{marker: statusGlyph(w.status), cells: cells})
 		}
 	}
@@ -1029,9 +1040,11 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 
 // wiredTarget is one agent's capability and the file holding it. scope is set
 // only for the capabilities that have two, so a report can say which of them an
-// entry was found in; the file alone does not always say.
+// entry was found in; the file alone does not always say. workspace is set
+// only for capGateway rows: MCP and skills carry no gateway credential, so
+// agentWiring's record says nothing about them.
 // status is a statusGlyph state: "pass" or "warn".
-type wiredTarget struct{ agent, capability, path, scope, status string }
+type wiredTarget struct{ agent, capability, path, scope, workspace, status string }
 
 // wiredMCPTargets lists the scopes holding this agent's MCP entry. wiredPath
 // answers "is it wired at all" and stops at the first hit, which is right for
@@ -1076,7 +1089,8 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 		if hasCap(caps, capGateway) {
 			if path, ok := wiredPath(spec.providerConfig, spec.providerPresent); ok {
-				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path, status: "pass"})
+				ws, _ := agentWiring(id)
+				out = append(out, wiredTarget{agent: id, capability: capGateway, path: path, workspace: ws, status: "pass"})
 			}
 		}
 		if hasCap(caps, capMCP) {
@@ -1253,6 +1267,13 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		}
 		if hasCap(caps, capGateway) {
 			remove(capGateway, spec.providerConfig, spec.removeProvider)
+			// The provider config is gone, so a leftover wiring record would
+			// report a workspace for an agent orq no longer speaks for.
+			if slices.Contains(removedFrom, capGateway) {
+				if err := clearAgentWiring(id); err != nil {
+					rep.warn("%-8s %-9s could not clear the workspace record: %v", id, capGateway, err)
+				}
+			}
 		}
 		if hasCap(caps, capMCP) {
 			if opts.scope == scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {

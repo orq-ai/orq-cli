@@ -46,7 +46,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	reportCredentialNotices(creds)
+	reportCredentialNotices(def, creds)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -136,8 +136,16 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-func reportCredentialNotices(creds *Credentials) {
+func reportCredentialNotices(def *AgentDef, creds *Credentials) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
+	}
+	// RefreshProfile can repoint ActiveWorkspaceKey, leaving both equal — the
+	// note would then name the same workspace twice.
+	if creds.SupersededWorkspace != "" && creds.SupersededWorkspace != creds.Workspace {
+		// Differs from the active workspace by construction here, so
+		// RemedyForWorkspace always names 'orq setup'.
+		remedy := RemedyForWorkspace(def.Name, creds.SupersededWorkspace, creds.Workspace)
+		fmt.Fprintf(os.Stderr, "Note: using workspace %s from your login. ORQ_API_KEY was minted for %s, which this run ignores; the agent's own configuration is unchanged. Run '%s' to mint a key for %s, then 'orq connect %s' to repoint the agent to it.\n", creds.Workspace, creds.SupersededWorkspace, remedy, creds.Workspace, def.Name)
 	}
 }

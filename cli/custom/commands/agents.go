@@ -790,13 +790,16 @@ func normalizeTOMLHeaderSegments(header string) []string {
 // choice, and only the states that actually break something (wired without
 // ORQ_API_KEY, or wired with a superseded key) warn. Statuses never drive
 // doctor's exit code.
-func codingAgentChecks() []doctorCheck {
+//
+// activeWorkspace flags a wired agent pinned elsewhere; "" means unknown and
+// never produces that row.
+func codingAgentChecks(activeWorkspace string) []doctorCheck {
 	var checks []doctorCheck
 	var wiredIDs []string
 	detected, fullyWired := 0, 0
 	// Read once, both are per-process: detectShell spells the source line for fish and honours a non-default config directory.
 	keyExported := agentKeyExported()
-	savedKey, _ := savedAPIKey()
+	savedKey, savedWS := savedAPIKey()
 	sourceLine := detectShell(viper.GetString("config-directory")).displayLine()
 	for _, spec := range agentRegistry() {
 		if !spec.detect() {
@@ -811,6 +814,17 @@ func codingAgentChecks() []doctorCheck {
 			details["provider"] = path
 		}
 		details["api_key_in_env"] = keyExported
+		// A record can outlive its config, so it is never proof of wiring alone.
+		recordedWS, _ := agentWiring(spec.ID)
+		// Only on a wired agent: "run 'orq connect X' (workspace acme)" would read
+		// as if connecting lands in acme, when acme is just a stale record.
+		if recordedWS != "" {
+			details["workspace"] = recordedWS
+		}
+		wsNote := ""
+		if wired && recordedWS != "" {
+			wsNote = " (workspace " + recordedWS + ")"
+		}
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
 
 		detected++
@@ -830,17 +844,40 @@ func codingAgentChecks() []doctorCheck {
 			details["stale_key"] = true
 			check.Status = "warn"
 			check.Message = spec.Label + " holds an older key than the one saved — it will stop authenticating. " +
-				"Run 'orq connect " + spec.ID + "' to rewire it"
+				"Run 'orq connect " + spec.ID + "' to rewire it" + wsNote
 		// kimi's provider TOML holds the key literally, so an unexported ORQ_API_KEY breaks nothing.
 		case keyExported || spec.providerEmbedsKey:
 			check.Status = "pass"
-			check.Message = spec.Label + " is wired to orq"
+			check.Message = spec.Label + " is wired to orq" + wsNote
 		default:
 			check.Status = "warn"
 			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
-				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell"
+				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell" + wsNote
 		}
 		checks = append(checks, check)
+		// Pinning is the design, so a different workspace is information, not a
+		// fault — never warn.
+		if wired && keyWorkspaceMismatch(recordedWS, activeWorkspace) {
+			// resolveConnectAuth rejects 'orq connect' when the saved key belongs to
+			// another workspace, so the remedy has to mint one first.
+			remedy := launch.RemedyForWorkspace(spec.ID, savedWS, activeWorkspace)
+			// setup only mints; only 'orq connect <id>' repoints the agent.
+			action := "run '" + remedy + "' to move it to " + activeWorkspace
+			// Mirrors RemedyForWorkspace: an empty savedWS already yields
+			// 'orq connect <id>', which does not mint a key.
+			if savedWS != "" && savedWS != activeWorkspace {
+				action = "run '" + remedy + "' to mint a key for " + activeWorkspace +
+					", then 'orq connect " + spec.ID + "' to move it there"
+			}
+			checks = append(checks, doctorCheck{
+				ID:     "agent_workspace_" + spec.ID,
+				Status: "info",
+				// Exempt from printDoctorSummary's healthy-row collapse: this is the
+				// only place naming where an agent is pinned.
+				AlwaysShow: true,
+				Message:    spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " + action,
+			})
+		}
 	}
 	if detected > 0 {
 		checks = append(checks, codingAgentsSummary(detected, fullyWired, wiredIDs))

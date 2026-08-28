@@ -63,9 +63,12 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 
 	plan := &LaunchPlan{
 		Env: map[string]string{
-			"ANTHROPIC_BASE_URL":         baseURL,
-			"ANTHROPIC_AUTH_TOKEN":       ctx.Creds.APIKey,
-			"ANTHROPIC_API_KEY":          "", // explicitly empty so claude uses the auth token
+			"ANTHROPIC_BASE_URL":   baseURL,
+			"ANTHROPIC_AUTH_TOKEN": ctx.Creds.APIKey,
+			"ANTHROPIC_API_KEY":    "", // explicitly empty so claude uses the auth token
+			// A nested `orq` invocation from inside the session reads this, so the
+			// launch-follows-session invariant holds even one process down.
+			"ORQ_API_KEY":                ctx.Creds.APIKey,
 			"ANTHROPIC_MODEL":            model,
 			"ANTHROPIC_SMALL_FAST_MODEL": smallFast,
 			// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.

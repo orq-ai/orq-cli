@@ -28,6 +28,11 @@ type doctorCheck struct {
 	Status  string         `json:"status"`
 	Message string         `json:"message"`
 	Details map[string]any `json:"details,omitempty"`
+	// AlwaysShow keeps a row out of printDoctorSummary's collapse of healthy
+	// coding_agent_ rows into the summary line, even though it shares that ID
+	// prefix. Set it explicitly rather than relying on an ID that happens not
+	// to match the prefix.
+	AlwaysShow bool `json:"-"`
 }
 
 type resolvedValue struct {
@@ -93,7 +98,7 @@ func NewDoctorCommand() *cobra.Command {
 			// Coding-agent wiring rides in the same doctor rather than its own
 			// subcommand: a user with a broken setup should not need to know
 			// which doctor to run. All local stat + parse, so unconditional.
-			checks = append(checks, codingAgentChecks()...)
+			checks = append(checks, codingAgentChecks(activeWorkspaceKey(inspect.Session))...)
 			// Same reasoning as the agent wiring above, and the same cost:
 			// a manifest read plus one Lstat per recorded link.
 			if sk, ok := skillsCheck(); ok {
@@ -265,7 +270,7 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 		if c.ID == "credential_permissions" && c.Status == "pass" {
 			continue
 		}
-		if strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
+		if !c.AlwaysShow && strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
 			continue
 		}
 		rows = append(rows, tableRow{marker: statusGlyph(c.Status), cells: []string{c.ID, c.Message}})
