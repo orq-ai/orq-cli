@@ -2307,7 +2307,7 @@ func TestRecordAndReadAgentWiring(t *testing.T) {
 		t.Errorf("agents.kimi.wired_at = %q, want RFC3339: %v", rawWiredAt, err)
 	}
 
-	// Task 3 reads this record in a fresh process, so the write must actually
+	// doctor reads this record in a fresh process, so the write must actually
 	// reach credentials.json on disk, not just the in-memory viper tree.
 	dir := viper.GetString("config-directory")
 	onDisk, err := bartolocli.NewCredentialsFile(dir)

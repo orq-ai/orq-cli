@@ -1268,7 +1268,7 @@ func TestCodingAgentChecksReadWiring(t *testing.T) {
 	}
 }
 
-// Task 3: a wired agent with a recorded workspace (see recordAgentWiring)
+// A wired agent with a recorded workspace (see recordAgentWiring)
 // carries it in details["workspace"] and names it in the pass message. An
 // agent with no record — wired before the field existed, or via --api-key —
 // gets neither, and the message is unchanged.
@@ -1436,7 +1436,7 @@ func TestCodingAgentChecksWorkspaceParentheticalOnEveryMessage(t *testing.T) {
 // Agents are pinned by design: a recorded workspace differing from the
 // session's active one is information, not a fault. It must produce exactly
 // one info row naming 'orq connect <id>', and never a warn — the reviewer's
-// note on Task 2's storage (blank fields, not a deleted block) means an
+// note on the storage (blank fields, not a deleted block) means an
 // unwired agent can still carry a stale record, so the row requires "wired"
 // too, not just "record present".
 func TestCodingAgentChecksReportsWorkspaceMismatchAsInfo(t *testing.T) {

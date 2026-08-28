@@ -112,9 +112,8 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	}
 }
 
-// Task 3 (doctor / connect --status) needs to know which workspace an agent
-// was last wired for. connect is the only place the provider config is
-// written, so it is the only place that can record it.
+// connect is the only place the provider config is written, so it is the only
+// place that can record which workspace an agent was wired for.
 func TestConnectRecordsAgentWiring(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -153,9 +152,8 @@ func TestConnectRecordsAgentWiring(t *testing.T) {
 	}
 }
 
-// --api-key supplies a bearer this run never resolves a workspace for, so the
-// honest record is an empty one — not a guess, and not the saved key's
-// workspace, which this run did not use.
+// --api-key supplies a bearer with no resolvable workspace, so the record must
+// be empty rather than the saved key's workspace, which this run did not use.
 func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -185,13 +183,10 @@ func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	}
 }
 
-// TestWorkspaceSupersessionEndToEnd walks the whole RES-1464 story in one
-// process, where every other test in this package or cli/custom/launch only
-// exercises one task's seam: connect against workspace A records A on disk
-// (Task 2); the login session then moves to B; launch.ResolveCredentials
-// supersedes the exported key it was minted under and returns B's own token
-// (Task 1); and codingAgentChecks("B") reports the pinned agent with exactly
-// one info row, never a warn (Task 3).
+// TestWorkspaceSupersessionEndToEnd walks the whole flow in one process, where
+// the other tests each cover a single seam: connect records workspace A, the
+// session moves to B, ResolveCredentials returns B's token, and
+// codingAgentChecks reports the agent still pinned to A.
 func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -327,7 +322,7 @@ func connectStatusHarness(t *testing.T) string {
 	return home
 }
 
-// Task 3: --status renders the workspace Task 2 recorded, but only for a
+// --status renders the recorded workspace, but only for a
 // gateway row with a record — an agent wired with no record (wired before
 // this field existed, or via --api-key) gets an empty cell, not a guess, and
 // a machine with no recorded workspace at all gets no column.

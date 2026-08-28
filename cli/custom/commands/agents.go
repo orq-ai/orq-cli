@@ -791,9 +791,8 @@ func normalizeTOMLHeaderSegments(header string) []string {
 // ORQ_API_KEY, or wired with a superseded key) warn. Statuses never drive
 // doctor's exit code.
 //
-// activeWorkspace is the session's current workspace, used only to flag a
-// wired agent pinned elsewhere; "" (no session, or an env/--api-key bearer
-// with no resolvable workspace) means unknown and never produces that row.
+// activeWorkspace flags a wired agent pinned elsewhere; "" means unknown and
+// never produces that row.
 func codingAgentChecks(activeWorkspace string) []doctorCheck {
 	var checks []doctorCheck
 	var wiredIDs []string
@@ -815,15 +814,10 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 			details["provider"] = path
 		}
 		details["api_key_in_env"] = keyExported
-		// The workspace is not a secret (see recordAgentWiring); a record can
-		// outlive its config if a user deletes it by hand, so its presence
-		// here is informational and never proof of wiring on its own.
+		// A record can outlive its config, so it is never proof of wiring alone.
 		recordedWS, _ := agentWiring(spec.ID)
-		// The parenthetical only belongs on a message describing a WIRED agent — on
-		// the not-wired branch "run 'orq connect X' (workspace acme)" reads as if
-		// connecting would land in acme, when acme is just a stale record from a
-		// config the user deleted by hand. The workspace still goes in details
-		// either way; it's the message text that stays conditional on wired.
+		// Only on a wired agent: "run 'orq connect X' (workspace acme)" would read
+		// as if connecting lands in acme, when acme is just a stale record.
 		if recordedWS != "" {
 			details["workspace"] = recordedWS
 		}
@@ -861,19 +855,13 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell" + wsNote
 		}
 		checks = append(checks, check)
-		// Agents are pinned by design, so a different workspace is
-		// information, not a fault — never warn, and only when both sides
-		// are actually known (keyWorkspaceMismatch treats "" as unknown).
+		// Pinning is the design, so a different workspace is information, not a
+		// fault — never warn.
 		if wired && keyWorkspaceMismatch(recordedWS, activeWorkspace) {
-			// The remedy named here must be one resolveConnectAuth will actually
-			// accept: 'orq connect' rewires an agent only against a key that already
-			// exists for the active workspace, so when the currently saved key
-			// belongs elsewhere, the fix is 'orq setup --workspace <active>' first.
+			// resolveConnectAuth rejects 'orq connect' when the saved key belongs to
+			// another workspace, so the remedy has to mint one first.
 			remedy := launch.RemedyForWorkspace(spec.ID, savedWS, activeWorkspace)
-			// 'orq setup --workspace <active>' only mints a key for that workspace; it
-			// does not itself repoint the agent (setupConnectStep is a no-op without a
-			// TTY, and otherwise only wires agents re-selected in its prompt). Only
-			// 'orq connect <id>', run directly, actually does the repointing.
+			// setup only mints; only 'orq connect <id>' repoints the agent.
 			action := "run '" + remedy + "' to move it to " + activeWorkspace
 			// Mirrors RemedyForWorkspace: an empty savedWS already yields
 			// 'orq connect <id>', which does not mint a key.
@@ -884,10 +872,8 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 			checks = append(checks, doctorCheck{
 				ID:     "agent_workspace_" + spec.ID,
 				Status: "info",
-				// AlwaysShow: this row exists precisely to be seen by a person in the
-				// default human view — printDoctorSummary would otherwise collapse it
-				// as a healthy coding-agent row, hiding the only place that tells them
-				// their agent is pinned elsewhere and how to move it.
+				// Exempt from printDoctorSummary's healthy-row collapse: this is the
+				// only place naming where an agent is pinned.
 				AlwaysShow: true,
 				Message:    spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " + action,
 			})

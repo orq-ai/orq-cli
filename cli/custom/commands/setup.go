@@ -800,21 +800,16 @@ func clearAPIKeyProfile() (bool, error) {
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
 func savedGatewayKeyID() string {
-	// bartolo's GetProfile dereferences Creds unconditionally and panics on nil.
-	// Guard it here once for every caller (auth.go, connect.go, setup.go),
-	// including callers reached before CLI startup or from tests.
+	// bartolo's GetProfile panics on a nil Creds; guard once for every caller.
 	if bartolocli.Creds == nil {
 		return ""
 	}
 	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
 }
 
-// recordAgentWiring notes which workspace an agent's provider config was wired
-// against, at agents.<id> rather than under the active profile: the config file
-// connect writes is machine-global, so a per-profile record would go silent the
-// moment a second profile wires the same agent. Neither field is a secret — the
-// key id is what logout already keeps, for the same reason (clearAPIKeyProfile)
-// — only the key itself is.
+// recordAgentWiring notes which workspace an agent was wired against. Stored at
+// agents.<id>, not per profile: the config connect writes is machine-global.
+// Holds no key material.
 func recordAgentWiring(id, workspace, keyID string) error {
 	if bartolocli.Creds == nil {
 		return nil
@@ -825,9 +820,8 @@ func recordAgentWiring(id, workspace, keyID string) error {
 	return saveCreds()
 }
 
-// agentWiring reads back what recordAgentWiring stored. Empty means unrecorded
-// — an agent wired before this field existed, or with --api-key — and callers
-// must treat that as unknown rather than as a mismatch.
+// agentWiring reads back what recordAgentWiring stored. Empty means unrecorded,
+// which callers must treat as unknown rather than as a mismatch.
 func agentWiring(id string) (workspace, keyID string) {
 	if bartolocli.Creds == nil {
 		return "", ""
@@ -836,12 +830,9 @@ func agentWiring(id string) (workspace, keyID string) {
 		strings.TrimSpace(bartolocli.Creds.GetString("agents." + id + ".gateway_key_id"))
 }
 
-// clearAgentWiring removes the record for an agent whose provider config was
-// just deleted, so disconnect stops it being reported as wired to anything.
-// Blanks the fields rather than deleting the agents.<id> block outright —
-// bartolo's CredentialsFile can delete via GetStringMap plus a rewrite, but
-// blanking keeps this consistent with clearAPIKeyProfile/clearGatewayKeyFields,
-// which already treat "field present but empty" as the not-configured state.
+// clearAgentWiring drops the record when disconnect removes a provider config.
+// Blanks the fields rather than deleting the block, matching how
+// clearAPIKeyProfile treats "present but empty" as not-configured.
 func clearAgentWiring(id string) error {
 	if bartolocli.Creds == nil {
 		return nil
@@ -859,25 +850,10 @@ func activeWorkspaceKey(session *auth.Session) string {
 	return ""
 }
 
-// wiredWorkspace names the workspace the bearer just wired into an agent's
-// config actually authenticates against: the saved key's own workspace when
-// that key is the bearer, the session's active workspace otherwise. The
-// "otherwise" falls through to activeWorkspaceKey(state.session), which
-// answers "" whenever state.session is nil — not a property of the bearer
-// itself, but of resolveAuth leaving session unset. Today that only happens
-// on the --api-key path (and the exported-ORQ_API_KEY-with-no-session path),
-// so this reads as "" for a bearer this run never resolved a workspace for.
-// If resolveAuth ever starts populating session on the --api-key path too,
-// this function silently starts reporting the session's workspace for an
-// unrelated key — check this comment against resolveAuth before relying on
-// either meaning.
-//
-// A session being non-nil does not mean the session's workspace is the
-// bearer's: resolveConnectAuth can make the exported ORQ_API_KEY the bearer
-// while a login session still sits on state (see EnvKeyShadowsWorkspace,
-// auth/session.go) — that key's workspace is unknowable, and reporting the
-// login's workspace for it would be a confident wrong answer. "" is the
-// honest record.
+// wiredWorkspace names the workspace the bearer authenticates against: the
+// saved key's own workspace when that key is the bearer, the session's active
+// workspace otherwise. An exported ORQ_API_KEY returns "" — its workspace is
+// unknowable, and naming the login's would be a confident wrong answer.
 func wiredWorkspace(state *authState) string {
 	if saved, savedWS := savedAPIKey(); saved != "" && state.bearer == saved {
 		return savedWS

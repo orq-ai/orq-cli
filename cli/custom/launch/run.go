@@ -140,15 +140,11 @@ func reportCredentialNotices(def *AgentDef, creds *Credentials) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
 	}
-	// RefreshProfile can silently repoint ActiveWorkspaceKey to the first
-	// workspace when the local one is gone from the profile; when that
-	// happens Workspace and SupersededWorkspace can end up equal, and the
-	// note would otherwise name the same workspace on both sides.
+	// RefreshProfile can repoint ActiveWorkspaceKey, leaving both equal — the
+	// note would then name the same workspace twice.
 	if creds.SupersededWorkspace != "" && creds.SupersededWorkspace != creds.Workspace {
-		// SupersededWorkspace is precisely the saved key's own workspace (see
-		// supersededBySession), and it differs from the active workspace by
-		// construction here — RemedyForWorkspace always names 'orq setup', never
-		// 'orq connect', which resolveConnectAuth would reject in this exact state.
+		// Differs from the active workspace by construction here, so
+		// RemedyForWorkspace always names 'orq setup'.
 		remedy := RemedyForWorkspace(def.Name, creds.SupersededWorkspace, creds.Workspace)
 		fmt.Fprintf(os.Stderr, "Note: using workspace %s from your login. ORQ_API_KEY was minted for %s, which this run ignores; the agent's own configuration is unchanged. Run '%s' to mint a key for %s, then 'orq connect %s' to repoint the agent to it.\n", creds.Workspace, creds.SupersededWorkspace, remedy, creds.Workspace, def.Name)
 	}

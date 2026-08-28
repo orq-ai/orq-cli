@@ -86,13 +86,10 @@ func shadowsSession(key string, session *auth.Session) bool {
 	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
 }
 
-// supersededBySession reports the workspace an exported ORQ_API_KEY was minted for, when the
-// session has since moved elsewhere. Launch configures one throwaway process, so the workspace
-// the user is in now wins; the agent's own config on disk is untouched, and `orq connect` stays
-// the only thing that repoints it.
-//
-// Narrower than shadowsSession on purpose: a key we did not mint has an unknowable workspace,
-// so it keeps winning.
+// supersededBySession reports the workspace an exported ORQ_API_KEY was minted
+// for, when the session has since moved elsewhere. Launch configures one
+// throwaway process, so the current workspace wins and nothing on disk changes.
+// A key we did not mint has an unknowable workspace, so it keeps winning.
 func supersededBySession(key string, session *auth.Session, savedKey, savedWS string) (mintedFor string, superseded bool) {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return "", false
@@ -113,12 +110,10 @@ func supersededBySession(key string, session *auth.Session, savedKey, savedWS st
 	return savedWS, true
 }
 
-// RemedyForWorkspace names the command that gets an agent authenticated against the active
-// workspace, so the two call sites that recommend a fix — the launch supersession note and the
-// doctor/connect-status "pinned elsewhere" row — cannot drift and give advice the other guard
-// rejects. `orq connect` can only rewire an agent to a key that already exists for the active
-// workspace; when the saved key belongs to a different workspace, resolveConnectAuth hard-errors
-// telling the user to mint one first, so that is the remedy to name instead.
+// RemedyForWorkspace is the one source for the fix-it command, so the launch
+// note and doctor's pinned-elsewhere row cannot drift. 'orq connect' only
+// rewires against a key that already exists for the active workspace, so a
+// saved key from elsewhere needs 'orq setup' first.
 func RemedyForWorkspace(id, savedWS, active string) string {
 	if savedWS != "" && savedWS != active {
 		return fmt.Sprintf("orq setup --workspace %s", active)
@@ -175,18 +170,14 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 			if savedWS != "" && savedKey == key {
 				creds.Workspace = savedWS
 			}
-			// installSessionPreRun injects the session's own workspace token into
-			// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
-			// split made the ordinary state. Reading it as an exported key rather
-			// than as the session's own is what made ShadowsSession fire wrongly.
+			// installSessionPreRun injects the session's own token into ORQ_API_KEY
+			// whenever no api_key is configured, which is the ordinary state.
 			if session != nil && isSessionWorkspaceToken(key, session) {
 				creds.Kind = CredentialSessionToken
 			}
 			return creds, nil
 		}
-		// superseded implies session != nil (supersededBySession requires it), so
-		// the read below is skipped and ResolveCredentials itself makes exactly one
-		// ReadSession call.
+		// superseded implies session != nil, so the read below is skipped.
 		supersededWorkspace = mintedFor
 	}
 
