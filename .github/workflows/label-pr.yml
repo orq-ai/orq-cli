@@ -42,10 +42,15 @@ jobs:
       # branch head, so the pull request's own code is never executed by this
       # privileged job. The checkout exists only to read label-pr.js, so it
       # needs no git credentials.
+      #
+      # Deliberately a full checkout: a `sparse-checkout` pattern is a second
+      # copy of the script's path, and one that CI cannot check against the
+      # `require()` below. Moving the directory while updating both the workflow
+      # and the file would still pass and then fail on every live PR with
+      # MODULE_NOT_FOUND. The base tree is trusted and clones in seconds.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: .github/scripts
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |

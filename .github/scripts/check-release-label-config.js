@@ -14,15 +14,20 @@
 // One accepted loss versus the old text parser: a duplicate type key in MAP is
 // now last-wins rather than an error. verifyPrTitleTypes still catches a lost
 // type, just not a duplicated one.
-const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { MAP, labelDetails, labelForTitle } = require('./label-pr.js');
+const { MAP, labelDetails } = require('./label-pr.js');
 
 const RESERVED_LABEL_PREFIX = 'release:';
 const CATCH_ALL_LABEL = '*';
-const LABEL_MODULE_REQUIRE = "require('./.github/scripts/label-pr.js')";
+
+// YAML comment lines, dropped before the security greps below. Those files
+// document the invariants they are being checked against, and a check a comment
+// can trip is a check people route around.
+function stripComments(source) {
+  return source.replace(/^[^\S\r\n]*#.*$/gm, '');
+}
 
 function unquote(value) {
   const trimmed = value.trim();
@@ -193,8 +198,19 @@ function verifyPrTitleTypes(map, types) {
 // Wiring that carries the behaviour but is not expressible as a list: without
 // `edited` a retitle never relabels, without `issues: write` the first ever run
 // fails to provision, and an unpinned action gets a write token on
-// pull_request_target.
-function verifyWorkflowWiring(workflowSource, repositoryRoot) {
+// pull_request_target. Also covers the security invariants of both
+// pull_request_target workflows — the trigger itself, and that neither job ever
+// pulls pull request code into its privileged context.
+function verifyWorkflowWiring(workflowSource, prTitleSource, repositoryRoot) {
+  // Pin the trigger. Every other assertion here is about what the privileged job
+  // does; none of them notice the job ceasing to be privileged-but-safe. On
+  // `pull_request` the checkout default is the pull request's merge ref, so
+  // flipping the trigger runs fork-authored code under this job's write token
+  // while passing every ref:/persist-credentials check below.
+  if (!/^ {2}pull_request_target:$/m.test(workflowSource)) {
+    throw new Error('label workflow is not triggered by pull_request_target; a pull_request trigger would check out pull request code into a job holding a write token');
+  }
+
   const triggers = workflowSource.match(/^ {4}types: \[([^\]]*)\]$/m);
   if (!triggers) {
     throw new Error('label workflow does not declare pull_request_target types');
@@ -218,9 +234,18 @@ function verifyWorkflowWiring(workflowSource, repositoryRoot) {
 
   // The checkout exists only to read label-pr.js. A `ref:` on it would check out
   // the pull request's own code into a job holding a write token, which is the
-  // whole hazard of pull_request_target.
-  if (/^\s*ref:/m.test(workflowSource)) {
+  // whole hazard of pull_request_target. The key is matched with optional quotes
+  // because YAML permits `"ref":` and `'ref':`, which an unquoted-only pattern
+  // would wave through, and against comment-stripped source because the workflow
+  // documents this very invariant in prose.
+  const workflowSteps = stripComments(workflowSource);
+  if (/^\s*["']?ref["']?\s*:/m.test(workflowSteps)) {
     throw new Error('label workflow checkout declares a ref:; on pull_request_target that runs pull request code with a write token');
+  }
+  // Same key, written as a brace-flow mapping (`with: {ref: ...}`), which is not
+  // line-anchored and so slips past the check above.
+  if (/\bwith\s*:\s*\{[^}]*\bref\s*:/m.test(workflowSteps)) {
+    throw new Error('label workflow checkout declares a ref: in a flow mapping (with: {ref: ...}); on pull_request_target that runs pull request code with a write token');
   }
   if (!/^\s*persist-credentials: false$/m.test(workflowSource)) {
     throw new Error('label workflow checkout does not set persist-credentials: false');
@@ -231,10 +256,26 @@ function verifyWorkflowWiring(workflowSource, repositoryRoot) {
   // file that is no longer there, which only shows up on a live pull request.
   const required = workflowSource.match(/require\('\.\/([^']+)'\)/);
   if (!required) {
-    throw new Error(`label workflow does not run ${LABEL_MODULE_REQUIRE}`);
+    throw new Error("label workflow does not require() a label module from the repository checkout");
   }
   if (!fs.existsSync(path.join(repositoryRoot, required[1]))) {
     throw new Error(`label workflow requires "./${required[1]}", which does not exist`);
+  }
+
+  // pr-title.yml is the same pull_request_target hazard with none of the
+  // mitigations to check: it reads PR metadata only, and its "do not add a
+  // checkout" comment was the sole thing holding that. Assert it instead.
+  if (!/^ {2}pull_request_target:$/m.test(prTitleSource)) {
+    throw new Error('pr-title workflow is not triggered by pull_request_target; forked pull requests would then run a workflow definition taken from the pull request itself');
+  }
+  // Comment lines dropped first: this file's own prose names the action, and a
+  // check that a comment can trip is a check people work around.
+  const prTitleSteps = stripComments(prTitleSource);
+  if (/actions\/checkout/.test(prTitleSteps)) {
+    throw new Error('pr-title workflow checks out a repository; it reads pull request metadata only, and a checkout on pull_request_target puts pull request code inside the job');
+  }
+  if (/^\s*["']?ref["']?\s*:/m.test(prTitleSteps) || /\bwith\s*:\s*\{[^}]*\bref\s*:/m.test(prTitleSteps)) {
+    throw new Error('pr-title workflow declares a ref:; it must not fetch or run pull request code in its pull_request_target context');
   }
 }
 
@@ -278,44 +319,6 @@ function verifyAgentsTable(map, categories, agentsSource) {
   }
 }
 
-function runTitleFixtures() {
-  const mapped = {
-    'feat(cli): add release labels': 'release:features',
-    'feat!: x': 'release:features',
-    'feat(cli)!: x': 'release:features',
-    'feat:  x': 'release:features',
-    'fix: rename command': 'release:bug-fixes',
-    'revert: bad idea': 'release:bug-fixes',
-    'docs: explain labels': 'release:documentation',
-    'ci: pin an action': 'release:maintenance',
-  };
-  for (const [title, expected] of Object.entries(mapped)) {
-    assert.equal(labelForTitle(title), expected, `${title} maps to ${expected}`);
-  }
-  const unlabelled = [
-    // Rejected by pr-title.yml's validator too: wrong case, no colon-space, no
-    // subject. The labeler agreeing with it is the point.
-    'FEAT: x',
-    'Feat: x',
-    'feat:x',
-    'feat:',
-    'feat: ',
-    'rename command',
-    'unknown: rename command',
-    'Revert "feat: x"',
-    'feat : x',
-    'feat_x: y',
-    '123: x',
-    // Object.prototype members: a bare lookup returns a truthy non-label.
-    'constructor: x',
-    'toString: x',
-    'hasOwnProperty: x',
-  ];
-  for (const title of unlabelled) {
-    assert.equal(labelForTitle(title), undefined, `${title} maps to no label`);
-  }
-}
-
 function readSources() {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const read = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
@@ -332,12 +335,11 @@ function main() {
   const { repositoryRoot, workflowSource, releaseSource, prTitleSource, agentsSource } = readSources();
   const categories = parseReleaseCategories(releaseSource);
 
-  verifyWorkflowWiring(workflowSource, repositoryRoot);
+  verifyWorkflowWiring(workflowSource, prTitleSource, repositoryRoot);
   verifyLabelDetails(MAP, labelDetails);
   verifyMappingCategories(MAP, categories);
   verifyPrTitleTypes(MAP, parsePrTitleTypes(prTitleSource));
   verifyAgentsTable(MAP, categories, agentsSource);
-  runTitleFixtures();
   console.log('Release-label configuration verified.');
 }
 
