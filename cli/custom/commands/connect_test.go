@@ -185,6 +185,110 @@ func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	}
 }
 
+// TestWorkspaceSupersessionEndToEnd walks the whole RES-1464 story in one
+// process, where every other test in this package or cli/custom/launch only
+// exercises one task's seam: connect against workspace A records A on disk
+// (Task 2); the login session then moves to B; launch.ResolveCredentials
+// supersedes the exported key it was minted under and returns B's own token
+// (Task 1); and codingAgentChecks("B") reports the pinned agent with exactly
+// one info row, never a warn (Task 3).
+func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "ProfileService"):
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"A"},{"key":"B"}]}}`)
+		case strings.Contains(r.URL.Path, "model"):
+			fmt.Fprint(w, codingModelCatalogueJSON)
+		default:
+			fmt.Fprint(w, `{}`)
+		}
+	}))
+	defer srv.Close()
+
+	home := connectHarness(t, srv)
+	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "A"); err != nil {
+		t.Fatal(err)
+	}
+
+	// connect against workspace A: no session file exists yet, so
+	// resolveConnectAuth takes the saved-key fast path and records the key's
+	// own workspace.
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"kimi"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if ws, _ := agentWiring("kimi"); ws != "A" {
+		t.Fatalf("agentWiring after connect = %q, want A", ws)
+	}
+
+	// The session moves to B — 'orq workspace use B' — without anyone rewiring
+	// kimi. sk-orq-SAVED, minted for A, is what's still exported.
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	dir := filepath.Join(home, ".orq", "sessions")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session, err := json.Marshal(map[string]any{
+		"version":            1,
+		"apiBaseUrl":         srv.URL,
+		"v1BaseUrl":          srv.URL,
+		"authBaseUrl":        srv.URL,
+		"profileBaseUrl":     srv.URL,
+		"activeWorkspaceKey": "B",
+		"refreshToken":       "refresh-token",
+		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+		"workspaceTokens":    map[string]any{"B": map[string]any{"token": "session-token-B", "expiresAt": future}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "default.json"), session, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A nested `orq launch` (or the doctor check below) must follow the
+	// session, not the exported key still sitting in the shell.
+	getenv := func(k string) string {
+		if k == "ORQ_API_KEY" {
+			return "sk-orq-SAVED"
+		}
+		return ""
+	}
+	creds, err := launch.ResolveCredentials(getenv)
+	if err != nil {
+		t.Fatalf("ResolveCredentials: %v", err)
+	}
+	if creds.APIKey != "session-token-B" || creds.Kind != launch.CredentialSessionToken {
+		t.Errorf("credentials did not follow the session: %+v", creds)
+	}
+	if creds.Workspace != "B" {
+		t.Errorf("Workspace = %q, want B", creds.Workspace)
+	}
+	if creds.SupersededWorkspace != "A" {
+		t.Errorf("SupersededWorkspace = %q, want A", creds.SupersededWorkspace)
+	}
+
+	// kimi's own config is untouched — still pinned to A — so doctor must
+	// name exactly one info row for it, never a warn.
+	var infoRows, warnRows int
+	for _, c := range codingAgentChecks("B") {
+		if c.ID != "agent_workspace_kimi" {
+			continue
+		}
+		switch c.Status {
+		case "info":
+			infoRows++
+		case "warn":
+			warnRows++
+		}
+	}
+	if infoRows != 1 || warnRows != 0 {
+		t.Errorf("agent_workspace_kimi rows: info=%d warn=%d, want info=1 warn=0", infoRows, warnRows)
+	}
+}
+
 // connectStatusHarness sets up bartolo state without a network round trip,
 // for status tests that only need agentWiring's record and files already on
 // disk — the full connect flow that writes both is exercised elsewhere.
@@ -200,6 +304,20 @@ func connectStatusHarness(t *testing.T) string {
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
+	} else {
+		// Package tests run sequentially against a shared bartolocli.Creds, and a
+		// caller of this harness routinely calls writeAPIKeyProfile afterward
+		// (connectHarness's callers do), which sets these same fields. When this
+		// call didn't create the store fresh, that later Set would otherwise leak
+		// into whichever test runs next.
+		prevKey := bartolocli.Creds.GetString("profiles.default.gateway_key")
+		prevAPIKey := bartolocli.Creds.GetString("profiles.default.api_key")
+		prevWS := bartolocli.Creds.GetString("profiles.default.workspace")
+		t.Cleanup(func() {
+			bartolocli.Creds.Set("profiles.default.gateway_key", prevKey)
+			bartolocli.Creds.Set("profiles.default.api_key", prevAPIKey)
+			bartolocli.Creds.Set("profiles.default.workspace", prevWS)
+		})
 	}
 	if bartolocli.Formatter == nil {
 		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)

@@ -800,7 +800,7 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 	detected, fullyWired := 0, 0
 	// Read once, both are per-process: detectShell spells the source line for fish and honours a non-default config directory.
 	keyExported := agentKeyExported()
-	savedKey, _ := savedAPIKey()
+	savedKey, savedWS := savedAPIKey()
 	sourceLine := detectShell(viper.GetString("config-directory")).displayLine()
 	for _, spec := range agentRegistry() {
 		if !spec.detect() {
@@ -819,9 +819,16 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 		// outlive its config if a user deletes it by hand, so its presence
 		// here is informational and never proof of wiring on its own.
 		recordedWS, _ := agentWiring(spec.ID)
-		wsNote := ""
+		// The parenthetical only belongs on a message describing a WIRED agent — on
+		// the not-wired branch "run 'orq connect X' (workspace acme)" reads as if
+		// connecting would land in acme, when acme is just a stale record from a
+		// config the user deleted by hand. The workspace still goes in details
+		// either way; it's the message text that stays conditional on wired.
 		if recordedWS != "" {
 			details["workspace"] = recordedWS
+		}
+		wsNote := ""
+		if wired && recordedWS != "" {
 			wsNote = " (workspace " + recordedWS + ")"
 		}
 		check := doctorCheck{ID: "coding_agent_" + spec.ID, Details: details}
@@ -834,7 +841,7 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 		switch {
 		case !wired:
 			check.Status = "info"
-			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'" + wsNote
+			check.Message = spec.Label + " detected but not wired — run 'orq connect " + spec.ID + "'"
 		case wired && staleEmbeddedKey(spec, path, savedKey):
 			// A config holding the key literally cannot follow a renewal. Wiring
 			// one agent renews for all of them, so an agent left out of that run
@@ -851,13 +858,18 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 		default:
 			check.Status = "warn"
 			check.Message = spec.Label + " is wired, but ORQ_API_KEY is not set in this shell — " +
-				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell"
+				"agents started from here will fail to authenticate. Run '" + sourceLine + "', or start them from a new shell" + wsNote
 		}
 		checks = append(checks, check)
 		// Agents are pinned by design, so a different workspace is
 		// information, not a fault — never warn, and only when both sides
 		// are actually known (keyWorkspaceMismatch treats "" as unknown).
 		if wired && keyWorkspaceMismatch(recordedWS, activeWorkspace) {
+			// The remedy named here must be one resolveConnectAuth will actually
+			// accept: 'orq connect' rewires an agent only against a key that already
+			// exists for the active workspace, so when the currently saved key
+			// belongs elsewhere, the fix is 'orq setup --workspace <active>' first.
+			remedy := launch.RemedyForWorkspace(spec.ID, savedWS, activeWorkspace)
 			checks = append(checks, doctorCheck{
 				// Deliberately outside the "coding_agent_" namespace: printDoctorSummary
 				// collapses every "coding_agent_" row whose status is pass or info, and
@@ -867,7 +879,7 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 				ID:     "agent_workspace_" + spec.ID,
 				Status: "info",
 				Message: spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " +
-					"run 'orq connect " + spec.ID + "' to move it to " + activeWorkspace,
+					"run '" + remedy + "' to move it to " + activeWorkspace,
 			})
 		}
 	}

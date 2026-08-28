@@ -91,6 +91,17 @@ func seedProfile(t *testing.T, key, ws string) {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
+	// Package tests share bartolocli.Creds sequentially; a test running after this
+	// one must not inherit these fields, whether or not this call created the
+	// store fresh — restore what was here before, not just whether it existed.
+	prevKey := bartolocli.Creds.GetString("profiles.default.gateway_key")
+	prevAPIKey := bartolocli.Creds.GetString("profiles.default.api_key")
+	prevWS := bartolocli.Creds.GetString("profiles.default.workspace")
+	t.Cleanup(func() {
+		bartolocli.Creds.Set("profiles.default.gateway_key", prevKey)
+		bartolocli.Creds.Set("profiles.default.api_key", prevAPIKey)
+		bartolocli.Creds.Set("profiles.default.workspace", prevWS)
+	})
 	viper.Set("profile", "default")
 	t.Cleanup(func() { viper.Set("profile", "") })
 	bartolocli.Creds.Set("profiles.default.gateway_key", key)
@@ -362,5 +373,48 @@ func writeSessionFile(t *testing.T, home string, session map[string]any) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "default.json"), data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// RemedyForWorkspace is the one place both the launch supersession note and
+// the doctor/connect-status "pinned elsewhere" row get their fix-it command
+// from, so it must never recommend 'orq connect' in the exact state
+// resolveConnectAuth (cli/custom/commands/connect.go) hard-errors on: a saved
+// key whose recorded workspace differs from the active one.
+func TestRemedyForWorkspace(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		id      string
+		savedWS string
+		active  string
+		want    string
+	}{
+		{
+			name:    "saved key belongs to a different workspace",
+			id:      "kimi",
+			savedWS: "acme",
+			active:  "beta",
+			want:    "orq setup --workspace beta",
+		},
+		{
+			name:    "saved key already belongs to the active workspace",
+			id:      "kimi",
+			savedWS: "acme",
+			active:  "acme",
+			want:    "orq connect kimi",
+		},
+		{
+			name:    "no saved key at all",
+			id:      "codex",
+			savedWS: "",
+			active:  "acme",
+			want:    "orq connect codex",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RemedyForWorkspace(tc.id, tc.savedWS, tc.active); got != tc.want {
+				t.Errorf("RemedyForWorkspace(%q, %q, %q) = %q, want %q", tc.id, tc.savedWS, tc.active, got, tc.want)
+			}
+		})
 	}
 }

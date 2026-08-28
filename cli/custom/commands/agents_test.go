@@ -1321,10 +1321,13 @@ func TestCodingAgentChecksReportRecordedWorkspace(t *testing.T) {
 	}
 }
 
-// The "(workspace <ws>)" parenthetical is appended in three places in
-// codingAgentChecks's switch — not-wired, stale-key, and pass — and all three
-// are string-concatenated by hand. A future edit to any one branch could drop
-// the suffix silently; this pins all three, not just the pass case.
+// The "(workspace <ws>)" parenthetical describes a WIRED agent's credential, so
+// it belongs only on the messages that describe one — stale-key, pass, and
+// "wired but ORQ_API_KEY unset" — never on the not-wired message, where a
+// stale record from a deleted config would otherwise read as a promise that
+// connecting lands the agent in that workspace. This pins all four branches by
+// hand, not just the pass case, so a future edit to any one cannot drop or
+// misplace the suffix silently.
 func TestCodingAgentChecksWorkspaceParentheticalOnEveryMessage(t *testing.T) {
 	t.Run("not wired", func(t *testing.T) {
 		home := t.TempDir()
@@ -1348,8 +1351,50 @@ func TestCodingAgentChecksWorkspaceParentheticalOnEveryMessage(t *testing.T) {
 				row = c
 			}
 		}
-		if row.Status != "info" || !strings.Contains(row.Message, "(workspace acme)") {
-			t.Errorf("not-wired message = %+v, want the workspace parenthetical", row)
+		// Self-contradictory otherwise: "run 'orq connect kimi' (workspace acme)"
+		// reads as if connecting lands in acme, when acme is just a stale record.
+		// The workspace still surfaces in Details — only the message text is not
+		// wired-only information.
+		if row.Status != "info" || strings.Contains(row.Message, "(workspace acme)") {
+			t.Errorf("not-wired message = %+v, want no workspace parenthetical", row)
+		}
+		if row.Details["workspace"] != "acme" {
+			t.Errorf("not-wired details = %+v, want the workspace recorded", row.Details)
+		}
+	})
+
+	t.Run("wired but ORQ_API_KEY unset", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("CODEX_HOME", filepath.Join(home, "no-codex")) // keep codex undetected
+		chdir(t, t.TempDir())
+		resetSetupMemos(t)
+		credsHarness(t)
+
+		// opencode, not kimi: kimi's provider config holds the key literally, so
+		// an unexported ORQ_API_KEY never reaches the "wired but unset" branch.
+		ocDir := filepath.Join(home, ".config", "opencode")
+		if err := os.MkdirAll(ocDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		models := []auth.RouterModel{model("anthropic", "claude-sonnet-4-6", 200000, true, true, "chat")}
+		if _, err := writeOpenCodeProviderJSON(filepath.Join(ocDir, "opencode.json"),
+			"https://api.orq.ai/v3/router", "sk-k", models, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := recordAgentWiring("opencode", "acme", "KEYID"); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ORQ_API_KEY", "")
+
+		var row doctorCheck
+		for _, c := range codingAgentChecks("") {
+			if c.ID == "coding_agent_opencode" {
+				row = c
+			}
+		}
+		if row.Status != "warn" || !strings.Contains(row.Message, "(workspace acme)") {
+			t.Errorf("wired-but-unset message = %+v, want the workspace parenthetical", row)
 		}
 	})
 

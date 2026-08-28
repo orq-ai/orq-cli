@@ -108,6 +108,19 @@ func supersededBySession(key string, session *auth.Session, savedKey, savedWS st
 	return savedWS, true
 }
 
+// RemedyForWorkspace names the command that gets an agent authenticated against the active
+// workspace, so the two call sites that recommend a fix — the launch supersession note and the
+// doctor/connect-status "pinned elsewhere" row — cannot drift and give advice the other guard
+// rejects. `orq connect` can only rewire an agent to a key that already exists for the active
+// workspace; when the saved key belongs to a different workspace, resolveConnectAuth hard-errors
+// telling the user to mint one first, so that is the remedy to name instead.
+func RemedyForWorkspace(id, savedWS, active string) string {
+	if savedWS != "" && savedWS != active {
+		return fmt.Sprintf("orq setup --workspace %s", active)
+	}
+	return fmt.Sprintf("orq connect %s", id)
+}
+
 // APIBaseFor is the API base a persistent artifact should be written against:
 // the env override, then the saved login session's own base, then the hosted
 // default. It is ResolveCredentials' order for a caller that has no credential
@@ -193,7 +206,11 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	client := auth.NewClient(apiBase)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
-		return nil, err
+		// This is also the path a superseded ORQ_API_KEY falls through to: the
+		// exported key is being ignored in favor of the session, so a failure here
+		// (most often an expired refresh token) must name the fix — re-login — not
+		// just the raw API error, or the user is stuck with no next step.
+		return nil, fmt.Errorf("%w (run 'orq auth login' to re-authenticate)", err)
 	}
 	return &Credentials{
 		APIKey:              active.AccessToken,
