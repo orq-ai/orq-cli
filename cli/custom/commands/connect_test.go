@@ -64,24 +64,8 @@ const codingModelCatalogueJSON = `[{"provider":"anthropic","model_id":"claude-so
 // callers can inspect what got written into an agent's config file.
 func connectHarness(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("ORQ_API_KEY", "")
+	home := connectStatusHarness(t)
 	t.Setenv("ORQ_API_BASE_URL", srv.URL)
-	t.Chdir(t.TempDir())
-
-	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
-		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
-	resetSetupMemos(t)
 	return home
 }
 
@@ -262,6 +246,12 @@ func TestConnectStatusShowsWorkspaceColumn(t *testing.T) {
 	}
 	if !strings.Contains(out, "acme") {
 		t.Errorf("kimi's recorded workspace not shown:\n%s", out)
+	}
+	// opencode is wired too, but carries no record, so it must render no
+	// workspace value of its own — "acme" appearing more than once would mean
+	// opencode's empty cell leaked kimi's value into its row.
+	if n := strings.Count(out, "acme"); n != 1 {
+		t.Errorf("\"acme\" appears %d times, want exactly 1 (opencode's row should render no workspace):\n%s", n, out)
 	}
 }
 

@@ -815,7 +815,7 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 			details["provider"] = path
 		}
 		details["api_key_in_env"] = keyExported
-		// Neither field is a secret (see recordAgentWiring); a record can
+		// The workspace is not a secret (see recordAgentWiring); a record can
 		// outlive its config if a user deletes it by hand, so its presence
 		// here is informational and never proof of wiring on its own.
 		recordedWS, _ := agentWiring(spec.ID)
@@ -859,7 +859,12 @@ func codingAgentChecks(activeWorkspace string) []doctorCheck {
 		// are actually known (keyWorkspaceMismatch treats "" as unknown).
 		if wired && keyWorkspaceMismatch(recordedWS, activeWorkspace) {
 			checks = append(checks, doctorCheck{
-				ID:     "coding_agent_" + spec.ID + "_workspace",
+				// Deliberately outside the "coding_agent_" namespace: printDoctorSummary
+				// collapses every "coding_agent_" row whose status is pass or info, and
+				// this row exists precisely to be seen by a person in the default human
+				// view — collapsing it would hide the only place it tells them their
+				// agent is pinned elsewhere and how to move it.
+				ID:     "agent_workspace_" + spec.ID,
 				Status: "info",
 				Message: spec.Label + " is pinned to workspace " + recordedWS + ", the workspace it was connected against — " +
 					"run 'orq connect " + spec.ID + "' to move it to " + activeWorkspace,
