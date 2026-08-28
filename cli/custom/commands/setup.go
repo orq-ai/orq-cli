@@ -627,7 +627,7 @@ func tilde(path string) string {
 }
 
 // Agent configs reference ORQ_API_KEY rather than inlining it, and nothing else exported it: agents came up with an empty bearer.
-func writeShellEnvFile(token string) (string, error) {
+func writeShellEnvFile(rep *reporter, token string) (string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
 		return "", errors.New("no config directory configured")
@@ -644,11 +644,31 @@ func writeShellEnvFile(token string) (string, error) {
 	if sh.Line != "" {
 		header += "# Add to " + sh.Profile + ":\n#     " + sh.Line + "\n"
 	}
+	warnIfEnvFileWasExposed(rep, sh.EnvFile)
 	if err := os.WriteFile(sh.EnvFile, []byte(header+assign+"\n"), 0o600); err != nil {
 		return "", err
 	}
 	// A pre-existing file may have been created with looser permissions.
 	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
+}
+
+// warnIfEnvFileWasExposed says so before the chmod below tightens a
+// pre-existing env file. Silently repairing it destroys the only evidence
+// doctor's permissions check would ever have had, and the key inside was
+// already readable by every other account on the machine by then.
+//
+// Unix only: Windows ACLs do not map onto these bits, so there is nothing to
+// judge there — the same reason doctor's check is absent on Windows.
+func warnIfEnvFileWasExposed(rep *reporter, path string) {
+	if rep == nil || runtime.GOOS == "windows" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 == 0 {
+		return
+	}
+	rep.warn("%s was mode %04o — readable by other accounts on this machine. Tightening it to 0600, but %s",
+		tilde(path), info.Mode().Perm(), exposedAPIKeyAdvice())
 }
 
 func offerProfileSourceLine(rep *reporter, opts *setupOptions) {
@@ -949,7 +969,7 @@ func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *s
 	if token == "" {
 		return info, "", false, nil
 	}
-	if _, err := writeShellEnvFile(token); err != nil {
+	if _, err := writeShellEnvFile(rep, token); err != nil {
 		// Not fatal: the key is saved, and the final screen still shows how to export it.
 		rep.warn("could not write the shell env file: %v", err)
 	} else {

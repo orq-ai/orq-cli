@@ -188,7 +188,7 @@ orq whoami                 # current user + active workspace + URL config
 ```sh
 orq doctor
 orq doctor --json          # machine-readable
-orq doctor --fix           # chmod the credential paths the permissions check flags (Unix)
+orq doctor --fix           # chmod the credential paths the permissions check flags (Unix; exits 1 if a repair fails)
 ```
 
 `doctor` reports:
@@ -200,7 +200,7 @@ orq doctor --fix           # chmod the credential paths the permissions check fl
 - Reachability probes against each endpoint
 - Bootstrap token freshness
 - Credential file permissions under `~/.orq` (Unix only) — group- or other-accessible paths only; a clean tree is not reported.
-  Symlinked paths are judged on their target. `--fix` chmods them (0600 files, 0700 directories); without it doctor only reports.
+  Symlinked paths are judged on their target, and the finding names that target as well as the path under `~/.orq`. `--fix` chmods them (0600 files, 0700 directories); without it doctor only reports. A `--fix` run that could not repair something exits `1`; a run that only reports findings exits `0`. On Windows `--fix` is rejected — the bits it repairs do not exist there.
 
 ---
 

@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -335,7 +336,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -347,6 +348,19 @@ func TestCredentialPermsCheck(t *testing.T) {
 		}
 		if !strings.Contains(check.Message, "revoke it in the orq dashboard") || !strings.Contains(check.Message, "orq setup") {
 			t.Errorf("message does not mention revoking the key before rotating via orq setup: %q", check.Message)
+		}
+		// Only a symlink has a second path worth naming.
+		if strings.Contains(check.Message, "a symlink to") {
+			t.Errorf("a plain file grew a resolved-path disclosure: %q", check.Message)
+		}
+		loose, _ := check.Details["loose"].([]map[string]any)
+		if len(loose) == 0 {
+			t.Fatalf("details[loose] = %v, want the finding", check.Details["loose"])
+		}
+		for _, entry := range loose {
+			if _, ok := entry["resolved_path"]; ok {
+				t.Errorf("a plain file carries a resolved_path: %v", entry)
+			}
 		}
 	})
 
@@ -362,7 +376,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok := credentialPermsCheck(false); ok {
+		if check, ok, _ := credentialPermsCheck(false); ok {
 			t.Fatalf("a clean tree still reported: ok=%v check=%+v", ok, check)
 		}
 	})
@@ -382,7 +396,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(sessionPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -410,7 +424,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -424,7 +438,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok := credentialPermsCheck(false); ok {
+		if check, ok, _ := credentialPermsCheck(false); ok {
 			t.Fatalf("an empty config dir still reported: ok=%v check=%+v", ok, check)
 		}
 	})
@@ -448,7 +462,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(envPath, 0o640); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -480,17 +494,25 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Symlink(target, credPath); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn for the symlink target", ok, check.Status)
 		}
-		// The user recognizes the symlink path, and chmod follows the link, so
-		// that is the path both the message and Details carry.
+		// chmod follows the link, so the printed remedy stays on the path the
+		// user recognizes — but the file actually judged has to be named too.
 		if !strings.Contains(check.Message, "chmod 600 "+credPath) {
 			t.Errorf("message does not name the symlink path: %q", check.Message)
 		}
-		if strings.Contains(check.Message, target) {
-			t.Errorf("message leaks the resolved target %s: %q", target, check.Message)
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(check.Message, real) {
+			t.Errorf("message hides the resolved target %s: %q", real, check.Message)
+		}
+		loose, _ := check.Details["loose"].([]map[string]any)
+		if len(loose) != 1 || loose[0]["resolved_path"] != real {
+			t.Errorf("details[loose] = %v, want resolved_path=%s", check.Details["loose"], real)
 		}
 	})
 
@@ -502,7 +524,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Symlink(filepath.Join(t.TempDir(), "gone.json"), filepath.Join(dir, "credentials.json")); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok := credentialPermsCheck(false); ok {
+		if check, ok, _ := credentialPermsCheck(false); ok {
 			t.Fatalf("a broken symlink reported: %+v", check)
 		}
 	})
@@ -519,7 +541,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(true)
+		check, ok, _ := credentialPermsCheck(true)
 		if !ok {
 			t.Fatal("fix run reported nothing")
 		}
@@ -549,7 +571,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if !ok || len(loose) != 0 {
 			t.Errorf("details[loose] = %v, want empty after a successful fix", check.Details["loose"])
 		}
-		if _, again := credentialPermsCheck(false); again {
+		if _, again, _ := credentialPermsCheck(false); again {
 			t.Error("a re-run after --fix still reports a finding")
 		}
 	})
@@ -563,7 +585,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Mkdir(credPath, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(true)
+		check, ok, _ := credentialPermsCheck(true)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn naming the wrong-typed path", ok, check.Status)
 		}
@@ -594,7 +616,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok {
 			t.Fatal("a loose file under a path with a space reported nothing")
 		}
@@ -626,7 +648,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Chmod(sessionsDir, 0o700) })
-		check, ok := credentialPermsCheck(false)
+		check, ok, _ := credentialPermsCheck(false)
 		if !ok {
 			t.Fatal("an unlistable sessions directory reported nothing")
 		}
@@ -650,8 +672,28 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Symlink(target, filepath.Join(dir, "credentials.json")); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := credentialPermsCheck(true); !ok {
+		check, ok, _ := credentialPermsCheck(true)
+		if !ok {
 			t.Fatal("fix run reported nothing")
+		}
+		// The repaired file is outside the config directory: a message that
+		// named only ~/.orq/credentials.json would hide which file was chmodded.
+		real, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(check.Message, filepath.Join(dir, "credentials.json")) || !strings.Contains(check.Message, real) {
+			t.Errorf("message does not name both the link and its target %s: %q", real, check.Message)
+		}
+		fixed, _ := check.Details["fixed"].([]map[string]any)
+		var disclosed bool
+		for _, entry := range fixed {
+			if entry["path"] == filepath.Join(dir, "credentials.json") && entry["resolved_path"] == real {
+				disclosed = true
+			}
+		}
+		if !disclosed {
+			t.Errorf("details[fixed] does not disclose the resolved target %s: %v", real, check.Details["fixed"])
 		}
 		info, err := os.Stat(target)
 		if err != nil {
@@ -668,6 +710,14 @@ func TestCredentialPermsCheck(t *testing.T) {
 // No --json: that flag lives on bartolo's root command, and a non-TTY run
 // already gets the structured report, which is the contract scripts use.
 func runDoctorJSON(t *testing.T, args ...string) map[string]any {
+	t.Helper()
+	return runDoctor(t, false, args...)
+}
+
+// runDoctor is runDoctorJSON with an expectation about the returned error, so
+// a test can assert both the exit-code behaviour and the report that had to be
+// printed before it.
+func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 	t.Helper()
 	var out bytes.Buffer
 	origStdout, origFormatter := bartolocli.Stdout, bartolocli.Formatter
@@ -687,8 +737,12 @@ func runDoctorJSON(t *testing.T, args ...string) map[string]any {
 	root.SetArgs(append([]string{"doctor"}, args...))
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})
-	if err := root.Execute(); err != nil {
-		t.Fatalf("orq doctor %v: %v", args, err)
+	runErr := root.Execute()
+	if runErr != nil && !wantErr {
+		t.Fatalf("orq doctor %v: %v", args, runErr)
+	}
+	if runErr == nil && wantErr {
+		t.Fatalf("orq doctor %v returned nil, want an error", args)
 	}
 	var report map[string]any
 	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
@@ -791,5 +845,94 @@ func TestShellQuotePathKeepsTildeExpandable(t *testing.T) {
 		if got := shellQuotePath(tc.in); got != tc.want {
 			t.Errorf("shellQuotePath(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// A --fix run is an action, and an action that failed must not report success:
+// scripts chaining `orq doctor --fix && ...` would carry on over an
+// unrepaired credential. Every other doctor outcome still exits 0.
+func TestDoctorFixExitCodeOnlyFollowsAFailedRepair(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+	// The chmod is indirected rather than staged on disk: no path makes chmod
+	// fail for its owner on every platform these tests run on, and a test that
+	// only fails on one is worse than none.
+	failChmod := func(t *testing.T) {
+		t.Helper()
+		orig := credPermChmod
+		credPermChmod = func(*os.File, os.FileMode) error { return errors.New("chmod refused") }
+		t.Cleanup(func() { credPermChmod = orig })
+	}
+	loose := func(t *testing.T) string {
+		t.Helper()
+		t.Setenv("HOME", t.TempDir())
+		dir := t.TempDir()
+		viper.Set("config-directory", dir)
+		t.Cleanup(func() { viper.Set("config-directory", "") })
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(credPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return credPath
+	}
+
+	t.Run("failed fix errors", func(t *testing.T) {
+		loose(t)
+		failChmod(t)
+		check, ok, err := credentialPermsCheck(true)
+		if !ok || err == nil {
+			t.Fatalf("ok=%v err=%v, want a reported failure", ok, err)
+		}
+		if check.Status != "fail" || !strings.Contains(check.Message, "chmod refused") {
+			t.Errorf("check does not carry the failed repair: %+v", check)
+		}
+	})
+
+	t.Run("successful fix and a plain report do not", func(t *testing.T) {
+		loose(t)
+		if _, _, err := credentialPermsCheck(false); err != nil {
+			t.Errorf("a report run returned %v, want nil", err)
+		}
+		if _, _, err := credentialPermsCheck(true); err != nil {
+			t.Errorf("a successful --fix returned %v, want nil", err)
+		}
+	})
+
+	t.Run("the command prints the report before failing", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+		t.Cleanup(srv.Close)
+		t.Setenv("ORQ_SERVER", srv.URL)
+		credPath := loose(t)
+		creds, err := bartolocli.NewCredentialsFile(filepath.Dir(credPath))
+		if err != nil {
+			t.Fatal(err)
+		}
+		origCreds := bartolocli.Creds
+		bartolocli.Creds = creds
+		t.Cleanup(func() { bartolocli.Creds = origCreds })
+		failChmod(t)
+
+		check := findCheck(t, runDoctor(t, true, "--fix"), "credential_permissions")
+		if check == nil {
+			t.Fatal("the failing --fix run emitted no credential_permissions check")
+		}
+		if check["status"] != "fail" {
+			t.Errorf("status = %v, want fail", check["status"])
+		}
+	})
+}
+
+// The flag is registered everywhere so the platform-neutral surface manifest
+// stays true; Windows rejects it at run time instead.
+func TestDoctorFixFlagIsRegisteredOnEveryPlatform(t *testing.T) {
+	if NewDoctorCommand().Flags().Lookup("fix") == nil {
+		t.Error("doctor has no --fix flag")
 	}
 }

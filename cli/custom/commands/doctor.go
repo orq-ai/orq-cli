@@ -54,6 +54,9 @@ func NewDoctorCommand() *cobra.Command {
 			if bugReport {
 				return emitBugReport(cmd)
 			}
+			if fixPerms && runtime.GOOS == "windows" {
+				return errors.New("--fix repairs Unix permission bits, which Windows ACLs do not use — there is nothing here for it to change")
+			}
 			inspect := auth.InspectSession()
 
 			// Provenance comes from where the value was decided, not from
@@ -102,8 +105,10 @@ func NewDoctorCommand() *cobra.Command {
 			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
 				checks = append(checks, expiry)
 			}
-			if perms, ok := credentialPermsCheck(fixPerms); ok {
+			var permsErr error
+			if perms, ok, err := credentialPermsCheck(fixPerms); ok {
 				checks = append(checks, perms)
+				permsErr = err
 			}
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", http.MethodGet, client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", http.MethodGet, client.URLs.AuthBaseURL, ""))
@@ -184,20 +189,23 @@ func NewDoctorCommand() *cobra.Command {
 			// full structured report is verbose diagnostic data meant for
 			// machines and for `--json`/`-o`. Scripts (non-TTY) and an explicit
 			// format request always get the structured report.
+			// The report goes out first either way: a failed --fix has to name
+			// which path it could not repair before the error ends the run.
 			if wantsHumanView(cmd) {
 				printDoctorSummary(authStatus, userEmail, checks)
-				return nil
+				return permsErr
 			}
-			return emit(report)
+			if err := emit(report); err != nil {
+				return err
+			}
+			return permsErr
 		},
 	}
 	DeprecatedAPIBaseFlag(cmd)
 	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
-	if runtime.GOOS != "windows" {
-		// Absent on Windows for the same reason the permissions check is: there
-		// is nothing there for chmod to act on.
-		cmd.Flags().BoolVar(&fixPerms, "fix", false, "Chmod the credential paths the permissions check flags (0600 files, 0700 directories)")
-	}
+	// Registered on every platform so the single platform-neutral surface
+	// manifest stays true; on Windows the flag is rejected at run time.
+	cmd.Flags().BoolVar(&fixPerms, "fix", false, "Chmod the credential paths the permissions check flags (0600 files, 0700 directories)")
 	return cmd
 }
 
@@ -528,6 +536,8 @@ type credPermCandidate struct {
 type credPermResult struct {
 	path      string
 	humanPath string
+	realPath  string // resolved target, set only when path is a symlink
+	humanReal string
 	class     credPermClass
 	mode      os.FileMode
 	want      os.FileMode
@@ -567,6 +577,31 @@ func describeFileType(mode os.FileMode) string {
 	default:
 		return "not a regular file"
 	}
+}
+
+// display is the path as messages name it. A symlinked credential path is
+// judged and repaired on its target, so the target has to appear too:
+// otherwise --fix chmods a file whose name never reaches the user.
+func (r credPermResult) display() string {
+	if r.humanReal == "" {
+		return r.humanPath
+	}
+	return r.humanPath + " (a symlink to " + r.humanReal + ")"
+}
+
+// resolveCredPath returns the target of a symlinked candidate, or "" when the
+// path is not a symlink or cannot be resolved. Reporting only: the judgement
+// and the repair go through the descriptor inspectCredPath already holds.
+func resolveCredPath(path string) string {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return ""
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil || real == path {
+		return ""
+	}
+	return real
 }
 
 // inspectCredPath judges one candidate and, when fix is set, repairs it
@@ -621,8 +656,11 @@ func inspectCredPath(c credPermCandidate, fix bool) (result *credPermResult, jud
 		return nil, true
 	}
 	r.outcome = credPermLoose
+	if real := resolveCredPath(c.path); real != "" {
+		r.realPath, r.humanReal = real, shellQuotePath(tilde(real))
+	}
 	if fix {
-		if err := f.Chmod(r.want); err != nil {
+		if err := credPermChmod(f, r.want); err != nil {
 			r.outcome, r.err = credPermFixFailed, err
 		} else {
 			r.outcome = credPermRepaired
@@ -630,6 +668,23 @@ func inspectCredPath(c credPermCandidate, fix bool) (result *credPermResult, jud
 	}
 	return &r, true
 }
+
+// exposedAPIKeyAdvice is the revoke-and-rotate advice for a workspace API key
+// that was readable by other local accounts. Shared with `orq setup`, which
+// repairs such a file silently and would otherwise erase the evidence before
+// doctor could ever report it. The chmod does not un-expose it: what was
+// readable stays compromised until the key is revoked.
+func exposedAPIKeyAdvice() string {
+	revoke := "revoke it in the orq dashboard"
+	if id := savedGatewayKeyID(); id != "" {
+		revoke = fmt.Sprintf("revoke it with 'orq api-keys delete %s'", id)
+	}
+	return "treat the exposed API key as compromised: " + revoke
+}
+
+// credPermChmod is the --fix repair, indirected so a test can make it fail
+// without needing a path chmod can refuse on every platform the tests run on.
+var credPermChmod = func(f *os.File, mode os.FileMode) error { return f.Chmod(mode) }
 
 // credentialPermsCheck reports credential files and directories left with
 // group/other permission bits set. Bartolo v0.6.0 already writes every
@@ -640,19 +695,19 @@ func inspectCredPath(c credPermCandidate, fix bool) (result *credPermResult, jud
 // Unix only: Windows ACLs do not map onto the Unix permission bits this
 // check reads, so the check is absent there rather than reporting a
 // meaningless pass.
-func credentialPermsCheck(fix bool) (doctorCheck, bool) {
+func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 	if runtime.GOOS == "windows" {
-		return doctorCheck{}, false
+		return doctorCheck{}, false, nil
 	}
 	dir := viper.GetString("config-directory")
 	if dir == "" {
-		return doctorCheck{}, false
+		return doctorCheck{}, false, nil
 	}
 	if _, err := os.UserHomeDir(); err != nil {
 		// auth builds a relative `.orq/...` when the home directory cannot be
 		// resolved; auditing — let alone chmodding — whatever sits under the
 		// working directory is not what this check is for.
-		return doctorCheck{}, false
+		return doctorCheck{}, false, nil
 	}
 
 	candidates := []credPermCandidate{
@@ -703,7 +758,7 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 	}
 	if len(results) == 0 {
 		// Nothing to say: a clean run prints no credential row at all.
-		return doctorCheck{}, false
+		return doctorCheck{}, false, nil
 	}
 
 	var repairedMsgs, looseMsgs, fixErrors, wrongTypeMsgs, unreadable []string
@@ -714,34 +769,42 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 		switch r.outcome {
 		case credPermRepaired:
 			exposed[r.class] = true
-			repairedMsgs = append(repairedMsgs, fmt.Sprintf("%s was mode %04o — changed to %04o", r.humanPath, r.mode, r.want))
-			fixedDetails = append(fixedDetails, map[string]any{
+			repairedMsgs = append(repairedMsgs, fmt.Sprintf("%s was mode %04o — changed to %04o", r.display(), r.mode, r.want))
+			fixed := map[string]any{
 				"path":          r.path,
 				"previous_mode": fmt.Sprintf("%04o", r.mode),
 				"mode":          fmt.Sprintf("%04o", r.want),
-			})
+			}
+			if r.realPath != "" {
+				fixed["resolved_path"] = r.realPath
+			}
+			fixedDetails = append(fixedDetails, fixed)
 		case credPermLoose, credPermFixFailed:
 			exposed[r.class] = true
 			// chmod follows symlinks, so the path the user recognizes is also
 			// the one that repairs the target.
 			chmod := fmt.Sprintf("chmod %o %s", r.want, r.humanPath)
-			looseDetails = append(looseDetails, map[string]any{
+			loose := map[string]any{
 				"path": r.path,
 				"mode": fmt.Sprintf("%04o", r.mode),
 				"fix":  chmod,
-			})
-			looseMsgs = append(looseMsgs, fmt.Sprintf("%s is mode %04o — run %s", r.humanPath, r.mode, chmod))
+			}
+			if r.realPath != "" {
+				loose["resolved_path"] = r.realPath
+			}
+			looseDetails = append(looseDetails, loose)
+			looseMsgs = append(looseMsgs, fmt.Sprintf("%s is mode %04o — run %s", r.display(), r.mode, chmod))
 			if r.outcome == credPermFixFailed {
-				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be chmodded to %04o: %v", r.humanPath, r.want, r.err))
+				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be chmodded to %04o: %v", r.display(), r.want, r.err))
 			}
 		case credPermWrongType:
 			want := "a regular file"
 			if r.class == credClassDir {
 				want = "a directory"
 			}
-			wrongTypeMsgs = append(wrongTypeMsgs, fmt.Sprintf("%s is %s, not %s — left untouched, inspect it by hand", r.humanPath, r.found, want))
+			wrongTypeMsgs = append(wrongTypeMsgs, fmt.Sprintf("%s is %s, not %s — left untouched, inspect it by hand", r.display(), r.found, want))
 		case credPermUnreadable:
-			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", r.humanPath, r.err))
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", r.display(), r.err))
 		}
 	}
 
@@ -757,11 +820,7 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 	// `orq setup` reuses a saved, still-valid API key rather than rotating
 	// it, and revokes no refresh token at all.
 	if exposed[credClassAPIKey] {
-		revoke := "revoke it in the orq dashboard"
-		if id := savedGatewayKeyID(); id != "" {
-			revoke = fmt.Sprintf("revoke it with 'orq api-keys delete %s'", id)
-		}
-		messages = append(messages, "treat the exposed API key as compromised: "+revoke+
+		messages = append(messages, exposedAPIKeyAdvice()+
 			", then 'orq auth logout' to clear the local copy and 'orq setup' to mint a new one")
 	}
 	if exposed[credClassSession] {
@@ -785,10 +844,17 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 	if len(fixErrors) > 0 {
 		status = "fail"
 	}
-	return doctorCheck{
+	check := doctorCheck{
 		ID:      "credential_permissions",
 		Status:  status,
 		Message: strings.Join(messages, "; "),
 		Details: details,
-	}, true
+	}
+	// Only a --fix run that failed to repair something is an error: `orq
+	// doctor` reports findings and exits 0, and a repair that did not happen
+	// is a failed action, not a finding.
+	if len(fixErrors) > 0 {
+		return check, true, fmt.Errorf("--fix could not repair every flagged credential path: %s", strings.Join(fixErrors, "; "))
+	}
+	return check, true, nil
 }

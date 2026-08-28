@@ -2,9 +2,9 @@
 
 ## Decisions after review
 
-Three calls made after the plan below was written. The task text further down
-has been updated to match them; this section stays as the record of what was
-decided and why.
+Calls made after the plan below was written. The task text further down has
+been updated to match 1–3; this section stays as the record of what was decided
+and why. 4–7 came out of the review of the implementation.
 
 1. **`orq doctor --fix` exists.** Doctor still repairs nothing on its own, but
    an opt-in flag chmods the flagged paths (0600 files, 0700 directories) and
@@ -23,6 +23,47 @@ decided and why.
    nothing is loose and nothing failed inspection, like `mcpCheck` does. It
    appears only for a loose path, a path that could not be inspected, or a
    `--fix` that repaired something.
+
+4. **A followed symlink must disclose its target.** Keeping decision 2 —
+   following the link is what the user asked for by creating it — but a `--fix`
+   that chmods a file whose path never appears in the output is not acceptable.
+   When a candidate resolves through a symlink, the message and `Details` name
+   both the path under `~/.orq` and the resolved target (`filepath.EvalSymlinks`,
+   run through `tilde()`). The printed `chmod` still acts on the user-facing
+   path, which works because chmod follows links and stays recognizable.
+   Non-symlink candidates carry no second path.
+5. **A failed `--fix` repair exits non-zero.** `--fix` is an action, and a
+   failed action reporting success is a scripting hazard. Scoped strictly to a
+   `--fix` run where at least one chmod failed: a `warn`, a `fail` row from an
+   unreachable endpoint, an unreadable path, and a plain report run all still
+   exit 0. The report is printed or emitted in full before the error is
+   returned, so the user sees which repair failed. The repo has no usage-error
+   wrapper (`root.SilenceUsage = true`, plain `fmt.Errorf` from `RunE`), so a
+   plain runtime error is the convention followed. The existing exit-code
+   contract in `CHANGELOG.md` (`1` any failure) already covers it; the entry
+   says so rather than announcing a new code. The chmod is indirected through
+   `credPermChmod` so the failure path is testable — no path makes chmod fail
+   for its owner on every platform the tests run on.
+6. **`orq setup` warns when it silently repairs a loose env file.**
+   `writeShellEnvFile` chmods a pre-existing `~/.orq/env` to 0600 on every run.
+   Doing that silently erases the evidence doctor's check would have reported,
+   on a setup run started for an unrelated reason. It now stats the file first
+   and warns through `rep.warn` when it was group/other accessible. The
+   revoke-and-rotate advice is shared with doctor (`exposedAPIKeyAdvice`)
+   rather than duplicated; doctor appends its own "then `orq auth logout` …
+   `orq setup`" tail, which would be nonsense mid-`orq setup`. Missing file is
+   not a finding, and Windows is skipped like the doctor check.
+
+   *Residual gap:* `credentials.json` is written by bartolo, which chmods it to
+   0600 on every save with no warning, exactly as setup did. That erasure is
+   out of reach from this repo and is not covered here; closing it needs a
+   change in bartolo.
+7. **`--fix` is registered on every platform.** `surface.json` is a single
+   platform-neutral manifest, so conditional registration gave a Windows
+   contributor a spurious diff on regeneration. The flag is now always
+   registered and rejected at run time on Windows with a plain error. The
+   permissions check itself stays absent there. Making surface generation
+   platform-aware remains deferred.
 
 ## Context
 

@@ -892,7 +892,7 @@ func resolveConnectAuth(cmd *cobra.Command, rep *reporter, opts *setupOptions) (
 				return nil, nil, err
 			}
 			state.useDurableKey(token)
-			if path, err := writeShellEnvFile(token); err != nil {
+			if path, err := writeShellEnvFile(rep, token); err != nil {
 				rep.warn("could not write the shell env file: %v", err)
 			} else {
 				rep.ok("env file    %s  → exports ORQ_API_KEY", tilde(path))
