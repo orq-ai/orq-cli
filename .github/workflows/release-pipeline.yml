@@ -13,12 +13,17 @@ on:
         type: string
         required: false
         default: ''
+      version:
+        description: "Resolved CLI version to verify and release"
+        type: string
+        required: true
+      api_version:
+        description: "Resolved orq API app_version to stamp into the release"
+        type: string
+        required: true
 
-# Serialize ALL releases, not just per module: both modules commit back to main
-# and a stable run racing an rc run would lose its ref update (the PATCH is a
-# fast-forward from the sha it read at checkout).
 concurrency:
-  group: release
+  group: release-${{ inputs.module_dir || 'stable' }}
   cancel-in-progress: false
 
 env:
@@ -76,44 +81,25 @@ jobs:
           go install "github.com/orq-ai/bartolo@v0.4.6"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Resolve version
+      - name: Verify version
         id: version
+        env:
+          VERSION: ${{ inputs.version }}
+          API_VERSION: ${{ inputs.api_version }}
         run: |
           set -euo pipefail
-          workdir="${MODULE_DIR:-.}"
-          file_version="$(tr -d '[:space:]' < VERSION)"
-          api_version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
-          stable_tag=""
-          if git rev-parse -q --verify "refs/tags/v$file_version" >/dev/null; then
-            stable_tag="v$file_version"
-          fi
-          released_api=""
-          if [ -n "$stable_tag" ] && [ -z "${MODULE_DIR:-}" ]; then
-            # A tag whose tree has no .bartolo.json reads as "no previous API
-            # version", which resolve() already handles - not as a failed release.
-            released_api="$(git show "$stable_tag:.bartolo.json" 2>/dev/null | jq -r '.app_version' || true)"
-          fi
-          commits_file="$(mktemp)"; tags_file="$(mktemp)"
+          tags_file="$(mktemp)"
           git tag --list 'v*' > "$tags_file"
           if [ -n "${MODULE_DIR:-}" ]; then
-            : > "$commits_file"
             channel=rc
           else
-            # NUL between records, subject on each record's first line: the
-            # resolver honours `type!:` on the subject only, so a wrapped body
-            # line cannot cut a major.
-            git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
-              VERSION cli/custom npm scripts install.sh \
-              openapi.yaml .bartolo.json go.mod go.sum cmd/orq > "$commits_file"
             channel=stable
           fi
           go_output="$(go run ./cmd/release-version \
-            --channel "$channel" --version "$file_version" \
-            --api-version "$api_version" --released-api-version "$released_api" \
-            --tags-file "$tags_file" --commits-file "$commits_file")"
+            --verify "$VERSION" --channel "$channel" --tags-file "$tags_file")"
           printf '%s\n' "$go_output" >> "$GITHUB_OUTPUT"
-          echo "api_version=$api_version" >> "$GITHUB_OUTPUT"
-          echo "Releasing v$(printf '%s\n' "$go_output" | awk -F= '$1 == "version" { print $2 }') (channel=$channel, orq API $api_version)"
+          echo "api_version=$API_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Verifying v$(printf '%s\n' "$go_output" | awk -F= '$1 == "version" { print $2 }') (channel=$channel, orq API $API_VERSION)"
 
       - name: Regenerate CLI from schema
         run: |
@@ -179,34 +165,45 @@ jobs:
             # we build the commit server-side and fast-forward the ref to it.
             base_sha="$(git rev-parse HEAD)"
             base_tree="$(git rev-parse 'HEAD^{tree}')"
+            for attempt in 1 2 3; do
+              # One tree entry per staged path. Existing files become a base64 blob;
+              # deleted files carry a null sha so the API drops them from the tree.
+              : > tree-items.jsonl
+              while IFS= read -r path; do
+                [ -z "$path" ] && continue
+                if [ -f "$path" ]; then
+                  mode=100644
+                  [ -x "$path" ] && mode=100755
+                  base64 < "$path" | tr -d '\n' > blob.b64
+                  blob_sha="$(jq -n --rawfile c blob.b64 '{content:$c, encoding:"base64"}' \
+                    | gh api "repos/$REPO/git/blobs" --input - --jq .sha)"
+                  jq -nc --arg p "$path" --arg m "$mode" --arg s "$blob_sha" \
+                    '{path:$p, mode:$m, type:"blob", sha:$s}' >> tree-items.jsonl
+                else
+                  jq -nc --arg p "$path" \
+                    '{path:$p, mode:"100644", type:"blob", sha:null}' >> tree-items.jsonl
+                fi
+              done < <(git diff --cached --name-only)
 
-            # One tree entry per staged path. Existing files become a base64 blob;
-            # deleted files carry a null sha so the API drops them from the tree.
-            : > tree-items.jsonl
-            while IFS= read -r path; do
-              [ -z "$path" ] && continue
-              if [ -f "$path" ]; then
-                mode=100644
-                [ -x "$path" ] && mode=100755
-                base64 < "$path" | tr -d '\n' > blob.b64
-                blob_sha="$(jq -n --rawfile c blob.b64 '{content:$c, encoding:"base64"}' \
-                  | gh api "repos/$REPO/git/blobs" --input - --jq .sha)"
-                jq -nc --arg p "$path" --arg m "$mode" --arg s "$blob_sha" \
-                  '{path:$p, mode:$m, type:"blob", sha:$s}' >> tree-items.jsonl
-              else
-                jq -nc --arg p "$path" \
-                  '{path:$p, mode:"100644", type:"blob", sha:null}' >> tree-items.jsonl
+              new_tree="$(jq -sc --arg base "$base_tree" '{base_tree:$base, tree:.}' tree-items.jsonl \
+                | gh api "repos/$REPO/git/trees" --input - --jq .sha)"
+              new_commit="$(gh api "repos/$REPO/git/commits" \
+                -f message="Regenerate CLI for $VERSION" \
+                -f tree="$new_tree" \
+                -f "parents[]=$base_sha" \
+                --jq .sha)"
+              if gh api --method PATCH "repos/$REPO/git/refs/heads/main" -f sha="$new_commit"; then
+                break
               fi
-            done < <(git diff --cached --name-only)
-
-            new_tree="$(jq -sc --arg base "$base_tree" '{base_tree:$base, tree:.}' tree-items.jsonl \
-              | gh api "repos/$REPO/git/trees" --input - --jq .sha)"
-            new_commit="$(gh api "repos/$REPO/git/commits" \
-              -f message="Regenerate CLI for $VERSION" \
-              -f tree="$new_tree" \
-              -f "parents[]=$base_sha" \
-              --jq .sha)"
-            gh api --method PATCH "repos/$REPO/git/refs/heads/main" -f sha="$new_commit"
+              if [ "$attempt" -eq 3 ]; then
+                echo "error: main moved during commit-back after 3 attempts" >&2
+                exit 1
+              fi
+              echo "main moved during commit-back; retrying (attempt $((attempt + 1))/3)" >&2
+              git fetch origin main
+              base_sha="$(git rev-parse origin/main)"
+              base_tree="$(git rev-parse 'origin/main^{tree}')"
+            done
 
             # Point local HEAD at the verified commit before creating its tag.
             git fetch origin main

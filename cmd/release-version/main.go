@@ -32,6 +32,7 @@ type result struct {
 
 var (
 	versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	rcPattern      = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.[1-9][0-9]*$`)
 	apiPattern     = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$`)
 	majorCommit    = regexp.MustCompile(`^[a-z]+(?:\([^)]*\))?!:`)
 	featureCommit  = regexp.MustCompile(`^feat(?:\([^)]*\))?:`)
@@ -40,13 +41,14 @@ var (
 
 func main() {
 	var in input
-	var tagsFile, commitsFile string
+	var tagsFile, commitsFile, verifyVersion string
 	flag.StringVar(&in.Version, "version", "", "bare VERSION semver")
 	flag.StringVar(&in.API, "api-version", "", "current orq API app_version")
 	flag.StringVar(&in.ReleasedAPI, "released-api-version", "", "orq API app_version at the last stable tag")
 	flag.StringVar(&in.Channel, "channel", "stable", "release channel: stable or rc")
 	flag.StringVar(&tagsFile, "tags-file", "", "file containing one local tag per line")
 	flag.StringVar(&commitsFile, "commits-file", "", "file of NUL-separated commit records, subject on the first line")
+	flag.StringVar(&verifyVersion, "verify", "", "verify a resolved release version")
 	flag.Parse()
 
 	var err error
@@ -63,7 +65,12 @@ func main() {
 		}
 	}
 
-	out, err := resolve(in)
+	var out result
+	if verifyVersion != "" {
+		out, err = verify(in, verifyVersion)
+	} else {
+		out, err = resolve(in)
+	}
 	if err != nil {
 		fatal(err)
 	}
@@ -108,8 +115,14 @@ func resolve(in input) (result, error) {
 	tags := tagSet(in.Tags)
 
 	if in.Channel == "rc" {
-		major, minor, _ := parseVersionFields(in.Version)
-		prefix := fmt.Sprintf("%d.%d.0-rc.", major, minor+1)
+		stableTarget := stableVersionTarget(in.Version, bump, tags)
+		rcBase := stableTarget
+		if highest, ok := highestStable(tags); ok && higher(highest, rcBase) {
+			rcBase = highest
+		}
+		rcBase = applyBump(rcBase, "minor")
+		major, minor, _ := parseVersionFields(rcBase)
+		prefix := fmt.Sprintf("%d.%d.0-rc.", major, minor)
 		n := 1
 		for tags[fmt.Sprintf("v%s%d", prefix, n)] {
 			n++
@@ -124,15 +137,9 @@ func resolve(in input) (result, error) {
 		return result{Version: version, Tag: "v" + version, PreviousTag: previous, Bump: bump, Prerelease: true}, nil
 	}
 
-	base := in.Version
-	if tags["v"+base] {
-		base = applyBump(base, bump)
-	}
-	major, minor, patch := parseVersionFields(base)
-	for tags[fmt.Sprintf("v%d.%d.%d", major, minor, patch)] {
-		patch++
-	}
-	version := fmt.Sprintf("%d.%d.%d", major, minor, patch)
+	version := stableVersionTarget(in.Version, bump, tags)
+	major, minor, patch := parseVersionFields(version)
+	version = fmt.Sprintf("%d.%d.%d", major, minor, patch)
 	// A stale or mis-merged VERSION resolves a number below what is already
 	// published, and that number becomes npm `latest` and /releases/latest -
 	// a downgrade `orq update` then refuses to walk anyone back out of. Fail
@@ -141,6 +148,50 @@ func resolve(in input) (result, error) {
 		return result{}, fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
 	}
 	return result{Version: version, Tag: "v" + version, PreviousTag: "v" + in.Version, Bump: bump}, nil
+}
+
+func stableVersionTarget(version, bump string, tags map[string]bool) string {
+	base := version
+	if tags["v"+base] {
+		base = applyBump(base, bump)
+	}
+	major, minor, patch := parseVersionFields(base)
+	for tags[fmt.Sprintf("v%d.%d.%d", major, minor, patch)] {
+		patch++
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
+}
+
+func verify(in input, version string) (result, error) {
+	switch in.Channel {
+	case "stable":
+		if !versionPattern.MatchString(version) {
+			return result{}, fmt.Errorf("version must be a bare major.minor.patch semver, got %q", version)
+		}
+	case "rc":
+		if !rcPattern.MatchString(version) {
+			return result{}, fmt.Errorf("rc version must have the form major.minor.patch-rc.N, got %q", version)
+		}
+	default:
+		return result{}, fmt.Errorf("unknown release channel %q", in.Channel)
+	}
+
+	tags := tagSet(in.Tags)
+	tag := "v" + version
+	if tags[tag] {
+		return result{}, fmt.Errorf("tag %s is already taken", tag)
+	}
+	// An rc previews the release named by its base, so the base is what has to
+	// clear the floor: v5.0.0-rc.1 published while v5.1.0 is out would put the
+	// npm `rc` dist-tag below `latest`.
+	base := version
+	if i := strings.Index(base, "-rc."); i >= 0 {
+		base = base[:i]
+	}
+	if highest, ok := highestStable(tags); ok && !higher(base, highest) {
+		return result{}, fmt.Errorf("version %s does not sort above the highest released %s", version, highest)
+	}
+	return result{Version: version, Tag: tag, Prerelease: in.Channel == "rc"}, nil
 }
 
 // highestStable is the largest x.y.z tag on this line. Pre-release tags are

@@ -21,11 +21,18 @@ on:
 jobs:
   detect-changes:
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-detect
+      cancel-in-progress: false
     permissions:
       contents: read
     outputs:
       stable: ${{ steps.changes.outputs.stable }}
       prerelease: ${{ steps.changes.outputs.prerelease }}
+      stable_version: ${{ steps.changes.outputs.stable_version }}
+      stable_api_version: ${{ steps.changes.outputs.stable_api_version }}
+      rc_version: ${{ steps.changes.outputs.rc_version }}
+      rc_api_version: ${{ steps.changes.outputs.rc_api_version }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -48,29 +55,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Judged on what is unreleased on each line, not on this push: GitHub
-          # cancels the older waiting run per concurrency group, and a
-          # push-scoped range would die with it. Anchored on VERSION rather than
-          # the highest tag, so the orq API's old v4.12.x-v4.14.x numbering is
-          # never mistaken for this line's last release. No tag yet means the
-          # line has not started.
+          # Judged on what is unreleased on each line, not on this push. Anchored
+          # on VERSION rather than the highest tag, so the orq API's old
+          # v4.12.x-v4.14.x numbering is never mistaken for this line's last
+          # release. No tag yet means the line has not started.
           file_version="$(tr -d '[:space:]' < VERSION)"
           tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
           stable_tag=""
           if tag_exists "v$file_version"; then stable_tag="v$file_version"; fi
 
-          # Only the rc line's last tag is needed here; the number itself is
-          # resolved inside the pipeline, where the tag set is current. The rc
-          # allocator is prefix-based, so it never mistakes the orq API's old
-          # v4.14.0-rc.N numbering for this line's.
-          api_now="$(jq -r '.app_version' .bartolo.json)"
-          tags_file="$(mktemp)"; empty_commits="$(mktemp)"
+          stable_api_version="$(jq -r '.app_version' .bartolo.json)"
+          rc_api_version="$(jq -r '.app_version' packages/orq-rc/.bartolo.json)"
+          released_api=""
+          if [ -n "$stable_tag" ]; then
+            # A tag whose tree has no .bartolo.json reads as no previous API version.
+            released_api="$(git show "$stable_tag:.bartolo.json" 2>/dev/null | jq -r '.app_version' || true)"
+          fi
+          tags_file="$(mktemp)"; commits_file="$(mktemp)"
           git tag --list 'v*' > "$tags_file"
+          # NUL between records, subject on each record's first line: the
+          # resolver honours `type!:` on the subject only, so a wrapped body
+          # line cannot cut a major.
+          git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
+            VERSION cli/custom npm scripts install.sh \
+            openapi.yaml .bartolo.json go.mod go.sum cmd/orq > "$commits_file"
+          stable_resolved="$(go run ./cmd/release-version \
+            --channel stable --version "$file_version" \
+            --api-version "$stable_api_version" --released-api-version "$released_api" \
+            --tags-file "$tags_file" --commits-file "$commits_file")"
           rc_resolved="$(go run ./cmd/release-version \
             --channel rc --version "$file_version" \
-            --api-version "$api_now" \
-            --tags-file "$tags_file" --commits-file "$empty_commits")"
+            --api-version "$rc_api_version" --released-api-version "$released_api" \
+            --tags-file "$tags_file" --commits-file "$commits_file")"
+          stable_version="$(printf '%s\n' "$stable_resolved" | awk -F= '$1 == "version" { print $2 }')"
           rc_tag="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "previous_tag" { print $2 }')"
+          rc_version="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "version" { print $2 }')"
           # No tag on a line yet: everything it ships counts as unreleased.
           changed_since() {
             if [ -n "$1" ]; then git diff --name-only "$1" HEAD; else git ls-files; fi
@@ -106,8 +125,14 @@ jobs:
             fi
           fi
 
-          echo "stable=$stable" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          {
+            echo "stable=$stable"
+            echo "prerelease=$prerelease"
+            echo "stable_version=$stable_version"
+            echo "stable_api_version=$stable_api_version"
+            echo "rc_version=$rc_version"
+            echo "rc_api_version=$rc_api_version"
+          } >> "$GITHUB_OUTPUT"
 
   release-stable:
     needs: detect-changes
@@ -117,6 +142,9 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    with:
+      version: ${{ needs.detect-changes.outputs.stable_version }}
+      api_version: ${{ needs.detect-changes.outputs.stable_api_version }}
 
   release-prerelease:
     needs: detect-changes
@@ -128,3 +156,5 @@ jobs:
       id-token: write
     with:
       module_dir: packages/orq-rc
+      version: ${{ needs.detect-changes.outputs.rc_version }}
+      api_version: ${{ needs.detect-changes.outputs.rc_api_version }}
