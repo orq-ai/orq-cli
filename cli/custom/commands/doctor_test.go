@@ -376,10 +376,31 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok, _ := credentialPermsCheck(false); ok {
-			t.Fatalf("a clean tree still reported: ok=%v check=%+v", ok, check)
+		check, ok, err := credentialPermsCheck(false)
+		if !ok || err != nil || check.Status != "pass" {
+			t.Fatalf("clean tree = ok=%v check=%+v err=%v, want structured pass", ok, check, err)
 		}
 	})
+
+	for _, mode := range []os.FileMode{0o604, 0o701} {
+		t.Run(fmt.Sprintf("mode %04o is reported", mode), func(t *testing.T) {
+			dir, _ := setupConfig(t)
+			if err := os.Chmod(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "credentials.json")
+			if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, mode); err != nil {
+				t.Fatal(err)
+			}
+			check, ok, err := credentialPermsCheck(false)
+			if !ok || err != nil || check.Status != "warn" {
+				t.Fatalf("mode %04o = ok=%v check=%+v err=%v, want warn", mode, ok, check, err)
+			}
+		})
+	}
 
 	t.Run("a loose session file is reported", func(t *testing.T) {
 		dir, sessionsDir := setupConfig(t)
@@ -438,8 +459,9 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if check, ok, _ := credentialPermsCheck(false); ok {
-			t.Fatalf("an empty config dir still reported: ok=%v check=%+v", ok, check)
+		check, ok, err := credentialPermsCheck(false)
+		if !ok || err != nil || check.Status != "pass" {
+			t.Fatalf("empty config dir = ok=%v check=%+v err=%v, want structured pass", ok, check, err)
 		}
 	})
 
@@ -585,9 +607,9 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Mkdir(credPath, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		check, ok, _ := credentialPermsCheck(true)
-		if !ok || check.Status != "warn" {
-			t.Fatalf("got ok=%v status=%q, want a warn naming the wrong-typed path", ok, check.Status)
+		check, ok, err := credentialPermsCheck(true)
+		if !ok || err == nil || check.Status != "fail" {
+			t.Fatalf("got ok=%v status=%q err=%v, want a failed repair", ok, check.Status, err)
 		}
 		if !strings.Contains(check.Message, credPath) || !strings.Contains(check.Message, "a directory") {
 			t.Errorf("message does not name the path and what it is: %q", check.Message)
@@ -934,5 +956,52 @@ func TestDoctorFixExitCodeOnlyFollowsAFailedRepair(t *testing.T) {
 func TestDoctorFixFlagIsRegisteredOnEveryPlatform(t *testing.T) {
 	if NewDoctorCommand().Flags().Lookup("fix") == nil {
 		t.Error("doctor has no --fix flag")
+	}
+}
+
+func TestCredentialPermissionsCleanResultIsStructuredButHumanSilent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	check, ok, err := credentialPermsCheck(false)
+	if err != nil || !ok {
+		t.Fatalf("credentialPermsCheck() = ok=%v err=%v, want a clean result", ok, err)
+	}
+	if check.Status != "pass" || check.Details["checked"] == nil {
+		t.Fatalf("clean check = %+v, want pass with checked detail", check)
+	}
+	out := captureStdout(t, func() {
+		printDoctorSummary("missing", "", []doctorCheck{check})
+	})
+	if strings.Contains(out, "credential_permissions") {
+		t.Fatalf("human summary exposed clean credential row: %s", out)
+	}
+}
+
+func TestCredentialPermissionsFixFailsForUnreadablePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "credentials.json")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	check, ok, err := credentialPermsCheck(true)
+	if !ok || err == nil || check.Status != "fail" {
+		t.Fatalf("wrong-type --fix = ok=%v status=%q err=%v, want failure", ok, check.Status, err)
 	}
 }

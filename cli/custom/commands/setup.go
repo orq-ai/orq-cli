@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -645,11 +646,21 @@ func writeShellEnvFile(rep *reporter, token string) (string, error) {
 		header += "# Add to " + sh.Profile + ":\n#     " + sh.Line + "\n"
 	}
 	warnIfEnvFileWasExposed(rep, sh.EnvFile)
-	if err := os.WriteFile(sh.EnvFile, []byte(header+assign+"\n"), 0o600); err != nil {
+	f, err := os.OpenFile(sh.EnvFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
 		return "", err
 	}
-	// A pre-existing file may have been created with looser permissions.
-	return sh.EnvFile, os.Chmod(sh.EnvFile, 0o600)
+	defer f.Close()
+	// OpenFile's mode is only applied when creating a file. Tighten the
+	// descriptor before writing the new token so an existing loose file never
+	// briefly exposes the freshly minted key.
+	if err := f.Chmod(0o600); err != nil {
+		return "", err
+	}
+	if _, err := io.WriteString(f, header+assign+"\n"); err != nil {
+		return "", err
+	}
+	return sh.EnvFile, nil
 }
 
 // warnIfEnvFileWasExposed says so before the chmod below tightens a
@@ -869,11 +880,28 @@ func clearShellEnvFile() []string {
 			continue
 		}
 		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
-		if os.WriteFile(path, []byte(body), 0o600) == nil {
+		if writeSecretFile(path, []byte(body)) == nil {
 			cleared = append(cleared, path)
 		}
 	}
 	return cleared
+}
+
+// writeSecretFile replaces the contents of a secret-bearing file only after
+// tightening its held descriptor. The permission argument to os.WriteFile is
+// ignored for an existing file, which would otherwise expose newly written
+// secret data until a later chmod.
+func writeSecretFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return err
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that

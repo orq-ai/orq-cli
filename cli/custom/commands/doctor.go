@@ -51,6 +51,9 @@ func NewDoctorCommand() *cobra.Command {
 		Use:   "doctor",
 		Short: "Inspect config, auth state, and endpoint reachability",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if bugReport && fixPerms {
+				return errors.New("--report and --fix cannot be used together")
+			}
 			if bugReport {
 				return emitBugReport(cmd)
 			}
@@ -254,6 +257,12 @@ func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
 	// fault rows earn their own line. --json keeps every row.
 	rows := []tableRow{{marker: statusGlyph(authStatusToCheck(authStatus)), cells: []string{"auth", authLine}}}
 	for _, c := range checks {
+		// A clean credential-permissions check is retained in structured
+		// output so automation can distinguish "checked" from "skipped",
+		// but stays silent in the compact human checklist.
+		if c.ID == "credential_permissions" && c.Status == "pass" {
+			continue
+		}
 		if strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
 			continue
 		}
@@ -762,8 +771,15 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 		}
 	}
 	if len(results) == 0 {
-		// Nothing to say: a clean run prints no credential row at all.
-		return doctorCheck{}, false, nil
+		if checked == 0 {
+			// Nothing existed to inspect, or the check could not establish a
+			// safe home directory. Absence is preferable to claiming a clean
+			// check that did not actually run.
+			return doctorCheck{}, false, nil
+		}
+		return doctorCheck{ID: "credential_permissions", Status: "pass",
+			Message: "Credential paths are not accessible by other accounts",
+			Details: map[string]any{"checked": checked}}, true, nil
 	}
 
 	var repairedMsgs, looseMsgs, fixErrors, wrongTypeMsgs, unreadable []string
@@ -808,8 +824,14 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 				want = "a directory"
 			}
 			wrongTypeMsgs = append(wrongTypeMsgs, fmt.Sprintf("%s is %s, not %s — left untouched, inspect it by hand", r.display(), r.found, want))
+			if fix {
+				fixErrors = append(fixErrors, fmt.Sprintf("%s has the wrong type and could not be repaired", r.display()))
+			}
 		case credPermUnreadable:
 			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", r.display(), r.err))
+			if fix {
+				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be inspected", r.display()))
+			}
 		}
 	}
 

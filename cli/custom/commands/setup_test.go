@@ -292,6 +292,34 @@ func TestWriteShellEnvFile(t *testing.T) {
 	}
 }
 
+func TestWriteShellEnvFileTightensBeforeWritingExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	t.Setenv("SHELL", "/bin/zsh")
+	path := filepath.Join(dir, "env")
+	if err := os.WriteFile(path, []byte("export ORQ_API_KEY=old-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if _, err := writeShellEnvFile(&reporter{w: &out}, "new-token"); err != nil {
+		t.Fatalf("writeShellEnvFile: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("mode = %o, want 600", got)
+	}
+	if !strings.Contains(out.String(), "treat the exposed API key as compromised") {
+		t.Errorf("warning = %q, want exposure warning", out.String())
+	}
+}
+
 // An unrecognised shell must still get a runnable command; only the profile
 // file is unknown. Printing an empty line would leave the user with nothing.
 func TestDetectShellAlwaysGivesACommand(t *testing.T) {
@@ -2283,6 +2311,11 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 	if err := os.WriteFile(fish, []byte("set -gx ORQ_API_KEY sk-orq-LIVE\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	for _, path := range []string{posix, fish} {
+		if err := os.Chmod(path, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	cleared := clearShellEnvFile()
 	if len(cleared) != 2 {
@@ -2295,6 +2328,9 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 		body := string(mustRead(t, path))
 		if strings.Contains(body, "sk-orq-LIVE") || strings.Contains(body, "ORQ_API_KEY") {
 			t.Errorf("%s still exports the key:\n%s", path, body)
+		}
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %v, want 0600", path, info)
 		}
 	}
 
