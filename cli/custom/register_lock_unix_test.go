@@ -131,7 +131,7 @@ func TestSkillsSweepRunsOnACommandThatHasNothingToDoWithSkills(t *testing.T) {
 	}
 	m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint()}
 	m.AddLink(skills.Link{Path: leaked, Skill: "orq-leaked", Agent: "claude", Mode: skills.ModeSymlink, Session: true})
-	m.Sessions = append(m.Sessions, skills.Session{ID: "dead", PID: 999999, Paths: []string{leaked}})
+	m.Sessions = append(m.Sessions, skills.Session{ID: "dead", PID: -1, Paths: []string{leaked}})
 	if err := skills.SaveManifest(m); err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +165,10 @@ func recordDeadSession(t *testing.T, home string) {
 		t.Fatalf("LoadManifest: %v %v", m, err)
 	}
 	m.Sessions = append(m.Sessions, skills.Session{
-		ID:    "dead",
-		PID:   999999,
+		ID: "dead",
+		// Non-positive PIDs are defined as dead by processAlive, so this
+		// fixture cannot collide with a real process on a hosted runner.
+		PID:   -1,
 		Paths: []string{filepath.Join(home, ".claude", "skills", "orq-gone")},
 	})
 	if err := skills.SaveManifest(m); err != nil {

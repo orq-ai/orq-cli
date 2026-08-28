@@ -855,8 +855,9 @@ func TestDoctorReportsAndFixesCredentialPermissions(t *testing.T) {
 		t.Fatalf("credentials.json is %04o after --fix, want 0600", info.Mode().Perm())
 	}
 
-	if again := findCheck(t, runDoctorJSON(t), "credential_permissions"); again != nil {
-		t.Errorf("a repaired tree still reports: %v", again)
+	again := findCheck(t, runDoctorJSON(t), "credential_permissions")
+	if again == nil || again["status"] != "pass" {
+		t.Errorf("a repaired tree returned %v, want a structured pass", again)
 	}
 }
 
