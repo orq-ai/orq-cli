@@ -107,6 +107,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.0.0) — 2026-08-28
+
 - **Fixed (security):** path parameters are URL-escaped and rejected when
   empty. `orq datasets retrieve '../../etc/passwd'` used to be pasted into the
   request path verbatim, so a crafted id could traverse to a different endpoint
