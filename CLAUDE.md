@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make build                          # ./bin/orq
 make test                           # go test ./cli/custom/...
 go test ./cli/custom/commands -run TestVersionCommandReportsBothVersions   # one test
-go test ./... && go vet ./... && gofmt -l .                                # what CI runs
+go test ./... && go vet ./... && gofmt -l $(git ls-files '*.go')            # what CI runs
 go run ./cmd/surface-dump -check    # command-surface gate; -write to accept a change
 go run ./cmd/orq --json doctor      # or: make doctor
 ```
@@ -93,13 +93,10 @@ commit type is the version.
 | `feat` | minor |
 | `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci` | patch |
 
-The release pipeline reads the commits since the last release, takes the largest
-bump they earn, and compares it with the field the orq API version moved —
-whichever is larger wins. The bump is applied to `VERSION`, which records what
-this line last released — the line starts at `5.0.0`, above every number the orq
-API's old `4.x` line published. **You do not tag, and you edit
-`VERSION` only to force a number the rules would not reach on their own** (see
-[Versioning](CHANGELOG.md#versioning)); otherwise the pipeline writes it.
+**You do not tag, and you edit `VERSION` only to force a number the rules would
+not reach on their own** — how the pipeline resolves a number from the table
+above is in [Versioning](CHANGELOG.md#versioning), and stating it twice is how
+the two copies drift.
 
 **Never write a breaking commit without asking first.** A single `!` or
 `BREAKING CHANGE:` footer anywhere in the range cuts a major release, and it

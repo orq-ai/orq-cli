@@ -17,14 +17,28 @@ UNRELEASED = "## Unreleased"
 RELEASE_URL = "https://github.com/orq-ai/orq-cli/releases/tag/v{}"
 
 
+def next_heading(body: str) -> int | None:
+    """Offset of the next `## ` line, ignoring the ones inside fenced blocks."""
+    fenced = False
+    offset = 0
+    for line in body.splitlines(keepends=True):
+        if line.startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            return offset
+        offset += len(line)
+    return None
+
+
 def stamp(text: str, version: str, date: str) -> tuple[str, str]:
     """Return (new changelog, section body). Body is '' when nothing changed."""
-    start = text.find(UNRELEASED + "\n")
-    if start == -1:
+    unreleased = re.search(rf"^{re.escape(UNRELEASED)}\n", text, re.MULTILINE)
+    if unreleased is None:
         raise SystemExit(f"error: no '{UNRELEASED}' heading in CHANGELOG.md")
-    body_start = start + len(UNRELEASED) + 1
-    next_heading = re.search(r"^## ", text[body_start:], re.MULTILINE)
-    body_end = body_start + (next_heading.start() if next_heading else len(text) - body_start)
+    start = unreleased.start()
+    body_start = unreleased.end()
+    end = next_heading(text[body_start:])
+    body_end = body_start + (end if end is not None else len(text) - body_start)
     body = text[body_start:body_end].strip("\n")
     if not body.strip():
         return text, ""
@@ -48,6 +62,21 @@ def self_test() -> None:
     tail = "# Changelog\n\n## Unreleased\n\n- **Fixed:** the end.\n"
     _, body3 = stamp(tail, "5.1.0", "2026-01-02")
     assert body3 == "- **Fixed:** the end.", body3
+    # Prose naming the heading is not the heading: this file's own Versioning
+    # section quotes `## Unreleased`, and stamping that would publish the docs.
+    decoy = "# Changelog\n\nAdd entries under ## Unreleased\n\n## Unreleased\n\n- **Added:** real.\n"
+    _, body4 = stamp(decoy, "5.1.0", "2026-01-02")
+    assert body4 == "- **Added:** real.", body4
+    # A fenced block may hold a `## ` line; it does not end the section.
+    fenced = "## Unreleased\n\n- **Added:** a thing:\n\n  ```md\n  ## Not a heading\n  ```\n\n## Earlier\n"
+    _, body5 = stamp(fenced, "5.1.0", "2026-01-02")
+    assert body5.endswith("```"), body5
+    try:
+        stamp("# Changelog\n\n## Earlier\n", "5.1.0", "2026-01-02")
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("a changelog with no Unreleased heading must fail loudly")
     print("ok")
 
 

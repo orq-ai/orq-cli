@@ -195,7 +195,7 @@ orq doctor --json          # machine-readable
 
 `doctor` reports:
 
-- CLI binary + runtime (version, platform/arch)
+- CLI binary + runtime (version, orq API version, platform/arch)
 - Active profile + session file path
 - Resolved `api_base_url`, `v1_base_url`, `auth_base_url`, `profile_base_url` with their *source* (flag, session, env, default, derived)
 - Auth status (authenticated / missing / invalid / unreadable), user email, active workspace
@@ -250,6 +250,7 @@ surface changes are always a reviewed diff.
 | `orq workspace use <key>` | Switch active workspace |
 | `orq doctor` | Diagnose config, auth, reachability |
 | `orq update` | Update this binary to the latest release (`--check` reports only) |
+| `orq version` | Print the CLI version, the orq API version it was built against, and the install channel |
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
@@ -361,7 +362,8 @@ Sandboxed execution is not available in this version.
 
 `orq version` prints the CLI version, the orq API version the build was
 generated against, and the channel it was installed through; `--json` gives
-`cli`, `api` and `channel`. `orq --version` prints the same first two lines.
+`cli`, `api` and `channel`. `orq --version` remains the compact CLI-version
+line used by installers and scripts.
 
 The CLI's version is its own — it does not track the orq API version, which is
 why the API line has to be reported rather than read off the tag. `--channel rc`
@@ -462,7 +464,7 @@ make doctor             # run the doctor command
 bartolo sync
 ```
 
-This wipes `cli/generated/` and rebuilds it from `openapi.json`. **`cli/custom/` is never touched** — bartolo detects the existing directory and skips the stub.
+This wipes `cli/generated/` and rebuilds it from `openapi.yaml`. **`cli/custom/` is never touched** — bartolo detects the existing directory and skips the stub.
 
 ### Cutting a release
 
@@ -472,12 +474,8 @@ to `main`, releases when something that reaches a binary is unreleased —
 `go.mod`, or either module's OpenAPI schema, changed since that line's last tag
 — and calls `release-pipeline.yml`, which:
 
-1. Resolves the version: the larger of what the orq API version moved and what
-   our own conventional-commit types since the last release earn, applied to
-   `VERSION` (what this line last released), then the next free tag from that.
-   Nobody tags by hand, and `VERSION` is hand-edited only to force a number the
-   rules would not reach; see [Versioning](CHANGELOG.md#versioning) and
-   `CLAUDE.md`.
+1. Resolves the version, by the rules in [Versioning](CHANGELOG.md#versioning),
+   and takes the next free tag from it. Nobody tags by hand.
 2. Stamps `CHANGELOG.md`: the hand-written `## Unreleased` section is renamed to
    the version being cut, a fresh empty one takes its place, and the section
    becomes the top of the release notes. An rc release becomes
@@ -485,17 +483,18 @@ to `main`, releases when something that reaches a binary is unreleased —
 3. Regenerates `cli/generated/` from the module's schema and commits it back to
    `main` (signed, through the Git Data API — `main` requires verified
    signatures).
-4. Creates a draft GitHub release: the orq API version the build was generated
-   against, then the changelog section, then the generated commit list. It is
-   published, and the tag created, only once every asset is attached.
+4. Commits the regenerated tree and `VERSION` back to `main`, then creates and
+   pushes the release tag before building. This makes the version record and
+   its tag one release identity; a tag may briefly have no assets.
 5. Cross-compiles 5 platform binaries (`darwin-arm64`, `darwin-x64`,
    `linux-x64`, `linux-arm64`, `win32-x64`), ad-hoc signs the macOS ones, and
    stamps version and `orqApiVersion` into all 6 `package.json` files.
-6. Uploads the raw binaries, their `.sha256` files, the man pages and a stamped
-   `install.sh` to the release, publishes it, and only then publishes to npm
-   under `latest` (stable) or `rc` (pre-release) — the npm dist-tags are what
-   `install.sh --channel rc` resolves a version from, so they must never point
-   at a release whose assets are still uploading.
+6. Creates an idempotent draft GitHub release, uploads the raw binaries, their
+   `.sha256` files, the man pages and a stamped `install.sh`, then publishes it.
+7. `publish-npm.yml` reacts to the published release and publishes the packages
+   under `latest` (stable) or `rc` (pre-release), skipping package versions
+   already present so a retry can resume. The npm dist-tags are what
+   `install.sh --channel rc` resolves a version from.
 
 npm publishing authenticates through OIDC (`id-token: write`), not a stored
 token. `workflow_dispatch` runs a release on demand — `stable`, `prerelease` or

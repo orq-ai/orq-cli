@@ -1,0 +1,73 @@
+name: Publish npm packages
+
+# npm is deliberately downstream of the GitHub release. If this workflow is
+# retried, the tag and release identity are already fixed and packages that
+# made it to npm are skipped rather than turning an immutable-version collision
+# into a failed release.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: macos-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      PRERELEASE: ${{ github.event.release.prerelease }}
+      DIST_TAG: ${{ github.event.release.prerelease && 'rc' || 'latest' }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Build packages from the immutable release tag
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          module_dir=""
+          if [ "$PRERELEASE" = "true" ]; then
+            module_dir=packages/orq-rc
+          fi
+          workdir="${module_dir:-.}"
+          api_version="$(jq -r '.app_version' "$workdir/.bartolo.json")"
+          ./scripts/release-build.sh "$version" "$module_dir" "$api_version"
+
+      - name: Publish packages that are not in npm yet
+        run: |
+          set -euo pipefail
+
+          publish_if_missing() {
+            package_dir="$1"
+            package_name="$(node -p "require('./$package_dir/package.json').name")"
+            package_version="$(node -p "require('./$package_dir/package.json').version")"
+            if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+              echo "=== $package_name@$package_version already published; skipping ==="
+              return
+            fi
+            echo "=== Publishing $package_name@$package_version @ dist-tag $DIST_TAG ==="
+            (cd "$package_dir" && npm publish --access public --tag "$DIST_TAG")
+          }
+
+          for package_dir in npm/cli-*/; do
+            publish_if_missing "${package_dir%/}"
+          done
+          publish_if_missing npm/cli

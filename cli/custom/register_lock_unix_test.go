@@ -38,6 +38,9 @@ import (
 func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// applyNoColor replaces bartolocli.Stderr with os.Stderr when NO_COLOR is
+	// set. Keep this test's explicit stderr capture stable across environments.
+	t.Setenv("NO_COLOR", "")
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)

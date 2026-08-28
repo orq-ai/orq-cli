@@ -21,7 +21,7 @@ import (
 //
 // apiVersion is the orq API line the generated commands came from. It stays out
 // of root.Version, which install.sh and the update check parse as a bare semver,
-// and is surfaced through the version template and `orq version` instead.
+// and is surfaced through `orq version` instead.
 func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

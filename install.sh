@@ -36,7 +36,6 @@ INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
 CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
 CHANNEL_EXPLICIT=0
-[ -n "${ORQ_CLI_CHANNEL:-}" ] && CHANNEL_EXPLICIT=1
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
@@ -104,8 +103,8 @@ require_cmd() {
   fi
 }
 
-# binary_version <path> [stderr-file]: the first line of `orq --version`, which
-# is the semver - the orq API line sits under it. Captured, not piped into head:
+# binary_version <path> [stderr-file]: the single semver line of `orq --version`.
+# Captured, not piped into head:
 # this sh has no pipefail, so a binary that prints a version and then exits
 # non-zero would read as healthy.
 binary_version() {
@@ -152,7 +151,8 @@ esac
 
 # A pinned version names one exact release, leaving the channel nothing to
 # resolve. Refusing beats silently ignoring one of the two flags the caller
-# passed.
+# passed. Only the flag counts as explicit: ORQ_CLI_CHANNEL is ambient config,
+# and `orq update` shells out with --version through the user's environment.
 if [ -n "$VERSION" ] && [ "$CHANNEL_EXPLICIT" = "1" ]; then
   err "--channel and --version cannot be combined: --version already names a release"
   exit 1

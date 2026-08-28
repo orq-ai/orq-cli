@@ -39,7 +39,7 @@ What you may depend on, and what you may not:
 ## Versioning
 
 The CLI has its own semver, independent of the orq API line (RES-1434). The line
-starts at `5.0.0`: everything at `4.12.x`–`4.14.x` was the orq API's number
+starts at `5.0.0`: everything at `4.12.x`–`4.15.0-rc.x` was the orq API's number
 rather than the CLI's, and starting above all of it means no release this line
 ever cuts can collide with a version npm has already published.
 
@@ -90,9 +90,11 @@ at release time, so they have to already exist.
 
 The orq API version a build was generated against is recorded, not encoded:
 
-- `orq --version` prints it under the CLI version, and `orq version` reports
-  both plus the install channel (`--json` for scripts).
+- `orq version` reports it alongside the CLI version and install channel
+  (`--json` for scripts); `orq --version` remains a compact CLI-version line.
 - Every GitHub release's notes open with `Built against orq API <version>`.
+- `orq doctor` carries it as `binary.api_version` in the structured report
+  (`--json`) and in the `--report` bug-report body.
 - `npm view @orq-ai/cli orqApiVersion` reads it off the published package.
 
 A release is now cut for any change that reaches a binary, including
@@ -215,24 +217,27 @@ controls on surface changes, whichever side they originate from.
   release. It also reaches the generated API commands for the first time, which
   never honored it. Set `ORQ_SERVER` instead.
 
-- **Changed (versioning):** the CLI version no longer tracks the orq API
-  version. See [Versioning](#versioning) above. The first decoupled release is
-  `5.0.0` — the first number above everything the old `4.12.x`–`4.14.x` line
-  ever published, so the sequence only ever moves forward and no future release
-  can collide with a version npm already holds (npm never allows a version
-  string to be reused, and a collision fails the publish mid-release). Nothing
-  about a version number tells you the API line any more — `orq version` does.
-- **Added:** `orq mcp-servers` and `orq mcp-gateways`, from the orq API 4.14.0
-  schema — manage MCP servers and the gateways that bundle them behind one
-  endpoint. Both appear under **AI Gateway** in `orq --help`, where the docs put
-  them.
+- **Changed:** the CLI version no longer tracks the orq API version. See
+  [Versioning](#versioning) above. The first decoupled release is `5.0.0` — the
+  first number above everything the old `4.12.x`–`4.15.0-rc.x` line ever
+  published, so the sequence only ever moves forward and no future release can
+  collide with a version npm already holds (npm never allows a version string to
+  be reused, and a collision fails the publish mid-release). Nothing about a
+  version number tells you the API line any more — `orq version` does.
+
+  **If you installed through npm, this one release needs `npm install -g
+  @orq-ai/cli@latest`.** `npm update -g` treats a global install as pinned to a
+  caret range of the installed version, so a machine on `4.x` will report itself
+  up to date forever rather than crossing into `5.x`. `orq update` and
+  `install.sh` are unaffected — both resolve and install an exact version.
+- **Changed:** `orq mcp-servers` and `orq mcp-gateways` now appear under **AI
+  Gateway** in `orq --help`, where the docs put them. The commands themselves
+  shipped in 4.14.0, from that release's orq API schema.
 - **Added:** `orq version`. Prints the CLI version, the orq API version the
   build was generated against, and the channel it was installed through
   (`installer`, `npm`, or `unknown`). `--json` emits `cli`, `api` and
-  `channel`. `orq --version` keeps `orq version <semver>` as its first line, so
-  anything parsing that line is unaffected, and prints the API line under it —
-  a script that reads the whole output rather than the first line will now see
-  two lines.
+  `channel`. `orq --version` remains `orq version <semver>`, so scripts can
+  continue to parse its single line.
 - **Added:** `install.sh --channel rc` (or `ORQ_CLI_CHANNEL=rc`) installs the
   pre-release line instead of the stable one. The default is unchanged.
 - **Changed:** `orq auth logout` exits non-zero when it fails to remove orq from

@@ -26,7 +26,6 @@ jobs:
     outputs:
       stable: ${{ steps.changes.outputs.stable }}
       prerelease: ${{ steps.changes.outputs.prerelease }}
-      bump: ${{ steps.changes.outputs.bump }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -36,6 +35,10 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
 
       - name: Detect changed files
         id: changes
@@ -56,74 +59,41 @@ jobs:
           stable_tag=""
           if tag_exists "v$file_version"; then stable_tag="v$file_version"; fi
 
-          # The rc line runs ahead at <next-minor>.0-rc.<n>, so its last tag is
-          # the highest rc of that minor, else the stable release it branched
-          # from. `|| true`: an empty tag list SIGPIPEs git under pipefail.
-          rc_major="${file_version%%.*}"; rc_rest="${file_version#*.}"
-          rc_next="$rc_major.$((${rc_rest%%.*} + 1)).0"
-          rc_tag="$(git tag --list "v$rc_next-rc.*" --sort=-v:refname | head -n 1 || true)"
-          if [ -z "$rc_tag" ]; then rc_tag="$stable_tag"; fi
+          api_now="$(jq -r '.app_version' .bartolo.json)"
+          api_released=""
+          if [ -n "$stable_tag" ]; then
+            api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
+          fi
 
+          commits="$(git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
+            VERSION cli/custom npm scripts install.sh \
+            openapi.yaml .bartolo.json go.mod go.sum cmd/orq)"
+          tags_file="$(mktemp)"; commits_file="$(mktemp)"
+          git tag --list 'v*' > "$tags_file"
+          rc_commits_file="$(mktemp)"
+          rc_resolved="$(go run ./cmd/release-version \
+            --channel rc --version "$file_version" \
+            --api-version "$api_now" --released-api-version "$api_released" \
+            --tags-file "$tags_file" --commits-file "$rc_commits_file")"
+          rc_tag="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "previous_tag" { print $2 }')"
           # No tag on a line yet: everything it ships counts as unreleased.
           changed_since() {
             if [ -n "$1" ]; then git diff --name-only "$1" HEAD; else git ls-files; fi
           }
           # Test files change no shipped byte, so they cannot be what makes a
-          # release worth cutting.
-          CHANGED_STABLE="$(changed_since "$stable_tag" | grep -v '_test\.go$' || true)"
-          CHANGED_RC="$(changed_since "$rc_tag" | grep -v '_test\.go$' || true)"
-
-          # The stable release moves the same field the orq API moved: it is the
-          # contract these commands are generated from. Compared value to value,
-          # so a schema republished at the same app_version is not a new API.
-          field() { v="${1#*.}"; case "$2" in 1) printf '%s' "${1%%.*}" ;; 2) printf '%s' "${v%%.*}" ;; esac; }
-          bump=patch
-          # Same validation the pipeline does: jq prints "null" for a missing
-          # key, and "null" != "4.13.22" would read as an API change and cut a
-          # release off a broken schema file.
-          api_now="$(jq -r '.app_version' .bartolo.json)"
-          if [ -z "$api_now" ] || [ "$api_now" = "null" ]; then
-            echo "error: app_version missing in .bartolo.json" >&2
-            exit 1
-          fi
-          api_released=""
-          if [ -n "$stable_tag" ]; then
-            api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
-            if [ "$api_released" = "null" ]; then api_released=""; fi
-          fi
-          if [ -n "$api_released" ] && [ "$api_released" != "$api_now" ]; then
-            if [ "$(field "$api_now" 1)" != "$(field "$api_released" 1)" ]; then
-              bump=major
-            elif [ "$(field "$api_now" 2)" != "$(field "$api_released" 2)" ]; then
-              bump=minor
-            fi
-          fi
-
-          # ...and our own changes speak through their commit type; the two
-          # sources combine by taking the larger. Here-strings, not
-          # `printf | grep -q`: pipefail reads the SIGPIPE that grep -q causes as
-          # "no match", and only once the input outgrows the pipe buffer. Scoped
-          # to the stable binary's paths, like CHANGED_STABLE, so an rc-only
-          # `feat:` cannot decide this line's version.
-          commits="$(git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
-            VERSION cli/custom npm scripts install.sh \
-            openapi.yaml .bartolo.json go.mod go.sum cmd/orq)"
-          commit_bump=patch
-          if grep -qE '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:' <<< "$commits"; then
-            commit_bump=major
-          elif grep -qE '^feat(\([^)]*\))?:' <<< "$commits"; then
-            commit_bump=minor
-          fi
-          rank() { case "$1" in major) echo 3 ;; minor) echo 2 ;; *) echo 1 ;; esac; }
-          api_bump="$bump"
-          if [ "$(rank "$commit_bump")" -gt "$(rank "$bump")" ]; then
-            bump="$commit_bump"
-          fi
-          if [ "$bump" = major ]; then
-            echo "::warning::Releasing a MAJOR (orq API says $api_bump, commits say $commit_bump). A breaking change of ours needs a deliberate \`!\` or BREAKING CHANGE footer - if that was not deliberate, fix the commit before this reaches main."
-          fi
-          echo "bump=$bump" >> "$GITHUB_OUTPUT"
-          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); orq API ${api_released:-none} -> $api_now (api=$api_bump, commits=$commit_bump), bump=$bump"
+          # release worth cutting. The git call runs unguarded so a failure
+          # stops the job; `|| true` covers only grep's exit 1 on no matches.
+          all_stable="$(changed_since "$stable_tag")"
+          all_rc="$(changed_since "$rc_tag")"
+          CHANGED_STABLE="$(printf '%s\n' "$all_stable" | grep -v '_test\.go$' || true)"
+          CHANGED_RC="$(printf '%s\n' "$all_rc" | grep -v '_test\.go$' || true)"
+          printf '%s\n' "$commits" > "$commits_file"
+          resolved="$(go run ./cmd/release-version \
+            --channel stable --version "$file_version" \
+            --api-version "$api_now" --released-api-version "$api_released" \
+            --tags-file "$tags_file" --commits-file "$commits_file")"
+          bump="$(printf '%s\n' "$resolved" | awk -F= '$1 == "bump" { print $2 }')"
+          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); resolved bump=$bump"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$TARGET" in
@@ -158,9 +128,6 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    with:
-      npm_dist_tag: latest
-      bump: ${{ needs.detect-changes.outputs.bump }}
 
   release-prerelease:
     needs: detect-changes
@@ -172,4 +139,3 @@ jobs:
       id-token: write
     with:
       module_dir: packages/orq-rc
-      npm_dist_tag: rc

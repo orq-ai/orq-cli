@@ -58,8 +58,6 @@ var commandGroup = map[string]string{
 	"guardrail-rules": groupGateway,
 	"pii":             groupGateway,
 	"budgets":         groupGateway,
-	"mcp-servers":     groupGateway,
-	"mcp-gateways":    groupGateway,
 
 	"traces":     groupObservability,
 	"logs":       groupObservability,
