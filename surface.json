@@ -2312,6 +2312,10 @@
           "type": "string"
         },
         {
+          "name": "fix",
+          "type": "bool"
+        },
+        {
           "name": "report",
           "type": "bool"
         }

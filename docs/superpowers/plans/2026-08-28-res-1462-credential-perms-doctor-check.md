@@ -1,5 +1,29 @@
 # RES-1462 — orq doctor reports world-readable credential files
 
+## Decisions after review
+
+Three calls made after the plan below was written. They override the Global
+Constraints and Context sections that follow; the original text is left intact
+as the record of what was planned first.
+
+1. **`orq doctor --fix` exists.** Doctor still repairs nothing on its own, but
+   an opt-in flag chmods the flagged paths (0600 files, 0700 directories) and
+   reports what it changed. A failed chmod is reported as a failure naming the
+   path and error. The rotation advice survives the repair: a chmod cannot
+   un-expose a key that was already readable. This supersedes "Report only. No
+   `os.Chmod`, no auto-repair, no `--fix` flag anywhere in this change" and the
+   plan's "do not touch surface.json" — a new flag must appear in
+   `surface.json` or the CI gate fails.
+2. **Symlinks are followed, not skipped.** A symlinked `credentials.json`
+   (chezmoi, stow) is judged on its target's mode, because that is the file the
+   CLI reads. The symlink path is what gets reported and chmodded — chmod
+   follows the link, so the user-facing path is the one that works when pasted.
+   A broken symlink is `fs.ErrNotExist` and is skipped like a missing file.
+3. **A clean run is silent.** The check returns `(doctorCheck{}, false)` when
+   nothing is loose and nothing failed inspection, like `mcpCheck` does. It
+   appears only for a loose path, a path that could not be inspected, or a
+   `--fix` that repaired something.
+
 ## Context
 
 Bartolo v0.6.0 made every credentials.json write 0600 from birth

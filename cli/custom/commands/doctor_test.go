@@ -330,7 +330,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
+		check, ok := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -357,9 +357,8 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(credPath, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
-		if !ok || check.Status != "pass" {
-			t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
+		if check, ok := credentialPermsCheck(false); ok {
+			t.Fatalf("a clean tree still reported: ok=%v check=%+v", ok, check)
 		}
 	})
 
@@ -378,7 +377,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(sessionPath, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
+		check, ok := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -398,7 +397,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
+		check, ok := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -412,9 +411,8 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
-		if !ok || check.Status != "pass" {
-			t.Fatalf("got ok=%v status=%q, want a pass, not a warn", ok, check.Status)
+		if check, ok := credentialPermsCheck(false); ok {
+			t.Fatalf("an empty config dir still reported: ok=%v check=%+v", ok, check)
 		}
 	})
 
@@ -437,7 +435,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(envPath, 0o640); err != nil {
 			t.Fatal(err)
 		}
-		check, ok := credentialPermsCheck()
+		check, ok := credentialPermsCheck(false)
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
@@ -451,12 +449,130 @@ func TestCredentialPermsCheck(t *testing.T) {
 			t.Fatalf("details[loose] = %v, want 2 entries", check.Details["loose"])
 		}
 	})
+
+	t.Run("a symlinked credentials.json is judged on its target", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		targetDir := t.TempDir()
+		target := filepath.Join(targetDir, "creds.json")
+		if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(target, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.Symlink(target, credPath); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck(false)
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn for the symlink target", ok, check.Status)
+		}
+		// The user recognizes the symlink path, and chmod follows the link, so
+		// that is the path both the message and Details carry.
+		if !strings.Contains(check.Message, "chmod 600 "+credPath) {
+			t.Errorf("message does not name the symlink path: %q", check.Message)
+		}
+		if strings.Contains(check.Message, target) {
+			t.Errorf("message leaks the resolved target %s: %q", target, check.Message)
+		}
+	})
+
+	t.Run("a broken symlink is skipped silently", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(t.TempDir(), "gone.json"), filepath.Join(dir, "credentials.json")); err != nil {
+			t.Fatal(err)
+		}
+		if check, ok := credentialPermsCheck(false); ok {
+			t.Fatalf("a broken symlink reported: %+v", check)
+		}
+	})
+
+	t.Run("fix chmods the loose paths and still says rotate", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(credPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := credentialPermsCheck(true)
+		if !ok {
+			t.Fatal("fix run reported nothing")
+		}
+		if check.Status != "warn" {
+			t.Errorf("status = %q, want warn", check.Status)
+		}
+		if !strings.Contains(check.Message, "revoke it in the orq dashboard") {
+			t.Errorf("repaired run dropped the rotation advice: %q", check.Message)
+		}
+		for _, want := range []struct {
+			path string
+			mode os.FileMode
+		}{{credPath, 0o600}, {dir, 0o700}} {
+			info, err := os.Stat(want.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != want.mode {
+				t.Errorf("%s is mode %04o after --fix, want %04o", want.path, info.Mode().Perm(), want.mode)
+			}
+		}
+		fixed, ok := check.Details["fixed"].([]map[string]any)
+		if !ok || len(fixed) != 2 {
+			t.Fatalf("details[fixed] = %v, want 2 entries", check.Details["fixed"])
+		}
+		loose, ok := check.Details["loose"].([]map[string]any)
+		if !ok || len(loose) != 0 {
+			t.Errorf("details[loose] = %v, want empty after a successful fix", check.Details["loose"])
+		}
+		if _, again := credentialPermsCheck(false); again {
+			t.Error("a re-run after --fix still reports a finding")
+		}
+	})
+
+	t.Run("fix on a symlink chmods the target", func(t *testing.T) {
+		dir, _ := setupConfig(t)
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(t.TempDir(), "creds.json")
+		if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(target, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(dir, "credentials.json")); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := credentialPermsCheck(true); !ok {
+			t.Fatal("fix run reported nothing")
+		}
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("symlink target is mode %04o after --fix, want 0600", info.Mode().Perm())
+		}
+	})
 }
 
 // TestCredentialPermsCheckReachesDoctorChecksAsJSON exercises the check the
 // way `orq doctor` actually consumes it: appended into the checks slice the
 // command assembles, then marshaled for `--json`. A helper that called
-// credentialPermsCheck() directly, as every other test here does, would miss
+// credentialPermsCheck directly, as every other test here does, would miss
 // a check that never got wired into that slice, or a Details map whose
 // values don't survive json.Marshal in the shape --json promises.
 func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
@@ -482,7 +598,7 @@ func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
 	// Mirrors how NewDoctorCommand's RunE folds credentialPermsCheck into the
 	// checks slice that becomes doctorReport.Checks.
 	var checks []doctorCheck
-	if perms, ok := credentialPermsCheck(); ok {
+	if perms, ok := credentialPermsCheck(false); ok {
 		checks = append(checks, perms)
 	}
 	if len(checks) != 1 || checks[0].Status != "warn" {

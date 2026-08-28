@@ -45,6 +45,7 @@ type doctorReport struct {
 
 func NewDoctorCommand() *cobra.Command {
 	var bugReport bool
+	var fixPerms bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect config, auth state, and endpoint reachability",
@@ -100,7 +101,7 @@ func NewDoctorCommand() *cobra.Command {
 			if expiry, ok := gatewayKeyExpiryCheck(time.Now()); ok {
 				checks = append(checks, expiry)
 			}
-			if perms, ok := credentialPermsCheck(); ok {
+			if perms, ok := credentialPermsCheck(fixPerms); ok {
 				checks = append(checks, perms)
 			}
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", http.MethodGet, client.URLs.APIBaseURL, ""))
@@ -191,6 +192,11 @@ func NewDoctorCommand() *cobra.Command {
 	}
 	DeprecatedAPIBaseFlag(cmd)
 	cmd.Flags().BoolVar(&bugReport, "report", false, "Print a pre-filled GitHub issue URL for filing a bug report")
+	if runtime.GOOS != "windows" {
+		// Absent on Windows for the same reason the permissions check is: there
+		// is nothing there for chmod to act on.
+		cmd.Flags().BoolVar(&fixPerms, "fix", false, "Chmod the credential paths the permissions check flags (0600 files, 0700 directories)")
+	}
 	return cmd
 }
 
@@ -496,6 +502,7 @@ type loosePermPath struct {
 	path      string
 	humanPath string
 	mode      os.FileMode
+	want      os.FileMode
 	fix       string
 }
 
@@ -518,13 +525,13 @@ func shellQuotePath(path string) string {
 // credentialPermsCheck reports credential files and directories left with
 // group/other permission bits set. Bartolo v0.6.0 already writes every
 // credentials.json as 0600, so a loose file here is leftover from an older
-// CLI version rather than something this CLI would produce today — this is
-// a diagnostic, not a repair: doctor never chmods anything itself.
+// CLI version rather than something this CLI would produce today. Repair is
+// opt-in: doctor chmods nothing unless the caller passed --fix.
 //
 // Unix only: Windows ACLs do not map onto the Unix permission bits this
 // check reads, so the check is absent there rather than reporting a
 // meaningless pass.
-func credentialPermsCheck() (doctorCheck, bool) {
+func credentialPermsCheck(fix bool) (doctorCheck, bool) {
 	if runtime.GOOS == "windows" {
 		return doctorCheck{}, false
 	}
@@ -574,8 +581,6 @@ func credentialPermsCheck() (doctorCheck, bool) {
 	}
 
 	for _, c := range candidates {
-		// Lstat, not Stat: a symlinked credential file must be judged on its
-		// own mode, not silently swapped for whatever it points at.
 		info, err := os.Lstat(c.path)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -585,13 +590,25 @@ func credentialPermsCheck() (doctorCheck, bool) {
 			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(c.path)), err))
 			continue
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			// Dotfile managers (chezmoi, stow) symlink credentials.json, and
+			// the CLI follows the link to read the key — so the target's mode
+			// is the one that exposes it. Skipping symlinks reported a clean
+			// pass over a world-readable key.
+			info, err = os.Stat(c.path)
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+				unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(c.path)), err))
+				continue
+			}
+		}
 		if c.isDir {
 			if !info.IsDir() {
 				continue
 			}
 		} else if !info.Mode().IsRegular() {
-			// Symlinks and anything else are skipped: only real files carry
-			// credential contents.
 			continue
 		}
 		checked++
@@ -600,25 +617,47 @@ func credentialPermsCheck() (doctorCheck, bool) {
 			continue
 		}
 		humanPath := shellQuotePath(tilde(c.path))
-		fix := fmt.Sprintf("chmod 600 %s", humanPath)
+		want := os.FileMode(0o600)
 		if c.isDir {
-			fix = fmt.Sprintf("chmod 700 %s", humanPath)
+			want = 0o700
 		}
-		loose = append(loose, loosePermPath{path: c.path, humanPath: humanPath, mode: perm, fix: fix})
+		loose = append(loose, loosePermPath{
+			path:      c.path,
+			humanPath: humanPath,
+			mode:      perm,
+			want:      want,
+			// chmod follows symlinks, so the path the user recognizes is also
+			// the one that repairs the target.
+			fix: fmt.Sprintf("chmod %o %s", want, humanPath),
+		})
+	}
+
+	var repaired, remaining []loosePermPath
+	var fixErrors []string
+	if fix {
+		for _, l := range loose {
+			if err := os.Chmod(l.path, l.want); err != nil {
+				fixErrors = append(fixErrors, fmt.Sprintf("%s could not be chmodded to %04o: %v", l.humanPath, l.want, err))
+				remaining = append(remaining, l)
+				continue
+			}
+			repaired = append(repaired, l)
+		}
+	} else {
+		remaining = loose
 	}
 
 	if len(loose) == 0 && len(unreadable) == 0 {
-		return doctorCheck{
-			ID:      "credential_permissions",
-			Status:  "pass",
-			Message: "Credential files are not accessible by other accounts",
-			Details: map[string]any{"checked": checked, "loose": []map[string]any{}},
-		}, true
+		// Nothing to say: a clean run prints no credential row at all.
+		return doctorCheck{}, false
 	}
 
-	details := make([]map[string]any, 0, len(loose))
-	messages := make([]string, 0, len(loose)+len(unreadable)+1)
-	for _, l := range loose {
+	details := make([]map[string]any, 0, len(remaining))
+	messages := make([]string, 0, len(loose)+len(unreadable)+len(fixErrors)+1)
+	for _, l := range repaired {
+		messages = append(messages, fmt.Sprintf("%s was mode %04o — changed to %04o", l.humanPath, l.mode, l.want))
+	}
+	for _, l := range remaining {
 		details = append(details, map[string]any{
 			"path": l.path,
 			"mode": fmt.Sprintf("%04o", l.mode),
@@ -626,22 +665,41 @@ func credentialPermsCheck() (doctorCheck, bool) {
 		})
 		messages = append(messages, fmt.Sprintf("%s is mode %04o — run '%s'", l.humanPath, l.mode, l.fix))
 	}
+	messages = append(messages, fixErrors...)
 	messages = append(messages, unreadable...)
 	if len(loose) > 0 {
 		// A key that leaked to other local accounts is compromised the moment
-		// it was readable, not just when it is found. `orq setup` alone does
-		// not fix that: it reuses a saved, still-valid key rather than
-		// rotating it, so the actual fix is revoking the old key first.
+		// it was readable, not just when it is found — a chmod after the fact
+		// does not un-expose it. `orq setup` alone does not rotate either: it
+		// reuses a saved, still-valid key, so the old key must be revoked first.
 		messages = append(messages, "treat any exposed key as compromised: revoke it in the orq dashboard, delete it from credentials.json, then run 'orq setup' to mint a new one")
 	}
 
 	detailsOut := map[string]any{"checked": checked, "loose": details}
+	if len(repaired) > 0 {
+		fixed := make([]map[string]any, 0, len(repaired))
+		for _, l := range repaired {
+			fixed = append(fixed, map[string]any{
+				"path":          l.path,
+				"previous_mode": fmt.Sprintf("%04o", l.mode),
+				"mode":          fmt.Sprintf("%04o", l.want),
+			})
+		}
+		detailsOut["fixed"] = fixed
+	}
+	if len(fixErrors) > 0 {
+		detailsOut["fix_errors"] = fixErrors
+	}
 	if len(unreadable) > 0 {
 		detailsOut["unreadable"] = unreadable
 	}
+	status := "warn"
+	if len(fixErrors) > 0 {
+		status = "fail"
+	}
 	return doctorCheck{
 		ID:      "credential_permissions",
-		Status:  "warn",
+		Status:  status,
 		Message: strings.Join(messages, "; "),
 		Details: detailsOut,
 	}, true

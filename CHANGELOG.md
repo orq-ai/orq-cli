@@ -65,14 +65,21 @@ the version and this changelog as the source of truth for breaking changes.
 - **Added:** `orq doctor` checks `~/.orq` itself, `credentials.json`, `env`,
   `env.fish`, each per-profile file under `sessions/`, and the legacy
   `session.json`, for group- or other-accessible permission bits, so the
-  manual check the entry above asks for now runs on every `orq doctor`. A hit
-  names the exact path, its mode, and the `chmod` to fix it, and tells you to
-  treat the key as compromised: revoke it in the dashboard, delete it from
-  `credentials.json`, then run `orq setup` to mint a new one — `orq setup` on
-  its own reuses a saved, still-valid key rather than rotating it. It only
-  reports; nothing is chmodded automatically, and the file keeps whatever mode
-  it has until you fix it or overwrite it yourself. Unix only — Windows ACLs
-  do not map onto the bits this check reads, so it does not run there.
+  manual check the entry above asks for now runs on every `orq doctor`. A
+  symlinked path (chezmoi, stow) is judged on its target's mode, since that is
+  what the CLI actually reads. A hit names the exact path, its mode, and the
+  `chmod` to fix it, and tells you to treat the key as compromised: revoke it
+  in the dashboard, delete it from `credentials.json`, then run `orq setup` to
+  mint a new one — `orq setup` on its own reuses a saved, still-valid key
+  rather than rotating it. A clean run says nothing at all; the check only
+  appears when there is a finding.
+- **Added:** `orq doctor --fix` chmods what that check flags — 0600 for files,
+  0700 for directories — and reports each path it changed. Doctor still repairs
+  nothing on its own; without the flag it only reports. A chmod that fails is
+  reported as a failure naming the path and the error. The rotation advice
+  stands after a repair: a chmod cannot un-expose a key that was already
+  readable. Both the check and `--fix` are Unix only — Windows ACLs do not map
+  onto the bits this check reads, so neither exists there.
 - **Changed (security):** `orq auth list-profiles` masks stored credentials.
   It previously printed the full API key in plaintext, so keys reached terminal
   scrollback, CI logs and screen recordings. Keys now render as

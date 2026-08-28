@@ -188,6 +188,7 @@ orq whoami                 # current user + active workspace + URL config
 ```sh
 orq doctor
 orq doctor --json          # machine-readable
+orq doctor --fix           # chmod the credential paths the permissions check flags (Unix)
 ```
 
 `doctor` reports:
@@ -198,7 +199,8 @@ orq doctor --json          # machine-readable
 - Auth status (authenticated / missing / invalid / unreadable), user email, active workspace
 - Reachability probes against each endpoint
 - Bootstrap token freshness
-- Credential file permissions under `~/.orq` (Unix only)
+- Credential file permissions under `~/.orq` (Unix only) — group- or other-accessible paths only; a clean tree is not reported.
+  Symlinked paths are judged on their target. `--fix` chmods them (0600 files, 0700 directories); without it doctor only reports.
 
 ---
 
@@ -246,7 +248,7 @@ surface changes are always a reviewed diff.
 | `orq auth list-profiles` | List configured credential profiles |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
-| `orq doctor` | Diagnose config, auth, reachability |
+| `orq doctor` | Diagnose config, auth, reachability (`--fix` repairs loose credential permissions) |
 | `orq update` | Update this binary to the latest release (`--check` reports only) |
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
