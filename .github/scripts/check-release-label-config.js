@@ -1,65 +1,28 @@
 #!/usr/bin/env node
 
-// Four lists across three files have to agree: the types pr-title.yml accepts,
-// the MAP in label-pr.yml, that workflow's labelDetails table, and the
-// categories in release.yml. Drift between them is silent, so this checks it.
+// Five lists across four files have to agree: the types pr-title.yml accepts,
+// MAP and labelDetails in label-pr.js, the categories in release.yml, and the
+// table contributors actually read in AGENTS.md. Drift between them is silent,
+// so this checks it.
 //
-// It reads those files as text and never evaluates them. What it does NOT do is
-// assert on how label-pr.yml's script is written: renaming a variable there is
-// not a regression, and a check that fails on renames while passing on logic
-// bugs is worse than no check.
+// MAP and labelDetails are imported, not parsed. The three files with no JS to
+// import are read as text and never evaluated. What this does NOT do is assert
+// on how label-pr.js is written: renaming a variable there is not a regression,
+// and a check that fails on renames while passing on logic bugs is worse than
+// no check. The behaviour of that module is covered by label-pr.test.js.
+//
+// One accepted loss versus the old text parser: a duplicate type key in MAP is
+// now last-wins rather than an error. verifyPrTitleTypes still catches a lost
+// type, just not a duplicated one.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { MAP, labelDetails, labelForTitle } = require('./label-pr.js');
+
 const RESERVED_LABEL_PREFIX = 'release:';
 const CATCH_ALL_LABEL = '*';
-
-function sliceObjectLiteral(source, declaration) {
-  const start = source.indexOf(declaration);
-  if (start === -1) {
-    throw new Error(`label workflow does not define ${declaration} ... };`);
-  }
-  const end = source.indexOf('\n            };', start);
-  if (end === -1) {
-    throw new Error(`label workflow ${declaration} has no closing };`);
-  }
-  return source.slice(start, end);
-}
-
-function parseMap(workflowSource) {
-  const map = {};
-  const entries = sliceObjectLiteral(workflowSource, 'const MAP = {');
-  for (const match of entries.matchAll(/([A-Za-z][A-Za-z0-9_-]*)\s*:\s*['"]([^'"]+)['"]/g)) {
-    const [, type, label] = match;
-    if (Object.hasOwn(map, type)) {
-      throw new Error(`label workflow maps type "${type}" more than once`);
-    }
-    map[type] = label;
-  }
-
-  if (Object.keys(map).length === 0) {
-    throw new Error('label workflow MAP contains no type-to-label entries');
-  }
-  return map;
-}
-
-function parseTitlePattern(workflowSource) {
-  const match = workflowSource.match(/title\.match\(\/((?:\\.|[^/])*)\/\)/);
-  if (!match) {
-    throw new Error('label workflow does not parse the title with a literal regex');
-  }
-  return new RegExp(match[1]);
-}
-
-// Mirrors the two lines in label-pr.yml that turn a title into a label. Both the
-// pattern and the map are read out of the workflow, so the fixtures below
-// exercise the real ones.
-function labelForTitle({ map, titlePattern }, title) {
-  const match = titlePattern.exec(title);
-  const type = match && match[1].toLowerCase();
-  return type && Object.hasOwn(map, type) ? map[type] : undefined;
-}
+const LABEL_MODULE_REQUIRE = "require('./.github/scripts/label-pr.js')";
 
 function unquote(value) {
   const trimmed = value.trim();
@@ -161,30 +124,26 @@ function verifyMappingCategories(map, categories) {
 // provisionLabel spreads `labelDetails[name]`, and spreading undefined is a
 // silent no-op: a mapped label with no details entry, or an entry GitHub
 // rejects, is created with a colour GitHub picks and no description.
-function verifyLabelDetails(map, workflowSource) {
-  const table = sliceObjectLiteral(workflowSource, 'const labelDetails = {');
-  const detailed = new Map();
-  for (const match of table.matchAll(/^\s*'([^']+)':\s*\{([^}]*)\}/gm)) {
-    detailed.set(match[1], match[2]);
+function verifyLabelDetails(map, details) {
+  if (Object.keys(map).length === 0) {
+    throw new Error('label module MAP contains no type-to-label entries');
   }
   for (const label of new Set(Object.values(map))) {
-    const body = detailed.get(label);
-    if (body === undefined) {
+    const entry = details[label];
+    if (!entry) {
       throw new Error(`mapped label "${label}" has no labelDetails entry`);
     }
-    const color = body.match(/\bcolor:\s*'([^']*)'/);
-    if (!color || !/^[0-9a-fA-F]{6}$/.test(color[1])) {
+    if (!/^[0-9a-fA-F]{6}$/.test(entry.color || '')) {
       throw new Error(`labelDetails entry for "${label}" has no six-digit hex color`);
     }
-    const description = body.match(/\bdescription:\s*'([^']*)'/);
-    if (!description || description[1].length === 0) {
+    if (!entry.description) {
       throw new Error(`labelDetails entry for "${label}" has no description`);
     }
-    if (description[1].length > 100) {
+    if (entry.description.length > 100) {
       throw new Error(`labelDetails description for "${label}" exceeds the 100-character API limit`);
     }
   }
-  for (const label of detailed.keys()) {
+  for (const label of Object.keys(details)) {
     if (!Object.values(map).includes(label)) {
       throw new Error(`labelDetails defines "${label}", which no type maps to`);
     }
@@ -235,7 +194,7 @@ function verifyPrTitleTypes(map, types) {
 // `edited` a retitle never relabels, without `issues: write` the first ever run
 // fails to provision, and an unpinned action gets a write token on
 // pull_request_target.
-function verifyWorkflowWiring(workflowSource) {
+function verifyWorkflowWiring(workflowSource, repositoryRoot) {
   const triggers = workflowSource.match(/^ {4}types: \[([^\]]*)\]$/m);
   if (!triggers) {
     throw new Error('label workflow does not declare pull_request_target types');
@@ -256,23 +215,91 @@ function verifyWorkflowWiring(workflowSource) {
       throw new Error(`label workflow action "${uses[1]}" is not pinned to a commit SHA`);
     }
   }
+
+  // The checkout exists only to read label-pr.js. A `ref:` on it would check out
+  // the pull request's own code into a job holding a write token, which is the
+  // whole hazard of pull_request_target.
+  if (/^\s*ref:/m.test(workflowSource)) {
+    throw new Error('label workflow checkout declares a ref:; on pull_request_target that runs pull request code with a write token');
+  }
+  if (!/^\s*persist-credentials: false$/m.test(workflowSource)) {
+    throw new Error('label workflow checkout does not set persist-credentials: false');
+  }
+  // The load-bearing link between the workflow and the module it runs. Assert
+  // the path resolves on disk, not just that the call is spelled right: the
+  // failure this prevents is a rename that leaves the workflow pointing at a
+  // file that is no longer there, which only shows up on a live pull request.
+  const required = workflowSource.match(/require\('\.\/([^']+)'\)/);
+  if (!required) {
+    throw new Error(`label workflow does not run ${LABEL_MODULE_REQUIRE}`);
+  }
+  if (!fs.existsSync(path.join(repositoryRoot, required[1]))) {
+    throw new Error(`label workflow requires "./${required[1]}", which does not exist`);
+  }
 }
 
-function runTitleFixtures(transition) {
+// The table contributors read in AGENTS.md is the fourth copy of MAP. Parsed
+// leniently: anchored on release:, indifferent to column alignment, so
+// reformatting cannot fail CI but a wrong label or section can.
+function verifyAgentsTable(map, categories, agentsSource) {
+  const rows = agentsSource
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('|') && line.includes(RESERVED_LABEL_PREFIX));
+  if (rows.length === 0) {
+    throw new Error('AGENTS.md has no release-label table rows');
+  }
+
+  const documented = {};
+  for (const row of rows) {
+    const cells = row.split('|').slice(1, -1).map((cell) => cell.trim());
+    const label = row.match(/release:[a-z-]+/)[0];
+    for (const [, type] of cells[0].matchAll(/`([a-z]+)`/g)) {
+      if (Object.hasOwn(documented, type)) {
+        throw new Error(`AGENTS.md lists type "${type}" in more than one table row`);
+      }
+      documented[type] = label;
+    }
+    const section = cells[cells.length - 1];
+    const [expectedSection] = categories.get(label) || [];
+    if (section !== expectedSection) {
+      throw new Error(`AGENTS.md files "${label}" under "${section}", but release.yml uses "${expectedSection}"`);
+    }
+  }
+
+  for (const [type, label] of Object.entries(map)) {
+    if (documented[type] !== label) {
+      throw new Error(`AGENTS.md documents type "${type}" as "${documented[type]}", but the label module maps it to "${label}"`);
+    }
+  }
+  for (const type of Object.keys(documented)) {
+    if (!Object.hasOwn(map, type)) {
+      throw new Error(`AGENTS.md documents type "${type}", which the label module does not map`);
+    }
+  }
+}
+
+function runTitleFixtures() {
   const mapped = {
     'feat(cli): add release labels': 'release:features',
     'feat!: x': 'release:features',
     'feat(cli)!: x': 'release:features',
-    'FEAT: x': 'release:features',
+    'feat:  x': 'release:features',
     'fix: rename command': 'release:bug-fixes',
     'revert: bad idea': 'release:bug-fixes',
     'docs: explain labels': 'release:documentation',
     'ci: pin an action': 'release:maintenance',
   };
   for (const [title, expected] of Object.entries(mapped)) {
-    assert.equal(labelForTitle(transition, title), expected, `${title} maps to ${expected}`);
+    assert.equal(labelForTitle(title), expected, `${title} maps to ${expected}`);
   }
   const unlabelled = [
+    // Rejected by pr-title.yml's validator too: wrong case, no colon-space, no
+    // subject. The labeler agreeing with it is the point.
+    'FEAT: x',
+    'Feat: x',
+    'feat:x',
+    'feat:',
+    'feat: ',
     'rename command',
     'unknown: rename command',
     'Revert "feat: x"',
@@ -285,7 +312,7 @@ function runTitleFixtures(transition) {
     'hasOwnProperty: x',
   ];
   for (const title of unlabelled) {
-    assert.equal(labelForTitle(transition, title), undefined, `${title} maps to no label`);
+    assert.equal(labelForTitle(title), undefined, `${title} maps to no label`);
   }
 }
 
@@ -293,21 +320,24 @@ function readSources() {
   const repositoryRoot = path.resolve(__dirname, '..', '..');
   const read = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
   return {
+    repositoryRoot,
     workflowSource: read('.github/workflows/label-pr.yml'),
     releaseSource: read('.github/release.yml'),
     prTitleSource: read('.github/workflows/pr-title.yml'),
+    agentsSource: read('AGENTS.md'),
   };
 }
 
 function main() {
-  const { workflowSource, releaseSource, prTitleSource } = readSources();
-  const transition = { map: parseMap(workflowSource), titlePattern: parseTitlePattern(workflowSource) };
+  const { repositoryRoot, workflowSource, releaseSource, prTitleSource, agentsSource } = readSources();
+  const categories = parseReleaseCategories(releaseSource);
 
-  verifyWorkflowWiring(workflowSource);
-  verifyLabelDetails(transition.map, workflowSource);
-  verifyMappingCategories(transition.map, parseReleaseCategories(releaseSource));
-  verifyPrTitleTypes(transition.map, parsePrTitleTypes(prTitleSource));
-  runTitleFixtures(transition);
+  verifyWorkflowWiring(workflowSource, repositoryRoot);
+  verifyLabelDetails(MAP, labelDetails);
+  verifyMappingCategories(MAP, categories);
+  verifyPrTitleTypes(MAP, parsePrTitleTypes(prTitleSource));
+  verifyAgentsTable(MAP, categories, agentsSource);
+  runTitleFixtures();
   console.log('Release-label configuration verified.');
 }
 

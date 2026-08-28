@@ -20,9 +20,10 @@ chore(release): cut cli 4.15.0-rc.4
 Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
 `ci`, `chore`, `revert`.
 
-The title is not cosmetic. `.github/workflows/label-pr.yml` maps its type to a
-dedicated `release:*` automation label, and `gh release create --generate-notes`
-groups the release body by that label:
+The title is not cosmetic. `.github/scripts/label-pr.js`, run by
+`.github/workflows/label-pr.yml`, maps its type to a dedicated `release:*`
+automation label, and `gh release create --generate-notes` groups the release
+body by that label:
 
 | Type                                      | Label                    | Release-notes section |
 | ----------------------------------------- | ------------------------ | --------------------- |
@@ -43,21 +44,28 @@ cannot parse, or whose type is unmapped, removes all automation labels. Ordinary
 human-applied labels are preserved. A PR with no automation label falls through
 `.github/release.yml`'s `"*"` catch-all into `Other Changes`.
 
-The labeler is deliberately more lenient than the validator: it lowercases the
-type and does not require a subject, so `FEAT: x` is labelled but still fails the
-title check. Passing CI, not carrying a label, is the thing to go by.
+The labeler's pattern mirrors what the validator accepts: a lowercase type, a
+literal `": "`, and a non-empty subject. A title that fails the title check gets
+no automation label either. Two degenerate cases still diverge, and CI is the
+authority in both: a nested-paren scope (`feat(a(b)): x`) passes validation but
+is not labelled.
 
-Adding a type or renaming a label means keeping `label-pr.yml`, `pr-title.yml`, and
-`.github/release.yml` synchronized. You do not have to remember to: the `workflow
-and release-label validation` CI job runs
-`.github/scripts/check-release-label-config.js`, which fails when the three
-disagree. It checks an allowed type with no mapping, a mapped label missing from
-the release categories, a mapped label whose `labelDetails` entry has no six-digit
-hex colour or no description, a missing `"*"` catch-all, and the labeler's own
-wiring (the `edited` trigger, the two write permissions, the SHA pin).
+Adding a type or renaming a label means keeping `label-pr.js`, `pr-title.yml`,
+`.github/release.yml`, and the table above synchronized. You do not have to
+remember to: the `workflow and release-label validation` CI job runs
+`.github/scripts/check-release-label-config.js`, which fails when they disagree.
+It checks an allowed type with no mapping, a mapped label missing from the
+release categories, a mapped label whose `labelDetails` entry has no six-digit
+hex colour or no description, a missing `"*"` catch-all, the table above, and
+the labeler's own wiring (the `edited` trigger, the two write permissions, the
+SHA pins, and that the checkout stays `ref:`-less so a fork's code never runs in
+a job holding a write token).
 
-It does not check how `label-pr.yml` is written, only what it configures. Renaming
-a variable there is not a regression.
+It does not check how `label-pr.js` is written, only what it configures.
+Renaming a variable there is not a regression. That module's behaviour is
+covered by `node --test .github/scripts/label-pr.test.js`, which also runs in
+that CI job: label provisioning, the error paths, pagination, and the
+add-before-remove ordering.
 
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.

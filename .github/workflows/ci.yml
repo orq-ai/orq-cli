@@ -27,6 +27,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: release-label configuration
         run: node .github/scripts/check-release-label-config.js
+      - name: label-pr unit tests
+        # Explicit file: `node --test <dir>` requires the directory as one
+        # module rather than scanning it, and a glob that matches nothing exits
+        # 0. A missing file here exits 1, which is what a rename should do.
+        run: node --test .github/scripts/label-pr.test.js
       - name: actionlint
         env:
           ACTIONLINT_VERSION: "1.7.12"
