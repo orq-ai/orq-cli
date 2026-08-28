@@ -140,4 +140,7 @@ func reportCredentialNotices(creds *Credentials) {
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
 	}
+	if creds.SupersededWorkspace != "" {
+		fmt.Fprintf(os.Stderr, "Note: using workspace %s from your login. ORQ_API_KEY was minted for %s, which this run ignores; the agent's own configuration is unchanged — 'orq connect <agent>' repoints it.\n", creds.Workspace, creds.SupersededWorkspace)
+	}
 }

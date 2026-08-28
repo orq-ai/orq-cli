@@ -107,6 +107,72 @@ func TestShadowsSessionIgnoresOurOwnInjectedToken(t *testing.T) {
 	}
 }
 
+// supersededBySession is narrower than shadowsSession: only a key we minted
+// ourselves, for a workspace we recorded, may be superseded by the session's
+// active workspace. Anything unknown — no session, an unrecorded workspace, a
+// key we did not mint — keeps the exported key winning.
+func TestSupersededBySession(t *testing.T) {
+	ws := func(s string) *string { return &s }
+
+	for _, tc := range []struct {
+		name          string
+		envKey        string
+		savedKey      string
+		savedWS       string
+		activeWS      *string
+		workspaceTok  map[string]auth.StoredAccessToken
+		wantMintedFor string
+		wantSuper     bool
+	}{
+		{
+			name: "saved key, different workspace", envKey: "sk-a", savedKey: "sk-a", savedWS: "acme",
+			activeWS: ws("other"), wantMintedFor: "acme", wantSuper: true,
+		},
+		{
+			name: "saved key, same workspace", envKey: "sk-a", savedKey: "sk-a", savedWS: "acme",
+			activeWS: ws("acme"), wantMintedFor: "", wantSuper: false,
+		},
+		{
+			name: "saved key, unrecorded workspace", envKey: "sk-a", savedKey: "sk-a", savedWS: "",
+			activeWS: ws("acme"), wantMintedFor: "", wantSuper: false,
+		},
+		{
+			name: "a key we did not mint", envKey: "sk-b", savedKey: "sk-a", savedWS: "acme",
+			activeWS: ws("other"), wantMintedFor: "", wantSuper: false,
+		},
+		{
+			name: "the session's own cached workspace token", envKey: "session-jwt", savedKey: "sk-a", savedWS: "acme",
+			activeWS: ws("other"), workspaceTok: map[string]auth.StoredAccessToken{"other": {Token: "session-jwt"}},
+			wantMintedFor: "", wantSuper: false,
+		},
+		{
+			name: "no session", envKey: "sk-a", savedKey: "sk-a", savedWS: "acme",
+			activeWS: nil, wantMintedFor: "", wantSuper: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if bartolocli.Creds == nil {
+				bartolocli.Creds = newTestCreds(t)
+				t.Cleanup(func() { bartolocli.Creds = nil })
+			}
+			viper.Set("profile", "default")
+			t.Cleanup(func() { viper.Set("profile", "") })
+			bartolocli.Creds.Set("profiles.default.gateway_key", tc.savedKey)
+			bartolocli.Creds.Set("profiles.default.api_key", "")
+			bartolocli.Creds.Set("profiles.default.workspace", tc.savedWS)
+
+			var session *auth.Session
+			if tc.activeWS != nil {
+				session = &auth.Session{ActiveWorkspaceKey: tc.activeWS, WorkspaceTokens: tc.workspaceTok}
+			}
+			mintedFor, superseded := supersededBySession(tc.envKey, session)
+			if mintedFor != tc.wantMintedFor || superseded != tc.wantSuper {
+				t.Errorf("supersededBySession = (%q, %v), want (%q, %v)", mintedFor, superseded, tc.wantMintedFor, tc.wantSuper)
+			}
+		})
+	}
+}
+
 func newTestCreds(t *testing.T) *bartolocli.CredentialsFile {
 	t.Helper()
 	creds, err := bartolocli.NewCredentialsFile(t.TempDir())

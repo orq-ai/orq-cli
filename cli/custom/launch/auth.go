@@ -37,6 +37,11 @@ type Credentials struct {
 	// session. The workspace the key belongs to is then in force instead of
 	// the one picked at login — invisible unless we say so.
 	ShadowsSession bool
+	// Workspace is the workspace this credential belongs to, when known.
+	Workspace string
+	// SupersededWorkspace names the workspace an exported key was minted for, when the session's
+	// workspace was used instead.
+	SupersededWorkspace string
 }
 
 // isSessionWorkspaceToken reports whether the value in ORQ_API_KEY is one of the
@@ -76,6 +81,34 @@ func shadowsSession(key string, session *auth.Session) bool {
 	return auth.EnvKeyShadowsWorkspace(key, savedKey, savedWS, active)
 }
 
+// supersededBySession reports the workspace an exported ORQ_API_KEY was minted for, when the
+// session has since moved elsewhere. Launch configures one throwaway process, so the workspace
+// the user is in now wins; the agent's own config on disk is untouched, and `orq connect` stays
+// the only thing that repoints it.
+//
+// Narrower than shadowsSession on purpose: a key we did not mint has an unknowable workspace,
+// so it keeps winning.
+func supersededBySession(key string, session *auth.Session) (mintedFor string, superseded bool) {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return "", false
+	}
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
+		return "", false
+	}
+	if isSessionWorkspaceToken(key, session) {
+		return "", false
+	}
+	savedKey, savedWS := auth.SavedAgentKey()
+	if savedWS == "" || savedKey != key {
+		return "", false
+	}
+	if savedWS == active {
+		return "", false
+	}
+	return savedWS, true
+}
+
 // APIBaseFor is the API base a persistent artifact should be written against:
 // the env override, then the saved login session's own base, then the hosted
 // default. It is ResolveCredentials' order for a caller that has no credential
@@ -107,22 +140,30 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	resolved := firstNonEmpty(auth.Server(), envServer)
 	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
 
+	var supersededWorkspace string
 	if key := getenv("ORQ_API_KEY"); key != "" {
 		session, _ := auth.ReadSession()
-		creds := &Credentials{
-			APIKey:         key,
-			APIBaseURL:     apiBase,
-			Kind:           CredentialAPIKey,
-			ShadowsSession: shadowsSession(key, session),
+		if mintedFor, superseded := supersededBySession(key, session); superseded {
+			supersededWorkspace = mintedFor
+		} else {
+			creds := &Credentials{
+				APIKey:         key,
+				APIBaseURL:     apiBase,
+				Kind:           CredentialAPIKey,
+				ShadowsSession: shadowsSession(key, session),
+			}
+			if savedKey, savedWS := auth.SavedAgentKey(); savedWS != "" && savedKey == key {
+				creds.Workspace = savedWS
+			}
+			// installSessionPreRun injects the session's own workspace token into
+			// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
+			// split made the ordinary state. Reading it as an exported key rather
+			// than as the session's own is what made ShadowsSession fire wrongly.
+			if session != nil && isSessionWorkspaceToken(key, session) {
+				creds.Kind = CredentialSessionToken
+			}
+			return creds, nil
 		}
-		// installSessionPreRun injects the session's own workspace token into
-		// ORQ_API_KEY whenever no api_key is configured, which the gateway_key
-		// split made the ordinary state. Reading it as an exported key rather
-		// than as the session's own is what made ShadowsSession fire wrongly.
-		if session != nil && isSessionWorkspaceToken(key, session) {
-			creds.Kind = CredentialSessionToken
-		}
-		return creds, nil
 	}
 
 	session, err := auth.ReadSession()
@@ -145,9 +186,11 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		return nil, err
 	}
 	return &Credentials{
-		APIKey:     active.AccessToken,
-		APIBaseURL: apiBase,
-		Kind:       CredentialSessionToken,
+		APIKey:              active.AccessToken,
+		APIBaseURL:          apiBase,
+		Kind:                CredentialSessionToken,
+		Workspace:           active.WorkspaceKey,
+		SupersededWorkspace: supersededWorkspace,
 	}, nil
 }
 

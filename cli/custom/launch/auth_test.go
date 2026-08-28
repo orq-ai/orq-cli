@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 func TestResolveCredentialsEnvKey(t *testing.T) {
@@ -77,6 +80,117 @@ func TestResolveCredentialsSession(t *testing.T) {
 	}
 	if creds.APIBaseURL != srv.URL {
 		t.Fatalf("expected session api base, got %s", creds.APIBaseURL)
+	}
+}
+
+// TestResolveCredentialsSupersededWorkspace exercises the fall-through: an
+// exported ORQ_API_KEY that matches the key we minted for a workspace the
+// session has since left must not win — the session's active workspace does,
+// with SupersededWorkspace naming the one the key was actually minted for.
+func TestResolveCredentialsSupersededWorkspace(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+			"id":         "u1",
+			"email":      "user@example.com",
+			"workspaces": []map[string]any{{"key": "other"}},
+		}})
+	}))
+	defer srv.Close()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-minted")
+	t.Setenv("ORQ_API_BASE_URL", "")
+	t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-minted")
+	bartolocli.Creds.Set("profiles.default.api_key", "")
+	bartolocli.Creds.Set("profiles.default.workspace", "acme")
+
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	writeSessionFile(t, home, map[string]any{
+		"version":            1,
+		"apiBaseUrl":         srv.URL,
+		"v1BaseUrl":          srv.URL,
+		"authBaseUrl":        srv.URL,
+		"profileBaseUrl":     srv.URL,
+		"activeWorkspaceKey": "other",
+		"refreshToken":       "refresh-token",
+		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+		"workspaceTokens":    map[string]any{"other": map[string]any{"token": "session-token-for-other", "expiresAt": future}},
+	})
+
+	creds, err := ResolveCredentials(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.APIKey != "session-token-for-other" {
+		t.Fatalf("expected the session's token for the active workspace, got %+v", creds)
+	}
+	if creds.Kind != CredentialSessionToken {
+		t.Errorf("expected CredentialSessionToken, got %v", creds.Kind)
+	}
+	if creds.Workspace != "other" {
+		t.Errorf("expected Workspace=other, got %q", creds.Workspace)
+	}
+	if creds.SupersededWorkspace != "acme" {
+		t.Errorf("expected SupersededWorkspace=acme, got %q", creds.SupersededWorkspace)
+	}
+	if creds.ShadowsSession {
+		t.Error("a superseded key must not also report ShadowsSession")
+	}
+}
+
+// TestResolveCredentialsSavedKeyMatchesActiveWorkspace covers the boundary
+// beside the superseded case: the exported key is the one we minted, and it
+// still matches the session's active workspace, so it must win outright.
+func TestResolveCredentialsSavedKeyMatchesActiveWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-minted")
+	t.Setenv("ORQ_API_BASE_URL", "")
+
+	if bartolocli.Creds == nil {
+		bartolocli.Creds = newTestCreds(t)
+		t.Cleanup(func() { bartolocli.Creds = nil })
+	}
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-minted")
+	bartolocli.Creds.Set("profiles.default.api_key", "")
+	bartolocli.Creds.Set("profiles.default.workspace", "acme")
+
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	writeSessionFile(t, home, map[string]any{
+		"version":            1,
+		"activeWorkspaceKey": "acme",
+		"apiBaseUrl":         "https://api.orq.ai",
+		"v1BaseUrl":          "https://api.orq.ai",
+		"authBaseUrl":        "https://api.orq.ai",
+		"profileBaseUrl":     "https://api.orq.ai/me",
+		"refreshToken":       "rt",
+		"bootstrapToken":     map[string]any{"token": "bt", "expiresAt": future},
+		"workspaceTokens":    map[string]any{"acme": map[string]any{"token": "session-token", "expiresAt": future}},
+	})
+
+	creds, err := ResolveCredentials(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.APIKey != "sk-minted" || creds.Kind != CredentialAPIKey {
+		t.Fatalf("expected the exported key to win, got %+v", creds)
+	}
+	if creds.Workspace != "acme" {
+		t.Errorf("expected Workspace=acme, got %q", creds.Workspace)
+	}
+	if creds.SupersededWorkspace != "" {
+		t.Errorf("expected nothing superseded, got %q", creds.SupersededWorkspace)
 	}
 }
 
