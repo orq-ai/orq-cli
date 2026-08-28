@@ -2,8 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"net/url"
@@ -487,12 +489,24 @@ func gatewayKeyExpiryCheck(now time.Time) (doctorCheck, bool) {
 	return check, true
 }
 
-// loosePermPath is one credential path found readable or writable by group
-// or other (mode & 0o077 != 0).
+// loosePermPath is one credential path found accessible by group or other
+// (mode & 0o077 != 0). humanPath is the tilde'd, shell-quoted form printed in
+// messages; path stays the raw absolute path for --json's Details.
 type loosePermPath struct {
-	path string
-	mode os.FileMode
-	fix  string
+	path      string
+	humanPath string
+	mode      os.FileMode
+	fix       string
+}
+
+// shellQuotePath renders path for safe pasting into a shell command. Most
+// paths need nothing; a home directory with a space or shell metacharacter
+// would otherwise break the printed `chmod` the moment it is pasted.
+func shellQuotePath(path string) string {
+	if !strings.ContainsAny(path, " \t\n'\"\\$`!*?[]{}()<>|;&~") {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 // credentialPermsCheck reports credential files and directories left with
@@ -520,28 +534,49 @@ func credentialPermsCheck() (doctorCheck, bool) {
 	candidates := []candidate{
 		{dir, true},
 		{filepath.Join(dir, "credentials.json"), false},
-		{filepath.Join(dir, "env"), false},
-		{filepath.Join(dir, "env.fish"), false},
 	}
-	// Derived from auth.SessionFilePath rather than hardcoded so this check
-	// cannot drift from wherever the auth package actually keeps sessions.
-	sessionsDir := filepath.Dir(auth.SessionFilePath())
-	if entries, err := os.ReadDir(sessionsDir); err == nil {
+	for _, name := range shellEnvFileNames {
+		candidates = append(candidates, candidate{filepath.Join(dir, name), false})
+	}
+	// auth.SessionsDir/LegacySessionFilePath are the package that owns the
+	// session layout; deriving the directory from them (rather than
+	// hardcoding it here) is what makes this check track that layout instead
+	// of silently drifting from it if it ever changes.
+	sessionsDir := auth.SessionsDir()
+	candidates = append(candidates, candidate{sessionsDir, true})
+	candidates = append(candidates, candidate{auth.LegacySessionFilePath(), false})
+
+	var loose []loosePermPath
+	var unreadable []string
+	checked := 0
+
+	entries, err := os.ReadDir(sessionsDir)
+	switch {
+	case err == nil:
 		for _, entry := range entries {
 			if strings.HasSuffix(entry.Name(), ".json") {
 				candidates = append(candidates, candidate{filepath.Join(sessionsDir, entry.Name()), false})
 			}
 		}
+	case errors.Is(err, fs.ErrNotExist):
+		// No sessions yet: nothing to leak, not a finding.
+	default:
+		// A directory that cannot be listed cannot be vouched for either —
+		// reporting "pass" here would be claiming safety for files this
+		// check never actually looked at.
+		unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(sessionsDir)), err))
 	}
 
-	var loose []loosePermPath
-	checked := 0
 	for _, c := range candidates {
 		// Lstat, not Stat: a symlinked credential file must be judged on its
 		// own mode, not silently swapped for whatever it points at.
 		info, err := os.Lstat(c.path)
 		if err != nil {
-			// Missing is not a finding: nothing to leak.
+			if errors.Is(err, fs.ErrNotExist) {
+				// Missing is not a finding: nothing to leak.
+				continue
+			}
+			unreadable = append(unreadable, fmt.Sprintf("%s could not be inspected: %v", shellQuotePath(tilde(c.path)), err))
 			continue
 		}
 		if c.isDir {
@@ -558,41 +593,50 @@ func credentialPermsCheck() (doctorCheck, bool) {
 		if perm&0o077 == 0 {
 			continue
 		}
-		fix := fmt.Sprintf("chmod 600 %s", c.path)
+		humanPath := shellQuotePath(tilde(c.path))
+		fix := fmt.Sprintf("chmod 600 %s", humanPath)
 		if c.isDir {
-			fix = fmt.Sprintf("chmod 700 %s", c.path)
+			fix = fmt.Sprintf("chmod 700 %s", humanPath)
 		}
-		loose = append(loose, loosePermPath{path: c.path, mode: perm, fix: fix})
+		loose = append(loose, loosePermPath{path: c.path, humanPath: humanPath, mode: perm, fix: fix})
 	}
 
-	if len(loose) == 0 {
+	if len(loose) == 0 && len(unreadable) == 0 {
 		return doctorCheck{
 			ID:      "credential_permissions",
 			Status:  "pass",
-			Message: "Credential files are not readable by other accounts",
+			Message: "Credential files are not accessible by other accounts",
 			Details: map[string]any{"checked": checked, "loose": []map[string]any{}},
 		}, true
 	}
 
 	details := make([]map[string]any, 0, len(loose))
-	messages := make([]string, 0, len(loose))
+	messages := make([]string, 0, len(loose)+len(unreadable)+1)
 	for _, l := range loose {
 		details = append(details, map[string]any{
 			"path": l.path,
 			"mode": fmt.Sprintf("%04o", l.mode),
 			"fix":  l.fix,
 		})
-		messages = append(messages, fmt.Sprintf("%s is mode %04o — run '%s'", l.path, l.mode, l.fix))
+		messages = append(messages, fmt.Sprintf("%s is mode %04o — run '%s'", l.humanPath, l.mode, l.fix))
 	}
-	// A key that leaked to other local accounts is compromised the moment it
-	// was readable, not just when it is found; the fix is a fresh key, not a
-	// permission change on the old one.
-	messages = append(messages, "treat any exposed key as compromised and run 'orq setup' to mint a new one")
+	messages = append(messages, unreadable...)
+	if len(loose) > 0 {
+		// A key that leaked to other local accounts is compromised the moment
+		// it was readable, not just when it is found. `orq setup` alone does
+		// not fix that: it reuses a saved, still-valid key rather than
+		// rotating it, so the actual fix is revoking the old key first.
+		messages = append(messages, "treat any exposed key as compromised: revoke it in the orq dashboard, delete it from credentials.json, then run 'orq setup' to mint a new one")
+	}
 
+	detailsOut := map[string]any{"checked": checked, "loose": details}
+	if len(unreadable) > 0 {
+		detailsOut["unreadable"] = unreadable
+	}
 	return doctorCheck{
 		ID:      "credential_permissions",
 		Status:  "warn",
 		Message: strings.Join(messages, "; "),
-		Details: map[string]any{"checked": checked, "loose": details},
+		Details: detailsOut,
 	}, true
 }

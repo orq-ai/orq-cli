@@ -62,16 +62,17 @@ the version and this changelog as the source of truth for breaking changes.
   keeps whatever mode it has until the next successful save. If yours is 0644,
   run `chmod 600 ~/.orq/credentials.json`, and treat any key in it as exposed
   to other accounts on that machine.
-- **Added:** `orq doctor` checks `~/.orq` and everything in it —
-  `credentials.json`, `env`, `env.fish`, and each session file — for group- or
-  other-accessible permission bits, so the manual check the entry above asks
-  for now runs on every `orq doctor`. A hit names the exact path, its mode, and
-  the `chmod` to fix it, and tells you to treat the key as compromised and run
-  `orq setup` for a new one rather than trusting the old one once its mode is
-  corrected. It only reports; nothing is chmodded automatically, and the file
-  keeps whatever mode it has until you fix it or overwrite it yourself. Unix
-  only — Windows ACLs do not map onto the bits this check reads, so it does
-  not run there.
+- **Added:** `orq doctor` checks `~/.orq` itself, `credentials.json`, `env`,
+  `env.fish`, each per-profile file under `sessions/`, and the legacy
+  `session.json`, for group- or other-accessible permission bits, so the
+  manual check the entry above asks for now runs on every `orq doctor`. A hit
+  names the exact path, its mode, and the `chmod` to fix it, and tells you to
+  treat the key as compromised: revoke it in the dashboard, delete it from
+  `credentials.json`, then run `orq setup` to mint a new one — `orq setup` on
+  its own reuses a saved, still-valid key rather than rotating it. It only
+  reports; nothing is chmodded automatically, and the file keeps whatever mode
+  it has until you fix it or overwrite it yourself. Unix only — Windows ACLs
+  do not map onto the bits this check reads, so it does not run there.
 - **Changed (security):** `orq auth list-profiles` masks stored credentials.
   It previously printed the full API key in plaintext, so keys reached terminal
   scrollback, CI logs and screen recordings. Keys now render as

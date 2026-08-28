@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -323,6 +324,12 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		// Explicit chmod: the process umask can mask bits requested via
+		// WriteFile's mode argument, so this pins the fixture's actual mode
+		// rather than trusting whatever the umask happened to leave.
+		if err := os.Chmod(credPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		check, ok := credentialPermsCheck()
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
@@ -333,8 +340,8 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if !strings.Contains(check.Message, "chmod 600 "+credPath) {
 			t.Errorf("message missing the chmod 600 remedy: %q", check.Message)
 		}
-		if !strings.Contains(check.Message, "orq setup") {
-			t.Errorf("message does not mention rotation via orq setup: %q", check.Message)
+		if !strings.Contains(check.Message, "revoke it in the orq dashboard") || !strings.Contains(check.Message, "orq setup") {
+			t.Errorf("message does not mention revoking the key before rotating via orq setup: %q", check.Message)
 		}
 	})
 
@@ -343,7 +350,11 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte("{}"), 0o600); err != nil {
+		credPath := filepath.Join(dir, "credentials.json")
+		if err := os.WriteFile(credPath, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(credPath, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		check, ok := credentialPermsCheck()
@@ -364,12 +375,21 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.WriteFile(sessionPath, []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chmod(sessionPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		check, ok := credentialPermsCheck()
 		if !ok || check.Status != "warn" {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
-		if !strings.Contains(check.Message, sessionPath) {
-			t.Errorf("message does not name the loose session file %s: %q", sessionPath, check.Message)
+		// The message prints the human-facing (tilde'd, shell-quoted) path;
+		// the raw absolute path is what --json's Details carries.
+		if !strings.Contains(check.Message, tilde(sessionPath)) {
+			t.Errorf("message does not name the loose session file %s: %q", tilde(sessionPath), check.Message)
+		}
+		loose, ok := check.Details["loose"].([]map[string]any)
+		if !ok || len(loose) != 1 || loose[0]["path"] != sessionPath {
+			t.Errorf("details[loose] = %v, want raw path %s", check.Details["loose"], sessionPath)
 		}
 	})
 
@@ -408,7 +428,13 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chmod(credPath, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(envPath, []byte(""), 0o640); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(envPath, 0o640); err != nil {
 			t.Fatal(err)
 		}
 		check, ok := credentialPermsCheck()
@@ -425,4 +451,58 @@ func TestCredentialPermsCheck(t *testing.T) {
 			t.Fatalf("details[loose] = %v, want 2 entries", check.Details["loose"])
 		}
 	})
+}
+
+// TestCredentialPermsCheckReachesDoctorChecksAsJSON exercises the check the
+// way `orq doctor` actually consumes it: appended into the checks slice the
+// command assembles, then marshaled for `--json`. A helper that called
+// credentialPermsCheck() directly, as every other test here does, would miss
+// a check that never got wired into that slice, or a Details map whose
+// values don't survive json.Marshal in the shape --json promises.
+func TestCredentialPermsCheckReachesDoctorChecksAsJSON(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	viper.Set("config-directory", dir)
+	t.Cleanup(func() { viper.Set("config-directory", "") })
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	credPath := filepath.Join(dir, "credentials.json")
+	if err := os.WriteFile(credPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(credPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mirrors how NewDoctorCommand's RunE folds credentialPermsCheck into the
+	// checks slice that becomes doctorReport.Checks.
+	var checks []doctorCheck
+	if perms, ok := credentialPermsCheck(); ok {
+		checks = append(checks, perms)
+	}
+	if len(checks) != 1 || checks[0].Status != "warn" {
+		t.Fatalf("credentialPermsCheck did not surface into the checks slice: %+v", checks)
+	}
+
+	raw, err := json.Marshal(checks)
+	if err != nil {
+		t.Fatalf("checks slice does not marshal: %v", err)
+	}
+	var round []doctorCheck
+	if err := json.Unmarshal(raw, &round); err != nil {
+		t.Fatalf("marshaled checks do not unmarshal: %v", err)
+	}
+	loose, ok := round[0].Details["loose"].([]any)
+	if !ok || len(loose) != 1 {
+		t.Fatalf("Details[loose] after round-trip = %v, want 1 entry", round[0].Details["loose"])
+	}
+	entry, ok := loose[0].(map[string]any)
+	if !ok || entry["path"] != credPath {
+		t.Errorf("round-tripped loose entry = %v, want path=%s", entry, credPath)
+	}
 }

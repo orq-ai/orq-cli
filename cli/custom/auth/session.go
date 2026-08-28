@@ -98,6 +98,21 @@ func legacySessionFilePath() string {
 	return filepath.Join(home, sessionDirName, legacyFileName)
 }
 
+// SessionsDir exposes the directory backing every profile's session file, so
+// a caller outside this package (doctor's permission check) can enumerate it
+// without reverse-engineering the layout from SessionFilePath.
+func SessionsDir() string {
+	return sessionsDir()
+}
+
+// LegacySessionFilePath exposes the pre-multi-profile `~/.orq/session.json`
+// path. It normally disappears into the per-profile layout the first time
+// InspectSession runs (see migrateLegacySession), but a caller auditing
+// credentials on disk should not have to assume that migration already ran.
+func LegacySessionFilePath() string {
+	return legacySessionFilePath()
+}
+
 // migrateLegacySession moves a pre-multi-profile ~/.orq/session.json into the
 // per-profile layout under ~/.orq/sessions/default.json the first time we see
 // one, so existing logged-in users aren't logged out by the upgrade.

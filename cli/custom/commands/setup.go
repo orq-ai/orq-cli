@@ -818,6 +818,13 @@ func writeCredsProfile(profile, workspace string) error {
 	return saveCreds()
 }
 
+// shellEnvFileNames are the shell-integration files `orq setup` writes under
+// the config directory: "env" for POSIX shells, "env.fish" for fish. Anything
+// that enumerates them (clearShellEnvFile, doctor's permission check) ranges
+// over this one slice, so a third shell variant can't be added to one caller
+// and forgotten in the other.
+var shellEnvFileNames = []string{"env", "env.fish"}
+
 // clearShellEnvFile removes the exported key from the file `orq setup` wrote,
 // leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
 // and deleting the target would make every new shell report a missing file.
@@ -829,7 +836,7 @@ func clearShellEnvFile() []string {
 		return nil
 	}
 	var cleared []string
-	for _, name := range []string{"env", "env.fish"} {
+	for _, name := range shellEnvFileNames {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
 		if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
