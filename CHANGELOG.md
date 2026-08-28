@@ -107,6 +107,27 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed:** `orq launch` now follows your login's active workspace. When the
+  exported `ORQ_API_KEY` is the key `orq setup` minted and your session has
+  since moved to a different workspace (`orq workspace use`), launch uses the
+  session's workspace token for that run and says so on stderr, instead of
+  silently running against the workspace the key was minted for. Nothing on
+  disk changes: the agent's own config, `~/.orq/env` and `credentials.json`
+  are untouched. A key you brought yourself, or one whose workspace was never
+  recorded, still wins exactly as before — CI and bring-your-own-key setups
+  are unaffected.
+- **Added:** `orq connect` records which workspace each agent was wired
+  against (`agents.<id>` in `~/.orq/credentials.json` — workspace, key id and
+  timestamp, no key material). `orq connect --status` shows it in a new
+  WORKSPACE column, and `orq doctor` adds an info row naming the workspace an
+  agent is pinned to when it differs from the active one, with the exact
+  commands to move it. Agents wired by earlier versions have no record and
+  show no workspace until the next `orq connect`.
+- **Changed:** a failed session-token fetch during `orq launch` only advises
+  `orq auth login` when a superseded `ORQ_API_KEY` was set aside for the
+  session; on the plain session path the underlying error is reported
+  unchanged, since network or server failures are not fixed by re-login.
+
 ## [5.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.0.0) — 2026-08-28
 
 - **Fixed (security):** path parameters are URL-escaped and rejected when
