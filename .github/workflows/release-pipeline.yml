@@ -178,9 +178,10 @@ jobs:
           # the underlying commit's date rather than the tag's, and the offsets already
           # disagree (+0000 vs +0200).
           #
-          # `|| true` on each pipeline: under this shell's -e/pipefail, a grep that
-          # legitimately matches nothing (first release of a stream) exits 1, which would
-          # fail the assignment and abort the step even though head still exits 0.
+          # `|| true` on each pipeline: this step has no `shell:`/`defaults.run.shell`
+          # and sets no `set -o pipefail`, so it runs as `bash -e` and the pipeline's
+          # status is `head -1`'s (0 on empty input) — the guard is defensive only, in
+          # case pipefail is ever turned on here and a grep legitimately matches nothing.
           if [ "$PRERELEASE" = "true" ]; then
             start_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)"
           else
