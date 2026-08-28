@@ -85,9 +85,10 @@ to a flag's meaning is `feat!`.
 
 Full rules, and how the pipeline resolves a number, are in `CHANGELOG.md` under
 [Versioning](CHANGELOG.md#versioning). What you need while writing a PR: the
-commit type is the version.
+commit type is what your change earns. The release cuts the larger of that and
+whatever the orq API version moved on its own.
 
-| Commit type | CLI version |
+| Commit type | Bump it earns |
 |---|---|
 | `feat!`, any `type!:`, `BREAKING CHANGE:` footer | major |
 | `feat` | minor |
@@ -98,8 +99,9 @@ not reach on their own** — how the pipeline resolves a number from the table
 above is in [Versioning](CHANGELOG.md#versioning), and stating it twice is how
 the two copies drift.
 
-**Never write a breaking commit without asking first.** A single `!` or
-`BREAKING CHANGE:` footer anywhere in the range cuts a major release, and it
+**Never write a breaking commit without asking first.** A `!` on a commit
+subject, or a `BREAKING CHANGE:` footer in its body, anywhere in the range cuts
+a major release, and it
 cannot be walked back once published. If a change is genuinely breaking, say so
 in the PR and get a decision; otherwise land it as `feat:`/`fix:` and describe
 the break in the PR body and the changelog entry.

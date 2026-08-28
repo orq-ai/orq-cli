@@ -38,7 +38,7 @@ curl -fsSL .../install.sh | sh -s -- --no-modify-path --no-setup
 curl -fsSL .../install.sh | sh -s -- --channel rc
 ```
 
-`ORQ_CLI_VERSION`, `ORQ_CLI_CHANNEL` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version`, `--channel` and `--install-dir`. A checksum *mismatch* aborts the install, as does any failure to fetch the checksum other than a 404; releases published before the checksum assets existed simply skip verification with a notice.
+`ORQ_CLI_VERSION`, `ORQ_CLI_CHANNEL` and `ORQ_CLI_INSTALL_DIR` still work as equivalents of `--version`, `--channel` and `--install-dir`. `--channel` and `--version` together are an error, but an exported `ORQ_CLI_CHANNEL` is ambient config and is ignored rather than rejected when `--version` pins a release — that is the combination `orq update` passes. A checksum *mismatch* aborts the install, as does any failure to fetch the checksum other than a 404; releases published before the checksum assets existed simply skip verification with a notice.
 
 ### Pre-built release binaries
 
@@ -470,9 +470,10 @@ This wipes `cli/generated/` and rebuilds it from `openapi.yaml`. **`cli/custom/`
 
 You do not cut one by hand. `.github/workflows/release.yml` fires on every push
 to `main`, releases when something that reaches a binary is unreleased —
-`cli/custom/`, `cmd/orq/`, `npm/`, `scripts/`, `install.sh`, `VERSION`,
-`go.mod`, or either module's OpenAPI schema, changed since that line's last tag
-— and calls `release-pipeline.yml`, which:
+`cli/custom/`, `cmd/orq/` (or `packages/orq-rc/cmd/` for the rc line), `npm/`,
+`scripts/`, `install.sh`, `VERSION`, `go.mod`, `go.sum`, or either module's
+`openapi.yaml`/`.bartolo.json`, changed since that line's last tag — and calls
+`release-pipeline.yml`, which:
 
 1. Resolves the version, by the rules in [Versioning](CHANGELOG.md#versioning),
    and takes the next free tag from it. Nobody tags by hand.
@@ -480,21 +481,26 @@ to `main`, releases when something that reaches a binary is unreleased —
    the version being cut, a fresh empty one takes its place, and the section
    becomes the top of the release notes. An rc release becomes
    `<next-minor>.0-rc.<n>` and leaves the changelog alone.
-3. Regenerates `cli/generated/` from the module's schema and commits it back to
-   `main` (signed, through the Git Data API — `main` requires verified
-   signatures).
-4. Commits the regenerated tree and `VERSION` back to `main`, then creates and
-   pushes the release tag before building. This makes the version record and
-   its tag one release identity; a tag may briefly have no assets.
+3. Regenerates `cli/generated/` from the module's schema.
+4. Commits the regenerated tree, the stamped `CHANGELOG.md` and the resolved
+   `VERSION` back to `main` (signed, through the Git Data API — `main` requires
+   verified signatures), then creates and pushes the release tag before
+   building. This makes the version record and its tag one release identity; a
+   tag may briefly have no assets.
 5. Cross-compiles 5 platform binaries (`darwin-arm64`, `darwin-x64`,
    `linux-x64`, `linux-arm64`, `win32-x64`), ad-hoc signs the macOS ones, and
    stamps version and `orqApiVersion` into all 6 `package.json` files.
 6. Creates an idempotent draft GitHub release, uploads the raw binaries, their
    `.sha256` files, the man pages and a stamped `install.sh`, then publishes it.
-7. `publish-npm.yml` reacts to the published release and publishes the packages
-   under `latest` (stable) or `rc` (pre-release), skipping package versions
-   already present so a retry can resume. The npm dist-tags are what
-   `install.sh --channel rc` resolves a version from.
+7. Calls `publish-npm.yml`, which publishes the packages under `latest`
+   (stable) or `rc` (pre-release), skipping package versions already present so
+   a retry can resume. It is called rather than triggered by the release event,
+   because GitHub does not start a workflow run from an event raised with
+   `GITHUB_TOKEN`; its `workflow_dispatch` is the manual retry. The npm
+   dist-tags are what `install.sh --channel rc` resolves a version from.
+
+`.github/workflows/**` is deliberately not a release trigger: a change to the
+pipeline itself ships with the next release that has something to ship.
 
 npm publishing authenticates through OIDC (`id-token: write`), not a stored
 token. `workflow_dispatch` runs a release on demand — `stable`, `prerelease` or

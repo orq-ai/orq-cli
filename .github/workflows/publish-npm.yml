@@ -4,9 +4,34 @@ name: Publish npm packages
 # retried, the tag and release identity are already fixed and packages that
 # made it to npm are skipped rather than turning an immutable-version collision
 # into a failed release.
+#
+# Called by release-pipeline.yml rather than triggered by `release: published`:
+# GitHub does not start a workflow run from an event raised with GITHUB_TOKEN,
+# and the pipeline publishes the release with exactly that token. workflow_dispatch
+# is the manual retry for a release whose npm half failed on its own.
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to publish to npm"
+        type: string
+        required: true
+      prerelease:
+        description: "Publish under the rc dist-tag instead of latest"
+        type: boolean
+        required: false
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to npm"
+        type: string
+        required: true
+      prerelease:
+        description: "Publish under the rc dist-tag instead of latest"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -14,17 +39,17 @@ permissions:
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(inputs.tag, 'v')
     runs-on: macos-latest
     env:
-      TAG: ${{ github.event.release.tag_name }}
-      PRERELEASE: ${{ github.event.release.prerelease }}
-      DIST_TAG: ${{ github.event.release.prerelease && 'rc' || 'latest' }}
+      TAG: ${{ inputs.tag }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      DIST_TAG: ${{ inputs.prerelease && 'rc' || 'latest' }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ inputs.tag }}
           fetch-depth: 1
 
       - name: Set up Go

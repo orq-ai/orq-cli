@@ -59,22 +59,17 @@ jobs:
           stable_tag=""
           if tag_exists "v$file_version"; then stable_tag="v$file_version"; fi
 
+          # Only the rc line's last tag is needed here; the number itself is
+          # resolved inside the pipeline, where the tag set is current. The rc
+          # allocator is prefix-based, so it never mistakes the orq API's old
+          # v4.14.0-rc.N numbering for this line's.
           api_now="$(jq -r '.app_version' .bartolo.json)"
-          api_released=""
-          if [ -n "$stable_tag" ]; then
-            api_released="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
-          fi
-
-          commits="$(git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
-            VERSION cli/custom npm scripts install.sh \
-            openapi.yaml .bartolo.json go.mod go.sum cmd/orq)"
-          tags_file="$(mktemp)"; commits_file="$(mktemp)"
+          tags_file="$(mktemp)"; empty_commits="$(mktemp)"
           git tag --list 'v*' > "$tags_file"
-          rc_commits_file="$(mktemp)"
           rc_resolved="$(go run ./cmd/release-version \
             --channel rc --version "$file_version" \
-            --api-version "$api_now" --released-api-version "$api_released" \
-            --tags-file "$tags_file" --commits-file "$rc_commits_file")"
+            --api-version "$api_now" \
+            --tags-file "$tags_file" --commits-file "$empty_commits")"
           rc_tag="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "previous_tag" { print $2 }')"
           # No tag on a line yet: everything it ships counts as unreleased.
           changed_since() {
@@ -87,13 +82,7 @@ jobs:
           all_rc="$(changed_since "$rc_tag")"
           CHANGED_STABLE="$(printf '%s\n' "$all_stable" | grep -v '_test\.go$' || true)"
           CHANGED_RC="$(printf '%s\n' "$all_rc" | grep -v '_test\.go$' || true)"
-          printf '%s\n' "$commits" > "$commits_file"
-          resolved="$(go run ./cmd/release-version \
-            --channel stable --version "$file_version" \
-            --api-version "$api_now" --released-api-version "$api_released" \
-            --tags-file "$tags_file" --commits-file "$commits_file")"
-          bump="$(printf '%s\n' "$resolved" | awk -F= '$1 == "bump" { print $2 }')"
-          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc); resolved bump=$bump"
+          echo "unreleased since ${stable_tag:-the beginning} (stable) / ${rc_tag:-the beginning} (rc)"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             case "$TARGET" in

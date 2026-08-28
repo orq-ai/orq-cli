@@ -4,11 +4,9 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -37,6 +35,7 @@ var (
 	apiPattern     = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$`)
 	majorCommit    = regexp.MustCompile(`^[a-z]+(?:\([^)]*\))?!:`)
 	featureCommit  = regexp.MustCompile(`^feat(?:\([^)]*\))?:`)
+	breakingFooter = regexp.MustCompile(`^BREAKING[ -]CHANGE:`)
 )
 
 func main() {
@@ -47,7 +46,7 @@ func main() {
 	flag.StringVar(&in.ReleasedAPI, "released-api-version", "", "orq API app_version at the last stable tag")
 	flag.StringVar(&in.Channel, "channel", "stable", "release channel: stable or rc")
 	flag.StringVar(&tagsFile, "tags-file", "", "file containing one local tag per line")
-	flag.StringVar(&commitsFile, "commits-file", "", "file containing commit subjects and bodies")
+	flag.StringVar(&commitsFile, "commits-file", "", "file of NUL-separated commit records, subject on the first line")
 	flag.Parse()
 
 	var err error
@@ -72,12 +71,7 @@ func main() {
 }
 
 func readFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", path, err)
 	}
@@ -114,7 +108,7 @@ func resolve(in input) (result, error) {
 	tags := tagSet(in.Tags)
 
 	if in.Channel == "rc" {
-		major, minor, _ := fields(in.Version)
+		major, minor, _ := parseVersionFields(in.Version)
 		prefix := fmt.Sprintf("%d.%d.0-rc.", major, minor+1)
 		n := 1
 		for tags[fmt.Sprintf("v%s%d", prefix, n)] {
@@ -134,21 +128,53 @@ func resolve(in input) (result, error) {
 	if tags["v"+base] {
 		base = applyBump(base, bump)
 	}
-	major, minor, patch := fields(base)
+	major, minor, patch := parseVersionFields(base)
 	for tags[fmt.Sprintf("v%d.%d.%d", major, minor, patch)] {
 		patch++
 	}
 	version := fmt.Sprintf("%d.%d.%d", major, minor, patch)
+	// A stale or mis-merged VERSION resolves a number below what is already
+	// published, and that number becomes npm `latest` and /releases/latest -
+	// a downgrade `orq update` then refuses to walk anyone back out of. Fail
+	// the release instead.
+	if highest, ok := highestStable(tags); ok && !higher(version, highest) {
+		return result{}, fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
+	}
 	return result{Version: version, Tag: "v" + version, PreviousTag: "v" + in.Version, Bump: bump}, nil
 }
 
-func readLines(body string) []string {
-	scanner := bufio.NewScanner(strings.NewReader(body))
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+// highestStable is the largest x.y.z tag on this line. Pre-release tags are
+// excluded: v5.1.0-rc.1 sorts below the v5.1.0 it previews, so counting it
+// would make the release it exists for look like a downgrade.
+func highestStable(tags map[string]bool) (string, bool) {
+	best := ""
+	for tag := range tags {
+		version := strings.TrimPrefix(tag, "v")
+		if !versionPattern.MatchString(version) {
+			continue
+		}
+		if best == "" || higher(version, best) {
+			best = version
+		}
 	}
-	return lines
+	return best, best != ""
+}
+
+func higher(a, b string) bool {
+	aMajor, aMinor, aPatch := parseVersionFields(a)
+	bMajor, bMinor, bPatch := parseVersionFields(b)
+	switch {
+	case aMajor != bMajor:
+		return aMajor > bMajor
+	case aMinor != bMinor:
+		return aMinor > bMinor
+	default:
+		return aPatch > bPatch
+	}
+}
+
+func readLines(body string) []string {
+	return strings.Split(body, "\n")
 }
 
 func tagSet(body string) map[string]bool {
@@ -187,18 +213,27 @@ func parseVersionFields(version string) (int, int, int) {
 	return major, minor, patch
 }
 
-func fields(version string) (int, int, int) {
-	major, minor, patch := parseVersionFields(version)
-	return major, minor, patch
-}
-
+// commitVersionBump reads NUL-separated commit records, each one a subject line
+// followed by its body. The `type!:` marker is honoured on the subject only, and
+// the body only through a footer: a wrapped sentence, or a PR description
+// quoting the convention, must not be able to cut a major nobody can walk back.
 func commitVersionBump(commits string) string {
 	bump := "patch"
-	for _, line := range readLines(commits) {
-		if majorCommit.MatchString(line) || strings.HasPrefix(line, "BREAKING CHANGE:") {
+	for _, record := range strings.Split(commits, "\x00") {
+		lines := readLines(strings.TrimLeft(record, "\n"))
+		if len(lines) == 0 {
+			continue
+		}
+		subject := lines[0]
+		if majorCommit.MatchString(subject) {
 			return "major"
 		}
-		if featureCommit.MatchString(line) {
+		for _, line := range lines[1:] {
+			if breakingFooter.MatchString(line) {
+				return "major"
+			}
+		}
+		if featureCommit.MatchString(subject) {
 			bump = "minor"
 		}
 	}
@@ -217,7 +252,7 @@ func rank(bump string) int {
 }
 
 func applyBump(version, bump string) string {
-	major, minor, patch := fields(version)
+	major, minor, patch := parseVersionFields(version)
 	switch bump {
 	case "major":
 		return fmt.Sprintf("%d.0.0", major+1)

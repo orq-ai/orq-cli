@@ -16,7 +16,8 @@
 #
 # Environment (flags win when both are given):
 #   ORQ_CLI_VERSION       Same as --version.
-#   ORQ_CLI_CHANNEL       Same as --channel.
+#   ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
+#                         when --version pins a release.
 #   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 #
 # This script downloads a single raw binary from the GitHub Releases page for
@@ -67,7 +68,8 @@ Options:
 
 Environment (flags win when both are given):
   ORQ_CLI_VERSION       Same as --version.
-  ORQ_CLI_CHANNEL       Same as --channel.
+  ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
+                        when --version pins a release.
   ORQ_CLI_INSTALL_DIR   Same as --install-dir.
 
 For Windows, install via npm instead:

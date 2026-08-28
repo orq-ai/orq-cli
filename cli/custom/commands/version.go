@@ -13,7 +13,7 @@ import (
 var apiVersion = "unknown"
 
 // SetAPIVersion is called once from custom.Run, before any command runs.
-func SetAPIVersion(_ *cobra.Command, v string) {
+func SetAPIVersion(v string) {
 	if v != "" {
 		apiVersion = v
 	}

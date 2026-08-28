@@ -22,7 +22,8 @@ def next_heading(body: str) -> int | None:
     fenced = False
     offset = 0
     for line in body.splitlines(keepends=True):
-        if line.startswith("```"):
+        # A fence inside a list item is indented; a heading never is.
+        if line.lstrip().startswith("```"):
             fenced = not fenced
         elif not fenced and line.startswith("## "):
             return offset
@@ -67,10 +68,13 @@ def self_test() -> None:
     decoy = "# Changelog\n\nAdd entries under ## Unreleased\n\n## Unreleased\n\n- **Added:** real.\n"
     _, body4 = stamp(decoy, "5.1.0", "2026-01-02")
     assert body4 == "- **Added:** real.", body4
-    # A fenced block may hold a `## ` line; it does not end the section.
-    fenced = "## Unreleased\n\n- **Added:** a thing:\n\n  ```md\n  ## Not a heading\n  ```\n\n## Earlier\n"
+    # A fenced block may hold a `## ` line; it does not end the section. The
+    # `## ` sits at column 0 so only the fence tracking can keep it out of the
+    # body, and the fence is indented so only lstrip() can see it.
+    fenced = "## Unreleased\n\n- **Added:** a thing:\n\n  ```md\n## Not a heading\n  ```\n\n## Earlier\n"
     _, body5 = stamp(fenced, "5.1.0", "2026-01-02")
     assert body5.endswith("```"), body5
+    assert "## Not a heading" in body5, body5
     try:
         stamp("# Changelog\n\n## Earlier\n", "5.1.0", "2026-01-02")
     except SystemExit:

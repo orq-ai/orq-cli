@@ -57,7 +57,7 @@ Every release takes the larger of two answers:
   moved: their major is our major, their minor our minor, their patch our patch.
   The API is the contract these commands are generated from, so the size of
   their change is the size of ours. A schema republished at the same
-  `app_version` moves nothing.
+  `app_version` contributes nothing above a patch.
 - **What our own commits did** — read from their conventional-commit types since
   the last release: a `!` or a `BREAKING CHANGE:` footer earns a major, `feat:` a
   minor, everything else a patch. The type table is in `CLAUDE.md`, next to the
@@ -75,7 +75,9 @@ A `VERSION` with no tag of its own means the line has not started yet — that i
 how `5.0.0` is published as `5.0.0` and not as `5.0.1` — or that someone is
 forcing a number the rules would not reach on their own. That hand edit is the
 one case for touching the file. The pipeline takes the next free tag from what
-you write, so it is a floor rather than a promise.
+you write, so it is a floor rather than a promise — and it refuses to release at
+all when what it resolves would sort below a version already published, which is
+what a stale or mis-merged `VERSION` looks like.
 
 ### Release notes
 
@@ -92,7 +94,7 @@ The orq API version a build was generated against is recorded, not encoded:
 
 - `orq version` reports it alongside the CLI version and install channel
   (`--json` for scripts); `orq --version` remains a compact CLI-version line.
-- Every GitHub release's notes open with `Built against orq API <version>`.
+- Every GitHub release's notes open with **Built against orq API <version>**.
 - `orq doctor` carries it as `binary.api_version` in the structured report
   (`--json`) and in the `--report` bug-report body.
 - `npm view @orq-ai/cli orqApiVersion` reads it off the published package.

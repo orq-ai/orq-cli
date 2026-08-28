@@ -3,8 +3,7 @@ name: Release Pipeline
 # Reusable release pipeline, called twice by release.yml: the root module under
 # npm dist-tag latest, packages/orq-rc under rc. It regenerates from the schema,
 # commits that back to main, tags and publishes a GitHub release with every
-# platform binary. npm publication follows the release event in
-# publish-npm.yml. Version rules, and what the orq API version means here:
+# platform binary, then calls publish-npm.yml. Version rules, and what the orq API version means here:
 # CHANGELOG.md#versioning.
 on:
   workflow_call:
@@ -27,6 +26,10 @@ env:
 
 jobs:
   release:
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
     # macOS runner so `codesign` is available for ad-hoc signing the two darwin
     # binaries. Go's cross toolchain builds linux/windows fine from macOS.
     runs-on: macos-latest
@@ -70,7 +73,6 @@ jobs:
 
       - name: Install bartolo
         run: |
-          workdir="${MODULE_DIR:-.}"
           go install "github.com/orq-ai/bartolo@v0.4.6"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
@@ -87,7 +89,9 @@ jobs:
           fi
           released_api=""
           if [ -n "$stable_tag" ] && [ -z "${MODULE_DIR:-}" ]; then
-            released_api="$(git show "$stable_tag:.bartolo.json" | jq -r '.app_version')"
+            # A tag whose tree has no .bartolo.json reads as "no previous API
+            # version", which resolve() already handles - not as a failed release.
+            released_api="$(git show "$stable_tag:.bartolo.json" 2>/dev/null | jq -r '.app_version' || true)"
           fi
           commits_file="$(mktemp)"; tags_file="$(mktemp)"
           git tag --list 'v*' > "$tags_file"
@@ -95,7 +99,10 @@ jobs:
             : > "$commits_file"
             channel=rc
           else
-            git log --full-history --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
+            # NUL between records, subject on each record's first line: the
+            # resolver honours `type!:` on the subject only, so a wrapped body
+            # line cannot cut a major.
+            git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
               VERSION cli/custom npm scripts install.sh \
               openapi.yaml .bartolo.json go.mod go.sum cmd/orq > "$commits_file"
             channel=stable
@@ -120,6 +127,17 @@ jobs:
           if [ -z "${MODULE_DIR:-}" ]; then
             go run ./cmd/surface-dump -write
           fi
+
+      - name: Record the resolved version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # VERSION is the record of what this line last released: the next run
+        # bumps from it, and detect-changes ranges from its tag. Written here so
+        # the commit-back below carries it.
+        # Stable only - an rc is cut from the stable line's VERSION and does not
+        # move it.
+        if: ${{ inputs.module_dir == '' }}
+        run: printf '%s\n' "$VERSION" > VERSION
 
       - name: Stamp the changelog
         # Stable only: an rc is a preview of the same entries, and stamping them
@@ -237,12 +255,17 @@ jobs:
           # points at no published assets until the last step.
           flags=(--draft --title "$TAG" --target "$target" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
-          # A retry may find the draft (or a published release) left by the
-          # failed attempt. Remove that record while retaining the immutable tag,
-          # then recreate it with the complete notes and fresh assets.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release delete "$TAG" --yes
-          fi
+          # A retry may find the draft left by the failed attempt. Remove that
+          # record while retaining the immutable tag, then recreate it with the
+          # complete notes and fresh assets. A *published* release is already
+          # installable and is never deleted: doing so would regress
+          # /releases/latest for everyone while the tag stayed immutable.
+          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
+          case "$draft" in
+            true)    gh release delete "$TAG" --yes ;;
+            missing) ;;
+            *)       echo "error: $TAG is already published; delete it by hand if that is really what you want" >&2; exit 1 ;;
+          esac
           gh release create "$TAG" "${flags[@]}"
 
       - name: Build all platform binaries
@@ -318,5 +341,18 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           # Publish only once every asset is attached. The tag already exists;
-          # npm publication is triggered by this event in publish-npm.yml.
+          # npm publication runs in the publish-npm job below.
           gh release edit "$TAG" --draft=false
+
+  # Downstream of the published release, so a half-uploaded release never
+  # reaches npm. Re-runnable on its own: publish-npm skips versions already
+  # in the registry.
+  publish-npm:
+    needs: release
+    uses: ./.github/workflows/publish-npm.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+      prerelease: ${{ needs.release.outputs.prerelease == 'true' }}
