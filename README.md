@@ -279,6 +279,15 @@ orq files                    orq human-evals
 orq human-review-sets
 ```
 
+**Deleting requires confirmation.** Generated `delete` commands prompt before
+acting, and refuse to run when there is no terminal. Pass `--force` to skip the
+prompt — scripts and CI need it:
+
+```sh
+orq datasets delete <id>           # asks first
+orq datasets delete <id> --force   # required in CI
+```
+
 ---
 
 ## Launch
@@ -295,6 +304,10 @@ orq launch pi                     # Pi Coding Agent
 ```
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
+
+**Launch follows the workspace you are in now.** If `ORQ_API_KEY` holds the key `orq setup` minted and you have since run `orq workspace use <other>`, launch uses the workspace you switched to for that run and says so, rather than silently running against the one the key was minted for. Nothing on disk changes: the agent's own config, `~/.orq/env` and `credentials.json` are untouched, and `orq connect` stays the only thing that repoints an agent. A key you exported yourself still wins outright — its workspace is unknowable, so CI and bring-your-own-key setups are unaffected.
+
+Agents stay pinned to whatever `orq connect` wired them against. `orq connect --status` names that workspace per agent, and `orq doctor` says so too when it differs from your active one, with the commands to move it.
 
 The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
@@ -463,13 +476,10 @@ make doctor             # run the doctor command
 
 ### Contributing
 
-PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`). Title
-validation runs when a PR is opened, edited, reopened, or synchronized, so invalid
-titles fail CI. A recognised title receives a dedicated `release:*` automation
-label; these labels are provisioned explicitly, so their colour and description are
-ours, and they do not replace ordinary human labels. A PR with no automation label
-falls into the `Other Changes` catch-all if merged. See [AGENTS.md](AGENTS.md) for
-the full type → label table and the rest of the repo conventions.
+PR titles must be conventional commits (`feat:`, `fix(auth):`, `chore!:`) — CI
+fails otherwise, and the type decides which release-notes section the PR lands
+in. See [AGENTS.md](AGENTS.md) for the type → label table and the rest of the
+repo conventions.
 
 ### Regenerating from OpenAPI
 
