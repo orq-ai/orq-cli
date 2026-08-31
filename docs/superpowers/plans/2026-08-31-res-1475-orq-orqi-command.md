@@ -384,7 +384,7 @@ func orqiCompletionFlags(toComplete string) []string {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/commands/ -run 'TestParseOrqiArgv|TestOrqiCompletion' -v`
-Expected: PASS, seven tests.
+Expected: PASS, four tests.
 
 - [ ] **Step 5: Commit**
 
