@@ -362,7 +362,7 @@ Sandboxed execution is not available in this version.
 investigate a failing agent, check workspace health or explain the platform, and it answers
 using your workspace's own tools, models and skills.
 
-```bash
+```sh
 orq orqi                                   # interactive session
 orq orqi "why did my agent fail today?"    # one-shot
 orq orqi --install                         # install or reinstall, then exit
@@ -380,7 +380,7 @@ flags always reach it. A leading `--` ends orq's parsing explicitly.
 
 `--no-input` refuses rather than installing, so a script that needs both does it in two calls:
 
-```bash
+```sh
 orq orqi --install                      # unconditional, prompts nobody
 orq orqi --no-input "summarise today"   # fails loudly if the first call did not run
 ```
