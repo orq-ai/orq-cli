@@ -1,12 +1,16 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"orq/cli/custom/launch"
 )
 
 // orqiFlags are the flags this command owns on `orq orqi`. Everything else is
@@ -127,4 +131,51 @@ func resolveOrqi() string {
 		return path
 	}
 	return ""
+}
+
+const (
+	orqiInstallerURL = "https://raw.githubusercontent.com/orq-ai/orqi/main/install.sh"
+	orqiInstallerCmd = "curl -fsSL " + orqiInstallerURL + " | sh"
+)
+
+// runOrqiCommand is the seam tests replace so they never run curl or the real
+// installer. Child output goes to stderr: it is the installer's diagnostics,
+// while stdout belongs to orqi itself once it starts.
+var runOrqiCommand = func(ctx context.Context, env map[string]string, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
+	cmd.Env = launch.MergeEnv(os.Environ(), env)
+	return cmd.Run()
+}
+
+// installOrqi runs the orqi repo's own install.sh, which resolves the release,
+// downloads the right tarball, sheds macOS quarantine by extracting it, and
+// verifies the result by running `orqi --version`. Reimplementing that here
+// would be a second copy of a path that has to stay in step with the orqi
+// release layout. Downloaded to a file and run in two steps rather than
+// `curl | sh`, for the reason updateViaInstaller records in update.go.
+//
+// No timeout: the installer downloads ~25 MB and the user is watching it. The
+// command's own context still carries Ctrl-C.
+func installOrqi(ctx context.Context, dir string) error {
+	for _, bin := range []string{"curl", "sh"} {
+		if _, err := orqiLookPath(bin); err != nil {
+			return fmt.Errorf("installing orqi needs %s, which is not on PATH. Install it, or run:\n  %s", bin, orqiInstallerCmd)
+		}
+	}
+	tmp, err := os.MkdirTemp("", "orq-orqi-")
+	if err != nil {
+		return fmt.Errorf("cannot create a temporary directory for the installer: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+
+	script := filepath.Join(tmp, "install.sh")
+	if err := runOrqiCommand(ctx, nil, "curl", "-fsSL", "-o", script, orqiInstallerURL); err != nil {
+		return fmt.Errorf("cannot download the orqi installer from %s: %w", orqiInstallerURL, err)
+	}
+	if err := runOrqiCommand(ctx, map[string]string{"ORQI_INSTALL_DIR": dir}, "sh", script); err != nil {
+		return fmt.Errorf("the orqi installer failed: %w\nRun it yourself to see the full output:\n  %s", err, orqiInstallerCmd)
+	}
+	return nil
 }
