@@ -371,7 +371,9 @@ orq orqi --install                         # install or reinstall, then exit
 The first run installs it, after asking, by running the orqi repo's own installer. It lands in
 `~/.local/bin` (or `$ORQI_INSTALL_DIR`) and the session starts straight away, whether or not
 that directory is on your PATH yet. Under `--no-input` nothing is installed and the command
-prints the one-liner instead.
+prints the one-liner instead. When orqi is already installed, `--install` reinstalls into that
+binary's own directory rather than the default, so a copy from Homebrew or a source build is
+updated in place instead of being shadowed by a second one.
 
 orqi reads the login session this CLI maintains, so `orq auth login` is all the setup it needs.
 `--profile <name>` — orq's own global flag — selects which session it uses, and must come before
