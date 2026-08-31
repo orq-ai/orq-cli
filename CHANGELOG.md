@@ -116,23 +116,25 @@ controls on surface changes, whichever side they originate from.
   so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
   was published while stable was on `5.1.3`, naming a version the stable line
   will never cut. An rc now carries the base of the release it previews.
-  The npm `rc` dist-tag therefore moves backwards once, from `5.3.0-rc.5` to the
-  next number on the corrected line, and stays below it until the line climbs
-  past `5.3.0`. `orq update` never offers a lower version, but installing the
+  The npm `rc` dist-tag therefore moves backwards once, from the `5.3.0-rc` line
+  down to the next number on the corrected one, and stays below it until that
+  line climbs past `5.3.0`. `orq update` never offers a lower version, but installing the
   channel directly — `npm i -g @orq-ai/cli@rc`, or `install.sh --channel rc` —
   replaces a newer rc build with the corrected, lower-numbered one.
 - **Changed:** a `VERSION` that lags the highest published tag now fails the rc
   release too, not only the stable one. The rc channel used to invent the next
   minor above that tag. Fix `VERSION` and re-run.
-- **Changed:** an rc whose base is exactly the highest published release now
-  verifies. A run that cuts both channels tags the stable release first, so
-  `5.2.0-rc.1` reaching the tag step after `v5.2.0` is the preview arriving a
-  moment late, not a downgrade. Anything below the highest release still fails.
-- **Fixed:** rc release notes anchor to the rc tag that actually shipped last,
-  found by walking the commit graph rather than by sorting version numbers.
-  Sorting assumed rc numbers only move forward, which the renumbering above
-  breaks: `v5.3.0-rc.5` outranks the corrected line for several minors, and
-  every rc under it would have re-reported what the previous one already said.
+- **Fixed:** a run that cuts both channels no longer resolves the two from the
+  same tag set. The rc is resolved last, against the tag the stable run is about
+  to cut, so it previews the release after that one — `5.2.1-rc.1` alongside
+  `5.2.0`, rather than a `5.2.0-rc.1` that races the release it names and fails
+  its own floor check depending on which job tags first.
+- **Fixed:** both places that look for the last rc tag — release notes, and the
+  change detection that decides whether an rc is worth cutting — walk the commit
+  graph instead of sorting version numbers. Sorting assumed rc numbers only move
+  forward, which the renumbering above breaks: `v5.3.0-rc.5` outranks the
+  corrected line for several minors, so notes under it would have re-reported
+  what the previous rc already said.
 - **Changed:** `cmd/release-version/` now counts as a release-worthy change on
   both channels. A fix to the resolver used to wait for an unrelated commit
   before it could take effect.

@@ -243,15 +243,15 @@ func TestResolveRefusesToPublishBelowTheHighestRelease(t *testing.T) {
 	}
 }
 
-// A `both` run tags the stable release while the rc previewing it is still in
-// flight, so the rc must survive its own base becoming the highest tag.
-func TestVerifyAcceptsAnRCWhoseBaseWasJustReleased(t *testing.T) {
-	got, err := verify(input{Channel: "rc", Tags: "v5.1.3\nv5.2.0\n"}, "5.2.0-rc.1")
+// The rc is resolved against the tag the stable run is about to cut, so it
+// previews the release after that one and never collides with it.
+func TestResolveRCPreviewsTheReleaseAfterTheOneBeingCut(t *testing.T) {
+	got, err := resolve(input{Version: "5.1.3", API: "4.16.0", ReleasedAPI: "4.15.0", Tags: "v5.1.3\nv5.2.0\n", Channel: "rc"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Tag != "v5.2.0-rc.1" || !got.Prerelease {
-		t.Fatalf("got %#v, want v5.2.0-rc.1 as a prerelease", got)
+	if got.Version != "5.2.1-rc.1" {
+		t.Fatalf("got %q, want 5.2.1-rc.1", got.Version)
 	}
 }
 
