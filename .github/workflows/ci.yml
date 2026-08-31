@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
       - name: gofmt
@@ -173,7 +173,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
       - name: go test
@@ -281,7 +281,7 @@ jobs:
         working-directory: packages/orq-rc
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: packages/orq-rc/go.mod
       - name: go vet
