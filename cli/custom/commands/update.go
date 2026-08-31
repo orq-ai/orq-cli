@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -145,25 +144,18 @@ func updateViaNPM(ctx context.Context, version string) error {
 // ponytail: the installer is the update mechanism; --no-modify-path/--no-setup
 // keep it to the one job, since PATH and config are already done.
 func updateViaInstaller(ctx context.Context, version string) error {
-	for _, bin := range []string{"curl", "sh"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			return fmt.Errorf("updating needs %s, which is not on PATH. Install it, or run:\n  %s", bin, installerCmd)
-		}
-	}
-	dir, err := os.MkdirTemp("", "orq-update-")
-	if err != nil {
-		return fmt.Errorf("cannot create a temporary directory for the installer: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
-	script := filepath.Join(dir, "install.sh")
-	if err := runUpdateCommand(ctx, "curl", "-fsSL", "-o", script, installerURL); err != nil {
-		return fmt.Errorf("cannot download the installer from %s: %w", installerURL, err)
-	}
 	// install.sh reads ORQ_CLI_INSTALL_DIR itself and the child inherits our
-	// environment, so a custom install dir needs no argument here.
-	if err := runUpdateCommand(ctx, "sh", script, "--no-modify-path", "--no-setup", "--version", "v"+version); err != nil {
-		return fmt.Errorf("the installer failed: %w\nRun it yourself to see the full output:\n  %s", err, installerCmd)
+	// environment, so this run adds nothing to it and the adapter can drop the
+	// helper's env argument.
+	run := func(ctx context.Context, _ map[string]string, name string, args ...string) error {
+		return runUpdateCommand(ctx, name, args...)
 	}
-	return nil
+	return runShellInstaller(ctx, run, installerSpec{
+		URL:        installerURL,
+		Args:       []string{"--no-modify-path", "--no-setup", "--version", "v" + version},
+		Needs:      []string{"curl", "sh"},
+		TempPrefix: "orq-update-",
+		Subject:    "updating",
+		Manual:     installerCmd,
+	})
 }

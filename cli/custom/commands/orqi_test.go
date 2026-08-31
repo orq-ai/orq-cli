@@ -101,9 +101,9 @@ func orqiFakeLookPath(t *testing.T, path string, err error) {
 // different answer per binary.
 func orqiFakeLookPathFunc(t *testing.T, fn func(string) (string, error)) {
 	t.Helper()
-	orig := orqiLookPath
-	t.Cleanup(func() { orqiLookPath = orig })
-	orqiLookPath = fn
+	orig := lookPath
+	t.Cleanup(func() { lookPath = orig })
+	lookPath = fn
 }
 
 func TestResolveOrqiPrefersPath(t *testing.T) {

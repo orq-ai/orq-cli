@@ -111,6 +111,10 @@ already folds `--no-input`, `ORQ_NO_INPUT` and both isatty checks into a single 
 already records why it downloads to a file rather than piping into a shell. Do not re-derive
 that reasoning here; follow the code.
 
+*(As shipped, both commands call one `runShellInstaller` in
+`cli/custom/commands/installer.go` rather than each carrying a copy — the two had already
+drifted on the `tar` preflight. The steps below describe what that helper does for orqi.)*
+
 1. `exec.LookPath` for `curl`, `sh` and `tar`, erroring with the missing binary's name.
    `updateViaInstaller` preflights only the first two because orq's own installer needs only
    those; orqi's unpacks a tarball (`install.sh:93`), and the preflight exists to fail before

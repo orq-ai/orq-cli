@@ -1366,6 +1366,10 @@ Recorded after execution, so the plan reads as what happened rather than what wa
   carries the requirement.
 - **`--install` is terminal against the scanner's own flags too**, so `orq orqi --install --help`
   is an error rather than silently printing help and installing nothing.
+- **`installOrqi` and `updateViaInstaller` share one `runShellInstaller`** in
+  `cli/custom/commands/installer.go`, where the plan had orqi carry its own copy of the flow.
+- **orq's globals are recognised only in front of `orqi`**, not after it as Task 0 wrote them.
+  A prompt is a sentence: `orq orqi --workspace was broken today` was setting `--workspace=was`.
 - **`resolveOrqi` requires an execute bit**, where the plan's Task 2 accepted any non-directory
   file.
 - **`RunE` prints the error and exits with the child's code**, mirroring `cli/custom/commands/launch.go`,

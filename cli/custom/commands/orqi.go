@@ -95,7 +95,6 @@ func orqiCompletionFlags(toComplete string) []string {
 
 // Seams. Tests answer these instead of touching the real PATH or GOOS.
 var (
-	orqiLookPath = exec.LookPath
 	orqiPlatform = func() string { return runtime.GOOS + "/" + runtime.GOARCH }
 )
 
@@ -128,7 +127,7 @@ func orqiInstallDir() string {
 // prints a hint about it, so a freshly installed orqi is invisible to
 // LookPath until the user acts on that hint or opens a new shell.
 func resolveOrqi() string {
-	if path, err := orqiLookPath("orqi"); err == nil {
+	if path, err := lookPath("orqi"); err == nil {
 		return path
 	}
 	dir := orqiInstallDir()
@@ -185,31 +184,22 @@ func withoutOrqCredentials(environ []string) []string {
 // downloads the right tarball, sheds macOS quarantine by extracting it, and
 // verifies the result by running `orqi --version`. Reimplementing that here
 // would be a second copy of a path that has to stay in step with the orqi
-// release layout. Downloaded to a file and run in two steps rather than
-// `curl | sh`, for the reason updateViaInstaller records in update.go.
+// release layout.
+//
+// tar is preflighted where `orq update` needs only curl and sh: orqi's script
+// unpacks a tarball, orq's does not.
 //
 // No timeout: the installer downloads ~25 MB and the user is watching it. The
 // command's own context still carries Ctrl-C.
 func installOrqi(ctx context.Context, dir string) error {
-	for _, bin := range []string{"curl", "sh", "tar"} {
-		if _, err := orqiLookPath(bin); err != nil {
-			return fmt.Errorf("installing orqi needs %s, which is not on PATH. Install it, or run:\n  %s", bin, orqiInstallerCmd)
-		}
-	}
-	tmp, err := os.MkdirTemp("", "orq-orqi-")
-	if err != nil {
-		return fmt.Errorf("cannot create a temporary directory for the installer: %w", err)
-	}
-	defer os.RemoveAll(tmp)
-
-	script := filepath.Join(tmp, "install.sh")
-	if err := runOrqiCommand(ctx, nil, "curl", "-fsSL", "-o", script, orqiInstallerURL); err != nil {
-		return fmt.Errorf("cannot download the orqi installer from %s: %w", orqiInstallerURL, err)
-	}
-	if err := runOrqiCommand(ctx, map[string]string{"ORQI_INSTALL_DIR": dir}, "sh", script); err != nil {
-		return fmt.Errorf("the orqi installer failed: %w\nRun it yourself to see the full output:\n  %s", err, orqiInstallerCmd)
-	}
-	return nil
+	return runShellInstaller(ctx, runOrqiCommand, installerSpec{
+		URL:        orqiInstallerURL,
+		Env:        map[string]string{"ORQI_INSTALL_DIR": dir},
+		Needs:      []string{"curl", "sh", "tar"},
+		TempPrefix: "orq-orqi-",
+		Subject:    "installing orqi",
+		Manual:     orqiInstallerCmd,
+	})
 }
 
 // orqiConfirm and runOrqiChild are seams; tests answer the prompt and capture
