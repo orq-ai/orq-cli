@@ -80,7 +80,7 @@ collides today. Anything after the first prompt argument is orqi's regardless.
 - Consumes: nothing.
 - Produces: `var passthroughCommands = map[string]bool{"launch": true, "orqi": true}`; `splitLaunchGlobals` renamed to `splitPassthroughGlobals` with the same signature.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `cli/custom/launchargs_test.go`, alongside the existing `TestSplitLaunchGlobals`:
 
@@ -149,12 +149,12 @@ func TestSplitPassthroughGlobalsOnOrqi(t *testing.T) {
 persistent flags registered; reuse it rather than building a second one. Add `"slices"` to the
 test file's imports if it is not already there.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./cli/custom/ -run TestSplitPassthroughGlobals -v`
 Expected: FAIL to build, with `undefined: splitPassthroughGlobals`.
 
-- [ ] **Step 3: Generalise the splitter**
+- [x] **Step 3: Generalise the splitter**
 
 In `cli/custom/launchargs.go`:
 
@@ -192,13 +192,13 @@ child — is the same for orqi.
 
 In `cli/custom/run.go`, follow the rename at the one call site and update its comment.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/ -run 'TestSplitLaunchGlobals|TestSplitPassthroughGlobals' -v`
 Expected: PASS. The existing launch cases must still pass unchanged — this is a generalisation,
 not a behaviour change for `launch`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cli/custom/launchargs.go cli/custom/launchargs_test.go cli/custom/run.go
@@ -222,7 +222,7 @@ list that must stay in step with it.
 - Consumes: Task 0's routing (not as code — `--profile` simply never reaches this scanner).
 - Produces: `type orqiFlags struct { Help, Install bool }`; `func parseOrqiArgv(argv []string) (orqiFlags, []string, error)` returning flags, the passthrough argv, and an error; `func orqiCompletionFlags(toComplete string) []string`; `var orqiFlagNames = []string{"-h", "--help", "--install"}`; `var orqiGlobalFlagNames = []string{"--no-input", "--profile"}`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `cli/custom/commands/orqi_test.go`:
 
@@ -292,12 +292,12 @@ func TestOrqiCompletionFlagsMatchParser(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./cli/custom/commands/ -run TestParseOrqiArgv -v`
 Expected: FAIL to build, with `undefined: parseOrqiArgv`.
 
-- [ ] **Step 3: Write the scanner**
+- [x] **Step 3: Write the scanner**
 
 Create `cli/custom/commands/orqi.go`:
 
@@ -381,12 +381,12 @@ func orqiCompletionFlags(toComplete string) []string {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/commands/ -run 'TestParseOrqiArgv|TestOrqiCompletion' -v`
 Expected: PASS, four tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cli/custom/commands/orqi.go cli/custom/commands/orqi_test.go
@@ -407,7 +407,7 @@ git commit -m "feat(orqi): scan orq-owned flags at the front of argv"
 - Consumes: nothing from Task 1.
 - Produces: `func orqiInstallDir() string`; `func resolveOrqi() string` returning an absolute path or `""`; `func orqiPlatformSupported() bool`; seams `var orqiLookPath = exec.LookPath` and `var orqiPlatform = func() string { return runtime.GOOS + "/" + runtime.GOARCH }`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `cli/custom/commands/orqi_test.go`:
 
@@ -482,12 +482,12 @@ func TestOrqiPlatformSupported(t *testing.T) {
 
 Add `"errors"`, `"os"`, `"os/exec"`, `"path/filepath"` to the test file's imports.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./cli/custom/commands/ -run 'TestResolveOrqi|TestOrqiPlatform' -v`
 Expected: FAIL to build, with `undefined: orqiLookPath`.
 
-- [ ] **Step 3: Write the resolution code**
+- [x] **Step 3: Write the resolution code**
 
 Append to `cli/custom/commands/orqi.go`, and add `"os"`, `"os/exec"`, `"path/filepath"`, `"runtime"` to its imports:
 
@@ -542,12 +542,12 @@ func resolveOrqi() string {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/commands/ -run 'TestResolveOrqi|TestOrqiPlatform' -v`
 Expected: PASS, four tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cli/custom/commands/orqi.go cli/custom/commands/orqi_test.go
@@ -558,7 +558,7 @@ git commit -m "feat(orqi): resolve the binary from PATH or the install dir"
 
 ### Task 3: The installer
 
-Mirrors `updateViaInstaller` in `cli/custom/commands/update.go`: preflight `curl` and `sh`, download to a temp dir, run the script. Read that function before writing this one — its comment already records why the download is not piped into a shell.
+Mirrors `updateViaInstaller` in `cli/custom/commands/update.go`: preflight `curl`, `sh` and `tar` (orqi's installer unpacks a tarball; orq's does not, which is why the two preflights differ), download to a temp dir, run the script. Read that function before writing this one — its comment already records why the download is not piped into a shell.
 
 **Files:**
 - Modify: `cli/custom/commands/orqi.go`
@@ -568,7 +568,7 @@ Mirrors `updateViaInstaller` in `cli/custom/commands/update.go`: preflight `curl
 - Consumes: `orqiInstallDir()` and the `orqiLookPath` seam from Task 2.
 - Produces: `func installOrqi(ctx context.Context, dir string) error`; seam `var runOrqiCommand func(ctx context.Context, env map[string]string, name string, args ...string) error`; constants `orqiInstallerURL`, `orqiInstallerCmd`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `cli/custom/commands/orqi_test.go`:
 
@@ -671,12 +671,12 @@ func TestInstallOrqiRemovesItsTempDir(t *testing.T) {
 
 Add `"context"` to the test file's imports.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./cli/custom/commands/ -run TestInstallOrqi -v`
 Expected: FAIL to build, with `undefined: installOrqi`.
 
-- [ ] **Step 3: Write the installer**
+- [x] **Step 3: Write the installer**
 
 Append to `cli/custom/commands/orqi.go`, adding `"context"` and `bartolocli "github.com/orq-ai/bartolo/cli"` and `"orq/cli/custom/launch"` to its imports:
 
@@ -707,7 +707,7 @@ var runOrqiCommand = func(ctx context.Context, env map[string]string, name strin
 // No timeout: the installer downloads ~25 MB and the user is watching it. The
 // command's own context still carries Ctrl-C.
 func installOrqi(ctx context.Context, dir string) error {
-	for _, bin := range []string{"curl", "sh"} {
+	for _, bin := range []string{"curl", "sh", "tar"} {
 		if _, err := orqiLookPath(bin); err != nil {
 			return fmt.Errorf("installing orqi needs %s, which is not on PATH. Install it, or run:\n  %s", bin, orqiInstallerCmd)
 		}
@@ -729,12 +729,12 @@ func installOrqi(ctx context.Context, dir string) error {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/commands/ -run TestInstallOrqi -v`
 Expected: PASS, five tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cli/custom/commands/orqi.go cli/custom/commands/orqi_test.go
@@ -758,7 +758,7 @@ Ties the previous three together: gate the platform, resolve, prompt, install, l
 - Consumes: `parseOrqiArgv`, `orqiCompletionFlags` (Task 1); `resolveOrqi`, `orqiInstallDir`, `orqiPlatformSupported` (Task 2); `installOrqi` (Task 3).
 - Produces: `func NewOrqiCommand() *cobra.Command`; `func runOrqi(cmd *cobra.Command, argv []string) (int, error)` returning the child's exit code; `func printOrqiHelp()`; seams `var orqiConfirm func(message string) bool`, `var orqiInteractive = hasInteractiveTTY` and `var runOrqiChild = launch.RunChild`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `cli/custom/commands/orqi_test.go`:
 
@@ -1046,12 +1046,12 @@ func TestRunOrqiRefusesUnsupportedPlatform(t *testing.T) {
 
 Add `"bytes"`, `bartolocli "github.com/orq-ai/bartolo/cli"`, `"github.com/spf13/cobra"` and `"github.com/spf13/viper"` to the test file's imports. `"os/exec"` is already there from Task 2.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./cli/custom/commands/ -run 'TestRunOrqi|TestOrqiHelp' -v`
 Expected: FAIL to build, with `undefined: runOrqi`.
 
-- [ ] **Step 3: Write the command**
+- [x] **Step 3: Write the command**
 
 Append to `cli/custom/commands/orqi.go`, adding `survey "github.com/AlecAivazis/survey/v2"` and `"github.com/spf13/cobra"` to its imports:
 
@@ -1180,7 +1180,7 @@ func runOrqi(cmd *cobra.Command, argv []string) (int, error) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cli/custom/commands/ -run 'TestRunOrqi|TestOrqiHelp' -v`
 Expected: PASS, fourteen tests.
@@ -1196,7 +1196,7 @@ go run ./cmd/orq orqi --profile staging --help
 Expected: the help text, and no "unknown flag" error — proof that Task 0 consumed `--profile`
 off an `orqi` line rather than passing it through.
 
-- [ ] **Step 5: Register the command**
+- [x] **Step 5: Register the command**
 
 In `cli/custom/groups.go`, add to `commandGroup` next to the other getting-started entries:
 
@@ -1216,7 +1216,7 @@ and to `registerCommands`, next to `NewLaunchCommand`:
 	root.AddCommand(commands.NewOrqiCommand())
 ```
 
-- [ ] **Step 6: Run the full check, then regenerate the surface**
+- [x] **Step 6: Run the full check, then regenerate the surface**
 
 Run: `go test ./... && go vet ./... && gofmt -l $(git ls-files '*.go')`
 Expected: PASS, and `gofmt` prints nothing.
@@ -1225,7 +1225,7 @@ Run: `go run ./cmd/surface-dump -write`
 Then: `go run ./cmd/surface-dump -check`
 Expected: the second run exits 0, and `git diff --stat surface.json` shows the new command.
 
-- [ ] **Step 7: Verify by hand**
+- [x] **Step 7: Verify by hand**
 
 ```bash
 go run ./cmd/orq orqi --help
@@ -1242,7 +1242,7 @@ go run ./cmd/orq orqi --version   # answer yes at the prompt
 Expected: install.sh's own output on stderr, then orqi's version. Repeat on Linux x86_64 if you
 have one to hand; if you do not, say so on the PR rather than claiming the path is verified.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cli/custom/commands/orqi.go cli/custom/commands/orqi_test.go cli/custom/groups.go cli/custom/register.go surface.json
@@ -1260,7 +1260,7 @@ git commit -m "feat(orqi): add 'orq orqi' to install and run the assistant (RES-
 - Consumes: the finished command from Task 4.
 - Produces: nothing code depends on.
 
-- [ ] **Step 1: Add the command-table row**
+- [x] **Step 1: Add the command-table row**
 
 In the command table around `README.md:261`, next to the `orq launch <agent>` row:
 
@@ -1268,7 +1268,7 @@ In the command table around `README.md:261`, next to the `orq launch <agent>` ro
 | `orq orqi` | Run orqi, the orq.ai assistant, installing it on first use (see [orqi](#orqi)) |
 ```
 
-- [ ] **Step 2: Add the section**
+- [x] **Step 2: Add the section**
 
 After the Launch section (which ends around `README.md:335`):
 
@@ -1306,12 +1306,12 @@ orqi publishes macOS (arm64, x86_64) and Linux x86_64 builds; on anything else t
 so and stops.
 ````
 
-- [ ] **Step 3: Verify the examples run**
+- [x] **Step 3: Verify the examples run**
 
 Run: `go run ./cmd/orq orqi --install "hello"` — expected: an error naming `--install`, proving the terminal rule the README describes. (`--install` takes no arguments; there is no dry-run flag.)
 Run: `go run ./cmd/orq orqi --help` — expected: help text matching the section.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md
@@ -1322,14 +1322,12 @@ git commit -m "docs: document orq orqi"
 
 ## Self-Review
 
-**Test-table coverage.** Sixteen of the spec's eighteen rows have a test. Two rows changed owner:
+**Test-table coverage.** Seventeen of the spec's eighteen rows have a test. Two rows changed owner:
 `--profile` and `--no-input` are orq globals routed by Task 0, so their argv-position behaviour is
 asserted in `TestSplitPassthroughGlobalsOnOrqi` rather than against `parseOrqiArgv`. The two that do not:
 "installer output written to stderr" is a property of `runOrqiCommand`, the seam every test
-replaces, so a test would only assert the fake; and "`--profile` after a passthrough argument
-reaches the child" is covered at the scanner level (Task 1) but not at `runOrqi` level. Both are
-deliberate, and "`--profile` after a passthrough argument" moved to Task 0's
-`TestSplitPassthroughGlobalsOnOrqi`, which is where that flag is now handled. No other row is
+replaces, so a test would only assert the fake. That is the one gap, and the final review closed
+it: `TestRunOrqiCommandSendsAllChildOutputToStderr` calls the real seam. No other row is
 unmapped — an earlier draft of this plan claimed coverage for the
 `curl`/`sh` preflight, for the install-dir binary and for a failed install without having tests
 for them; Tasks 3 and 4 now do.
@@ -1352,3 +1350,23 @@ Every row of the spec's test table maps to a test above, except "installer outpu
 **Placeholders.** None: every step carries the code or the command it needs.
 
 **Type consistency.** `runOrqiCommand` takes `(ctx, env, name, args...)` in Task 3 and is called with that shape in Task 3 only. `runOrqiChild` matches `launch.RunChild`'s `(string, []string, map[string]string) (int, error)` in both its definition and the Task 4 fake. `resolveOrqi()` returns a path or `""` everywhere. `runOrqi` returns `(int, error)` in its definition, its caller in `RunE`, and every test.
+
+## Deviations from this plan, as shipped
+
+Recorded after execution, so the plan reads as what happened rather than what was intended.
+
+- **`printOrqiHelp` writes to stdout, not stderr.** The plan mandated stderr on the spec's "the
+  wrapper's own output is either a prompt or an error" rule, which is about the running command;
+  `--help` returns before any child exists. `printAgentHelp` uses stdout, and `orq orqi --help |
+  grep` was capturing nothing.
+- **The installer preflight checks `tar` as well as `curl` and `sh`.** orqi's `install.sh` unpacks
+  a tarball; orq's does not.
+- **The installer child's environment is stripped of `ORQ_API_KEY`, `ORQ_TOKEN` and
+  `ORQ_AUTHORIZATION`.** Not in the plan at all; added in the final review round. The spec now
+  carries the requirement.
+- **`--install` is terminal against the scanner's own flags too**, so `orq orqi --install --help`
+  is an error rather than silently printing help and installing nothing.
+- **`resolveOrqi` requires an execute bit**, where the plan's Task 2 accepted any non-directory
+  file.
+- **`RunE` prints the error and exits with the child's code**, mirroring `cli/custom/commands/launch.go`,
+  where the plan returned the error to cobra and lost `launch.RunChild`'s 127.

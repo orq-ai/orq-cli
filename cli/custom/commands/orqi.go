@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	survey "github.com/AlecAivazis/survey/v2"
@@ -51,6 +52,7 @@ var orqiGlobalFlagNames = []string{"--no-input", "--profile"}
 // front of argv, which is where this scanner reads it.
 func parseOrqiArgv(argv []string) (orqiFlags, []string, error) {
 	var flags orqiFlags
+	install := -1
 	i := 0
 scan:
 	for ; i < len(argv); i++ {
@@ -62,18 +64,20 @@ scan:
 		case arg == "-h" || arg == "--help":
 			flags.Help = true
 		case arg == "--install":
-			flags.Install = true
+			flags.Install, install = true, i
 		default:
 			break scan
 		}
 	}
-	rest := argv[i:]
-	// --install starts no session, so there is no child for trailing
-	// arguments to belong to. Refusing beats dropping them silently.
-	if flags.Install && len(rest) > 0 {
+	// --install starts no session, so there is no child for later arguments to
+	// belong to. Measured from --install's own position rather than from what
+	// survived the scan, so `--install --help` is refused too: the scanner owns
+	// --help, and counting only unrecognized leftovers would silently swallow
+	// the flags it does own.
+	if rest := argv[install+1:]; flags.Install && len(rest) > 0 {
 		return flags, nil, fmt.Errorf("--install takes no arguments, got %q", strings.Join(rest, " "))
 	}
-	return flags, rest, nil
+	return flags, argv[i:], nil
 }
 
 // orqiCompletionFlags returns orq's own flags matching toComplete. Cobra
@@ -159,19 +163,13 @@ func realRunOrqiCommand(ctx context.Context, env map[string]string, name string,
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
-	// The installer has no use for orq credentials, and installSessionPreRun
-	// (cli/custom/register.go) puts a live workspace bearer token in
-	// ORQ_API_KEY before this runs. install.sh is fetched unpinned from main,
-	// so do not hand it the session.
+	// The installer has no use for orq credentials, and install.sh is fetched
+	// unpinned from main. Two of them would otherwise reach it: the live
+	// workspace bearer token installSessionPreRun (cli/custom/register.go)
+	// puts in ORQ_API_KEY before this runs, and any key the user exported
+	// themselves under any of the three names bartolo reads.
 	cmd.Env = launch.MergeEnv(withoutOrqCredentials(os.Environ()), env)
 	return cmd.Run()
-}
-
-// orqCredentialEnvVars are stripped from the installer child's environment.
-var orqCredentialEnvVars = map[string]bool{
-	"ORQ_API_KEY":       true,
-	"ORQ_TOKEN":         true,
-	"ORQ_AUTHORIZATION": true,
 }
 
 // withoutOrqCredentials drops orq's credential variables from a "K=V" environ.
@@ -179,7 +177,7 @@ func withoutOrqCredentials(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, kv := range environ {
 		key, _, _ := strings.Cut(kv, "=")
-		if orqCredentialEnvVars[key] {
+		if slices.Contains(apiKeyEnvVars, key) {
 			continue
 		}
 		out = append(out, kv)

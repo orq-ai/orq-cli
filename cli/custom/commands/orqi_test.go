@@ -44,9 +44,17 @@ func TestParseOrqiArgvDoubleDashEndsScanning(t *testing.T) {
 }
 
 func TestParseOrqiArgvInstallIsTerminal(t *testing.T) {
-	_, _, err := parseOrqiArgv([]string{"--install", "extra"})
-	if err == nil || !strings.Contains(err.Error(), "--install") {
-		t.Fatalf("error = %v, want one naming --install", err)
+	// Including the flags the scanner owns: consuming them would install while
+	// looking like it had not, which is the failure the error exists to avoid.
+	for _, argv := range [][]string{
+		{"--install", "extra"},
+		{"--install", "--help"},
+		{"--install", "-h"},
+		{"--install", "--"},
+	} {
+		if _, _, err := parseOrqiArgv(argv); err == nil || !strings.Contains(err.Error(), "--install") {
+			t.Errorf("parseOrqiArgv(%v) error = %v, want one naming --install", argv, err)
+		}
 	}
 }
 
@@ -62,6 +70,12 @@ func TestOrqiCompletionFlagsMatchParser(t *testing.T) {
 		}
 		if flags == (orqiFlags{}) {
 			t.Errorf("%s is advertised for completion but sets nothing in the parser", name)
+		}
+	}
+	// The other direction: every flag the scanner consumes must be offered.
+	for _, name := range orqiFlagNames {
+		if got := orqiCompletionFlags(name); len(got) == 0 {
+			t.Errorf("%s is consumed by the parser but offered by no completion", name)
 		}
 	}
 	if got := orqiCompletionFlags("--in"); len(got) != 1 || got[0] != "--install" {
@@ -271,24 +285,38 @@ func TestRunOrqiCommandStripsOrqCredentials(t *testing.T) {
 }
 
 func TestInstallOrqiRemovesItsTempDir(t *testing.T) {
-	var scriptPath string
-	orig := runOrqiCommand
-	t.Cleanup(func() { runOrqiCommand = orig })
-	runOrqiCommand = func(_ context.Context, _ map[string]string, name string, args ...string) error {
-		if name == "curl" {
-			scriptPath = args[len(args)-2] // -o <path> <url>
-			return os.WriteFile(scriptPath, []byte("#!/bin/sh\n"), 0o600)
-		}
-		return errors.New("exit status 1")
-	}
-	if err := installOrqi(context.Background(), "/opt/bin"); err == nil {
-		t.Fatal("installOrqi error = nil, want the installer failure")
-	}
-	if scriptPath == "" {
-		t.Fatal("curl was never called")
-	}
-	if _, err := os.Stat(filepath.Dir(scriptPath)); !os.IsNotExist(err) {
-		t.Errorf("temp dir still present after a failed install: %v", err)
+	for _, tc := range []struct {
+		name      string
+		curlFails bool
+	}{
+		{name: "the download fails", curlFails: true},
+		{name: "the installer fails"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var tmpDir string
+			orig := runOrqiCommand
+			t.Cleanup(func() { runOrqiCommand = orig })
+			runOrqiCommand = func(_ context.Context, _ map[string]string, name string, args ...string) error {
+				if name == "curl" {
+					script := args[len(args)-2] // -o <path> <url>
+					tmpDir = filepath.Dir(script)
+					if tc.curlFails {
+						return errors.New("curl: (22) 404")
+					}
+					return os.WriteFile(script, []byte("#!/bin/sh\n"), 0o600)
+				}
+				return errors.New("exit status 1")
+			}
+			if err := installOrqi(context.Background(), "/opt/bin"); err == nil {
+				t.Fatal("installOrqi error = nil, want a failure")
+			}
+			if tmpDir == "" {
+				t.Fatal("curl was never called")
+			}
+			if _, err := os.Stat(tmpDir); !os.IsNotExist(err) {
+				t.Errorf("temp dir still present: %v", err)
+			}
+		})
 	}
 }
 

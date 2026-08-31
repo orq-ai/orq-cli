@@ -111,8 +111,10 @@ already folds `--no-input`, `ORQ_NO_INPUT` and both isatty checks into a single 
 already records why it downloads to a file rather than piping into a shell. Do not re-derive
 that reasoning here; follow the code.
 
-1. `exec.LookPath` for `curl` and `sh`, erroring with the missing binary's name — the same
-   preflight `updateViaInstaller` runs. `GOOS != "windows"` is not a check that `sh` exists.
+1. `exec.LookPath` for `curl`, `sh` and `tar`, erroring with the missing binary's name.
+   `updateViaInstaller` preflights only the first two because orq's own installer needs only
+   those; orqi's unpacks a tarball (`install.sh:93`), and the preflight exists to fail before
+   the download rather than after it. `GOOS != "windows"` is not a check that `sh` exists.
 2. `os.MkdirTemp`, `defer os.RemoveAll(dir)`, so cleanup covers a failed download and a failed
    install as well as the happy path.
 3. `curl -fsSL -o <dir>/install.sh https://raw.githubusercontent.com/orq-ai/orqi/main/install.sh`,
@@ -122,6 +124,12 @@ that reasoning here; follow the code.
 4. `sh <dir>/install.sh`, with `ORQI_INSTALL_DIR` set in the child environment to the directory
    resolved above, and stdio inherited so the installer's banner, progress bar and PATH hint
    reach the user.
+
+The installer child never sees orq's credential variables (`ORQ_API_KEY`, `ORQ_TOKEN`,
+`ORQ_AUTHORIZATION`). Two would otherwise reach it: the live workspace bearer token
+`installSessionPreRun` injects into `ORQ_API_KEY`, and any key the user exported themselves. The
+script is fetched unpinned from `main` (see below) and has no use for them. This does not apply
+to orqi itself, which inherits the session credential deliberately — see "Starting it".
 
 Child stdout is routed to stderr, as `orq update` does: installer output is diagnostics.
 
@@ -180,7 +188,7 @@ The command ships on both module lines automatically: it lives under `cli/custom
 ## Testing
 
 Package-level overridable seams, in the style of `runUpdateCommand` in `update.go`: the binary
-lookup, the installer commands (`curl` and `sh`), and the child launch. Tests never touch the
+lookup, the installer commands (`curl`, `sh` and `tar`), and the child launch. Tests never touch the
 network, the real installer, or a real orqi.
 
 | Case | Expected |
