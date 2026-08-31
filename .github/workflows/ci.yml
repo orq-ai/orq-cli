@@ -24,7 +24,7 @@ jobs:
     name: workflow and release-label validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: release-label configuration
         run: node .github/scripts/check-release-label-config.js
       - name: label-pr unit tests
@@ -66,7 +66,7 @@ jobs:
     name: build, vet, test, surface (stable module)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -172,7 +172,7 @@ jobs:
     # the rest of the CLI is covered by the stable job.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -184,7 +184,7 @@ jobs:
     # ubuntu-latest: dash is preinstalled there; the macOS release runner has none.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: parse under dash
         run: dash -n install.sh
       - name: test rc resolver fixtures under dash
@@ -280,7 +280,7 @@ jobs:
       run:
         working-directory: packages/orq-rc
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-go@v7
         with:
           go-version-file: packages/orq-rc/go.mod
