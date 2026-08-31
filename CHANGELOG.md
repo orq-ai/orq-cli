@@ -129,6 +129,11 @@ controls on surface changes, whichever side they originate from.
   verifies. A run that cuts both channels tags the stable release first, so
   `5.2.0-rc.1` reaching the tag step after `v5.2.0` is the preview arriving a
   moment late, not a downgrade. Anything below the highest release still fails.
+- **Fixed:** rc release notes anchor to the rc tag that actually shipped last,
+  found by walking the commit graph rather than by sorting version numbers.
+  Sorting assumed rc numbers only move forward, which the renumbering above
+  breaks: `v5.3.0-rc.5` outranks the corrected line for several minors, and
+  every rc under it would have re-reported what the previous one already said.
 - **Changed:** `cmd/release-version/` now counts as a release-worthy change on
   both channels. A fix to the resolver used to wait for an unrelated commit
   before it could take effect.
