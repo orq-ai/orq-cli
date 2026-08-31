@@ -488,9 +488,9 @@ func TestOrqiHelpListsEveryWrapperFlag(t *testing.T) {
 	// cobra cannot enumerate them: DisableFlagParsing means it never sees any
 	// of them, so the help text is the only place they are discoverable.
 	var out bytes.Buffer
-	orig := bartolocli.Stderr
-	t.Cleanup(func() { bartolocli.Stderr = orig })
-	bartolocli.Stderr = &out
+	orig := bartolocli.Stdout
+	t.Cleanup(func() { bartolocli.Stdout = orig })
+	bartolocli.Stdout = &out
 	printOrqiHelp()
 	for _, flag := range append(append([]string{}, orqiFlagNames...), orqiGlobalFlagNames...) {
 		if !strings.Contains(out.String(), flag) {

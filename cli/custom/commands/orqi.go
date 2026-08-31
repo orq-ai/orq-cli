@@ -200,7 +200,7 @@ var (
 // wrapper's own flags are never registered, so cmd.Help() would advertise none
 // of them. launch/run.go's printAgentHelp exists for the same reason.
 func printOrqiHelp() {
-	fmt.Fprintf(bartolocli.Stderr, `Run orqi, the orq.ai assistant in your terminal, installing it first if it is missing.
+	fmt.Fprintf(bartolocli.Stdout, `Run orqi, the orq.ai assistant in your terminal, installing it first if it is missing.
 
 orqi reads the login session this CLI maintains, so 'orq auth login' (or a
 valid ORQ_API_KEY) is all the setup it needs.
@@ -221,6 +221,10 @@ globals also work before the command word: 'orq --profile staging orqi'.
 `)
 }
 
+// NewOrqiCommand builds `orq orqi`, which installs orqi on first use and then
+// runs it. It disables cobra flag parsing so orqi's own flags pass through
+// untouched; parseOrqiArgv reads the handful orq itself owns off the front of
+// argv.
 func NewOrqiCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "orqi [flags] [--] [prompt or orqi arguments...]",
