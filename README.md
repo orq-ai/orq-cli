@@ -259,6 +259,7 @@ surface changes are always a reviewed diff.
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
 | `orq default-format <json\|yaml\|toon>` | Persist a default output format |
 | `orq launch <agent>` | Launch a coding agent routed through the AI Router (see [Launch](#launch)) |
+| `orq orqi` | Run orqi, the orq.ai assistant, installing it on first use (see [orqi](#orqi)) |
 
 ### Resource commands
 
@@ -352,6 +353,40 @@ Sandboxed execution is not available in this version.
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
 | `ORQ_PI_BASE_URL` / `PI_MODEL` / `PI_MODELS` | pi overrides |
+
+---
+
+## orqi
+
+[orqi](https://github.com/orq-ai/orqi) is the orq.ai assistant in your terminal: ask it to
+investigate a failing agent, check workspace health or explain the platform, and it answers
+using your workspace's own tools, models and skills.
+
+```bash
+orq orqi                                   # interactive session
+orq orqi "why did my agent fail today?"    # one-shot
+orq orqi --install                         # install or reinstall, then exit
+```
+
+The first run installs it, after asking, by running the orqi repo's own installer. It lands in
+`~/.local/bin` (or `$ORQI_INSTALL_DIR`) and the session starts straight away, whether or not
+that directory is on your PATH yet. Under `--no-input` nothing is installed and the command
+prints the one-liner instead.
+
+orqi reads the login session this CLI maintains, so `orq auth login` is all the setup it needs.
+`--profile <name>` — orq's own global flag — selects which session it uses, and must come before
+any argument meant for orqi — everything from the first orqi argument onward is passed through untouched, so orqi's own
+flags always reach it. A leading `--` ends orq's parsing explicitly.
+
+`--no-input` refuses rather than installing, so a script that needs both does it in two calls:
+
+```bash
+orq orqi --install                      # unconditional, prompts nobody
+orq orqi --no-input "summarise today"   # fails loudly if the first call did not run
+```
+
+orqi publishes macOS (arm64, x86_64) and Linux x86_64 builds; on anything else the command says
+so and stops.
 
 ---
 
