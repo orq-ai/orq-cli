@@ -2,6 +2,10 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -74,4 +78,53 @@ func orqiCompletionFlags(toComplete string) []string {
 		}
 	}
 	return out
+}
+
+// Seams. Tests answer these instead of touching the real PATH or GOOS.
+var (
+	orqiLookPath = exec.LookPath
+	orqiPlatform = func() string { return runtime.GOOS + "/" + runtime.GOARCH }
+)
+
+// orqiPlatforms is what the orqi release publishes. Linux arm64 is refused as
+// early as Windows: install.sh would reject it too, but only after a prompt
+// and a download.
+var orqiPlatforms = map[string]bool{
+	"darwin/arm64": true,
+	"darwin/amd64": true,
+	"linux/amd64":  true,
+}
+
+func orqiPlatformSupported() bool { return orqiPlatforms[orqiPlatform()] }
+
+// orqiInstallDir is where install.sh will put the binary: the user's own
+// ORQI_INSTALL_DIR, or install.sh's default.
+func orqiInstallDir() string {
+	if dir := strings.TrimSpace(os.Getenv("ORQI_INSTALL_DIR")); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "bin")
+}
+
+// resolveOrqi returns the orqi binary's path, or "" when there is none.
+// PATH is not enough on its own: install.sh writes to ~/.local/bin and only
+// prints a hint about it, so a freshly installed orqi is invisible to
+// LookPath until the user acts on that hint or opens a new shell.
+func resolveOrqi() string {
+	if path, err := orqiLookPath("orqi"); err == nil {
+		return path
+	}
+	dir := orqiInstallDir()
+	if dir == "" {
+		return ""
+	}
+	path := filepath.Join(dir, "orqi")
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		return path
+	}
+	return ""
 }
