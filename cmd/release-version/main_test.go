@@ -37,7 +37,14 @@ func TestResolveRCBaseAndFreeRCNumber(t *testing.T) {
 		{
 			name:    "same line and free number",
 			version: "5.0.0", api: "4.16.0", released: "4.15.0",
-			tags: "v5.0.0\nv5.2.0-rc.1\nv5.2.0-rc.2\n", wantVersion: "5.2.0-rc.3", wantPrevious: "v5.2.0-rc.2", wantBump: "minor",
+			tags: "v5.0.0\nv5.1.0-rc.1\nv5.1.0-rc.2\n", wantVersion: "5.1.0-rc.3", wantPrevious: "v5.1.0-rc.2", wantBump: "minor",
+		},
+		{
+			// The rc base is the stable target itself: a patch-only line is
+			// previewed as a patch, not lifted to a minor nobody will cut.
+			name:    "previews a patch release",
+			version: "5.1.3", api: "4.15.0", released: "4.15.0",
+			tags: "v5.1.3\n", wantVersion: "5.1.4-rc.1", wantPrevious: "v5.1.3", wantBump: "patch",
 		},
 		{
 			name:    "above stable release",
@@ -67,7 +74,7 @@ func TestResolveRCIsIndependentOfStableVERSIONAdvance(t *testing.T) {
 	tests := []struct {
 		name, firstVersion, secondVersion, tags, want string
 	}{
-		{name: "stable VERSION advance", firstVersion: "5.0.0", secondVersion: "5.1.0", tags: "v5.0.0\n", want: "5.2.0-rc.1"},
+		{name: "stable VERSION advance", firstVersion: "5.0.0", secondVersion: "5.1.0", tags: "v5.0.0\n", want: "5.1.0-rc.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

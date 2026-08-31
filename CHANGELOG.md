@@ -47,8 +47,11 @@ ever cuts can collide with a version npm has already published.
 The tag `v<version>` is the authority — the release pipeline creates it, and
 writes the same number back to `VERSION` at the repo root so a checkout knows
 what it last shipped. You never tag by hand, and hand edits to `VERSION` are for
-one case only (below). A pre-release build of the next minor is published on the
-`rc` line.
+one case only (below). A pre-release build of the next release is published on
+the `rc` line, under that release's own number: an rc previewing `5.2.0` is
+`5.2.0-rc.N`, and an rc previewing a patch is `5.1.4-rc.N`. The rc line carries
+its own orq API schema, so its bump is resolved from that schema and can be
+larger than the stable line's on the same commit.
 
 ### What moves the version
 
@@ -107,6 +110,12 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Changed:** `rc` releases are numbered as the stable release they preview.
+  The resolver applied a second minor bump on top of the resolved stable target,
+  so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
+  was published while stable was on `5.1.3`, naming a version the stable line
+  will never cut. An rc now carries the base of the release it previews.
 
 ## [5.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.0) — 2026-09-01
 

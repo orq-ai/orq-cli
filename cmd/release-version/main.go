@@ -120,14 +120,18 @@ func resolve(in input) (result, error) {
 	tags := tagSet(in.Tags)
 
 	if in.Channel == "rc" {
-		stableTarget := stableVersionTarget(in.Version, bump, tags)
-		rcBase := stableTarget
-		if highest, ok := highestStable(tags); ok && higher(highest, rcBase) {
-			rcBase = highest
+		// An rc previews the next stable release, so its base is that release's
+		// number - not a further bump on top of it, which would name a version
+		// the stable line never cuts.
+		rcBase := stableVersionTarget(in.Version, bump, tags)
+		if highest, ok := highestStable(tags); ok && !higher(rcBase, highest) {
+			// VERSION lags what is already published, so the resolved target is
+			// not a future release at all. Preview the next minor above the
+			// highest release instead, which is what `verify` also demands.
+			rcBase = applyBump(highest, "minor")
 		}
-		rcBase = applyBump(rcBase, "minor")
-		major, minor, _ := parseVersionFields(rcBase)
-		prefix := fmt.Sprintf("%d.%d.0-rc.", major, minor)
+		major, minor, patch := parseVersionFields(rcBase)
+		prefix := fmt.Sprintf("%d.%d.%d-rc.", major, minor, patch)
 		n := 1
 		for tags[fmt.Sprintf("v%s%d", prefix, n)] {
 			n++
