@@ -124,11 +124,8 @@ func resolve(in input) (result, error) {
 		// number - not a further bump on top of it, which would name a version
 		// the stable line never cuts.
 		rcBase := stableVersionTarget(in.Version, bump, tags)
-		if highest, ok := highestStable(tags); ok && !higher(rcBase, highest) {
-			// VERSION lags what is already published, so the resolved target is
-			// not a future release at all. Preview the same bump above the
-			// highest release instead.
-			rcBase = applyBump(highest, bump)
+		if err := checkFloor(rcBase, tags); err != nil {
+			return result{}, err
 		}
 		major, minor, patch := parseVersionFields(rcBase)
 		prefix := fmt.Sprintf("%d.%d.%d-rc.", major, minor, patch)
@@ -149,14 +146,24 @@ func resolve(in input) (result, error) {
 	version := stableVersionTarget(in.Version, bump, tags)
 	major, minor, patch := parseVersionFields(version)
 	version = fmt.Sprintf("%d.%d.%d", major, minor, patch)
-	// A stale or mis-merged VERSION resolves a number below what is already
-	// published, and that number becomes npm `latest` and /releases/latest -
-	// a downgrade `orq update` then refuses to walk anyone back out of. Fail
-	// the release instead.
-	if highest, ok := highestStable(tags); ok && !higher(version, highest) {
-		return result{}, fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
+	if err := checkFloor(version, tags); err != nil {
+		return result{}, err
 	}
 	return result{Version: version, Tag: "v" + version, PreviousTag: "v" + in.Version, Bump: bump}, nil
+}
+
+// checkFloor rejects a resolved number that is not still ahead of what is
+// published. A stale or mis-merged VERSION lands there, and the number becomes
+// npm `latest` and /releases/latest - a downgrade `orq update` then refuses to
+// walk anyone back out of. Fail the release instead. An rc is held to the same
+// floor through its base, because it names the release it previews, and a
+// release already cut is not one to preview.
+func checkFloor(version string, tags map[string]bool) error {
+	highest, ok := highestStable(tags)
+	if !ok || higher(version, highest) {
+		return nil
+	}
+	return fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
 }
 
 func stableVersionTarget(version, bump string, tags map[string]bool) string {
@@ -197,7 +204,10 @@ func verify(in input, version string) (result, error) {
 	if i := strings.Index(base, "-rc."); i >= 0 {
 		base = base[:i]
 	}
-	if highest, ok := highestStable(tags); ok && !higher(base, highest) {
+	// A `both` run tags the stable release before the rc previewing it reaches
+	// this check, so an rc whose base is exactly the highest release is that
+	// preview arriving a moment late, not a downgrade. Anything lower is.
+	if highest, ok := highestStable(tags); ok && !higher(base, highest) && !(in.Channel == "rc" && base == highest) {
 		return result{}, fmt.Errorf("version %s does not sort above the highest released %s", version, highest)
 	}
 	return result{Version: version, Tag: tag, Prerelease: in.Channel == "rc"}, nil

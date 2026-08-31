@@ -45,19 +45,9 @@ func TestResolveRCBaseAndFreeRCNumber(t *testing.T) {
 			tags: "v5.1.3\n", wantVersion: "5.1.4-rc.1", wantPrevious: "v5.1.3", wantBump: "patch",
 		},
 		{
-			name:    "lagging VERSION previews a patch above the highest release",
-			version: "5.0.0", api: "4.15.0", released: "4.15.0",
-			tags: "v5.0.0\nv5.1.0\n", wantVersion: "5.1.1-rc.1", wantPrevious: "v5.0.0", wantBump: "patch",
-		},
-		{
-			name:    "lagging VERSION previews a minor above the highest release",
-			version: "4.14.3", api: "4.16.0", released: "4.15.0",
-			tags: "v5.0.0\n", wantVersion: "5.1.0-rc.1", wantBump: "minor",
-		},
-		{
-			name:    "lagging VERSION previews a major above the highest release",
-			version: "4.14.3", api: "5.0.0", released: "4.15.0",
-			tags: "v5.0.0\n", wantVersion: "6.0.0-rc.1", wantBump: "major",
+			name:    "free number on a patch line",
+			version: "5.1.3", api: "4.15.0", released: "4.15.0",
+			tags: "v5.1.3\nv5.1.4-rc.1\n", wantVersion: "5.1.4-rc.2", wantPrevious: "v5.1.4-rc.1", wantBump: "patch",
 		},
 	}
 	for _, tt := range tests {
@@ -234,9 +224,28 @@ func TestCommitBumpReadsTheSubjectAndFooterOnly(t *testing.T) {
 // A VERSION left below what is already published would resolve a downgrade,
 // and `orq update` refuses downgrades, so nobody would be walked back out of it.
 func TestResolveRefusesToPublishBelowTheHighestRelease(t *testing.T) {
-	_, err := resolve(input{Version: "4.14.3", API: "4.15.0", ReleasedAPI: "4.15.0", Tags: legacyTags + "v5.0.0\n", Channel: "stable"})
-	if err == nil {
-		t.Fatal("resolve accepted a version below the highest release")
+	// Both channels stop on a lagging VERSION rather than inventing a number
+	// above the highest release: an rc that guesses its own base no longer
+	// previews the release the stable line will cut.
+	for _, channel := range []string{"stable", "rc"} {
+		t.Run(channel, func(t *testing.T) {
+			_, err := resolve(input{Version: "4.14.3", API: "4.15.0", ReleasedAPI: "4.15.0", Tags: legacyTags + "v5.0.0\n", Channel: channel})
+			if err == nil {
+				t.Fatal("resolve accepted a version below the highest release")
+			}
+		})
+	}
+}
+
+// A `both` run tags the stable release while the rc previewing it is still in
+// flight, so the rc must survive its own base becoming the highest tag.
+func TestVerifyAcceptsAnRCWhoseBaseWasJustReleased(t *testing.T) {
+	got, err := verify(input{Channel: "rc", Tags: "v5.1.3\nv5.2.0\n"}, "5.2.0-rc.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Tag != "v5.2.0-rc.1" || !got.Prerelease {
+		t.Fatalf("got %#v, want v5.2.0-rc.1 as a prerelease", got)
 	}
 }
 

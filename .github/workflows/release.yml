@@ -112,8 +112,10 @@ jobs:
           else
             # Shared: compiled into both binaries, or shipped by both
             # releases. Each module's own cmd/ is not, and cmd/surface-dump
-            # ships to nobody.
-            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
+            # ships to nobody. cmd/release-version ships to nobody either, but
+            # it decides what both channels publish - leaving it out is how a
+            # fix to it waits for an unrelated commit to take effect.
+            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$|cmd/release-version/)'
 
             stable=false
             prerelease=false

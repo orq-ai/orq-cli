@@ -121,6 +121,17 @@ controls on surface changes, whichever side they originate from.
   past `5.3.0`. `orq update` never offers a lower version, but installing the
   channel directly — `npm i -g @orq-ai/cli@rc`, or `install.sh --channel rc` —
   replaces a newer rc build with the corrected, lower-numbered one.
+- **Changed:** a `VERSION` that lags the highest published tag now fails the rc
+  release the same way it already failed the stable one. The rc channel used to
+  invent the next minor above that tag, which is a number nobody promised to
+  cut. Fix `VERSION` and re-run.
+- **Changed:** an rc whose base is exactly the highest published release now
+  verifies. A run that cuts both channels tags the stable release first, so
+  `5.2.0-rc.1` reaching the tag step after `v5.2.0` is the preview arriving a
+  moment late, not a downgrade. Anything below the highest release still fails.
+- **Changed:** `cmd/release-version/` now counts as a release-worthy change on
+  both channels. A fix to the resolver used to wait for an unrelated commit
+  before it could take effect.
 
 ## [5.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.0) — 2026-09-01
 
