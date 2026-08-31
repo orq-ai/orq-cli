@@ -40,21 +40,24 @@ func TestResolveRCBaseAndFreeRCNumber(t *testing.T) {
 			tags: "v5.0.0\nv5.1.0-rc.1\nv5.1.0-rc.2\n", wantVersion: "5.1.0-rc.3", wantPrevious: "v5.1.0-rc.2", wantBump: "minor",
 		},
 		{
-			// The rc base is the stable target itself: a patch-only line is
-			// previewed as a patch, not lifted to a minor nobody will cut.
 			name:    "previews a patch release",
 			version: "5.1.3", api: "4.15.0", released: "4.15.0",
 			tags: "v5.1.3\n", wantVersion: "5.1.4-rc.1", wantPrevious: "v5.1.3", wantBump: "patch",
 		},
 		{
-			name:    "above stable release",
+			name:    "lagging VERSION previews a patch above the highest release",
 			version: "5.0.0", api: "4.15.0", released: "4.15.0",
-			tags: "v5.0.0\nv5.1.0\n", wantVersion: "5.2.0-rc.1", wantPrevious: "v5.0.0",
+			tags: "v5.0.0\nv5.1.0\n", wantVersion: "5.1.1-rc.1", wantPrevious: "v5.0.0", wantBump: "patch",
 		},
 		{
-			name:    "above highest stable tag",
-			version: "4.14.3", api: "4.15.0", released: "4.15.0",
-			tags: "v5.0.0\n", wantVersion: "5.1.0-rc.1",
+			name:    "lagging VERSION previews a minor above the highest release",
+			version: "4.14.3", api: "4.16.0", released: "4.15.0",
+			tags: "v5.0.0\n", wantVersion: "5.1.0-rc.1", wantBump: "minor",
+		},
+		{
+			name:    "lagging VERSION previews a major above the highest release",
+			version: "4.14.3", api: "5.0.0", released: "4.15.0",
+			tags: "v5.0.0\n", wantVersion: "6.0.0-rc.1", wantBump: "major",
 		},
 	}
 	for _, tt := range tests {

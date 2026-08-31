@@ -116,6 +116,11 @@ controls on surface changes, whichever side they originate from.
   so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
   was published while stable was on `5.1.3`, naming a version the stable line
   will never cut. An rc now carries the base of the release it previews.
+  The npm `rc` dist-tag therefore moves backwards once, from `5.3.0-rc.5` to the
+  next number on the corrected line, and stays below it until the line climbs
+  past `5.3.0`. `orq update` never offers a lower version, but installing the
+  channel directly — `npm i -g @orq-ai/cli@rc`, or `install.sh --channel rc` —
+  replaces a newer rc build with the corrected, lower-numbered one.
 
 ## [5.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.0) — 2026-09-01
 

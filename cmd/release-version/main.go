@@ -126,9 +126,9 @@ func resolve(in input) (result, error) {
 		rcBase := stableVersionTarget(in.Version, bump, tags)
 		if highest, ok := highestStable(tags); ok && !higher(rcBase, highest) {
 			// VERSION lags what is already published, so the resolved target is
-			// not a future release at all. Preview the next minor above the
-			// highest release instead, which is what `verify` also demands.
-			rcBase = applyBump(highest, "minor")
+			// not a future release at all. Preview the same bump above the
+			// highest release instead.
+			rcBase = applyBump(highest, bump)
 		}
 		major, minor, patch := parseVersionFields(rcBase)
 		prefix := fmt.Sprintf("%d.%d.%d-rc.", major, minor, patch)
