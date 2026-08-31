@@ -1,4 +1,4 @@
-name: Publish npm packages
+name: Release npm packages
 
 # npm is deliberately downstream of the GitHub release. If this workflow is
 # retried, the tag and release identity are already fixed and packages that
@@ -39,6 +39,7 @@ permissions:
 
 jobs:
   publish:
+    name: publish packages
     if: startsWith(inputs.tag, 'v')
     runs-on: macos-latest
     env:
