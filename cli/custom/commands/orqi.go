@@ -16,9 +16,10 @@ import (
 	"orq/cli/custom/launch"
 )
 
-// orqiFlags are the flags this command owns on `orq orqi`. Everything else is
-// orqi's, except orq's own global --profile, which splitPassthroughGlobals
-// (cli/custom/launchargs.go) parses onto the root before cobra dispatches.
+// orqiFlags are the flags this command owns on `orq orqi`. Everything behind
+// the command word that is not one of them is orqi's. orq's own globals go in
+// front of it, where splitPassthroughGlobals (cli/custom/launchargs.go) parses
+// them onto the root before cobra dispatches.
 type orqiFlags struct {
 	Help    bool
 	Install bool
@@ -27,11 +28,6 @@ type orqiFlags struct {
 // orqiFlagNames mirrors what parseOrqiArgv consumes;
 // TestOrqiCompletionFlagsMatchParser asserts the two agree.
 var orqiFlagNames = []string{"-h", "--help", "--install"}
-
-// orqiGlobalFlagNames are orq's own root flags, which work on an orqi line
-// because splitPassthroughGlobals lifts them out of argv before cobra
-// dispatches. Offered for completion; never seen by parseOrqiArgv.
-var orqiGlobalFlagNames = []string{"--no-input", "--profile"}
 
 // parseOrqiArgv recognizes orq's own flags only at the FRONT of argv: the
 // first argument orq does not own ends parsing and everything from there
@@ -82,14 +78,14 @@ scan:
 
 // orqiCompletionFlags returns orq's own flags matching toComplete. Cobra
 // cannot enumerate them itself with flag parsing disabled. Anything that does
-// not look like a flag belongs to orqi's own CLI. orq's globals are offered
-// too, even though this file does not parse them: on an orqi line they work.
+// not look like a flag belongs to orqi's own CLI, and so does every root
+// global typed here: they only count in front of the command word.
 func orqiCompletionFlags(toComplete string) []string {
 	if !strings.HasPrefix(toComplete, "-") {
 		return nil
 	}
 	var out []string
-	for _, f := range append(append([]string{}, orqiFlagNames...), orqiGlobalFlagNames...) {
+	for _, f := range orqiFlagNames {
 		if strings.HasPrefix(f, toComplete) {
 			out = append(out, f)
 		}
@@ -243,19 +239,20 @@ Usage:
   orq orqi [flags] [--] [prompt or orqi arguments...]
 
 Flags:
-  -h, --help            Print this help and exit; never installs anything
-      --install         Install or reinstall orqi, then exit without starting a session
-      --no-input        Never prompt; fail instead of offering to install (orq global)
-      --profile <name>  The login profile orqi should use (orq global)
+  -h, --help     Print this help and exit; never installs anything
+      --install  Install or reinstall orqi, then exit without starting a session
 
-orq's other global flags (--json, --server, --workspace, --verbose,
---no-color, --raw, -o, -j) are recognised before the prompt too; anything
-after the first non-flag argument, or after --, goes to orqi untouched.
+They are recognised only before the first argument orq does not own, so
+'orq orqi "why did it fail" --install' sends --install to orqi. A leading --
+ends orq's parsing explicitly.
 
-These flags are recognised only before the first argument orq does not own.
-Everything from that argument on is passed to orqi untouched, so
-'orq orqi "why did it fail" --install' sends --install to orqi. The two orq
-globals also work before the command word: 'orq --profile staging orqi'.
+orq's own global flags go in FRONT of the command word:
+
+  orq --profile staging orqi "why did it fail?"
+  orq --no-input orqi --install
+
+Behind it they belong to orqi, which is what keeps a prompt that opens with
+--workspace or --verbose from being read as one of ours.
 `)
 }
 
@@ -284,16 +281,17 @@ argument orq does not own is passed to orqi untouched.`,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			code, err := runOrqi(cmd, args)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				if code == 0 {
-					code = 1 // never report an error and exit 0
+			// Only a code the child chose justifies os.Exit: it is the one
+			// value cobra cannot carry. Everything else goes back to
+			// custom.Run, which owns 130 and 143 — exiting here on our own
+			// errors reported 1 for a Ctrl-C mid-install.
+			if code > 1 {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				}
-			}
-			if code != 0 {
 				os.Exit(code)
 			}
-			return nil
+			return err
 		},
 	}
 }

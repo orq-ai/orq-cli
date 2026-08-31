@@ -376,15 +376,24 @@ binary's own directory rather than the default, so a copy from Homebrew or a sou
 updated in place instead of being shadowed by a second one.
 
 orqi reads the login session this CLI maintains, so `orq auth login` is all the setup it needs.
-`--profile <name>` — orq's own global flag — selects which session it uses, and must come before
-any argument meant for orqi — everything from the first orqi argument onward is passed through untouched, so orqi's own
-flags always reach it. A leading `--` ends orq's parsing explicitly.
+orq's own global flags go in front of the command word, and orqi's go behind it:
+
+```sh
+orq --profile staging orqi "why did it fail?"   # --profile is orq's
+orq orqi --version                              # --version is orqi's
+```
+
+That split is the whole rule. Nothing typed after `orqi` is read as one of orq's flags, so a
+prompt opening with `--workspace` or `--verbose` reaches orqi as words rather than being eaten,
+and any flag orqi grows later works without orq having to hear about it. The two exceptions are
+`--help` and `--install`, which orq answers itself; a leading `--` ends orq's parsing explicitly,
+so `orq orqi -- --install` sends `--install` to orqi.
 
 `--no-input` refuses rather than installing, so a script that needs both does it in two calls:
 
 ```sh
-orq orqi --install                      # unconditional, prompts nobody
-orq orqi --no-input "summarise today"   # fails loudly if the first call did not run
+orq orqi --install                          # unconditional, prompts nobody
+orq --no-input orqi "summarise today"       # fails loudly if the first call did not run
 ```
 
 orqi publishes macOS (arm64, x86_64) and Linux x86_64 builds; on anything else the command says

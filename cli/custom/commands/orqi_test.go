@@ -578,10 +578,14 @@ func TestOrqiHelpListsEveryWrapperFlag(t *testing.T) {
 	t.Cleanup(func() { bartolocli.Stdout = orig })
 	bartolocli.Stdout = &out
 	printOrqiHelp()
-	for _, flag := range append(append([]string{}, orqiFlagNames...), orqiGlobalFlagNames...) {
+	for _, flag := range orqiFlagNames {
 		if !strings.Contains(out.String(), flag) {
 			t.Errorf("help does not mention %s:\n%s", flag, out.String())
 		}
+	}
+	// Where orq's own globals go is the part a user cannot guess.
+	if !strings.Contains(out.String(), "orq --profile staging orqi") {
+		t.Errorf("help does not show globals in front of the command word:\n%s", out.String())
 	}
 }
 

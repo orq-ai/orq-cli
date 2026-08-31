@@ -8,17 +8,25 @@ import (
 
 // passthroughCommands run with cobra's DisableFlagParsing, so cobra parses no
 // flags at all for them — not even the root's own. Each needs its globals
-// lifted out of argv here instead.
+// lifted out of argv here instead. The value is whether globals may also be
+// typed after the command word.
+//
+// `launch` may: the agent name terminates them, so `orq launch --profile acme
+// claude` is unambiguous. `orqi` may not: its first argument is a sentence,
+// and a prompt opening with a word that spells one of orq's ten globals would
+// be eaten (`orq orqi --workspace was broken today` would set --workspace=was
+// and ask orqi about "broken today"). In front of orqi the flags are orq's,
+// behind it they are orqi's — so nothing orqi grows can collide with us.
 var passthroughCommands = map[string]bool{
 	"launch": true,
-	"orqi":   true,
+	"orqi":   false,
 }
 
 // splitPassthroughGlobals separates orq's own global flags from the rest of
-// argv on an invocation of a passthroughCommand. They may be typed on either
-// side of the command word (`orq --profile acme launch claude` and
-// `orq launch --profile acme claude` both work); the first argument the
-// command owns ends them.
+// argv on an invocation of a passthroughCommand. They may always be typed
+// before the command word; whether they may also follow it is the command's
+// own answer in passthroughCommands. The first argument the command owns ends
+// them either way.
 //
 // A passthrough command runs with DisableFlagParsing so every one of its own
 // flags reaches it verbatim — including ones that collide with ours (codex's
@@ -29,7 +37,8 @@ var passthroughCommands = map[string]bool{
 // `orq orqi --profile staging "why"` would forward `--profile` to orqi.
 //
 // The dividing line is the first argument the command owns: before it the
-// flags are orq's, after it they are the command's. The caller parses the
+// flags are orq's, after it they are the command's. For a command that takes
+// no globals after its name the line is the name itself. The caller parses the
 // returned globals into the root's persistent flags before Execute, so the
 // PreRun chain resolves the profile and host — and injects the session
 // token — the same way it does for every other command.
@@ -40,7 +49,7 @@ func splitPassthroughGlobals(root *cobra.Command, args []string) (globals, rest 
 	}
 	name := args[cmdIndex]
 	i := cmdIndex + 1
-	for ; i < len(args); i++ {
+	for ; passthroughCommands[name] && i < len(args); i++ {
 		flagName, hasValue := globalFlagName(root, args[i])
 		if flagName == "" {
 			break // the command's own argument, or a flag we do not own: leave it be
@@ -65,7 +74,7 @@ func splitPassthroughGlobals(root *cobra.Command, args []string) (globals, rest 
 func leadingGlobals(root *cobra.Command, args []string) ([]string, int) {
 	var globals []string
 	for i := 0; i < len(args); i++ {
-		if passthroughCommands[args[i]] {
+		if _, ok := passthroughCommands[args[i]]; ok {
 			return globals, i
 		}
 		name, hasValue := globalFlagName(root, args[i])

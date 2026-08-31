@@ -113,10 +113,12 @@ controls on surface changes, whichever side they originate from.
   running the orqi project's own `install.sh`, after asking, or refusing and
   printing the one-liner under `--no-input`. Your prompt and any orqi flags are
   passed straight through, so `orq orqi "why did my agent fail today?"` and
-  `orq orqi --version` both reach orqi untouched. `--install` installs or
-  reinstalls and exits without starting a session, `--profile <name>` selects
-  the login session orqi uses, and the binary lands in `$ORQI_INSTALL_DIR` or
-  `~/.local/bin`. macOS (arm64, x86_64) and Linux x86_64 only.
+  `orq orqi --version` both reach orqi untouched. orq's own global flags go in
+  front of the command word and orqi's behind it, so nothing orqi grows can
+  collide with ours: `orq --profile staging orqi "why did it fail?"`.
+  `--install` installs or reinstalls and exits without starting a session, and
+  the binary lands in `$ORQI_INSTALL_DIR` or `~/.local/bin`. macOS (arm64,
+  x86_64) and Linux x86_64 only.
 
 ## [5.1.5](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.5) — 2026-09-01
 

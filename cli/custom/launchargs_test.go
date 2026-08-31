@@ -104,32 +104,32 @@ func TestSplitPassthroughGlobalsOnOrqi(t *testing.T) {
 		{
 			// The whole point: without this the token injected into
 			// ORQ_API_KEY is the default profile's, and it beats ORQ_PROFILE.
-			name:    "after the command word",
-			args:    []string{"orqi", "--profile", "staging", "why did it fail?"},
+			name:    "before the command word",
+			args:    []string{"--profile", "staging", "orqi", "why did it fail?"},
 			globals: []string{"--profile", "staging"},
 			rest:    []string{"orqi", "why did it fail?"},
 		},
 		{
-			name:    "before the command word",
-			args:    []string{"--profile", "staging", "orqi"},
-			globals: []string{"--profile", "staging"},
-			rest:    []string{"orqi"},
-		},
-		{
-			// Same front-of-argv rule launch uses: past the first argument
-			// orq does not own, every flag is the child's.
-			name:    "after a passthrough argument",
-			args:    []string{"orqi", "why did it fail?", "--profile", "staging"},
-			globals: nil,
-			rest:    []string{"orqi", "why did it fail?", "--profile", "staging"},
-		},
-		{
-			// Unlike launch, there is no agent name to terminate the globals,
-			// so several run until the prompt.
-			name:    "several globals, then the prompt",
-			args:    []string{"orqi", "--no-input", "--profile", "staging", "why did it fail?"},
+			name:    "several globals, then the command word",
+			args:    []string{"--no-input", "--profile", "staging", "orqi", "why did it fail?"},
 			globals: []string{"--no-input", "--profile", "staging"},
 			rest:    []string{"orqi", "why did it fail?"},
+		},
+		{
+			// Unlike launch, orqi's first argument is a sentence, so nothing
+			// behind the command word is ever read as one of orq's flags.
+			name:    "after the command word, where orqi's own arguments live",
+			args:    []string{"orqi", "--profile", "staging", "why did it fail?"},
+			globals: nil,
+			rest:    []string{"orqi", "--profile", "staging", "why did it fail?"},
+		},
+		{
+			// The collision this rule exists to make impossible: a prompt
+			// opening with a word that spells one of orq's globals.
+			name:    "a prompt that starts like a global flag",
+			args:    []string{"orqi", "--workspace", "was", "broken", "today"},
+			globals: nil,
+			rest:    []string{"orqi", "--workspace", "was", "broken", "today"},
 		},
 		{
 			// -h and -v live on root.Flags(), not PersistentFlags(), so they
