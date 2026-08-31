@@ -195,20 +195,78 @@ func TestInstallOrqiReportsInstallerFailure(t *testing.T) {
 	}
 }
 
-func TestInstallOrqiRequiresCurlAndSh(t *testing.T) {
-	orqiFakeLookPathFunc(t, func(name string) (string, error) {
-		if name == "curl" {
-			return "", errors.New("not found")
-		}
-		return "/bin/" + name, nil
-	})
-	ran := orqiFakeRunner(t)
-	err := installOrqi(context.Background(), "/opt/bin")
-	if err == nil || !strings.Contains(err.Error(), "curl") {
-		t.Fatalf("error = %v, want one naming curl", err)
+func TestInstallOrqiRequiresCurlShAndTar(t *testing.T) {
+	// install.sh needs all three: curl to fetch, sh to run it, tar to unpack
+	// the release it downloads.
+	for _, missing := range []string{"curl", "sh", "tar"} {
+		t.Run(missing, func(t *testing.T) {
+			orqiFakeLookPathFunc(t, func(name string) (string, error) {
+				if name == missing {
+					return "", errors.New("not found")
+				}
+				return "/bin/" + name, nil
+			})
+			ran := orqiFakeRunner(t)
+			err := installOrqi(context.Background(), "/opt/bin")
+			if err == nil || !strings.Contains(err.Error(), missing) {
+				t.Fatalf("error = %v, want one naming %s", err, missing)
+			}
+			if len(*ran) != 0 {
+				t.Errorf("ran %v, want nothing fetched when the preflight fails", *ran)
+			}
+		})
 	}
-	if len(*ran) != 0 {
-		t.Errorf("ran %v, want nothing fetched when the preflight fails", *ran)
+}
+
+// orqiRealRunner restores the production runOrqiCommand for the duration of a
+// test, whatever else the file has swapped it to, and points both of
+// bartolocli's streams at buffers so the child's output can be inspected.
+func orqiRealRunner(t *testing.T) (stdout, stderr *bytes.Buffer) {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh is not on PATH")
+	}
+	origCmd := runOrqiCommand
+	origOut, origErr := bartolocli.Stdout, bartolocli.Stderr
+	t.Cleanup(func() {
+		runOrqiCommand = origCmd
+		bartolocli.Stdout, bartolocli.Stderr = origOut, origErr
+	})
+	runOrqiCommand = realRunOrqiCommand
+	stdout, stderr = &bytes.Buffer{}, &bytes.Buffer{}
+	bartolocli.Stdout, bartolocli.Stderr = stdout, stderr
+	return stdout, stderr
+}
+
+func TestRunOrqiCommandSendsAllChildOutputToStderr(t *testing.T) {
+	// The installer's chatter is diagnostics; stdout belongs to orqi itself,
+	// so a script piping `orq orqi` must not see the installer in it.
+	stdout, stderr := orqiRealRunner(t)
+	if err := runOrqiCommand(context.Background(), nil, "sh", "-c", "echo out; echo err 1>&2"); err != nil {
+		t.Fatalf("runOrqiCommand error = %v, want nil", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "out") || !strings.Contains(stderr.String(), "err") {
+		t.Errorf("stderr = %q, want both the child's lines", stderr.String())
+	}
+}
+
+func TestRunOrqiCommandStripsOrqCredentials(t *testing.T) {
+	// installSessionPreRun exports a live workspace bearer token into
+	// ORQ_API_KEY; an unpinned install.sh must never see it.
+	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+		t.Setenv(name, "secret-"+name)
+	}
+	_, stderr := orqiRealRunner(t)
+	if err := runOrqiCommand(context.Background(), nil, "sh", "-c", "env"); err != nil {
+		t.Fatalf("runOrqiCommand error = %v, want nil", err)
+	}
+	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+		if strings.Contains(stderr.String(), name) {
+			t.Errorf("child env carries %s, want it filtered out:\n%s", name, stderr.String())
+		}
 	}
 }
 
@@ -496,6 +554,63 @@ func TestOrqiHelpListsEveryWrapperFlag(t *testing.T) {
 		if !strings.Contains(out.String(), flag) {
 			t.Errorf("help does not mention %s:\n%s", flag, out.String())
 		}
+	}
+}
+
+func TestResolveOrqiIgnoresANonExecutableFile(t *testing.T) {
+	// A truncated download or a chmod-644 file is not an installed orqi;
+	// resolving it would give the user a raw exec failure and no way back to
+	// the install prompt.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "orqi"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORQI_INSTALL_DIR", dir)
+	orqiFakeLookPath(t, "", errors.New("not found"))
+	if got := resolveOrqi(); got != "" {
+		t.Errorf("resolveOrqi() = %q, want empty: the file has no execute bit", got)
+	}
+}
+
+func TestRunOrqiRefusesWhenTheInstallDirIsUnknowable(t *testing.T) {
+	// os.UserHomeDir fails when HOME is unset. Falling through would install
+	// into "" and exec a bare "orqi" off PATH instead of the file we wrote.
+	t.Setenv("ORQI_INSTALL_DIR", "")
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
+	t.Setenv("home", "")
+	orqiFakeLookPath(t, "", errors.New("not found"))
+	orqiFakeInteractive(t, true)
+	asked := orqiFakeConfirm(t, true)
+	ran := orqiFakeRunner(t)
+	code, err := runOrqiArgs(t)
+	if err == nil || !strings.Contains(err.Error(), "ORQI_INSTALL_DIR") {
+		t.Fatalf("runOrqi = (%d, %v), want an error pointing at ORQI_INSTALL_DIR", code, err)
+	}
+	if code != 1 {
+		t.Errorf("code = %d, want 1", code)
+	}
+	if *asked != 0 || len(*ran) != 0 {
+		t.Errorf("prompted %d times and ran %v, want neither", *asked, *ran)
+	}
+}
+
+func TestRunOrqiPropagatesTheChildsFailureCode(t *testing.T) {
+	// launch.RunChild returns (127, err) when the binary will not start. The
+	// code has to survive runOrqi so RunE can exit with it rather than 1.
+	orqiFakeLookPath(t, "/usr/local/bin/orqi", nil)
+	orig := runOrqiChild
+	t.Cleanup(func() { runOrqiChild = orig })
+	want := errors.New("fork/exec: no such file or directory")
+	runOrqiChild = func(string, []string, map[string]string) (int, error) {
+		return 127, want
+	}
+	code, err := runOrqiArgs(t)
+	if code != 127 {
+		t.Errorf("code = %d, want the child's 127", code)
+	}
+	if !errors.Is(err, want) {
+		t.Errorf("error = %v, want it returned unchanged", err)
 	}
 }
 

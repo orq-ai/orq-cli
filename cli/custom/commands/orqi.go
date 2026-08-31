@@ -34,10 +34,17 @@ var orqiGlobalFlagNames = []string{"--no-input", "--profile"}
 
 // parseOrqiArgv recognizes orq's own flags only at the FRONT of argv: the
 // first argument orq does not own ends parsing and everything from there
-// belongs to orqi verbatim, so a flag orqi grows later can never collide with
-// one of ours. A leading `--` ends parsing explicitly. Same convention as
-// launch.ParseArgv (cli/custom/launch/args.go), whose flag set and
-// GatewayFlags return are gateway-specific and so not reusable here.
+// belongs to orqi verbatim. A leading `--` ends parsing explicitly. Same
+// convention as launch.ParseArgv (cli/custom/launch/args.go), whose flag set
+// and GatewayFlags return are gateway-specific and so not reusable here.
+//
+// The set orq recognizes at the front is larger than the two flags this
+// scanner owns: splitPassthroughGlobals (cli/custom/launchargs.go) lifts
+// every root persistent flag off the front of an orqi line before cobra
+// dispatches — --profile, --no-input, --json, --server, --workspace,
+// --verbose, --no-color, --raw, -o and -j. So a flag orqi grows later that is
+// named like one of those, or like -h/--help/--install, is shadowed unless the
+// user writes it after a positional argument or after `--`.
 //
 // cobra parses none of this: `orq orqi` runs with DisableFlagParsing, which
 // leaves even the root's persistent --profile unparsed. It arrives at the
@@ -129,7 +136,10 @@ func resolveOrqi() string {
 		return ""
 	}
 	path := filepath.Join(dir, "orqi")
-	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+	// An execute bit is part of "installed": a truncated download or a
+	// chmod-644 file would otherwise resolve, and the user would get a raw
+	// exec failure instead of being offered the install again.
+	if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
 		return path
 	}
 	return ""
@@ -143,12 +153,38 @@ const (
 // runOrqiCommand is the seam tests replace so they never run curl or the real
 // installer. Child output goes to stderr: it is the installer's diagnostics,
 // while stdout belongs to orqi itself once it starts.
-var runOrqiCommand = func(ctx context.Context, env map[string]string, name string, args ...string) error {
+var runOrqiCommand = realRunOrqiCommand
+
+func realRunOrqiCommand(ctx context.Context, env map[string]string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
-	cmd.Env = launch.MergeEnv(os.Environ(), env)
+	// The installer has no use for orq credentials, and installSessionPreRun
+	// (cli/custom/register.go) puts a live workspace bearer token in
+	// ORQ_API_KEY before this runs. install.sh is fetched unpinned from main,
+	// so do not hand it the session.
+	cmd.Env = launch.MergeEnv(withoutOrqCredentials(os.Environ()), env)
 	return cmd.Run()
+}
+
+// orqCredentialEnvVars are stripped from the installer child's environment.
+var orqCredentialEnvVars = map[string]bool{
+	"ORQ_API_KEY":       true,
+	"ORQ_TOKEN":         true,
+	"ORQ_AUTHORIZATION": true,
+}
+
+// withoutOrqCredentials drops orq's credential variables from a "K=V" environ.
+func withoutOrqCredentials(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		key, _, _ := strings.Cut(kv, "=")
+		if orqCredentialEnvVars[key] {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 // installOrqi runs the orqi repo's own install.sh, which resolves the release,
@@ -161,7 +197,7 @@ var runOrqiCommand = func(ctx context.Context, env map[string]string, name strin
 // No timeout: the installer downloads ~25 MB and the user is watching it. The
 // command's own context still carries Ctrl-C.
 func installOrqi(ctx context.Context, dir string) error {
-	for _, bin := range []string{"curl", "sh"} {
+	for _, bin := range []string{"curl", "sh", "tar"} {
 		if _, err := orqiLookPath(bin); err != nil {
 			return fmt.Errorf("installing orqi needs %s, which is not on PATH. Install it, or run:\n  %s", bin, orqiInstallerCmd)
 		}
@@ -214,6 +250,10 @@ Flags:
       --no-input        Never prompt; fail instead of offering to install (orq global)
       --profile <name>  The login profile orqi should use (orq global)
 
+orq's other global flags (--json, --server, --workspace, --verbose,
+--no-color, --raw, -o, -j) are recognised before the prompt too; anything
+after the first non-flag argument, or after --, goes to orqi untouched.
+
 These flags are recognised only before the first argument orq does not own.
 Everything from that argument on is passed to orqi untouched, so
 'orq orqi "why did it fail" --install' sends --install to orqi. The two orq
@@ -247,7 +287,10 @@ argument orq does not own is passed to orqi untouched.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			code, err := runOrqi(cmd, args)
 			if err != nil {
-				return err
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				if code == 0 {
+					code = 1 // never report an error and exit 0
+				}
 			}
 			if code != 0 {
 				os.Exit(code)
@@ -273,6 +316,11 @@ func runOrqi(cmd *cobra.Command, argv []string) (int, error) {
 	dir := orqiInstallDir()
 	if path != "" {
 		dir = filepath.Dir(path)
+	}
+	// Without a directory the install target would be the empty string and
+	// the binary a bare "orqi" — a PATH lookup rather than the file we wrote.
+	if dir == "" {
+		return 1, fmt.Errorf("orq cannot tell where to install orqi: your home directory is not resolvable. Set ORQI_INSTALL_DIR to the directory orqi should live in")
 	}
 
 	switch {
