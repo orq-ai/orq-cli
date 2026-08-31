@@ -124,7 +124,7 @@ func resolve(in input) (result, error) {
 		// number - not a further bump on top of it, which would name a version
 		// the stable line never cuts.
 		rcBase := stableVersionTarget(in.Version, bump, tags)
-		if err := checkFloor(rcBase, tags); err != nil {
+		if err := checkFloor(rcBase, tags, false); err != nil {
 			return result{}, err
 		}
 		major, minor, patch := parseVersionFields(rcBase)
@@ -146,21 +146,19 @@ func resolve(in input) (result, error) {
 	version := stableVersionTarget(in.Version, bump, tags)
 	major, minor, patch := parseVersionFields(version)
 	version = fmt.Sprintf("%d.%d.%d", major, minor, patch)
-	if err := checkFloor(version, tags); err != nil {
+	if err := checkFloor(version, tags, false); err != nil {
 		return result{}, err
 	}
 	return result{Version: version, Tag: "v" + version, PreviousTag: "v" + in.Version, Bump: bump}, nil
 }
 
-// checkFloor rejects a resolved number that is not still ahead of what is
-// published. A stale or mis-merged VERSION lands there, and the number becomes
-// npm `latest` and /releases/latest - a downgrade `orq update` then refuses to
-// walk anyone back out of. Fail the release instead. An rc is held to the same
-// floor through its base, because it names the release it previews, and a
-// release already cut is not one to preview.
-func checkFloor(version string, tags map[string]bool) error {
+// checkFloor is the floor rule from CHANGELOG.md#versioning, in one place for
+// every caller. allowEqual is for an rc at the tag step: the run that cuts both
+// channels tags the stable release first, so an rc whose base is exactly that
+// release is the preview landing after it, not a downgrade.
+func checkFloor(version string, tags map[string]bool, allowEqual bool) error {
 	highest, ok := highestStable(tags)
-	if !ok || higher(version, highest) {
+	if !ok || higher(version, highest) || (allowEqual && version == highest) {
 		return nil
 	}
 	return fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
@@ -204,11 +202,8 @@ func verify(in input, version string) (result, error) {
 	if i := strings.Index(base, "-rc."); i >= 0 {
 		base = base[:i]
 	}
-	// A `both` run tags the stable release before the rc previewing it reaches
-	// this check, so an rc whose base is exactly the highest release is that
-	// preview arriving a moment late, not a downgrade. Anything lower is.
-	if highest, ok := highestStable(tags); ok && !higher(base, highest) && !(in.Channel == "rc" && base == highest) {
-		return result{}, fmt.Errorf("version %s does not sort above the highest released %s", version, highest)
+	if err := checkFloor(base, tags, in.Channel == "rc"); err != nil {
+		return result{}, err
 	}
 	return result{Version: version, Tag: tag, Prerelease: in.Channel == "rc"}, nil
 }

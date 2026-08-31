@@ -122,9 +122,8 @@ controls on surface changes, whichever side they originate from.
   channel directly — `npm i -g @orq-ai/cli@rc`, or `install.sh --channel rc` —
   replaces a newer rc build with the corrected, lower-numbered one.
 - **Changed:** a `VERSION` that lags the highest published tag now fails the rc
-  release the same way it already failed the stable one. The rc channel used to
-  invent the next minor above that tag, which is a number nobody promised to
-  cut. Fix `VERSION` and re-run.
+  release too, not only the stable one. The rc channel used to invent the next
+  minor above that tag. Fix `VERSION` and re-run.
 - **Changed:** an rc whose base is exactly the highest published release now
   verifies. A run that cuts both channels tags the stable release first, so
   `5.2.0-rc.1` reaching the tag step after `v5.2.0` is the preview arriving a

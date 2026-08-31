@@ -78,7 +78,7 @@ jobs:
           # line cannot cut a major.
           git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
             VERSION cli/custom npm scripts install.sh \
-            openapi.yaml .bartolo.json go.mod go.sum cmd/orq > "$commits_file"
+            openapi.yaml .bartolo.json go.mod go.sum cmd/orq cmd/release-version > "$commits_file"
           stable_resolved="$(go run ./cmd/release-version \
             --channel stable --version "$file_version" \
             --api-version "$stable_api_version" --released-api-version "$released_api" \

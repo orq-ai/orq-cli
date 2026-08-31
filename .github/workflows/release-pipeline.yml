@@ -263,8 +263,11 @@ jobs:
           # move forward: an rc is numbered as the release it previews, so a
           # correction to that number leaves higher rc tags behind on the line,
           # and the highest-sorting one stops being the one that shipped last.
-          # `describe` is right whichever way the numbers moved. `|| true` covers
-          # its exit 1 when no rc tag is an ancestor at all.
+          # `describe` is right whichever way the numbers moved. Its `|| true` is
+          # load-bearing, not defensive: `describe` exits 128 when no rc tag is
+          # reachable, and this step runs under the default `bash -e`. stderr is
+          # left unredirected so a real failure is readable in the log rather
+          # than silently anchoring nowhere.
           #
           # The stable anchor still sorts, which assumes a single stable release
           # line: a backport hotfix cut from an older branch would anchor to a
@@ -279,7 +282,7 @@ jobs:
           # is defensive only, in case pipefail is ever turned on here and a grep
           # legitimately matches nothing.
           if [ "$PRERELEASE" = "true" ]; then
-            start_tag="$(git describe --tags --match 'v*-rc.*' --exclude "$TAG" --abbrev=0 "$target" 2>/dev/null || true)"
+            start_tag="$(git describe --tags --match 'v*-rc.*' --exclude "$TAG" --abbrev=0 "$target" || true)"
           else
             start_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-rc\.' | grep -v "^${TAG}$" | head -1 || true)"
           fi

@@ -224,16 +224,22 @@ func TestCommitBumpReadsTheSubjectAndFooterOnly(t *testing.T) {
 // A VERSION left below what is already published would resolve a downgrade,
 // and `orq update` refuses downgrades, so nobody would be walked back out of it.
 func TestResolveRefusesToPublishBelowTheHighestRelease(t *testing.T) {
-	// Both channels stop on a lagging VERSION rather than inventing a number
-	// above the highest release: an rc that guesses its own base no longer
-	// previews the release the stable line will cut.
-	for _, channel := range []string{"stable", "rc"} {
-		t.Run(channel, func(t *testing.T) {
-			_, err := resolve(input{Version: "4.14.3", API: "4.15.0", ReleasedAPI: "4.15.0", Tags: legacyTags + "v5.0.0\n", Channel: channel})
-			if err == nil {
-				t.Fatal("resolve accepted a version below the highest release")
-			}
-		})
+	// Both channels stop rather than inventing a number above the highest
+	// release: an rc that guesses its own base no longer previews the release
+	// the stable line will cut.
+	tests := []struct{ name, version, tags string }{
+		{"VERSION behind the highest tag", "4.14.3", legacyTags + "v5.0.0\n"},
+		{"bump lands below a newer minor", "5.0.0", legacyTags + "v5.0.0\nv5.1.0\n"},
+	}
+	for _, tt := range tests {
+		for _, channel := range []string{"stable", "rc"} {
+			t.Run(tt.name+"/"+channel, func(t *testing.T) {
+				_, err := resolve(input{Version: tt.version, API: "4.15.0", ReleasedAPI: "4.15.0", Tags: tt.tags, Channel: channel})
+				if err == nil {
+					t.Fatal("resolve accepted a version below the highest release")
+				}
+			})
+		}
 	}
 }
 
