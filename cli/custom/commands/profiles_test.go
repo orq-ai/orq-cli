@@ -16,7 +16,7 @@ func TestProfileTableColumnsUseStableHumanOrder(t *testing.T) {
 	}
 
 	got := profileTableColumns(rows)
-	want := []string{"name", "type", "api_key", "server"}
+	want := []string{"name", "server", "api_key"}
 	if len(got) != len(want) {
 		t.Fatalf("columns = %v, want %v", got, want)
 	}
@@ -48,18 +48,25 @@ func TestRenderProfileTableUsesBartoloTableFormatter(t *testing.T) {
 	err := renderProfileTable(map[string]any{
 		"profiles": []map[string]any{{
 			"name":    "default",
-			"type":    "apikey",
+			"server":  "https://api.orq.ai",
+			"type":    "apikey", // retained in the machine payload, not the human table
 			"api_key": "sk-o********wxyz",
 		}},
-	}, []string{"name", "type", "api_key"})
+	}, []string{"name", "server", "api_key"})
 	if err != nil {
 		t.Fatalf("renderProfileTable: %v", err)
 	}
 	if got := out.String(); !strings.HasPrefix(got, "┌") {
 		t.Fatalf("expected bordered table output, got %q", got)
 	}
-	if !bytes.Contains(out.Bytes(), []byte("NAME")) || !bytes.Contains(out.Bytes(), []byte("sk-o********wxyz")) {
+	if !bytes.Contains(out.Bytes(), []byte("NAME")) ||
+		!bytes.Contains(out.Bytes(), []byte("SERVER")) ||
+		!bytes.Contains(out.Bytes(), []byte("https://api.orq.ai")) ||
+		!bytes.Contains(out.Bytes(), []byte("sk-o********wxyz")) {
 		t.Fatalf("table is missing expected cells: %q", out.String())
+	}
+	if bytes.Contains(out.Bytes(), []byte("TYPE")) {
+		t.Fatalf("table should omit internal profile type: %q", out.String())
 	}
 	if got := viper.GetString("output-format"); got != "toon" {
 		t.Fatalf("output-format = %q after rendering, want toon", got)

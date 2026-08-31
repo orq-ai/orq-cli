@@ -131,9 +131,10 @@ controls on surface changes, whichever side they originate from.
   unchanged, since network or server failures are not fixed by re-login.
 
 - **Fixed:** `orq auth list-profiles` now uses the CLI's terminal table renderer
-  for its default interactive view, with readable columns instead of the dense
-  comma-separated TOON rows. `--json`, `-o yaml` and explicit TOON output keep
-  their structured formats.
+  for its default interactive view, with readable name, server and credential
+  columns instead of the dense comma-separated TOON rows. The internal auth
+  handler type is omitted from the human table. `--json`, `-o yaml` and
+  explicit TOON output keep their structured formats.
 
 ## [5.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.0.0) — 2026-08-28
 

@@ -88,8 +88,11 @@ func listAuthProfiles() []map[string]any {
 }
 
 func profileTableColumns(rows []map[string]any) []string {
-	columns := []string{"name", "type"}
-	for _, candidate := range []string{"api_key", "server", "gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+	// Keep the identity columns stable even when a profile has no explicit
+	// server or credential field. The profile type is an internal Bartolo
+	// handler name (normally empty) and is not useful to terminal users.
+	columns := []string{"name", "server"}
+	for _, candidate := range []string{"api_key", "gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
 		for _, row := range rows {
 			if _, ok := row[candidate]; ok {
 				columns = append(columns, candidate)
