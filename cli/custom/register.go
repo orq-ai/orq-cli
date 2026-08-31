@@ -531,6 +531,17 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
+	// Bartolo's profile command emits the default formatter payload directly.
+	// Replace it with the custom version so a person at a terminal gets the
+	// same table treatment as the other list commands, while machine output
+	// keeps the established response shape.
+	for _, c := range authParent.Commands() {
+		if c.Name() == "list-profiles" {
+			authParent.RemoveCommand(c)
+			break
+		}
+	}
+	authParent.AddCommand(commands.NewListProfilesCommand())
 	// Bartolo's `auth setup` command ships with a `login` alias for the
 	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
 	// one cobra resolves.
