@@ -9,7 +9,9 @@ import (
 	"runtime"
 	"strings"
 
+	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 	"orq/cli/custom/launch"
 )
 
@@ -178,4 +180,127 @@ func installOrqi(ctx context.Context, dir string) error {
 		return fmt.Errorf("the orqi installer failed: %w\nRun it yourself to see the full output:\n  %s", err, orqiInstallerCmd)
 	}
 	return nil
+}
+
+// orqiConfirm and runOrqiChild are seams; tests answer the prompt and capture
+// the launch instead of drawing a terminal or executing a real orqi.
+var (
+	orqiInteractive = hasInteractiveTTY
+	orqiConfirm     = func(message string) bool {
+		answer := true
+		if err := survey.AskOne(&survey.Confirm{Message: message, Default: true}, &answer, promptStdio()); err != nil {
+			return false
+		}
+		return answer
+	}
+	runOrqiChild = launch.RunChild
+)
+
+// printOrqiHelp writes the help cobra cannot: DisableFlagParsing means the
+// wrapper's own flags are never registered, so cmd.Help() would advertise none
+// of them. launch/run.go's printAgentHelp exists for the same reason.
+func printOrqiHelp() {
+	fmt.Fprintf(bartolocli.Stderr, `Run orqi, the orq.ai assistant in your terminal, installing it first if it is missing.
+
+orqi reads the login session this CLI maintains, so 'orq auth login' (or a
+valid ORQ_API_KEY) is all the setup it needs.
+
+Usage:
+  orq orqi [flags] [--] [prompt or orqi arguments...]
+
+Flags:
+  -h, --help            Print this help and exit; never installs anything
+      --install         Install or reinstall orqi, then exit without starting a session
+      --no-input        Never prompt; fail instead of offering to install (orq global)
+      --profile <name>  The login profile orqi should use (orq global)
+
+These flags are recognised only before the first argument orq does not own.
+Everything from that argument on is passed to orqi untouched, so
+'orq orqi "why did it fail" --install' sends --install to orqi. The two orq
+globals also work before the command word: 'orq --profile staging orqi'.
+`)
+}
+
+func NewOrqiCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "orqi [flags] [--] [prompt or orqi arguments...]",
+		Short: "Run orqi, the orq.ai assistant, installing it on first use",
+		Long: `Run orqi, the orq.ai assistant in your terminal, installing it first if it is missing.
+
+orqi reads the login session this CLI maintains, so 'orq auth login' (or a
+valid ORQ_API_KEY) is all the setup it needs. Everything after the first
+argument orq does not own is passed to orqi untouched.`,
+		// Disabled so orqi's own flags reach it; parseOrqiArgv reads ours.
+		DisableFlagParsing: true,
+		ValidArgsFunction: func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if comps := orqiCompletionFlags(toComplete); comps != nil {
+				return comps, cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveDefault
+		},
+		// cobra's own help would list none of the wrapper's flags.
+		DisableFlagsInUseLine: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			code, err := runOrqi(cmd, args)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				os.Exit(code)
+			}
+			return nil
+		},
+	}
+}
+
+func runOrqi(cmd *cobra.Command, argv []string) (int, error) {
+	flags, passthrough, err := parseOrqiArgv(argv)
+	if err != nil {
+		return 1, err
+	}
+	if flags.Help {
+		printOrqiHelp()
+		return 0, nil
+	}
+	if !orqiPlatformSupported() {
+		return 1, fmt.Errorf("orqi runs on macOS (arm64, x86_64) and Linux x86_64; this machine is %s. See https://github.com/orq-ai/orqi", orqiPlatform())
+	}
+	path := resolveOrqi()
+	dir := orqiInstallDir()
+	if path != "" {
+		dir = filepath.Dir(path)
+	}
+
+	switch {
+	case flags.Install:
+		if err := installOrqi(cmd.Context(), dir); err != nil {
+			return 1, err
+		}
+		success("orqi installed in %s", dir)
+		return 0, nil
+	case path == "":
+		if !orqiInteractive() {
+			return 1, fmt.Errorf("orqi is not installed. Install it with:\n  %s\nor run: orq orqi --install", orqiInstallerCmd)
+		}
+		if !orqiConfirm("orqi is not installed. Install it now?") {
+			return 0, nil
+		}
+		if err := installOrqi(cmd.Context(), dir); err != nil {
+			return 1, err
+		}
+		// The installer's PATH hint may not have been acted on yet, so run
+		// the path we just wrote rather than looking it up again.
+		path = filepath.Join(dir, "orqi")
+	}
+
+	// --profile was parsed onto the root before dispatch, by
+	// splitPassthroughGlobals — the same path that made installSessionPreRun
+	// resolve this profile's token rather than the default one's. Reading it
+	// back here keeps the profile orqi is told about and the ORQ_API_KEY it
+	// inherits as one answer.
+	env := map[string]string{}
+	if f := cmd.Root().PersistentFlags().Lookup("profile"); f != nil && f.Changed {
+		env["ORQ_PROFILE"] = f.Value.String()
+	}
+	return runOrqiChild(path, passthrough, env)
 }

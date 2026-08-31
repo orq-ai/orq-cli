@@ -29,6 +29,7 @@ var commandGroup = map[string]string{
 	"connect":    groupGetStarted,
 	"disconnect": groupGetStarted,
 	"launch":     groupGetStarted,
+	"orqi":       groupGetStarted,
 	"doctor":     groupGetStarted,
 	"update":     groupGetStarted,
 	"version":    groupUtilities,
