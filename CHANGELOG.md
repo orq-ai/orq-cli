@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.1) — 2026-09-01
+
 - **Changed:** `rc` releases are numbered as the stable release they preview.
   The resolver applied a second minor bump on top of the resolved stable target,
   so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
