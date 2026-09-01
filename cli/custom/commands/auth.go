@@ -270,6 +270,17 @@ func reportSurvivingGatewayKey() {
 	}
 }
 
+// NewStatusCommand is whoami under the name people reach for first, and the
+// one the help lists. Same report: who you are, where you are, and which
+// credential the next command will use.
+func NewStatusCommand() *cobra.Command {
+	cmd := NewWhoAmICommand()
+	cmd.Use = "status"
+	cmd.Aliases = append(cmd.Aliases, "whoami")
+	cmd.Short = "Show the active user, workspace, project and credential"
+	return cmd
+}
+
 func NewWhoAmICommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "whoami",
@@ -329,8 +340,24 @@ func printIdentity(report IdentityReport, verb string) {
 	if activeName != "" && report.ActiveWorkspaceKey != nil {
 		kv(w, "workspace", "%s (%s)", activeName, *report.ActiveWorkspaceKey)
 	}
+	if report.ActiveProjectName != "" {
+		kv(w, "project", "%s", report.ActiveProjectName)
+	}
 	if len(report.Workspaces) > 1 {
 		kv(w, "access", "%d workspaces", len(report.Workspaces))
+	}
+	if report.Server != "" {
+		kv(w, "server", "%s", report.Server)
+	}
+	// Named only when a key is configured: it outranks the session for API
+	// calls, so "signed in as X" without it can describe a state no command
+	// actually runs in.
+	if c := report.Credential; c != nil {
+		scope := "all projects"
+		if c.ProjectID != "" {
+			scope = "one project"
+		}
+		kv(w, "key", "%s (%s)", c.Source, scope)
 	}
 	kv(w, "session", "%s", report.SessionFile)
 }

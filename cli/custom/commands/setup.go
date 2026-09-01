@@ -1864,7 +1864,12 @@ func diagnoseRejectedKey(rep *reporter, client *auth.Client, state *authState) {
 	}
 	keyID := savedGatewayKeyID()
 	if keyID == "" {
-		keyID = auth.KeyIDFromToken(state.bearer)
+		keyID = auth.InspectToken(state.bearer).KeyID
+	}
+	if keyID == "" {
+		// A project-scoped key carries no key_id claim at all, so the only way
+		// back to its record is the masked token the list endpoint returns.
+		keyID = client.KeyIDByToken(state.sessionBearer, state.bearer)
 	}
 	if keyID == "" {
 		return

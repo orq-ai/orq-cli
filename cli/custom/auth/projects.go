@@ -485,6 +485,67 @@ type APIKeyRecord struct {
 	ID       string   `json:"id"`
 	Projects []string `json:"projects"`
 	Active   *bool    `json:"active"`
+	// TokenPrefix is what openapi.yaml documents; Token is what the live list
+	// endpoint actually returns, masked (`eyJhbG********kK-d2A`). Read both.
+	TokenPrefix string `json:"token_prefix"`
+	Token       string `json:"token"`
+}
+
+// KeyIDByToken finds a key's id by matching the raw token against the masked
+// one the list endpoint returns (`eyJhbG********kK-d2A`). It exists for the
+// project-scoped JWT, which carries no key_id claim: without it, every
+// diagnosis that starts from an id goes silent for exactly the keys this CLI
+// now mints.
+//
+// Authenticate with the session token; a router key cannot list keys.
+func (c *Client) KeyIDByToken(bearer, token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	var keys []APIKeyRecord
+	if err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/api-keys", bearer, nil, &keys); err != nil {
+		return ""
+	}
+	found := ""
+	for _, k := range keys {
+		if !maskedTokenMatches(k.TokenPrefix, token) && !maskedTokenMatches(k.Token, token) {
+			continue
+		}
+		// Two matches identify neither, and a wrong id is worse than no id: it
+		// addresses somebody else's key.
+		if found != "" {
+			return ""
+		}
+		found = k.ID
+	}
+	return found
+}
+
+// minMaskedHead is how much of the visible head a masked token must show
+// before a match means anything. The live endpoint shows six characters, and
+// every orq JWT starts with the same base64 header, so a shorter head would
+// match every key in the workspace.
+const minMaskedHead = 6
+
+// maskedTokenMatches reports whether token is the key behind a masked value.
+// The mask keeps a visible head and tail around a run of asterisks; a value
+// with no mask at all is treated as a plain prefix, which is what the
+// documented token_prefix field holds.
+func maskedTokenMatches(masked, token string) bool {
+	masked = strings.TrimSpace(masked)
+	if masked == "" {
+		return false
+	}
+	head, tail, masked_ := strings.Cut(masked, "*")
+	if !masked_ {
+		return len(head) >= minMaskedHead && strings.HasPrefix(token, head)
+	}
+	tail = strings.TrimLeft(tail, "*")
+	if len(head) < minMaskedHead {
+		return false
+	}
+	return strings.HasPrefix(token, head) && strings.HasSuffix(token, tail)
 }
 
 // GetAPIKey looks a key up by id. Authenticate with the session's workspace

@@ -8099,6 +8099,23 @@
       ]
     },
     {
+      "path": "orq status",
+      "use": "status",
+      "aliases": [
+        "whoami"
+      ],
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq switch",
+      "use": "switch [workspace] [project]"
+    },
+    {
       "path": "orq tools",
       "use": "tools"
     },

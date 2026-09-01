@@ -349,3 +349,27 @@ func TestTokenKeyIsolatesProjects(t *testing.T) {
 		t.Error("a project-scoped token must not reuse the workspace-wide cache entry")
 	}
 }
+
+// The list endpoint hands back a masked token rather than the documented
+// token_prefix, and a project-scoped key has no key_id claim to look up
+// instead — so this match is the only route from such a key to its record.
+func TestMaskedTokenMatches(t *testing.T) {
+	token := "eyJhbGciOiJIUzI1NiJ9.payloadpayload.signaturekK-d2A"
+	for _, tc := range []struct {
+		name, masked string
+		want         bool
+	}{
+		{"live mask", "eyJhbG********kK-d2A", true},
+		{"documented prefix", "eyJhbGciOiJI", true},
+		{"wrong tail", "eyJhbG********ZZZZZZ", false},
+		{"wrong head", "abcdef********kK-d2A", false},
+		{"empty", "", false},
+		// Every orq JWT opens with the same base64 header, so a head this
+		// short matches every key in the workspace and identifies none.
+		{"head too short", "eyJ***kK-d2A", false},
+	} {
+		if got := maskedTokenMatches(tc.masked, token); got != tc.want {
+			t.Errorf("%s: maskedTokenMatches(%q) = %v, want %v", tc.name, tc.masked, got, tc.want)
+		}
+	}
+}

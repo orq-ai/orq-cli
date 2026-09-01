@@ -534,6 +534,8 @@ func registerCommands(root *cobra.Command) {
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
 	root.AddCommand(commands.NewWorkspaceCommand())
+	root.AddCommand(commands.NewStatusCommand())
+	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
