@@ -74,7 +74,7 @@ func updateTestCmd(version string) *cobra.Command {
 	return root
 }
 
-func TestMaybePrintUpdateNoticePrintsOncePerTTL(t *testing.T) {
+func TestMaybePrintUpdateNoticePrintsEveryRunAndChecksOncePerTTL(t *testing.T) {
 	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
 	cmd := updateTestCmd("4.13.18")
 
@@ -85,11 +85,26 @@ func TestMaybePrintUpdateNoticePrintsOncePerTTL(t *testing.T) {
 
 	stderr.Reset()
 	MaybePrintUpdateNotice(cmd)
-	if got := stderr.String(); got != "" {
-		t.Errorf("second run inside the TTL printed %q, want silence", got)
+	if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
+		t.Errorf("second run inside the TTL printed %q, want the notice served from cache", got)
 	}
 	if got := hits.Load(); got != 1 {
 		t.Errorf("registry hits = %d, want 1 (cache must serve the second run)", got)
+	}
+}
+
+func TestMaybePrintUpdateNoticeCachedUpToDateStaysSilent(t *testing.T) {
+	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	cmd := updateTestCmd("4.13.22")
+
+	MaybePrintUpdateNotice(cmd)
+	stderr.Reset()
+	MaybePrintUpdateNotice(cmd)
+	if got := stderr.String(); got != "" {
+		t.Errorf("cached run printed %q for an up-to-date binary, want silence", got)
+	}
+	if got := hits.Load(); got != 1 {
+		t.Errorf("registry hits = %d, want 1", got)
 	}
 }
 

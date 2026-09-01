@@ -42,7 +42,7 @@ const (
 	methodUnknown   installMethod = "unknown"
 )
 
-// updateCacheFile records the last check so the notice appears at most once a
+// updateCacheFile records the last check so the registry is asked at most once a
 // day and a stale "update available" cannot outlive the update that fixed it:
 // CurrentAtCheck invalidates the entry as soon as the running version changes,
 // through whichever install method the user updated.
@@ -62,8 +62,9 @@ var (
 )
 
 // MaybePrintUpdateNotice prints a one-line "newer version available" notice on
-// stderr, at most once per 24h, and only for a person watching a terminal.
-// Every failure path is silent: an update check must never turn a working
+// stderr on every human-facing run, from the cached answer when there is one:
+// the TTL bounds how often the registry is asked, not how often the user is
+// told. Every failure path is silent: an update check must never turn a working
 // command into a failure, nor delay it beyond updateCheckTimeout.
 func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if updateCheckDisabled(cmd) {
@@ -74,7 +75,8 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 		return // dev build, or a version we cannot reason about
 	}
 	if fresh := readUpdateCache(current); fresh != nil {
-		return // checked within the TTL; the notice already had its shot
+		printUpdateNotice(current, fresh.Latest)
+		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
@@ -83,6 +85,10 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 		return
 	}
 	writeUpdateCache(current, latest)
+	printUpdateNotice(current, latest)
+}
+
+func printUpdateNotice(current, latest string) {
 	if !updateAvailable(current, latest) {
 		return
 	}

@@ -107,6 +107,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed:** the "update available" notice now appears on every human-facing
+  run while an update is out, `orq --version` included, instead of only on the
+  one run per day that refreshed the check. The 24h cache still bounds how
+  often the npm registry is asked; it no longer bounds how often you are told.
+  Suppression is unchanged: `ORQ_NO_UPDATE_CHECK`, `CI`, `--json`/`-o`,
+  non-terminal output and `orq update` itself stay silent. (RES-1480)
+
 ## [5.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.1) — 2026-08-28
 
 - **Changed:** `orq launch` now follows your login's active workspace. When the
