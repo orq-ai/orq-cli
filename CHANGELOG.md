@@ -107,6 +107,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.1.5](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.5) — 2026-09-01
+
 - **Fixed:** the "update available" notice now appears on every human-facing
   run while an update is out, `orq --version` included, instead of only on the
   one run per day that refreshed the check. The 24h cache still bounds how
