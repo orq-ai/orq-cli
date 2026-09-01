@@ -1012,9 +1012,14 @@ func warnLingeringAPIKeys() {
 	}
 }
 
+// apiKeyEnvVars are the variables bartolo's apikey handler reads, in the order
+// it reads them. One list: every place that has to answer "is a key set" or
+// "keep the key away from here" gets the same answer.
+var apiKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
+
 // envAPIKeySet reports only that a key is set, never which value.
 func envAPIKeySet() bool {
-	for _, name := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+	for _, name := range apiKeyEnvVars {
 		if strings.TrimSpace(os.Getenv(name)) != "" {
 			return true
 		}

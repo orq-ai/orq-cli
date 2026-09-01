@@ -6540,6 +6540,10 @@
       ]
     },
     {
+      "path": "orq orqi",
+      "use": "orqi [flags] [--] [prompt or orqi arguments...]"
+    },
+    {
       "path": "orq pii",
       "use": "pii"
     },

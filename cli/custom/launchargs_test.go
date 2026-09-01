@@ -82,12 +82,71 @@ func TestSplitLaunchGlobals(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			globals, rest := splitLaunchGlobals(root, tc.argv)
+			globals, rest := splitPassthroughGlobals(root, tc.argv)
 			if !slices.Equal(globals, tc.globals) {
 				t.Errorf("globals = %q, want %q", globals, tc.globals)
 			}
 			if !slices.Equal(rest, tc.rest) {
 				t.Errorf("rest = %q, want %q", rest, tc.rest)
+			}
+		})
+	}
+}
+
+func TestSplitPassthroughGlobalsOnOrqi(t *testing.T) {
+	root := buildRoot(t)
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		globals []string
+		rest    []string
+	}{
+		{
+			// The whole point: without this the token injected into
+			// ORQ_API_KEY is the default profile's, and it beats ORQ_PROFILE.
+			name:    "before the command word",
+			args:    []string{"--profile", "staging", "orqi", "why did it fail?"},
+			globals: []string{"--profile", "staging"},
+			rest:    []string{"orqi", "why did it fail?"},
+		},
+		{
+			name:    "several globals, then the command word",
+			args:    []string{"--no-input", "--profile", "staging", "orqi", "why did it fail?"},
+			globals: []string{"--no-input", "--profile", "staging"},
+			rest:    []string{"orqi", "why did it fail?"},
+		},
+		{
+			// Unlike launch, orqi's first argument is a sentence, so nothing
+			// behind the command word is ever read as one of orq's flags.
+			name:    "after the command word, where orqi's own arguments live",
+			args:    []string{"orqi", "--profile", "staging", "why did it fail?"},
+			globals: nil,
+			rest:    []string{"orqi", "--profile", "staging", "why did it fail?"},
+		},
+		{
+			// The collision this rule exists to make impossible: a prompt
+			// opening with a word that spells one of orq's globals.
+			name:    "a prompt that starts like a global flag",
+			args:    []string{"orqi", "--workspace", "was", "broken", "today"},
+			globals: nil,
+			rest:    []string{"orqi", "--workspace", "was", "broken", "today"},
+		},
+		{
+			// -h and -v live on root.Flags(), not PersistentFlags(), so they
+			// are never lifted: `orq orqi -h` reaches the command intact.
+			name:    "the help shorthand is not a global",
+			args:    []string{"orqi", "-h"},
+			globals: nil,
+			rest:    []string{"orqi", "-h"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			globals, rest := splitPassthroughGlobals(root, tc.args)
+			if !slices.Equal(globals, tc.globals) {
+				t.Errorf("globals = %v, want %v", globals, tc.globals)
+			}
+			if !slices.Equal(rest, tc.rest) {
+				t.Errorf("rest = %v, want %v", rest, tc.rest)
 			}
 		})
 	}

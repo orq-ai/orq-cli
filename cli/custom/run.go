@@ -47,10 +47,11 @@ func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)
 
 	registerGenerated(bartolocli.Root)
 	Register(bartolocli.Root)
-	// `launch <agent>` disables flag parsing, so cobra parses no flags at all
-	// for that invocation — not even the root's own. Take orq's globals typed
-	// before the agent name and parse them here (see splitLaunchGlobals).
-	globals, rest := splitLaunchGlobals(bartolocli.Root, os.Args[1:])
+	// Passthrough commands (launch, orqi) disable flag parsing, so cobra
+	// parses no flags at all for them — not even the root's own. Take orq's
+	// globals typed before the command's own argv and parse them here (see
+	// splitPassthroughGlobals).
+	globals, rest := splitPassthroughGlobals(bartolocli.Root, os.Args[1:])
 	if len(globals) > 0 {
 		if err := bartolocli.Root.PersistentFlags().Parse(globals); err != nil {
 			fmt.Fprintf(bartolocli.Stderr, "Error: %v\n", err)

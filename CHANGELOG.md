@@ -23,12 +23,13 @@ What you may depend on, and what you may not:
   (`cli/custom/toon_golden_test.go`) makes any rendering change a deliberate,
   reviewed event rather than a silent one, but it is still not a contract.
 - **Exit codes:** `0` success, `1` any failure, `130` interrupted (SIGINT),
-  `143` terminated (SIGTERM). One exception: `orq launch` runs another program
-  and propagates that program's exit status verbatim, so any value from `2` to
-  `255` can come back — `127` when the agent binary does not start, `128+signum`
-  when it is killed by a signal (`137` for SIGKILL), and otherwise whatever the
-  agent itself returned. Scripts wrapping `orq launch` should treat any non-zero
-  code as failure rather than matching on the four above.
+  `143` terminated (SIGTERM). Two exceptions: `orq launch` and `orq orqi` run
+  another program and propagate that program's exit status verbatim, so any
+  value from `2` to `255` can come back — `127` when the child binary does not
+  start, `128+signum` when it is killed by a signal (`137` for SIGKILL), and
+  otherwise whatever the child itself returned. Scripts wrapping `orq launch`
+  or `orq orqi` should treat any non-zero code as failure rather than matching
+  on the four above.
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
@@ -106,6 +107,18 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Added:** `orq orqi` runs [orqi](https://github.com/orq-ai/orqi), the orq.ai
+  assistant in your terminal, and installs it first when it is missing — by
+  running the orqi project's own `install.sh`, after asking, or refusing and
+  printing the one-liner under `--no-input`. Your prompt and any orqi flags are
+  passed straight through, so `orq orqi "why did my agent fail today?"` and
+  `orq orqi --version` both reach orqi untouched. orq's own global flags go in
+  front of the command word and orqi's behind it, so nothing orqi grows can
+  collide with ours: `orq --profile staging orqi "why did it fail?"`.
+  `--install` installs or reinstalls and exits without starting a session, and
+  the binary lands in `$ORQI_INSTALL_DIR` or `~/.local/bin`. macOS (arm64,
+  x86_64) and Linux x86_64 only.
 
 ## [5.1.5](https://github.com/orq-ai/orq-cli/releases/tag/v5.1.5) — 2026-09-01
 

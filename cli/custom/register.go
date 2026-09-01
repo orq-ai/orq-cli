@@ -37,6 +37,7 @@ var profileExemptCommands = map[string]bool{
 	"list-profiles": true, // listing profiles is how you diagnose an unknown one
 	"doctor":        true,
 	"update":        true, // updating must work without a session; it touches no orq API
+	"orqi":          true, // installs and launches orqi; touches no orq API
 	"version":       true, // reports build info only; never calls the API
 	"help":          true,
 	"completion":    true,
@@ -388,6 +389,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
+	root.AddCommand(commands.NewOrqiCommand())
 	root.AddCommand(commands.NewSetupCommand())
 	root.AddCommand(commands.NewConnectCommand())
 	root.AddCommand(commands.NewDisconnectCommand())

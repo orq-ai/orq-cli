@@ -259,6 +259,7 @@ surface changes are always a reviewed diff.
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
 | `orq default-format <json\|yaml\|toon>` | Persist a default output format |
 | `orq launch <agent>` | Launch a coding agent routed through the AI Router (see [Launch](#launch)) |
+| `orq orqi` | Run orqi, the orq.ai assistant, installing it on first use (see [orqi](#orqi)) |
 
 ### Resource commands
 
@@ -352,6 +353,51 @@ Sandboxed execution is not available in this version.
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
 | `ORQ_PI_BASE_URL` / `PI_MODEL` / `PI_MODELS` | pi overrides |
+
+---
+
+## orqi
+
+[orqi](https://github.com/orq-ai/orqi) is the orq.ai assistant in your terminal: ask it to
+investigate a failing agent, check workspace health or explain the platform, and it answers
+using your workspace's own tools, models and skills.
+
+```sh
+orq orqi                                   # interactive session
+orq orqi "why did my agent fail today?"    # one-shot
+orq orqi --install                         # install or reinstall, then exit
+```
+
+The first run installs it, after asking, by running the orqi repo's own installer. It lands in
+`~/.local/bin` (or `$ORQI_INSTALL_DIR`) and the session starts straight away, whether or not
+that directory is on your PATH yet. Under `--no-input` nothing is installed and the command
+prints the one-liner instead. When orqi is already installed, `--install` reinstalls into that
+binary's own directory rather than the default, so a copy from Homebrew or a source build is
+updated in place instead of being shadowed by a second one.
+
+orqi reads the login session this CLI maintains, so `orq auth login` is all the setup it needs.
+orq's own global flags go in front of the command word, and orqi's go behind it:
+
+```sh
+orq --profile staging orqi "why did it fail?"   # --profile is orq's
+orq orqi --version                              # --version is orqi's
+```
+
+That split is the whole rule. Nothing typed after `orqi` is read as one of orq's flags, so a
+prompt opening with `--workspace` or `--verbose` reaches orqi as words rather than being eaten,
+and any flag orqi grows later works without orq having to hear about it. The two exceptions are
+`--help` and `--install`, which orq answers itself; a leading `--` ends orq's parsing explicitly,
+so `orq orqi -- --install` sends `--install` to orqi.
+
+`--no-input` refuses rather than installing, so a script that needs both does it in two calls:
+
+```sh
+orq orqi --install                          # unconditional, prompts nobody
+orq --no-input orqi "summarise today"       # fails loudly if the first call did not run
+```
+
+orqi publishes macOS (arm64, x86_64) and Linux x86_64 builds; on anything else the command says
+so and stops.
 
 ---
 
