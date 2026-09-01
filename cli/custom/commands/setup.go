@@ -1049,8 +1049,26 @@ func warnLingeringAPIKeys() {
 		Warn("./%s still sets ORQ_API_KEY and orq loads it automatically — remove that line to fully sign out", file)
 	}
 	// Independent sources: explicitAPIKey is snapshotted before our PreRun injects a token, and an export matching the dotenv value is indistinguishable from it.
-	if explicitAPIKey && envAPIKeySet() && (file == "" || v != strings.TrimSpace(os.Getenv("ORQ_API_KEY"))) {
-		Warn("ORQ_API_KEY is still exported in this shell — logout cannot unset it; run: unset ORQ_API_KEY")
+	if explicitAPIKey {
+		var exported []string
+		for _, name := range APIKeyEnvVars {
+			value := strings.TrimSpace(os.Getenv(name))
+			if value == "" {
+				continue
+			}
+			// The dotenv line above already covers a key this shell got from the file.
+			if name == APIKeyEnvVars[0] && file != "" && v == value {
+				continue
+			}
+			exported = append(exported, name)
+		}
+		// Name the variables actually set, not ORQ_API_KEY: a user whose key
+		// lives in ORQ_TOKEN was told to unset a variable they never set, and
+		// the next command authenticated again anyway.
+		if len(exported) > 0 {
+			Warn("still exported in this shell: %s — logout cannot unset shell variables; run: unset %s",
+				strings.Join(exported, ", "), strings.Join(exported, " "))
+		}
 	}
 	for _, spec := range agentRegistry() {
 		if _, prov := wiredPath(spec.providerConfig, spec.providerPresent); prov {
@@ -1998,6 +2016,10 @@ func reconcileKeyWorkspace(rep *reporter, client *auth.Client, state *authState,
 			return false
 		}
 		state.session = updated
+		// UseWorkspace cleared the session's project, since it belonged to the
+		// workspace we just left. This copy has to go with it, or a later mint
+		// would scope the key to a project of the previous workspace.
+		state.projectID = ""
 		recordKeyWorkspace(rep, probed, keyWS)
 		rep.ok("switched to workspace %s", keyWS)
 		return true
