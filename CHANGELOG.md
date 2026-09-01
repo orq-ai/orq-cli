@@ -116,11 +116,6 @@ controls on surface changes, whichever side they originate from.
   so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
   was published while stable was on `5.1.3`, naming a version the stable line
   will never cut. An rc now carries the base of the release it previews.
-  The npm `rc` dist-tag therefore moves backwards once, from the `5.3.0-rc` line
-  down to the next number on the corrected one, and stays below it until that
-  line climbs past `5.3.0`. `orq update` never offers a lower version, but installing the
-  channel directly — `npm i -g @orq-ai/cli@rc`, or `install.sh --channel rc` —
-  replaces a newer rc build with the corrected, lower-numbered one.
 - **Changed:** a `VERSION` that lags the highest published tag now fails the rc
   release too, not only the stable one. The rc channel used to invent the next
   minor above that tag. Fix `VERSION` and re-run.
@@ -131,10 +126,11 @@ controls on surface changes, whichever side they originate from.
   its own floor check depending on which job tags first.
 - **Fixed:** both places that look for the last rc tag — release notes, and the
   change detection that decides whether an rc is worth cutting — walk the commit
-  graph instead of sorting version numbers. Sorting assumed rc numbers only move
-  forward, which the renumbering above breaks: `v5.3.0-rc.5` outranks the
-  corrected line for several minors, so notes under it would have re-reported
-  what the previous rc already said.
+  graph instead of sorting version numbers. Sorting assumed rc numbers only ever
+  move forward, which is no longer guaranteed: an rc is numbered as the release
+  it previews, so a correction to that number can leave higher rc tags behind on
+  the line, and notes anchored to one of those would re-report what an earlier rc
+  already said.
 - **Changed:** `cmd/release-version/` now counts as a release-worthy change on
   both channels. A fix to the resolver used to wait for an unrelated commit
   before it could take effect.
