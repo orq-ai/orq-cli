@@ -172,7 +172,7 @@ func withoutOrqCredentials(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, kv := range environ {
 		key, _, _ := strings.Cut(kv, "=")
-		if slices.Contains(apiKeyEnvVars, key) {
+		if slices.Contains(APIKeyEnvVars, key) {
 			continue
 		}
 		out = append(out, kv)

@@ -20,7 +20,9 @@ import (
 
 // apiKeyEnvVars mirrors the env vars bartolo's apikey handler looks up for the
 // `Authorization` bearer flow (see apikey.InitBearer in the generated client).
-var apiKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
+// One list shared with the commands package: two copies is how `orq status`
+// and `--project` each ended up blind to every spelling but ORQ_API_KEY.
+var apiKeyEnvVars = commands.APIKeyEnvVars
 
 var (
 	setOutputFormat  = bartolocli.SetOutputFormat

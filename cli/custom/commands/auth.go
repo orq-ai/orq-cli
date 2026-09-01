@@ -341,7 +341,14 @@ func printIdentity(report IdentityReport, verb string) {
 		kv(w, "workspace", "%s (%s)", activeName, *report.ActiveWorkspaceKey)
 	}
 	if report.ActiveProjectName != "" {
-		kv(w, "project", "%s", report.ActiveProjectName)
+		// Marked, not hidden: the session really does record this project, but
+		// under a credential that outranks the session nothing narrows a token
+		// to it, so printing it bare names a project no command will use.
+		if credentialOutranksSession(report) {
+			kv(w, "project", "%s (inactive: the %s credential decides the scope)", report.ActiveProjectName, report.Credential.Source)
+		} else {
+			kv(w, "project", "%s", report.ActiveProjectName)
+		}
 	}
 	if len(report.Workspaces) > 1 {
 		kv(w, "access", "%d workspaces", len(report.Workspaces))

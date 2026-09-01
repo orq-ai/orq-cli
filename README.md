@@ -205,7 +205,9 @@ Selecting a project exchanges the session's access token for one scoped to it �
 
 For a single invocation without switching the session, pass `--project <id|key|name>` (env `ORQ_PROJECT`) on any command. Under an explicit API key there is no session token to narrow, so `--project` fills the command's own `--project-id` instead — an explicit `--project-id` always wins over it. Resolution order, highest first: the command's own `--project-id`, `--project`/`ORQ_PROJECT`, the session's active project, the workspace's default project.
 
-`orq switch [workspace] [project]` walks both selections in one command.
+`orq switch [workspace] [project]` walks both selections in one command. Switching workspaces clears the active project, since a project belongs to the workspace it was chosen in — `orq workspace use <other>` does the same, while re-asserting the workspace already active leaves the chosen project alone.
+
+A bare `orq switch` with no terminal to ask on fails with `no workspace given and no terminal to ask on`: it rewrites both halves of your identity, and re-asserting the active workspace would replace a deliberately chosen project with the workspace default. Pass the workspace explicitly in scripts. `orq workspace use` with no argument re-asserts instead of failing, because it only ever writes the workspace.
 
 ---
 

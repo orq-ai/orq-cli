@@ -1082,8 +1082,10 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 	loggedOut := auth.SessionInspectResult{Status: auth.StatusMissing}
 
 	for name, tc := range map[string]struct {
-		inspect    auth.SessionInspectResult
-		exported   string
+		inspect auth.SessionInspectResult
+		exported,
+		profileKey string
+		otherEnv   map[string]string
 		explicit   bool
 		wantRow    bool
 		wantStatus string
@@ -1101,12 +1103,32 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
 			wantRow: true, wantStatus: "warn", wantSaid: "unset ORQ_API_KEY",
 		},
+		// Prescribing the unset is only honest when nothing is queued behind
+		// it: ORQ_TOKEN would take over the moment ORQ_API_KEY went away and
+		// still outrank the login, so the remedy has to name it instead.
+		"another env spelling waits behind ORQ_API_KEY": {
+			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
+			otherEnv: map[string]string{"ORQ_TOKEN": "sk-orq-SOMEONE-ELSES"},
+			wantRow:  true, wantStatus: "warn", wantSaid: "ORQ_TOKEN also takes precedence",
+		},
+		"a profile api_key waits behind ORQ_API_KEY": {
+			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
+			profileKey: "sk-orq-PROFILE",
+			wantRow:    true, wantStatus: "warn", wantSaid: "api_key in profile default also takes precedence",
+		},
 		"a key we did not mint is not this row's business": {
 			inspect: loggedIn, exported: "sk-orq-SOMEONE-ELSES", explicit: true,
 		},
 		"nothing exported": {inspect: loggedIn},
 	} {
 		t.Run(name, func(t *testing.T) {
+			for _, envVar := range []string{"ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+				t.Setenv(envVar, tc.otherEnv[envVar])
+			}
+			if tc.profileKey != "" {
+				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
+				t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.api_key", "") })
+			}
 			SetUserEnvAPIKey(tc.exported)
 			SetExplicitAPIKey(tc.explicit)
 			check, ok := gatewayKeyShadowsSessionCheck(tc.inspect)

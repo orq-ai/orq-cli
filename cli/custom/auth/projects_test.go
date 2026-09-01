@@ -377,6 +377,9 @@ func TestMaskedTokenMatches(t *testing.T) {
 		// this masked value is shared by every key in existence, including the
 		// one behind opaque here.
 		{"universal opaque prefix", "sk-orq-", opaque, false},
+		// One character shorter, still six, still shared by every opaque key in
+		// existence: the length guard alone let this through.
+		{"universal opaque prefix without the trailing dash", "sk-orq", opaque, false},
 	} {
 		if got := maskedTokenMatches(tc.masked, tc.token); got != tc.want {
 			t.Errorf("%s: maskedTokenMatches(%q) = %v, want %v", tc.name, tc.masked, got, tc.want)

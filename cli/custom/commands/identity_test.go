@@ -140,3 +140,76 @@ func TestCredentialScopeSeparatesUnknownFromAllProjects(t *testing.T) {
 		})
 	}
 }
+
+// The CLI accepts a key under three spellings. Resolving only ORQ_API_KEY and
+// the profile's api_key meant an ORQ_TOKEN user took the explicit-key branch,
+// found nothing, and got a nil credential — no `key:` line and a null
+// `credential` beside a `session:` line, describing a state no command runs in.
+func TestDescribeCredentialNamesEveryAcceptedKeySpelling(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env        map[string]string
+		profileKey string
+		wantSource string
+	}{
+		"ORQ_TOKEN":         {env: map[string]string{"ORQ_TOKEN": "sk-orq-TOKEN"}, wantSource: "ORQ_TOKEN"},
+		"ORQ_AUTHORIZATION": {env: map[string]string{"ORQ_AUTHORIZATION": "sk-orq-AUTH"}, wantSource: "ORQ_AUTHORIZATION"},
+		"profile api_key":   {profileKey: "sk-orq-PROFILE", wantSource: "profile default"},
+		// ORQ_API_KEY resolves first, the same order bartolo's apikey handler uses.
+		"ORQ_API_KEY wins over the others": {
+			env:        map[string]string{"ORQ_API_KEY": "sk-orq-ENV", "ORQ_TOKEN": "sk-orq-TOKEN"},
+			wantSource: "ORQ_API_KEY",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			credsHarness(t)
+			snapshotCredentialGlobals(t)
+			for _, v := range []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+				t.Setenv(v, tc.env[v])
+			}
+			SetUserEnvAPIKey(tc.env["ORQ_API_KEY"])
+			SetExplicitAPIKey(true)
+			if tc.profileKey != "" {
+				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
+			}
+
+			cred := describeCredential(&auth.Session{})
+			if cred == nil {
+				t.Fatal("no credential reported, although one is configured")
+			}
+			if cred.Source != tc.wantSource {
+				t.Errorf("source = %q, want %q", cred.Source, tc.wantSource)
+			}
+		})
+	}
+}
+
+// The session records an active project even when a key outranks it, and no
+// command will narrow a token to that project. Printing it bare named a
+// project nothing uses; it is marked instead of hidden so the recorded state
+// stays visible.
+func TestStatusMarksTheActiveProjectInertUnderAnOutrankingKey(t *testing.T) {
+	report := IdentityReport{
+		ActiveProjectName: "Banking",
+		Credential:        &IdentityCredential{Source: "ORQ_TOKEN", Scope: scopeUnknown},
+	}
+
+	var out bytes.Buffer
+	prev := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = prev })
+	printIdentity(report, "Signed in as")
+	if !strings.Contains(out.String(), "Banking") {
+		t.Errorf("status dropped the recorded project: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "inactive") || !strings.Contains(out.String(), "ORQ_TOKEN") {
+		t.Errorf("status %q does not mark the project inert or name the credential that decides", out.String())
+	}
+
+	// Under the session's own credential the project is live and unqualified.
+	out.Reset()
+	report.Credential = &IdentityCredential{Source: "session", Scope: scopeProject}
+	printIdentity(report, "Signed in as")
+	if strings.Contains(out.String(), "inactive") {
+		t.Errorf("status marked a live project inert: %q", out.String())
+	}
+}

@@ -529,8 +529,9 @@ func (c *Client) KeyIDByToken(bearer, token string) string {
 const minMaskedHead = 6
 
 // universalOpaquePrefix is the literal every sk-orq-* key opens with. A
-// documented token_prefix of exactly this — 7 characters, past minMaskedHead
-// — still distinguishes no key from any other opaque key in the workspace.
+// documented token_prefix of this, or of any leading slice of it, distinguishes
+// no key from any other opaque key in the workspace — and "sk-orq" is six
+// characters, so minMaskedHead does not catch it.
 const universalOpaquePrefix = "sk-orq-"
 
 // maskedTokenMatches reports whether token is the key behind a masked value.
@@ -544,7 +545,9 @@ func maskedTokenMatches(masked, token string) bool {
 	}
 	head, tail, masked_ := strings.Cut(masked, "*")
 	if !masked_ {
-		if head == universalOpaquePrefix {
+		// Any head that is itself a leading slice of the universal prefix
+		// matches every opaque key in the workspace, so it identifies none.
+		if strings.HasPrefix(universalOpaquePrefix, head) {
 			return false
 		}
 		return len(head) >= minMaskedHead && strings.HasPrefix(token, head)

@@ -159,3 +159,41 @@ func TestEnvKeyShadowsWorkspace(t *testing.T) {
 		}
 	}
 }
+
+// Pruning is hygiene, not judgement: an entry whose ExpiresAt is absent or
+// unparseable (a session written before the field, or a truncated write) is
+// not evidence of expiry, and deleting it here destroys a token the read path
+// was about to decide on for itself. SaveSession must also leave the caller's
+// own map alone — a caller that keeps using its *Session after saving used to
+// watch entries disappear from underneath it.
+func TestSaveSessionKeepsUnparseableExpiryAndDoesNotMutateTheCaller(t *testing.T) {
+	isolateHome(t)
+	in := validSession("prod")
+	in.WorkspaceTokens["acme#no-expiry"] = StoredAccessToken{Token: "tok-noexp"}
+	in.WorkspaceTokens["acme#garbage"] = StoredAccessToken{Token: "tok-garbage", ExpiresAt: "not-a-time"}
+	in.WorkspaceTokens["acme#expired"] = StoredAccessToken{Token: "tok-old", ExpiresAt: "2000-01-01T00:00:00Z"}
+
+	if err := SaveSession(in); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	for _, key := range []string{"acme#no-expiry", "acme#garbage", "acme#expired"} {
+		if _, present := in.WorkspaceTokens[key]; !present {
+			t.Errorf("SaveSession removed %q from the caller's own map", key)
+		}
+	}
+
+	got, err := ReadSession()
+	if err != nil {
+		t.Fatalf("ReadSession: %v", err)
+	}
+	if got.WorkspaceTokens["acme#no-expiry"].Token != "tok-noexp" {
+		t.Errorf("an entry with no recorded expiry was pruned: %+v", got.WorkspaceTokens)
+	}
+	if got.WorkspaceTokens["acme#garbage"].Token != "tok-garbage" {
+		t.Errorf("an entry with an unparseable expiry was pruned: %+v", got.WorkspaceTokens)
+	}
+	if _, present := got.WorkspaceTokens["acme#expired"]; present {
+		t.Errorf("a provably expired entry survived the prune: %+v", got.WorkspaceTokens)
+	}
+}

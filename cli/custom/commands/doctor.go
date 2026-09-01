@@ -501,11 +501,37 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	case explicitAPIKey:
 		check.Status = "warn"
 		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key and takes precedence over your login, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead"
+		// Unsetting one variable is only the whole remedy when nothing else is
+		// waiting behind it. A key in ORQ_TOKEN, ORQ_AUTHORIZATION or the
+		// profile's api_key would take over the moment ORQ_API_KEY goes away
+		// and still outrank the login, so name it instead of prescribing a fix
+		// that leaves the user exactly where they were.
+		if others := otherExplicitKeySources(); len(others) > 0 {
+			check.Message = fmt.Sprintf(
+				"ORQ_API_KEY in this shell is the gateway-scoped key and takes precedence over your login, so commands like 'orq prompts list' will be refused. Unsetting it is not enough: %s also takes precedence over your login",
+				strings.Join(others, " and "))
+		}
 	default:
 		check.Status = "pass"
 		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key 'orq setup' exported; commands authenticate with your login session instead"
 	}
 	return check, true
+}
+
+// otherExplicitKeySources names the credentials, besides ORQ_API_KEY, that
+// would still outrank the login session. Ordered as the apikey handler
+// resolves them, so the first entry is the one that would win next.
+func otherExplicitKeySources() []string {
+	var out []string
+	for _, envVar := range APIKeyEnvVars[1:] {
+		if strings.TrimSpace(os.Getenv(envVar)) != "" {
+			out = append(out, envVar)
+		}
+	}
+	if profileAPIKey() != "" {
+		out = append(out, "the api_key in profile "+auth.ActiveProfile())
+	}
+	return out
 }
 
 // gatewayKeyExpiryCheck counts down to the minted key's expiry. Wired agents

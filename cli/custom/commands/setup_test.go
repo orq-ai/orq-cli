@@ -359,14 +359,18 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 func credsHarness(t *testing.T) {
 	t.Helper()
 	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
+	// Restore the previous values rather than zeroing them: these viper keys are
+	// process globals shared with every other test in the package, and zeroing
+	// them has broken unrelated tests here before.
+	prevDir, prevProfile := viper.GetString("config-directory"), viper.GetString("profile")
 	bartolocli.Creds = newTestCreds(t)
 	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
 	viper.Set("config-directory", t.TempDir())
 	viper.Set("profile", "default")
 	t.Cleanup(func() {
 		bartolocli.Creds, bartolocli.AuthHandlers = restoreCreds, restoreHandlers
-		viper.Set("config-directory", "")
-		viper.Set("profile", "")
+		viper.Set("config-directory", prevDir)
+		viper.Set("profile", prevProfile)
 	})
 }
 

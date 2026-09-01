@@ -210,12 +210,32 @@ func ReadSession() (*Session, error) {
 // WorkspaceToken already re-exchange anything expiring within that window, so
 // nothing a concurrent invocation could still treat as usable is ever evicted
 // here — only entries no reader would accept regardless.
-func pruneExpiredWorkspaceTokens(s *Session) {
-	for key, tok := range s.WorkspaceTokens {
-		if isExpired(tok.ExpiresAt, 0) {
-			delete(s.WorkspaceTokens, key)
-		}
+//
+// An absent or unparseable ExpiresAt is left alone. isExpired answers "yes" on
+// a parse error, which is the right default for a read path about to use the
+// token, but hygiene must not be the thing that destroys an entry a caller was
+// about to judge for itself — including entries written by a CLI older than
+// this field.
+//
+// Returns a new map rather than deleting in place: SaveSession's caller keeps
+// using its *Session afterwards, and entries vanishing from underneath it is a
+// change it never asked for.
+func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string]StoredAccessToken {
+	if tokens == nil {
+		return nil
 	}
+	kept := make(map[string]StoredAccessToken, len(tokens))
+	for key, tok := range tokens {
+		if _, err := parseISO(tok.ExpiresAt); err != nil {
+			kept[key] = tok
+			continue
+		}
+		if isExpired(tok.ExpiresAt, 0) {
+			continue
+		}
+		kept[key] = tok
+	}
+	return kept
 }
 
 // SaveSession writes the session atomically: temp file in the same directory,
@@ -224,11 +244,14 @@ func pruneExpiredWorkspaceTokens(s *Session) {
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
 func SaveSession(s *Session) error {
-	pruneExpiredWorkspaceTokens(s)
 	if err := ensureSessionDir(); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	// Shallow copy so the pruned token map is this write's alone; every other
+	// field is shared with the caller unchanged.
+	written := *s
+	written.WorkspaceTokens = pruneExpiredWorkspaceTokens(s.WorkspaceTokens)
+	data, err := json.MarshalIndent(written, "", "  ")
 	if err != nil {
 		return err
 	}

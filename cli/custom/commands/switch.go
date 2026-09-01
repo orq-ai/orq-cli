@@ -46,11 +46,13 @@ func NewSwitchCommand() *cobra.Command {
 					return err
 				}
 			default:
-				// A bare `orq switch` in a script is not an instruction, it is
-				// a question nobody can answer. Re-asserting the active
-				// workspace looked harmless but ran the project half too, which
-				// replaced a deliberately chosen project with the workspace
-				// default and reported success.
+				// `switch` rewrites BOTH halves of the identity, so a bare run
+				// with nobody to ask is a question, not an instruction:
+				// re-asserting the active workspace looked harmless but ran the
+				// project half too, replacing a deliberately chosen project
+				// with the workspace default and reporting success. `workspace
+				// use` answers the same situation differently because it only
+				// ever writes the one thing it was named for.
 				return errors.New("no workspace given and no terminal to ask on: run `orq switch <workspace> [project]`")
 			}
 			if workspaceKey == "" {
@@ -102,6 +104,10 @@ func NewSwitchCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Assigned unconditionally, even though UseWorkspace already clears
+			// the project when the workspace moved: switching WITHIN the active
+			// workspace to a workspace that has no projects must still end with
+			// no active project, and that case is not a workspace change.
 			session.ActiveProjectID = ""
 			session.ActiveProjectName = ""
 			if chosen != nil {

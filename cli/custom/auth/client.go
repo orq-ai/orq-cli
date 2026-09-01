@@ -510,6 +510,16 @@ func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 	if !found {
 		return nil, fmt.Errorf("workspace %q is not available to this user", workspaceKey)
 	}
+	// The active project belongs to the workspace it was chosen in. Carrying it
+	// across a move leaves every later command asking for a token narrowed to a
+	// project the new workspace does not contain. Cleared here rather than in
+	// each caller so `workspace use`, `switch` and `setup` cannot disagree.
+	//
+	// Only on an actual change: re-asserting the workspace already active is
+	// not a reason to discard a project the user deliberately chose.
+	if session.ActiveWorkspaceKey == nil || *session.ActiveWorkspaceKey != workspaceKey {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
 	return c.EnsureWorkspaceToken(session, workspaceKey)
 }
 

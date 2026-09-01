@@ -147,15 +147,38 @@ controls on surface changes, whichever side they originate from.
   actually authenticate with and that credential's scope — all projects, or
   one. A key can outrank the session, so "signed in as X" on its own can
   describe a state no command runs in. The old hidden `orq whoami` keeps
-  working. `orq status --json` gains a `credential` object naming the source
-  (`session`, an environment variable, or a named profile) and its `scope`,
-  which reads `unknown` for the opaque key shape rather than claiming
-  workspace-wide reach it cannot see.
+  working. The `credential` object in `orq status --json` gains a `scope`
+  field, which reads `unknown` for the opaque key shape rather than claiming
+  workspace-wide reach it cannot see, and its `source` can now be `session`
+  alongside the environment variable and named-profile answers it already
+  gave. It is `null` only when there is neither a session nor a configured
+  key — a state in which `orq status` reports that you are not logged in.
 - **Added: `orq switch [workspace] [project]`**, which picks a workspace and
   then a project in one walk. It is two stages rather than one combined
   picker on purpose: the project list needs a token for the workspace it
   belongs to, so a single picker would mint a token for every workspace the
-  user can see.
+  user can see. A bare `orq switch` with no terminal to ask on is an error
+  ("no workspace given and no terminal to ask on"), not a silent re-assertion
+  of the active workspace: re-asserting would also rewrite the project half,
+  replacing a deliberately chosen project with the workspace default.
+  `orq workspace use` with no argument still re-asserts, because it writes
+  only the workspace.
+- **Fixed: `orq workspace use <other>` no longer leaves the previous
+  workspace's project on the session.** The active project belongs to the
+  workspace it was chosen in, so carrying it across a move left every later
+  command asking for a token narrowed to a project the new workspace does not
+  contain. The clear now lives in the one place both `workspace use` and
+  `switch` go through, and only fires when the workspace actually changes —
+  re-asserting the workspace already active keeps the chosen project.
+- **Fixed: `orq status` names the credential of an `ORQ_TOKEN` or
+  `ORQ_AUTHORIZATION` user.** It resolved the key from `ORQ_API_KEY` and the
+  profile's `api_key` only, so those users got no `key:` line and a `null`
+  `credential` while the session line was still printed — describing a state
+  no command runs in. The `source` now names whichever of the three variables
+  (or the profile) actually wins.
+- **Changed: `orq status` marks the active project as inactive** when a
+  credential outranks the session, instead of printing a project no command
+  will narrow a token to.
 - **Fixed: credential introspection now reads every token shape in
   circulation**, not just the opaque `sk-orq-<ULID>-<secret>` one. A
   workspace JWT (`workspace_id`, `key_id`) and a project JWT (`workspace_id`,

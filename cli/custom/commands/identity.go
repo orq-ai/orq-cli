@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"os"
 	"strings"
 
 	"orq/cli/custom/auth"
@@ -97,12 +98,7 @@ func describeCredential(session *auth.Session) *IdentityCredential {
 	if !explicitAPIKey && session != nil {
 		return describeSessionCredential(session)
 	}
-	key := UserEnvAPIKey()
-	source := "ORQ_API_KEY"
-	if key == "" {
-		key = profileAPIKey()
-		source = "profile " + auth.ActiveProfile()
-	}
+	key, source := configuredCredential()
 	if key == "" {
 		return nil
 	}
@@ -137,8 +133,41 @@ func describeSessionCredential(session *auth.Session) *IdentityCredential {
 	return cred
 }
 
+// configuredCredential returns the key the next request would authenticate
+// with and the name of where it came from, in the order bartolo's apikey
+// handler resolves them (APIKeyEnvVars, then the active profile's api_key).
+// Reading ORQ_API_KEY alone reported "no credential at all" for anyone whose
+// key is ORQ_TOKEN or ORQ_AUTHORIZATION — describing a state no command runs
+// in, which is the one thing `orq status` exists to prevent.
+//
+// ORQ_API_KEY comes from the snapshot rather than the environment, because our
+// own PreRun injects the session token into that variable; the other two are
+// never injected, so the live environment is the honest source for them.
+func configuredCredential() (key, source string) {
+	for _, envVar := range APIKeyEnvVars {
+		v := strings.TrimSpace(os.Getenv(envVar))
+		if envVar == APIKeyEnvVars[0] {
+			v = UserEnvAPIKey()
+		}
+		if v != "" {
+			return v, envVar
+		}
+	}
+	if v := profileAPIKey(); v != "" {
+		return v, "profile " + auth.ActiveProfile()
+	}
+	return "", ""
+}
+
 func profileAPIKey() string {
 	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+}
+
+// credentialOutranksSession reports whether the credential in force is
+// something other than the login session, which makes the session's own active
+// project inert: no command will narrow a token to it.
+func credentialOutranksSession(r IdentityReport) bool {
+	return r.Credential != nil && r.Credential.Source != "session"
 }
 
 // credentialScope reports how far a credential reaches, distinguishing "every
