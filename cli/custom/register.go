@@ -729,10 +729,11 @@ func removeString(slice []string, target string) []string {
 }
 
 func addHiddenAuthAliases(root *cobra.Command) {
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
 	for _, factory := range []func() *cobra.Command{
 		commands.NewLoginCommand,
 		commands.NewLogoutCommand,
-		commands.NewWhoAmICommand,
 	} {
 		alias := factory()
 		alias.Hidden = true

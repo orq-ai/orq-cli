@@ -41,3 +41,6 @@
 # bartolo >=0.6 writes the generated README next to the hand-written one
 # instead of overwriting it; only README.md is source.
 README.generated.md
+
+# subagent-driven-development scratch (progress ledger)
+.superpowers/

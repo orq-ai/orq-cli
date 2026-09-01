@@ -142,6 +142,33 @@ controls on surface changes, whichever side they originate from.
   there is no session token to narrow, so it fills the command's own
   `--project-id` instead; an explicit `--project-id` always wins.
 
+- **Added: `orq status`**, aliased to `whoami`. It shows the active user,
+  workspace, and project, plus which credential the next command will
+  actually authenticate with and that credential's scope — all projects, or
+  one. A key can outrank the session, so "signed in as X" on its own can
+  describe a state no command runs in. The old hidden `orq whoami` keeps
+  working.
+- **Added: `orq switch [workspace] [project]`**, which picks a workspace and
+  then a project in one walk. It is two stages rather than one combined
+  picker on purpose: the project list needs a token for the workspace it
+  belongs to, so a single picker would mint a token for every workspace the
+  user can see.
+- **Fixed: credential introspection now reads every token shape in
+  circulation**, not just the opaque `sk-orq-<ULID>-<secret>` one. A
+  workspace JWT (`workspace_id`, `key_id`) and a project JWT (`workspace_id`,
+  `projects[]`, no `key_id`) previously reported as unknown, which is most
+  keys in a real credentials file. The `sk-orq-` prefix is optional on the
+  JWT shapes, since dashboard-issued keys arrive without it. This affects
+  `orq status` and `orq doctor` only — the claims are unverified and never
+  grant access.
+- **Added: `orq doctor` and `orq setup` diagnose rejected project-scoped
+  keys.** A project-scoped JWT has no `key_id`, so the diagnosis now falls
+  back to matching the masked token the key-list endpoint returns
+  (`eyJhbG********kK-d2A`) — without it, the diagnosis that explains a
+  rejected key went silent for exactly the keys `orq setup` now mints. A
+  mask whose visible head is too short to identify a single key is ignored
+  rather than guessed at.
+
 ## [6.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.0.0) — 2026-09-02
 
 - **Added:** `-o table` renders a list command as a table, and it is the default

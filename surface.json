@@ -9250,17 +9250,6 @@
       ]
     },
     {
-      "path": "orq whoami",
-      "use": "whoami",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "api-base-url",
-          "type": "string"
-        }
-      ]
-    },
-    {
       "path": "orq workspace",
       "use": "workspace"
     },
