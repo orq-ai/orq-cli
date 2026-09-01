@@ -16,6 +16,17 @@ import (
 // already replaced the session token as the bearer.
 func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (*auth.Project, error) {
 	if opts.noProject {
+		// "Leaves the session unscoped" is what the flag promises, so a project
+		// left over from an earlier run has to go: returning early kept the old
+		// project active and made --no-project a no-op for exactly the users who
+		// had one to clear.
+		if state.session != nil && state.session.ActiveProjectID != "" {
+			state.session.ActiveProjectID = ""
+			state.session.ActiveProjectName = ""
+			if err := auth.SaveSession(state.session); err != nil {
+				return nil, fmt.Errorf("could not clear the active project: %w", err)
+			}
+		}
 		rep.ok("skipped choosing a project")
 		return nil, nil
 	}

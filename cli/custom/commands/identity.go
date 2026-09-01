@@ -30,10 +30,21 @@ type IdentityCredential struct {
 	Source      string `json:"source"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	KeyID       string `json:"key_id,omitempty"`
-	// ProjectID is set only for a credential scoped to one project; empty
-	// means it reaches every project in the workspace.
+	// ProjectID is set only for a credential scoped to one project.
 	ProjectID string `json:"project_id,omitempty"`
+	// Scope is what could be established about the credential's project reach:
+	// scopeAllProjects, scopeProject, or scopeUnknown. An empty ProjectID is
+	// not an answer on its own — the opaque sk-orq-<ULID>-<secret> shape
+	// carries no scope at all, and reporting that silence as "all projects" is
+	// an assertion nothing here can make.
+	Scope string `json:"scope"`
 }
+
+const (
+	scopeAllProjects = "all_projects"
+	scopeProject     = "project"
+	scopeUnknown     = "unknown"
+)
 
 type IdentityReport struct {
 	Authenticated      bool                `json:"authenticated"`
@@ -56,7 +67,7 @@ func BuildIdentityReport(session *auth.Session, urls *auth.URLs) IdentityReport 
 		ActiveProjectID:    session.ActiveProjectID,
 		ActiveProjectName:  session.ActiveProjectName,
 		Server:             auth.Server(),
-		Credential:         describeCredential(),
+		Credential:         describeCredential(session),
 		URLs:               urls,
 		Workspaces:         []IdentityWorkspace{},
 	}
@@ -73,14 +84,23 @@ func BuildIdentityReport(session *auth.Session, urls *auth.URLs) IdentityReport 
 	return rep
 }
 
-// describeCredential names the credential a command would authenticate with
-// right now and reads its scope out of the token. Returns nil for the session,
-// whose scope the report already states as the active workspace and project.
-func describeCredential() *IdentityCredential {
+// describeCredential names the credential the next command would actually
+// authenticate with, and says what can be established about its scope.
+//
+// Which credential wins is not "is ORQ_API_KEY set": since RES-1465 the key
+// `orq setup` minted and exported defers to the login session, which is the
+// ordinary state on any machine that has run setup and sourced ~/.orq/env.
+// explicitAPIKey is the post-deferral answer the custom PreRun already
+// computed, so this reads that snapshot instead of re-deriving the rule and
+// letting the two drift.
+func describeCredential(session *auth.Session) *IdentityCredential {
+	if !explicitAPIKey && session != nil {
+		return describeSessionCredential(session)
+	}
 	key := UserEnvAPIKey()
 	source := "ORQ_API_KEY"
 	if key == "" {
-		key = strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+		key = profileAPIKey()
 		source = "profile " + auth.ActiveProfile()
 	}
 	if key == "" {
@@ -92,6 +112,47 @@ func describeCredential() *IdentityCredential {
 		WorkspaceID: claims.WorkspaceID,
 		KeyID:       claims.KeyID,
 		ProjectID:   claims.ProjectID(),
+		Scope:       credentialScope(claims),
+	}
+}
+
+// describeSessionCredential describes the session's own workspace token. Its
+// scope is not guessed from the token shape: the session records which project
+// it is pinned to, and that is what the token was fetched for.
+func describeSessionCredential(session *auth.Session) *IdentityCredential {
+	cred := &IdentityCredential{
+		Source:    "session",
+		ProjectID: strings.TrimSpace(session.ActiveProjectID),
+		Scope:     scopeAllProjects,
+	}
+	if cred.ProjectID != "" {
+		cred.Scope = scopeProject
+	}
+	// Local claim read, no round trip: it names the workspace the cached token
+	// was actually minted for, which the session's workspace key alone cannot.
+	if token := storedWorkspaceToken(session); token != "" {
+		claims := auth.InspectToken(token)
+		cred.WorkspaceID, cred.KeyID = claims.WorkspaceID, claims.KeyID
+	}
+	return cred
+}
+
+func profileAPIKey() string {
+	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+}
+
+// credentialScope reports how far a credential reaches, distinguishing "every
+// project" from "the token does not say". The opaque key shape yields a key id
+// and nothing else, so an absent workspace id means the claims could not be
+// read rather than that the key is workspace-wide.
+func credentialScope(claims auth.TokenClaims) string {
+	switch {
+	case len(claims.Projects) > 0:
+		return scopeProject
+	case claims.WorkspaceID != "":
+		return scopeAllProjects
+	default:
+		return scopeUnknown
 	}
 }
 

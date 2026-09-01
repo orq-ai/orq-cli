@@ -147,7 +147,10 @@ controls on surface changes, whichever side they originate from.
   actually authenticate with and that credential's scope — all projects, or
   one. A key can outrank the session, so "signed in as X" on its own can
   describe a state no command runs in. The old hidden `orq whoami` keeps
-  working.
+  working. `orq status --json` gains a `credential` object naming the source
+  (`session`, an environment variable, or a named profile) and its `scope`,
+  which reads `unknown` for the opaque key shape rather than claiming
+  workspace-wide reach it cannot see.
 - **Added: `orq switch [workspace] [project]`**, which picks a workspace and
   then a project in one walk. It is two stages rather than one combined
   picker on purpose: the project list needs a token for the workspace it
@@ -168,6 +171,12 @@ controls on surface changes, whichever side they originate from.
   rejected key went silent for exactly the keys `orq setup` now mints. A
   mask whose visible head is too short to identify a single key is ignored
   rather than guessed at.
+- **Changed: `orq doctor`'s gateway-key check reports the state that actually
+  holds.** It used to warn that commands "will be refused" and tell you to
+  unset `ORQ_API_KEY` even where the session already wins, which was false
+  advice and a no-op remedy; that machine now gets a `pass` row. The warning
+  is kept for a key we did not mint, and it now also fires when a minted key
+  is exported with no session behind it.
 
 ## [6.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.0.0) — 2026-09-02
 

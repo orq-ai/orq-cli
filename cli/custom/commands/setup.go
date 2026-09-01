@@ -1250,16 +1250,36 @@ func sessionWorkspaceToken(client *auth.Client, state *authState) string {
 	return active.AccessToken
 }
 
-// storedWorkspaceToken returns a session's unexpired workspace token. No network, no refresh, no writes.
+// storedWorkspaceToken returns a session's unexpired token for its active
+// workspace. No network, no refresh, no writes.
+//
+// The cache is keyed on (workspace, project) — auth.Client.tokenKey files a
+// project-scoped token under "<workspace>#<project>" — so the bare workspace
+// key alone found nothing whenever a project was selected, and every caller
+// silently fell back to treating the session as having no token. The active
+// project's entry is preferred; the unscoped entry is the fallback, which is
+// what a session written before project scoping carries.
 func storedWorkspaceToken(session *auth.Session) string {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return ""
 	}
-	tok, ok := session.WorkspaceTokens[*session.ActiveWorkspaceKey]
-	if !ok || tok.Token == "" || isTokenExpired(tok.ExpiresAt) {
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	if active == "" {
 		return ""
 	}
-	return tok.Token
+	// The project-scoped entry first, the bare workspace entry as the fallback
+	// a pre-project session (or an unscoped one) still writes.
+	cacheKeys := []string{active}
+	if project := strings.TrimSpace(session.ActiveProjectID); project != "" {
+		cacheKeys = []string{auth.TokenCacheKey(active, project), active}
+	}
+	for _, cacheKey := range cacheKeys {
+		tok, ok := session.WorkspaceTokens[cacheKey]
+		if ok && tok.Token != "" && !isTokenExpired(tok.ExpiresAt) {
+			return tok.Token
+		}
+	}
+	return ""
 }
 
 // Warn rather than note: notes are suppressed under --no-input.

@@ -349,17 +349,31 @@ func printIdentity(report IdentityReport, verb string) {
 	if report.Server != "" {
 		kv(w, "server", "%s", report.Server)
 	}
-	// Named only when a key is configured: it outranks the session for API
-	// calls, so "signed in as X" without it can describe a state no command
-	// actually runs in.
+	// The credential the next command will authenticate with, named because
+	// "signed in as X" alone can describe a state no command actually runs in
+	// — a configured key outranks the session for every API call.
 	if c := report.Credential; c != nil {
-		scope := "all projects"
-		if c.ProjectID != "" {
-			scope = "one project"
-		}
-		kv(w, "key", "%s (%s)", c.Source, scope)
+		kv(w, "key", "%s (%s)", c.Source, describeScope(*c))
 	}
 	kv(w, "session", "%s", report.SessionFile)
+}
+
+// describeScope renders a credential's reach. "scope not recorded" rather than
+// "all projects" for the opaque key shape: that token carries no scope claims
+// at all, and printing the silence as workspace-wide access told users
+// something no local check could know.
+func describeScope(c IdentityCredential) string {
+	switch c.Scope {
+	case scopeAllProjects:
+		return "all projects"
+	case scopeProject:
+		if c.ProjectID != "" {
+			return "one project"
+		}
+		return "specific projects"
+	default:
+		return "scope not recorded in the key"
+	}
 }
 
 // reportClearedEnvFiles names the files logout emptied. A credential leaving

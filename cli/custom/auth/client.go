@@ -50,13 +50,30 @@ func (c *Client) WithProject(projectID string) *Client {
 	return c
 }
 
-// tokenKey is the WorkspaceTokens cache key. An unscoped token keeps the bare
-// workspace key, so sessions written before project scoping stay valid.
-func (c *Client) tokenKey(workspaceKey string) string {
-	if c.projectID == "" {
+// TokenCacheKey is the WorkspaceTokens cache key for a workspace/project pair.
+// An unscoped token keeps the bare workspace key, so sessions written before
+// project scoping stay valid.
+//
+// Exported because three packages read this map and each one spelled the
+// separator itself. When project scoping landed, the two that were not updated
+// stopped finding the active token and resurrected a credential warning that
+// had already been fixed once.
+func TokenCacheKey(workspaceKey, projectID string) string {
+	if strings.TrimSpace(projectID) == "" {
 		return workspaceKey
 	}
-	return workspaceKey + "#" + c.projectID
+	return workspaceKey + "#" + strings.TrimSpace(projectID)
+}
+
+// TokenCacheKeyWorkspace returns the workspace a cache key belongs to,
+// whichever project it is scoped to.
+func TokenCacheKeyWorkspace(cacheKey string) string {
+	key, _, _ := strings.Cut(cacheKey, "#")
+	return key
+}
+
+func (c *Client) tokenKey(workspaceKey string) string {
+	return TokenCacheKey(workspaceKey, c.projectID)
 }
 
 func (c *Client) reqContext() context.Context {

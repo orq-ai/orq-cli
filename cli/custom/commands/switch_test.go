@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -190,5 +191,69 @@ func TestSwitchWorkspaceClearsStaleProject(t *testing.T) {
 	}
 	if session.ActiveProjectID != "" || session.ActiveProjectName != "" {
 		t.Errorf("ws1's project survived the switch to ws2: %q/%q, want none", session.ActiveProjectID, session.ActiveProjectName)
+	}
+}
+
+// A half-written switch is worse than a failed one: `UseWorkspace` persisted
+// the new workspace immediately, so a failure in the project half left ws2
+// active on disk beside ws1's project, and every later command then tried to
+// narrow a ws2 token to a project ws2 does not contain.
+func TestSwitchLeavesSessionUntouchedWhenTheProjectHalfFails(t *testing.T) {
+	switchTestEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/v2/projects") {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"boom"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","display_name":"A","workspaces":[{"key":"ws1","name":"ws1"},{"key":"ws2","name":"ws2"}]}}`)
+	}))
+	t.Cleanup(srv.Close)
+	switchSession(t, srv.URL, "ws1", []string{"ws1", "ws2"}, "id-1", "One")
+
+	cmd := NewSwitchCommand()
+	cmd.SetArgs([]string{"ws2"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("switch reported success although the project list failed")
+	}
+
+	session, err := auth.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ActiveWorkspaceKey == nil || *session.ActiveWorkspaceKey != "ws1" {
+		t.Errorf("active workspace = %v, want ws1 — the failed switch must not have landed", session.ActiveWorkspaceKey)
+	}
+	if session.ActiveProjectID != "id-1" || session.ActiveProjectName != "One" {
+		t.Errorf("active project = %q/%q, want the untouched id-1/One", session.ActiveProjectID, session.ActiveProjectName)
+	}
+}
+
+// A bare `orq switch` in a script names neither half. It used to re-assert the
+// active workspace and then run the project half anyway, replacing a
+// deliberately chosen project with the workspace default and reporting success.
+func TestSwitchWithNoArgsAndNoTTYFailsWithoutTouchingTheProject(t *testing.T) {
+	switchTestEnv(t)
+	srv := switchServer(t, []string{"acme"},
+		`{"project_id":"id-1","key":"a","name":"A"},{"project_id":"id-2","key":"b","name":"B","is_default":true}`)
+	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "A")
+
+	cmd := NewSwitchCommand()
+	cmd.SetArgs(nil)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("a bare non-interactive switch must fail rather than guess")
+	}
+
+	session, err := auth.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ActiveProjectID != "id-1" || session.ActiveProjectName != "A" {
+		t.Errorf("active project = %q/%q, want the chosen id-1/A left alone", session.ActiveProjectID, session.ActiveProjectName)
 	}
 }

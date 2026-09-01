@@ -416,12 +416,20 @@ func repairAuthProfileType() {
 // the environment or the active credentials profile. When true we leave auth
 // untouched so an explicit key always wins over the session token.
 func apiKeyConfigured() bool {
+	return configuredAPIKey() != ""
+}
+
+// configuredAPIKey returns the key bartolo would authenticate with, in the
+// order its apikey handler resolves them: the env vars first, then the active
+// credentials profile. Anything that needs to make an API call of its own has
+// to use this and not one hard-coded env var, or it authenticates as nobody.
+func configuredAPIKey() string {
 	for _, envVar := range apiKeyEnvVars {
-		if strings.TrimSpace(os.Getenv(envVar)) != "" {
-			return true
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" {
+			return v
 		}
 	}
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
+	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
 }
 
 // ownExportedKey reports whether the only API key in the environment is the one
@@ -466,11 +474,43 @@ func projectRef() string {
 	return strings.TrimSpace(viper.GetString("project"))
 }
 
-// resolveProjectID decides which project this invocation runs against:
-// --project when given, otherwise the session's active project. An id needs no
-// lookup; a key or a name costs one /v2/projects call.
+// explicitProjectIDFlag returns the --project-id the user actually typed. The
+// generator puts that flag on 31 commands, so its presence says nothing; only
+// .Changed distinguishes a typed value from the empty default.
+func explicitProjectIDFlag(cmd *cobra.Command) (string, bool) {
+	f := cmd.Flags().Lookup("project-id")
+	if f == nil || !f.Changed {
+		return "", false
+	}
+	return strings.TrimSpace(f.Value.String()), true
+}
+
+// resolveProjectID decides which project this invocation runs against, highest
+// precedence first: an explicitly typed --project-id, then --project /
+// ORQ_PROJECT, then the session's active project. An id needs no lookup; a key
+// or a name costs one /v2/projects call.
 func resolveProjectID(cmd *cobra.Command, session *auth.Session, workspaceOverride string) (string, error) {
 	ref := projectRef()
+	// Narrow the token to an explicit --project-id rather than leaving it on
+	// the session's active project: the projects claim is what the server
+	// enforces on reads AND creates, so a token scoped to `banking` answers
+	// `--project-id <marketing>` with banking's rows and files new rows in
+	// banking. Narrowing to the id the user typed is the only outcome that is
+	// right for both.
+	if explicit, ok := explicitProjectIDFlag(cmd); ok {
+		if ref != "" && ref != explicit {
+			commands.Warn("--project-id %s takes precedence over --project/ORQ_PROJECT for this command", explicit)
+		}
+		// The token exchange takes a project UUID and nothing else. Narrowing
+		// to the session's project instead would send a token for one project
+		// alongside a project_id parameter for another, which is the mismatch
+		// this whole branch exists to prevent — so leave the token
+		// workspace-wide and let the flag travel as a request parameter.
+		if !auth.LooksLikeProjectID(explicit) {
+			return "", nil
+		}
+		return explicit, nil
+	}
 	if ref == "" {
 		return session.ActiveProjectID, nil
 	}
@@ -520,7 +560,11 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 			base = session.APIBaseURL
 		}
 		client := auth.NewClient(base).WithContext(cmd.Context())
-		resolved, err := lookupProjectID(client, os.Getenv("ORQ_API_KEY"), ref)
+		// configuredAPIKey, not ORQ_API_KEY: a user whose credential is
+		// ORQ_TOKEN, ORQ_AUTHORIZATION or a credentials-profile api_key was
+		// resolving `--project <key-or-name>` with an empty bearer and getting
+		// a 401 out of a flag that should have cost them nothing.
+		resolved, err := lookupProjectID(client, configuredAPIKey(), ref)
 		if err != nil {
 			return err
 		}

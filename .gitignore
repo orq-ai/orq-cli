@@ -42,5 +42,3 @@
 # instead of overwriting it; only README.md is source.
 README.generated.md
 
-# subagent-driven-development scratch (progress ledger)
-.superpowers/

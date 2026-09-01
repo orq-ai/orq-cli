@@ -3471,3 +3471,63 @@ func TestScopePromptNamesOnlyTheCapabilitiesInTheRun(t *testing.T) {
 		}
 	}
 }
+
+// auth.Client.tokenKey files a project-scoped token under
+// "<workspace>#<project>", so reading WorkspaceTokens[activeWorkspaceKey]
+// found nothing the moment a project was selected: setup and every other
+// caller then behaved as if the session held no token at all.
+func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	active := "acme"
+
+	for name, tc := range map[string]struct {
+		projectID string
+		tokens    map[string]auth.StoredAccessToken
+		want      string
+	}{
+		"project scoped entry": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj1": {Token: "scoped", ExpiresAt: future}},
+			want:      "scoped",
+		},
+		"project active, only an unscoped entry": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme": {Token: "unscoped", ExpiresAt: future}},
+			want:      "unscoped",
+		},
+		"the active project's entry wins": {
+			projectID: "proj1",
+			tokens: map[string]auth.StoredAccessToken{
+				"acme":       {Token: "unscoped", ExpiresAt: future},
+				"acme#proj1": {Token: "scoped", ExpiresAt: future},
+			},
+			want: "scoped",
+		},
+		"another project's entry is not ours": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj2": {Token: "other", ExpiresAt: future}},
+			want:      "",
+		},
+		"expired is no token": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj1": {Token: "scoped", ExpiresAt: past}},
+			want:      "",
+		},
+		"no project": {
+			tokens: map[string]auth.StoredAccessToken{"acme": {Token: "unscoped", ExpiresAt: future}},
+			want:   "unscoped",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			session := &auth.Session{
+				ActiveWorkspaceKey: &active,
+				ActiveProjectID:    tc.projectID,
+				WorkspaceTokens:    tc.tokens,
+			}
+			if got := storedWorkspaceToken(session); got != tc.want {
+				t.Errorf("storedWorkspaceToken = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

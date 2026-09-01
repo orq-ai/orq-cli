@@ -354,21 +354,31 @@ func TestTokenKeyIsolatesProjects(t *testing.T) {
 // token_prefix, and a project-scoped key has no key_id claim to look up
 // instead — so this match is the only route from such a key to its record.
 func TestMaskedTokenMatches(t *testing.T) {
-	token := "eyJhbGciOiJIUzI1NiJ9.payloadpayload.signaturekK-d2A"
+	jwt := "eyJhbGciOiJIUzI1NiJ9.payloadpayload.signaturekK-d2A"
+	opaque := "sk-orq-01ARZ3NDEKTSV4RRFFQ69G5FAV-secretsecret"
 	for _, tc := range []struct {
-		name, masked string
-		want         bool
+		name, masked, token string
+		want                bool
 	}{
-		{"live mask", "eyJhbG********kK-d2A", true},
-		{"documented prefix", "eyJhbGciOiJI", true},
-		{"wrong tail", "eyJhbG********ZZZZZZ", false},
-		{"wrong head", "abcdef********kK-d2A", false},
-		{"empty", "", false},
+		{"live mask", "eyJhbG********kK-d2A", jwt, true},
+		{"documented prefix", "eyJhbGciOiJI", jwt, true},
+		{"wrong tail", "eyJhbG********ZZZZZZ", jwt, false},
+		{"wrong head", "abcdef********kK-d2A", jwt, false},
+		{"empty", "", jwt, false},
 		// Every orq JWT opens with the same base64 header, so a head this
 		// short matches every key in the workspace and identifies none.
-		{"head too short", "eyJ***kK-d2A", false},
+		{"head too short", "eyJ***kK-d2A", jwt, false},
+		// An empty tail leaves the head as the sole evidence: HasSuffix(token, "")
+		// is vacuously true, so this must not pass on the head alone even though
+		// it would with any other key sharing the same head.
+		{"empty tail", "eyJhbG********", jwt, false},
+		// "sk-orq-" is the literal every opaque key opens with. It clears
+		// minMaskedHead on length alone but identifies no key in particular —
+		// this masked value is shared by every key in existence, including the
+		// one behind opaque here.
+		{"universal opaque prefix", "sk-orq-", opaque, false},
 	} {
-		if got := maskedTokenMatches(tc.masked, token); got != tc.want {
+		if got := maskedTokenMatches(tc.masked, tc.token); got != tc.want {
 			t.Errorf("%s: maskedTokenMatches(%q) = %v, want %v", tc.name, tc.masked, got, tc.want)
 		}
 	}

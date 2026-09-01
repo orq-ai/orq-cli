@@ -124,3 +124,32 @@ func TestKeyProjectMismatch(t *testing.T) {
 		}
 	}
 }
+
+// `setup --no-project` documents itself as leaving the session unscoped, so a
+// project chosen earlier has to go; returning early made the flag a no-op for
+// exactly the users who had one to clear.
+func TestSetupNoProjectClearsTheActiveProject(t *testing.T) {
+	switchTestEnv(t)
+	srv := switchServer(t, []string{"acme"}, `{"project_id":"id-1","key":"a","name":"A"}`)
+	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "A")
+	session, err := auth.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state := &authState{apiBase: srv.URL, bearer: "session-token", session: session}
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, &setupOptions{noProject: true})
+	if err != nil {
+		t.Fatalf("resolveProjectStep: %v", err)
+	}
+	if got != nil {
+		t.Errorf("chose %+v, want no project", got)
+	}
+	saved, err := auth.ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ActiveProjectID != "" || saved.ActiveProjectName != "" {
+		t.Errorf("session still scoped to %q/%q after --no-project, want it cleared", saved.ActiveProjectID, saved.ActiveProjectName)
+	}
+}

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 
 	"orq/cli/custom/auth"
 
@@ -36,24 +37,37 @@ func NewSwitchCommand() *cobra.Command {
 			}
 
 			workspaceKey := ""
-			if len(args) > 0 {
+			switch {
+			case len(args) > 0:
 				workspaceKey = args[0]
-			} else if hasInteractiveTTY() {
+			case hasInteractiveTTY():
 				workspaceKey, err = selectWorkspace(session.Workspaces, "Choose the workspace")
 				if err != nil {
 					return err
 				}
-			} else if session.ActiveWorkspaceKey != nil {
-				workspaceKey = *session.ActiveWorkspaceKey
+			default:
+				// A bare `orq switch` in a script is not an instruction, it is
+				// a question nobody can answer. Re-asserting the active
+				// workspace looked harmless but ran the project half too, which
+				// replaced a deliberately chosen project with the workspace
+				// default and reported success.
+				return errors.New("no workspace given and no terminal to ask on: run `orq switch <workspace> [project]`")
 			}
 			if workspaceKey == "" {
 				return errors.New("no workspace is available for this user")
 			}
-			session, err = client.UseWorkspace(workspaceKey)
-			if err != nil {
-				return err
+			// Everything that can fail happens before the first write. Calling
+			// UseWorkspace first persisted the new workspace immediately, so a
+			// failure in the token exchange or the project list left the new
+			// workspace on disk beside the old workspace's project — a session
+			// every later command would try to narrow to a project that is not
+			// in the active workspace.
+			if !workspaceAvailable(session, workspaceKey) {
+				// Checked here rather than left to UseWorkspace (which makes the
+				// same check) so an unreachable key still reports itself as one,
+				// instead of as an opaque token-exchange failure.
+				return fmt.Errorf("workspace %q is not available to this user", workspaceKey)
 			}
-
 			bearer, err := client.WorkspaceToken(session, workspaceKey)
 			if err != nil {
 				return err
@@ -81,6 +95,13 @@ func NewSwitchCommand() *cobra.Command {
 				return err
 			}
 
+			// Both halves are decided; commit them together. UseWorkspace
+			// writes the workspace, and the save below writes the project it
+			// belongs to, with nothing fallible in between.
+			session, err = client.UseWorkspace(workspaceKey)
+			if err != nil {
+				return err
+			}
 			session.ActiveProjectID = ""
 			session.ActiveProjectName = ""
 			if chosen != nil {
@@ -111,4 +132,15 @@ func NewSwitchCommand() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// workspaceAvailable reports whether the profile this session last fetched
+// lists the given workspace key.
+func workspaceAvailable(session *auth.Session, key string) bool {
+	for _, w := range session.Workspaces {
+		if k, ok := w["key"].(string); ok && k == key {
+			return true
+		}
+	}
+	return false
 }

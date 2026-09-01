@@ -1,11 +1,17 @@
 package custom
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"orq/cli/custom/auth"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -63,5 +69,158 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	creds.Set("profiles.default.api_key", "sk-orq-PROFILE")
 	if ownExportedKey() {
 		t.Error("a profile api_key must keep winning")
+	}
+}
+
+// setProjectRef points --project/ORQ_PROJECT at ref for one test. The viper key
+// is a process global shared with every other test in the package, so the
+// previous value is restored rather than zeroed.
+func setProjectRef(t *testing.T, ref string) {
+	t.Helper()
+	prev := viper.GetString("project")
+	viper.Set("project", ref)
+	t.Cleanup(func() { viper.Set("project", prev) })
+}
+
+// projectIDCommand is a stand-in for one of the 31 generated commands the
+// generator puts --project-id on.
+func projectIDCommand(t *testing.T, value string) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "list"}
+	cmd.Flags().String("project-id", "", "")
+	if value != "" {
+		if err := cmd.Flags().Set("project-id", value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return cmd
+}
+
+// An explicitly typed --project-id is the top of the stated precedence, above
+// the session's active project. It used to lose to it: after `orq projects use
+// banking`, a command run with --project-id <marketing> minted a token scoped
+// to banking and answered with banking's rows, and filed creates there too.
+func TestExplicitProjectIDOutranksTheActiveProject(t *testing.T) {
+	setProjectRef(t, "")
+	const marketing = "11111111-2222-3333-4444-555555555555"
+	session := &auth.Session{ActiveProjectID: "99999999-8888-7777-6666-555555555555", ActiveProjectName: "Banking"}
+
+	got, err := resolveProjectID(projectIDCommand(t, marketing), session, "")
+	if err != nil {
+		t.Fatalf("resolveProjectID: %v", err)
+	}
+	if got != marketing {
+		t.Errorf("token narrowed to %q, want the explicitly passed --project-id %q", got, marketing)
+	}
+
+	// --project-id beats --project too, and neither may reach the session's
+	// project once one of them was typed.
+	setProjectRef(t, "banking")
+	got, err = resolveProjectID(projectIDCommand(t, marketing), session, "")
+	if err != nil {
+		t.Fatalf("resolveProjectID with --project as well: %v", err)
+	}
+	if got != marketing {
+		t.Errorf("token narrowed to %q, want --project-id to outrank --project (%q)", got, marketing)
+	}
+}
+
+// A --project-id the token exchange cannot take must not fall back to the
+// session's project: that would send a token for one project alongside a
+// project_id parameter for another. The token stays workspace-wide and the flag
+// travels as a plain request parameter.
+func TestNonIDProjectIDLeavesTheTokenUnnarrowed(t *testing.T) {
+	setProjectRef(t, "")
+	session := &auth.Session{ActiveProjectID: "99999999-8888-7777-6666-555555555555"}
+
+	got, err := resolveProjectID(projectIDCommand(t, "banking"), session, "")
+	if err != nil {
+		t.Fatalf("resolveProjectID: %v", err)
+	}
+	if got != "" {
+		t.Errorf("token narrowed to %q, want it left unnarrowed", got)
+	}
+}
+
+// Nothing typed leaves the session's active project in charge — the rung below
+// the two flags, and the one every plain `orq ...` invocation lands on.
+func TestNoProjectFlagsKeepTheActiveProject(t *testing.T) {
+	setProjectRef(t, "")
+	session := &auth.Session{ActiveProjectID: "banking-id"}
+
+	got, err := resolveProjectID(projectIDCommand(t, ""), session, "")
+	if err != nil {
+		t.Fatalf("resolveProjectID: %v", err)
+	}
+	if got != "banking-id" {
+		t.Errorf("resolved %q, want the session's active project banking-id", got)
+	}
+}
+
+// Resolving `--project <key-or-name>` has to authenticate with whatever
+// credential the user actually configured. It read ORQ_API_KEY and nothing
+// else, so an ORQ_TOKEN / ORQ_AUTHORIZATION / credentials-profile user got a
+// 401 out of a flag that should have cost them nothing.
+func TestBridgeProjectFlagUsesAnyConfiguredCredential(t *testing.T) {
+	for _, tc := range []struct {
+		name, envVar, envKey, profileKey string
+	}{
+		{name: "ORQ_API_KEY", envVar: "ORQ_API_KEY", envKey: "sk-env-api-key"},
+		{name: "ORQ_TOKEN", envVar: "ORQ_TOKEN", envKey: "sk-env-token"},
+		{name: "ORQ_AUTHORIZATION", envVar: "ORQ_AUTHORIZATION", envKey: "sk-env-authorization"},
+		{name: "credentials profile", profileKey: "sk-profile-key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := tc.envKey
+			if want == "" {
+				want = tc.profileKey
+			}
+			var seen string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seen = r.Header.Get("Authorization")
+				w.Header().Set("Content-Type", "application/json")
+				if seen != "Bearer "+want {
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(w, `{"error":"unauthorized"}`)
+					return
+				}
+				fmt.Fprint(w, `{"data":[{"project_id":"11111111-2222-3333-4444-555555555555","key":"banking","name":"Banking"}],"has_more":false}`)
+			}))
+			t.Cleanup(srv.Close)
+
+			for _, envVar := range apiKeyEnvVars {
+				t.Setenv(envVar, "")
+			}
+			if tc.envVar != "" {
+				t.Setenv(tc.envVar, tc.envKey)
+			}
+			prevProfile := viper.GetString("profile")
+			viper.Set("profile", "default")
+			t.Cleanup(func() { viper.Set("profile", prevProfile) })
+			creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+			if err != nil {
+				t.Fatalf("NewCredentialsFile: %v", err)
+			}
+			// Restore rather than nil out: the global is shared with the rest
+			// of the package.
+			prevCreds := bartolocli.Creds
+			bartolocli.Creds = creds
+			t.Cleanup(func() { bartolocli.Creds = prevCreds })
+			if tc.profileKey != "" {
+				creds.Set("profiles.default.api_key", tc.profileKey)
+			}
+			prevServer, prevSource := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "test")
+			t.Cleanup(func() { auth.SetServer(prevServer, prevSource) })
+
+			setProjectRef(t, "banking")
+			cmd := projectIDCommand(t, "")
+			if err := bridgeProjectFlag(cmd, nil); err != nil {
+				t.Fatalf("bridgeProjectFlag authenticated as %q: %v", seen, err)
+			}
+			if got := cmd.Flags().Lookup("project-id").Value.String(); got != "11111111-2222-3333-4444-555555555555" {
+				t.Errorf("--project-id = %q, want the id --project resolved to", got)
+			}
+		})
 	}
 }

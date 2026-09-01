@@ -201,12 +201,30 @@ func ReadSession() (*Session, error) {
 	}
 }
 
+// pruneExpiredWorkspaceTokens drops cache entries whose token has actually
+// expired, so a user cycling through (workspace, project) pairs — each one its
+// own WorkspaceTokens entry, see Client.tokenKey — doesn't accumulate dead
+// JWTs in the session file forever.
+//
+// Zero skew, not the 60s skew the read paths use: EnsureWorkspaceToken and
+// WorkspaceToken already re-exchange anything expiring within that window, so
+// nothing a concurrent invocation could still treat as usable is ever evicted
+// here — only entries no reader would accept regardless.
+func pruneExpiredWorkspaceTokens(s *Session) {
+	for key, tok := range s.WorkspaceTokens {
+		if isExpired(tok.ExpiresAt, 0) {
+			delete(s.WorkspaceTokens, key)
+		}
+	}
+}
+
 // SaveSession writes the session atomically: temp file in the same directory,
 // then rename. A concurrent reader can never observe a torn/interleaved file,
 // and two concurrent writers end with one intact winner (last writer wins on
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
 func SaveSession(s *Session) error {
+	pruneExpiredWorkspaceTokens(s)
 	if err := ensureSessionDir(); err != nil {
 		return err
 	}

@@ -68,6 +68,31 @@ func TestSaveSessionRoundTripPermsAndNoTemp(t *testing.T) {
 	}
 }
 
+func TestSaveSessionPrunesExpiredWorkspaceTokensOnly(t *testing.T) {
+	isolateHome(t)
+	in := validSession("prod")
+	// Already expired: a dead JWT left over from a project the user is no
+	// longer using.
+	in.WorkspaceTokens["acme#proj-old"] = StoredAccessToken{Token: "tok-old", ExpiresAt: "2000-01-01T00:00:00Z"}
+	// Still valid: must survive the prune.
+	in.WorkspaceTokens["acme#proj-new"] = StoredAccessToken{Token: "tok-new", ExpiresAt: "2099-01-01T00:00:00Z"}
+
+	if err := SaveSession(in); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+
+	got, err := ReadSession()
+	if err != nil {
+		t.Fatalf("ReadSession: %v", err)
+	}
+	if _, present := got.WorkspaceTokens["acme#proj-old"]; present {
+		t.Errorf("expired workspace token was not pruned: %+v", got.WorkspaceTokens)
+	}
+	if got.WorkspaceTokens["acme#proj-new"].Token != "tok-new" {
+		t.Errorf("valid workspace token was pruned or lost: %+v", got.WorkspaceTokens)
+	}
+}
+
 func TestMergeWorkspaceTokenPreservesConcurrentActiveChange(t *testing.T) {
 	isolateHome(t)
 	// Seed the on-disk session with active = prod.
