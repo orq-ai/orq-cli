@@ -174,7 +174,8 @@ func installSessionPreRun() {
 		// injects the session token into ORQ_API_KEY below - commands that
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
-		commands.SetExplicitAPIKey(apiKeyConfigured())
+		explicitKey := apiKeyConfigured() && !ownExportedKey()
+		commands.SetExplicitAPIKey(explicitKey)
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
@@ -191,7 +192,7 @@ func installSessionPreRun() {
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
-		if override != "" && apiKeyConfigured() {
+		if override != "" && explicitKey {
 			commands.Warn("--workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
 		}
 		session, err := auth.ReadSession()
@@ -209,7 +210,7 @@ func installSessionPreRun() {
 			auth.SetServer(session.APIBaseURL, "session")
 			mirrorServerToViper()
 		}
-		if apiKeyConfigured() {
+		if explicitKey {
 			// An explicit key carries its own scope, so there is no token to
 			// narrow. --project still has to mean something, so it is passed
 			// through as the request's project_id.
@@ -421,6 +422,30 @@ func apiKeyConfigured() bool {
 		}
 	}
 	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
+}
+
+// ownExportedKey reports whether the only API key in the environment is the one
+// `orq setup` minted and wrote into ~/.orq/env, with a session available to use
+// instead. That key is ours, not a deliberate override by the user, and letting
+// it outrank the session made `orq workspace use` and `orq projects use` silent
+// no-ops on every machine that had run setup and sourced the file (RES-1465).
+// setup already applies this same rule to itself.
+//
+// Deliberately narrow: any key we did not mint, and any key in a credentials
+// profile, still wins. Only the exact string we exported defers.
+func ownExportedKey() bool {
+	profile := bartolocli.GetProfile()
+	saved := strings.TrimSpace(profile["gateway_key"])
+	if saved == "" || strings.TrimSpace(profile["api_key"]) != "" {
+		return false
+	}
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != saved {
+			return false
+		}
+	}
+	session, err := auth.ReadSession()
+	return err == nil && session != nil
 }
 
 func activeWorkspaceToken(ctx context.Context, projectID string) string {

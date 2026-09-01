@@ -111,6 +111,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: the key `orq setup` exports no longer shadows the session.** When
+  `ORQ_API_KEY` holds exactly the key setup minted and wrote into `~/.orq/env`,
+  and a session exists, the session wins — that key is ours, not a deliberate
+  override, and letting it rank first made `orq workspace use` and `orq projects
+  use` silent no-ops on every machine that had run setup and sourced the file.
+  Any key we did not mint, and any key in a credentials profile, still wins.
+
 - **Added: `orq setup` asks which project to work in**, between authenticating
   and creating the key. It skips itself when the workspace has one project or
   none, never offers to create one, and is skipped entirely on an `--api-key`
