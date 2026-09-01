@@ -120,14 +120,15 @@ func resolve(in input) (result, error) {
 	tags := tagSet(in.Tags)
 
 	if in.Channel == "rc" {
-		stableTarget := stableVersionTarget(in.Version, bump, tags)
-		rcBase := stableTarget
-		if highest, ok := highestStable(tags); ok && higher(highest, rcBase) {
-			rcBase = highest
+		// An rc previews the next stable release, so its base is that release's
+		// number - not a further bump on top of it, which would name a version
+		// the stable line never cuts.
+		rcBase := stableVersionTarget(in.Version, bump, tags)
+		if err := checkFloor(rcBase, tags); err != nil {
+			return result{}, err
 		}
-		rcBase = applyBump(rcBase, "minor")
-		major, minor, _ := parseVersionFields(rcBase)
-		prefix := fmt.Sprintf("%d.%d.0-rc.", major, minor)
+		major, minor, patch := parseVersionFields(rcBase)
+		prefix := fmt.Sprintf("%d.%d.%d-rc.", major, minor, patch)
 		n := 1
 		for tags[fmt.Sprintf("v%s%d", prefix, n)] {
 			n++
@@ -145,14 +146,20 @@ func resolve(in input) (result, error) {
 	version := stableVersionTarget(in.Version, bump, tags)
 	major, minor, patch := parseVersionFields(version)
 	version = fmt.Sprintf("%d.%d.%d", major, minor, patch)
-	// A stale or mis-merged VERSION resolves a number below what is already
-	// published, and that number becomes npm `latest` and /releases/latest -
-	// a downgrade `orq update` then refuses to walk anyone back out of. Fail
-	// the release instead.
-	if highest, ok := highestStable(tags); ok && !higher(version, highest) {
-		return result{}, fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
+	if err := checkFloor(version, tags); err != nil {
+		return result{}, err
 	}
 	return result{Version: version, Tag: "v" + version, PreviousTag: "v" + in.Version, Bump: bump}, nil
+}
+
+// checkFloor is the floor rule from CHANGELOG.md#versioning, in one place for
+// every caller.
+func checkFloor(version string, tags map[string]bool) error {
+	highest, ok := highestStable(tags)
+	if !ok || higher(version, highest) {
+		return nil
+	}
+	return fmt.Errorf("resolved %s does not sort above the highest released %s: check VERSION", version, highest)
 }
 
 func stableVersionTarget(version, bump string, tags map[string]bool) string {
@@ -193,8 +200,8 @@ func verify(in input, version string) (result, error) {
 	if i := strings.Index(base, "-rc."); i >= 0 {
 		base = base[:i]
 	}
-	if highest, ok := highestStable(tags); ok && !higher(base, highest) {
-		return result{}, fmt.Errorf("version %s does not sort above the highest released %s", version, highest)
+	if err := checkFloor(base, tags); err != nil {
+		return result{}, fmt.Errorf("%s: %w", version, err)
 	}
 	return result{Version: version, Tag: tag, Prerelease: in.Channel == "rc"}, nil
 }

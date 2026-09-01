@@ -37,17 +37,17 @@ func TestResolveRCBaseAndFreeRCNumber(t *testing.T) {
 		{
 			name:    "same line and free number",
 			version: "5.0.0", api: "4.16.0", released: "4.15.0",
-			tags: "v5.0.0\nv5.2.0-rc.1\nv5.2.0-rc.2\n", wantVersion: "5.2.0-rc.3", wantPrevious: "v5.2.0-rc.2", wantBump: "minor",
+			tags: "v5.0.0\nv5.1.0-rc.1\nv5.1.0-rc.2\n", wantVersion: "5.1.0-rc.3", wantPrevious: "v5.1.0-rc.2", wantBump: "minor",
 		},
 		{
-			name:    "above stable release",
-			version: "5.0.0", api: "4.15.0", released: "4.15.0",
-			tags: "v5.0.0\nv5.1.0\n", wantVersion: "5.2.0-rc.1", wantPrevious: "v5.0.0",
+			name:    "previews a patch release",
+			version: "5.1.3", api: "4.15.0", released: "4.15.0",
+			tags: "v5.1.3\n", wantVersion: "5.1.4-rc.1", wantPrevious: "v5.1.3", wantBump: "patch",
 		},
 		{
-			name:    "above highest stable tag",
-			version: "4.14.3", api: "4.15.0", released: "4.15.0",
-			tags: "v5.0.0\n", wantVersion: "5.1.0-rc.1",
+			name:    "free number on a patch line",
+			version: "5.1.3", api: "4.15.0", released: "4.15.0",
+			tags: "v5.1.3\nv5.1.4-rc.1\n", wantVersion: "5.1.4-rc.2", wantPrevious: "v5.1.4-rc.1", wantBump: "patch",
 		},
 	}
 	for _, tt := range tests {
@@ -67,7 +67,7 @@ func TestResolveRCIsIndependentOfStableVERSIONAdvance(t *testing.T) {
 	tests := []struct {
 		name, firstVersion, secondVersion, tags, want string
 	}{
-		{name: "stable VERSION advance", firstVersion: "5.0.0", secondVersion: "5.1.0", tags: "v5.0.0\n", want: "5.2.0-rc.1"},
+		{name: "stable VERSION advance", firstVersion: "5.0.0", secondVersion: "5.1.0", tags: "v5.0.0\n", want: "5.1.0-rc.1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,9 +224,50 @@ func TestCommitBumpReadsTheSubjectAndFooterOnly(t *testing.T) {
 // A VERSION left below what is already published would resolve a downgrade,
 // and `orq update` refuses downgrades, so nobody would be walked back out of it.
 func TestResolveRefusesToPublishBelowTheHighestRelease(t *testing.T) {
-	_, err := resolve(input{Version: "4.14.3", API: "4.15.0", ReleasedAPI: "4.15.0", Tags: legacyTags + "v5.0.0\n", Channel: "stable"})
-	if err == nil {
-		t.Fatal("resolve accepted a version below the highest release")
+	// Both channels stop rather than inventing a number above the highest
+	// release: an rc that guesses its own base no longer previews the release
+	// the stable line will cut.
+	tests := []struct{ name, version, tags string }{
+		{"VERSION behind the highest tag", "4.14.3", legacyTags + "v5.0.0\n"},
+		{"bump lands below a newer minor", "5.0.0", legacyTags + "v5.0.0\nv5.1.0\n"},
+	}
+	for _, tt := range tests {
+		for _, channel := range []string{"stable", "rc"} {
+			t.Run(tt.name+"/"+channel, func(t *testing.T) {
+				_, err := resolve(input{Version: tt.version, API: "4.15.0", ReleasedAPI: "4.15.0", Tags: tt.tags, Channel: channel})
+				if err == nil {
+					t.Fatal("resolve accepted a version below the highest release")
+				}
+			})
+		}
+	}
+}
+
+// On a run that cuts both channels the rc is resolved from the release stable
+// is about to cut, so it previews the release after that one and never collides
+// with it - whichever way the two channels' own bumps fall.
+func TestResolveRCPreviewsTheReleaseAfterTheOneBeingCut(t *testing.T) {
+	tests := []struct {
+		name     string
+		api      string
+		released string
+		want     string
+	}{
+		{"rc bumps a minor of its own", "4.16.0", "4.15.0", "5.3.0-rc.1"},
+		// The rc lagging stable used to resolve below the tag stable had just
+		// appended, failing the floor and taking the whole release down.
+		{"rc only has a patch", "4.15.0", "4.15.0", "5.2.1-rc.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolve(input{Version: "5.2.0", API: tt.api, ReleasedAPI: tt.released, Tags: "v5.1.3\nv5.2.0\n", Channel: "rc"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Version != tt.want {
+				t.Fatalf("got %q, want %q", got.Version, tt.want)
+			}
+		})
 	}
 }
 

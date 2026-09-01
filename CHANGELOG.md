@@ -47,8 +47,11 @@ ever cuts can collide with a version npm has already published.
 The tag `v<version>` is the authority — the release pipeline creates it, and
 writes the same number back to `VERSION` at the repo root so a checkout knows
 what it last shipped. You never tag by hand, and hand edits to `VERSION` are for
-one case only (below). A pre-release build of the next minor is published on the
-`rc` line.
+one case only (below). A pre-release build of the next release is published on
+the `rc` line, under that release's own number: an rc previewing `5.2.0` is
+`5.2.0-rc.N`, and an rc previewing a patch is `5.1.4-rc.N`. The rc line carries
+its own orq API schema, so its bump is resolved from that schema and can be
+larger than the stable line's on the same commit.
 
 ### What moves the version
 
@@ -107,6 +110,33 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Changed:** `rc` releases are numbered as the stable release they preview.
+  The resolver applied a second minor bump on top of the resolved stable target,
+  so the rc line drifted a minor further ahead on every minor bump — `5.3.0-rc.5`
+  was published while stable was on `5.1.3`, naming a version the stable line
+  will never cut. An rc now carries the base of the release it previews.
+- **Changed:** a `VERSION` that lags the highest published tag now fails the rc
+  release too, not only the stable one. The rc channel used to invent the next
+  minor above that tag. Fix `VERSION` and re-run.
+- **Fixed:** a run that cuts both channels no longer resolves the two from the
+  same `VERSION` and tag set. The rc is resolved last, from the release stable is
+  about to cut, so it previews the release after that one — `5.3.0-rc.1` next to
+  a `5.2.0` that came from a minor bump, rather than a `5.2.0-rc.1` that races
+  the release it names and fails its own floor check depending on which job tags
+  first. When the rc's own bump lagged stable's, the rc also resolved *under* the
+  release being cut and failed change detection outright, taking the stable
+  release down with it.
+- **Fixed:** both places that look for the last rc tag — release notes, and the
+  change detection that decides whether an rc is worth cutting — walk the commit
+  graph instead of sorting version numbers. Sorting assumed rc numbers only ever
+  move forward, which is no longer guaranteed: an rc is numbered as the release
+  it previews, so a correction to that number can leave higher rc tags behind on
+  the line, and notes anchored to one of those would re-report what an earlier rc
+  already said.
+- **Changed:** `cmd/release-version/` now counts as a release-worthy change on
+  both channels. A fix to the resolver used to wait for an unrelated commit
+  before it could take effect.
 
 ## [5.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.0) — 2026-09-01
 

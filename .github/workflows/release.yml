@@ -78,18 +78,17 @@ jobs:
           # line cannot cut a major.
           git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
             VERSION cli/custom npm scripts install.sh \
-            openapi.yaml .bartolo.json go.mod go.sum cmd/orq > "$commits_file"
+            openapi.yaml .bartolo.json go.mod go.sum cmd/orq cmd/release-version > "$commits_file"
           stable_resolved="$(go run ./cmd/release-version \
             --channel stable --version "$file_version" \
             --api-version "$stable_api_version" --released-api-version "$released_api" \
             --tags-file "$tags_file" --commits-file "$commits_file")"
-          rc_resolved="$(go run ./cmd/release-version \
-            --channel rc --version "$file_version" \
-            --api-version "$rc_api_version" --released-api-version "$released_api" \
-            --tags-file "$tags_file" --commits-file "$commits_file")"
           stable_version="$(printf '%s\n' "$stable_resolved" | awk -F= '$1 == "version" { print $2 }')"
-          rc_tag="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "previous_tag" { print $2 }')"
-          rc_version="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "version" { print $2 }')"
+          # The rc anchor walks the commit graph: rc numbers do not only move
+          # forward, so the highest-sorting rc tag is not always the one that
+          # shipped last. `|| true` covers describe's exit 128 when no rc tag is
+          # reachable, which reads as "the line has not started".
+          rc_tag="$(git describe --tags --match 'v*-rc.*' --abbrev=0 HEAD || true)"
           # No tag on a line yet: everything it ships counts as unreleased.
           changed_since() {
             if [ -n "$1" ]; then git diff --name-only "$1" HEAD; else git ls-files; fi
@@ -112,8 +111,10 @@ jobs:
           else
             # Shared: compiled into both binaries, or shipped by both
             # releases. Each module's own cmd/ is not, and cmd/surface-dump
-            # ships to nobody.
-            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$)'
+            # ships to nobody. cmd/release-version ships to nobody either, but
+            # it decides what both channels publish - leaving it out is how a
+            # fix to it waits for an unrelated commit to take effect.
+            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$|cmd/release-version/)'
 
             stable=false
             prerelease=false
@@ -124,6 +125,23 @@ jobs:
               prerelease=true
             fi
           fi
+
+          # The rc is resolved last, from the release the stable run is about
+          # to cut, so it previews the release after that one rather than the
+          # one already being published. Resolving both from VERSION is how a
+          # `both` run ended up with 5.2.0 and 5.2.0-rc.1 racing for the same
+          # base - and, once stable's bump outran the rc's, with an rc under
+          # the floor that failed this whole step and took stable down with it.
+          rc_base_version="$file_version"
+          if [ "$stable" = "true" ]; then
+            echo "v$stable_version" >> "$tags_file"
+            rc_base_version="$stable_version"
+          fi
+          rc_resolved="$(go run ./cmd/release-version \
+            --channel rc --version "$rc_base_version" \
+            --api-version "$rc_api_version" --released-api-version "$released_api" \
+            --tags-file "$tags_file" --commits-file "$commits_file")"
+          rc_version="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "version" { print $2 }')"
 
           {
             echo "stable=$stable"

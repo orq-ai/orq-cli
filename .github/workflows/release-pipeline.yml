@@ -259,21 +259,30 @@ jobs:
           # the notes jump tracks: rc.4 and v4.14.1 shipped byte-identical bodies.
           # Anchor each release to the last tag of its own stream.
           #
-          # This assumes a single stable release line: the stable anchor is the
-          # highest-sorting stable tag, not the nearest ancestor, so a backport
-          # hotfix cut from an older branch would anchor to a newer tag and
-          # generate an empty changelog.
+          # The rc anchor walks the commit graph, because rc numbers do not only
+          # move forward: an rc is numbered as the release it previews, so a
+          # correction to that number leaves higher rc tags behind on the line,
+          # and the highest-sorting one stops being the one that shipped last.
+          # `describe` is right whichever way the numbers moved. Its `|| true` is
+          # load-bearing, not defensive: `describe` exits 128 when no rc tag is
+          # reachable, and this step runs under the default `bash -e`. stderr is
+          # left unredirected so a real failure is readable in the log rather
+          # than silently anchoring nowhere.
+          #
+          # The stable anchor still sorts, which assumes a single stable release
+          # line: a backport hotfix cut from an older branch would anchor to a
+          # newer tag and generate an empty changelog.
           #
           # -v:refname, not -creatordate: every tag here is lightweight, so
           # creatordate is the underlying commit's date rather than the tag's,
           # and the offsets already disagree (+0000 vs +0200).
           #
-          # `|| true` on each pipeline: this step sets no `set -o pipefail`, so
+          # `|| true` on the pipeline: this step sets no `set -o pipefail`, so
           # the pipeline's status is `head -1`'s (0 on empty input) — the guard
           # is defensive only, in case pipefail is ever turned on here and a grep
           # legitimately matches nothing.
           if [ "$PRERELEASE" = "true" ]; then
-            start_tag="$(git tag --list 'v*-rc.*' --sort=-v:refname | grep -v "^${TAG}$" | head -1 || true)"
+            start_tag="$(git describe --tags --match 'v*-rc.*' --exclude "$TAG" --abbrev=0 "$target" || true)"
           else
             start_tag="$(git tag --list 'v*' --sort=-v:refname | grep -v -- '-rc\.' | grep -v "^${TAG}$" | head -1 || true)"
           fi
