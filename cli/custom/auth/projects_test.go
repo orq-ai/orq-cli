@@ -302,3 +302,46 @@ func TestAPIErrorPredicatesMatchTheStatusesSetupBranchesOn(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveProject(t *testing.T) {
+	projects := []Project{
+		{ProjectID: "019a-id-1", Key: "banking", Name: "Banking"},
+		{ProjectID: "019a-id-2", Key: "moneybird", Name: "Moneybird"},
+		{ProjectID: "019a-id-3", Key: "dup-a", Name: "Shared"},
+		{ProjectID: "019a-id-4", Key: "dup-b", Name: "Shared"},
+		// A name that collides with another project's key must lose to the
+		// key, or `use banking` would resolve to the wrong project.
+		{ProjectID: "019a-id-5", Key: "decoy", Name: "banking"},
+	}
+	for _, tc := range []struct{ ref, want string }{
+		{"019a-id-2", "019a-id-2"},
+		{"banking", "019a-id-1"},
+		{"Moneybird", "019a-id-2"},
+		{"moneybird", "019a-id-2"},
+	} {
+		got, err := ResolveProject(projects, tc.ref)
+		if err != nil {
+			t.Fatalf("ResolveProject(%q): %v", tc.ref, err)
+		}
+		if got.ProjectID != tc.want {
+			t.Errorf("ResolveProject(%q) = %s, want %s", tc.ref, got.ProjectID, tc.want)
+		}
+	}
+	if _, err := ResolveProject(projects, "Shared"); err == nil {
+		t.Error("an ambiguous name must be an error, not a guess")
+	}
+	if _, err := ResolveProject(projects, "missing"); err == nil {
+		t.Error("an unknown ref must be an error")
+	}
+}
+
+func TestTokenKeyIsolatesProjects(t *testing.T) {
+	unscoped := NewClient("https://api.orq.ai")
+	if got := unscoped.tokenKey("acme"); got != "acme" {
+		t.Errorf("an unscoped token must keep the bare workspace key, got %q", got)
+	}
+	scoped := NewClient("https://api.orq.ai").WithProject("pid")
+	if scoped.tokenKey("acme") == unscoped.tokenKey("acme") {
+		t.Error("a project-scoped token must not reuse the workspace-wide cache entry")
+	}
+}

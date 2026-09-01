@@ -101,6 +101,7 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+	bartolocli.AddGlobalFlag("project", "", "Project id, key or name to use for this invocation (overrides the session's active project)", "")
 	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
 	// as an alias because it is the machine contract this CLI shipped and
 	// documented; applyJSONAlias below turns it into --output-format json.
@@ -195,7 +196,9 @@ func installSessionPreRun() {
 		}
 		session, err := auth.ReadSession()
 		if err != nil || session == nil {
-			return nil
+			// No session to narrow, so --project can only be a request
+			// parameter. API-key-only users live entirely on this path.
+			return bridgeProjectFlag(cmd, nil)
 		}
 		// The session's host is the last resort, below every explicit source.
 		// A profile carries its own server since bartolo 0.8, but a session
@@ -207,10 +210,17 @@ func installSessionPreRun() {
 			mirrorServerToViper()
 		}
 		if apiKeyConfigured() {
-			return nil
+			// An explicit key carries its own scope, so there is no token to
+			// narrow. --project still has to mean something, so it is passed
+			// through as the request's project_id.
+			return bridgeProjectFlag(cmd, session)
+		}
+		projectID, err := resolveProjectID(cmd, session, override)
+		if err != nil {
+			return err
 		}
 		if override != "" {
-			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
+			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context()).WithProject(projectID)
 			token, err := client.WorkspaceToken(session, override)
 			if err != nil {
 				return fmt.Errorf("workspace %q: %w", override, err)
@@ -218,7 +228,7 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 			return nil
 		}
-		if token := activeWorkspaceToken(cmd.Context()); token != "" {
+		if token := activeWorkspaceToken(cmd.Context(), projectID); token != "" {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
@@ -413,12 +423,12 @@ func apiKeyConfigured() bool {
 	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
-func activeWorkspaceToken(ctx context.Context) string {
+func activeWorkspaceToken(ctx context.Context, projectID string) string {
 	session, err := auth.ReadSession()
 	if err != nil || session == nil {
 		return ""
 	}
-	client := auth.NewClient(session.APIBaseURL).WithContext(ctx)
+	client := auth.NewClient(session.APIBaseURL).WithContext(ctx).WithProject(projectID)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return ""
@@ -426,11 +436,80 @@ func activeWorkspaceToken(ctx context.Context) string {
 	return active.AccessToken
 }
 
+// projectRef is the --project / ORQ_PROJECT value: a project id, key or name.
+func projectRef() string {
+	return strings.TrimSpace(viper.GetString("project"))
+}
+
+// resolveProjectID decides which project this invocation runs against:
+// --project when given, otherwise the session's active project. An id needs no
+// lookup; a key or a name costs one /v2/projects call.
+func resolveProjectID(cmd *cobra.Command, session *auth.Session, workspaceOverride string) (string, error) {
+	ref := projectRef()
+	if ref == "" {
+		return session.ActiveProjectID, nil
+	}
+	if auth.LooksLikeProjectID(ref) {
+		return ref, nil
+	}
+	workspaceKey := workspaceOverride
+	if workspaceKey == "" && session.ActiveWorkspaceKey != nil {
+		workspaceKey = *session.ActiveWorkspaceKey
+	}
+	client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
+	bearer, err := client.WorkspaceToken(session, workspaceKey)
+	if err != nil {
+		return "", fmt.Errorf("project %q: %w", ref, err)
+	}
+	return lookupProjectID(client, bearer, ref)
+}
+
+func lookupProjectID(client *auth.Client, bearer, ref string) (string, error) {
+	projects, err := client.ListProjects(bearer)
+	if err != nil {
+		return "", fmt.Errorf("project %q: %w", ref, err)
+	}
+	project, err := auth.ResolveProject(projects, ref)
+	if err != nil {
+		return "", err
+	}
+	return project.ProjectID, nil
+}
+
+// bridgeProjectFlag fills the generated commands' own --project-id from
+// --project, for the API-key path where there is no session token to narrow.
+// An explicit --project-id always wins.
+func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
+	ref := projectRef()
+	if ref == "" {
+		return nil
+	}
+	flag := cmd.Flags().Lookup("project-id")
+	if flag == nil || flag.Changed {
+		return nil
+	}
+	id := ref
+	if !auth.LooksLikeProjectID(ref) {
+		base := auth.Server()
+		if base == "" && session != nil {
+			base = session.APIBaseURL
+		}
+		client := auth.NewClient(base).WithContext(cmd.Context())
+		resolved, err := lookupProjectID(client, os.Getenv("ORQ_API_KEY"), ref)
+		if err != nil {
+			return err
+		}
+		id = resolved
+	}
+	return cmd.Flags().Set("project-id", id)
+}
+
 func registerCommands(root *cobra.Command) {
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
 	root.AddCommand(commands.NewWorkspaceCommand())
+	attachProjectsUse(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewOrqiCommand())
@@ -560,6 +639,17 @@ func replaceDoctor(root *cobra.Command) {
 		}
 	}
 	root.AddCommand(commands.NewDoctorCommand())
+}
+
+// attachProjectsUse hangs `use` off the generated `projects` group, so the
+// active-project verb sits with list/get/create rather than at the root.
+func attachProjectsUse(root *cobra.Command) {
+	for _, c := range root.Commands() {
+		if c.Name() == "projects" {
+			c.AddCommand(commands.NewProjectsUseCommand())
+			return
+		}
+	}
 }
 
 func attachAuthSubcommands(root *cobra.Command) {

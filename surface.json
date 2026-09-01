@@ -36,6 +36,10 @@
           "type": "string"
         },
         {
+          "name": "project",
+          "type": "string"
+        },
+        {
           "name": "raw",
           "type": "bool"
         },
@@ -6927,6 +6931,16 @@
         {
           "name": "teams",
           "type": "stringSlice"
+        }
+      ]
+    },
+    {
+      "path": "orq projects use",
+      "use": "use [project]",
+      "flags": [
+        {
+          "name": "clear",
+          "type": "bool"
         }
       ]
     },

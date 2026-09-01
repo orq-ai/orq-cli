@@ -72,6 +72,61 @@ func (c *Client) CreateProject(bearer, name, description string) (*Project, erro
 	return &resp.Project, nil
 }
 
+// uuidPattern matches the project_id format /v2/projects returns. Used only to
+// tell an id apart from a key or a name, so `--project <id>` skips the lookup.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// LooksLikeProjectID reports whether ref is already a project id.
+func LooksLikeProjectID(ref string) bool {
+	return uuidPattern.MatchString(strings.TrimSpace(ref))
+}
+
+// ResolveProject finds the project a user named, accepting its id, its key or
+// its name. Match order is id, then key, then name: the first two are unique,
+// so only a name can be ambiguous, and an ambiguous name is an error rather
+// than a guess.
+func ResolveProject(projects []Project, ref string) (*Project, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, errors.New("no project given")
+	}
+	for _, field := range []func(Project) string{
+		func(p Project) string { return p.ProjectID },
+		func(p Project) string { return p.Key },
+	} {
+		for i := range projects {
+			if field(projects[i]) == ref {
+				return &projects[i], nil
+			}
+		}
+	}
+	var byName []int
+	for i := range projects {
+		if strings.EqualFold(projects[i].Name, ref) {
+			byName = append(byName, i)
+		}
+	}
+	switch len(byName) {
+	case 0:
+		return nil, fmt.Errorf("no project matches %q", ref)
+	case 1:
+		return &projects[byName[0]], nil
+	default:
+		return nil, fmt.Errorf("%d projects are named %q; use the project id or key instead", len(byName), ref)
+	}
+}
+
+// DefaultProject returns the workspace's default project, the fallback when no
+// project was ever selected.
+func DefaultProject(projects []Project) *Project {
+	for i := range projects {
+		if projects[i].IsDefault && !projects[i].IsArchived {
+			return &projects[i]
+		}
+	}
+	return nil
+}
+
 // ulidPattern is the project_id format /v2/api-keys accepts. Note that
 // /v2/projects currently returns UUIDs, which this endpoint rejects — see
 // CreateAPIKey.

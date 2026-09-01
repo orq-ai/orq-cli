@@ -111,6 +111,18 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: an active project.** `orq projects use <project>` selects one by id,
+  key or name and persists it, and every later invocation mints its access
+  token scoped to that project — the server then narrows both reads and creates
+  to it, so `orq agents list` shows that project's agents and `orq agents
+  create` lands there without a `--project-id` on every call. `orq projects
+  use` with no argument prints the active project (or opens a picker at a
+  terminal); `--clear` unsets it.
+- **Added: a global `--project` flag (`ORQ_PROJECT`)**, a per-invocation
+  override that takes a project id, key or name. Under an explicit API key
+  there is no session token to narrow, so it fills the command's own
+  `--project-id` instead; an explicit `--project-id` always wins.
+
 ## [6.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.0.0) — 2026-09-02
 
 - **Added:** `-o table` renders a list command as a table, and it is the default
@@ -172,7 +184,6 @@ controls on surface changes, whichever side they originate from.
   instead of warning and writing the machine-wide file. Codex loads its project
   config only for a repository marked trusted in `~/.codex/config.toml`;
   connect prints the line to add.
-
 ## [5.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.1) — 2026-09-01
 
 - **Changed:** `rc` releases are numbered as the stable release they preview.
