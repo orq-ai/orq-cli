@@ -33,18 +33,22 @@ const (
 
 	defaultWebBaseURL = "https://my.orq.ai"
 	docsURL           = "https://docs.orq.ai"
-	setupSteps        = 3
+	setupSteps        = 4
 )
 
 type setupOptions struct {
 	interactive bool
 	workspace   string
-	apiKey      string
-	agents      []string
-	caps        []string
-	noGateway   bool
-	noInput     bool
-	yes         bool
+	// project is --project / ORQ_PROJECT: the project to activate, by id, key
+	// or name. noProject skips the step outright.
+	project   string
+	noProject bool
+	apiKey    string
+	agents    []string
+	caps      []string
+	noGateway bool
+	noInput   bool
+	yes       bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
 	// finalScreen marks a run that ends in printFinalScreen, which reports every
@@ -221,6 +225,7 @@ wins over a key left exported in your shell.`),
 	// On setup they pre-answer the wizard's scope question, which is how a
 	// non-interactive run — install.sh, CI — names a scope at all.
 	addScopeFlags(f, &opts)
+	f.BoolVar(&opts.noProject, "no-project", false, "Skip the project step and leave the session unscoped")
 	return cmd
 }
 
@@ -231,6 +236,9 @@ func applyGlobalFlags(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
+	}
+	if p := strings.TrimSpace(viper.GetString("project")); p != "" {
+		opts.project = p
 	}
 	if !hasInteractiveTTY() {
 		opts.noInput = true
@@ -285,10 +293,20 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	client := auth.NewClient(authState.apiBase)
 
-	// No project step: keys are workspace-scoped, and the key API takes a different id format than /v2/projects returns.
+	// --- Step 2: project -----------------------------------------------------
+	// Before the key step, deliberately: state.bearer is still the session
+	// token here, and useDurableKey swaps it for the minted key below.
+	rep.step(2, setupSteps, "Project")
+	project, err := resolveProjectStep(rep, client, authState, opts)
+	if err != nil {
+		return err
+	}
+	if project != nil {
+		result["project"] = map[string]any{"id": project.ProjectID, "name": project.Name, "key": project.Key}
+	}
 
-	// --- Step 2: API key -----------------------------------------------------
-	rep.step(2, setupSteps, "API key")
+	// --- Step 3: API key -----------------------------------------------------
+	rep.step(3, setupSteps, "API key")
 	keyInfo, mintedToken, mintedThisRun, err := resolveAPIKey(rep, client, authState, opts)
 	if err != nil {
 		return err
@@ -299,7 +317,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		authState.useDurableKey(mintedToken)
 	}
 
-	rep.step(3, setupSteps, "Coding agents")
+	rep.step(4, setupSteps, "Coding agents")
 	agentResults, err := setupConnectStep(rep, client, authState, opts)
 	if err != nil {
 		return err
@@ -361,6 +379,10 @@ type authState struct {
 	// a saved key was rejected. It prevents the generic mint confirmation below
 	// from silently creating the key anyway.
 	skipDurableKey bool
+	// projectID is the project chosen in step 2. It scopes the key minted for
+	// the coding agents, so a config file another program reads cannot reach
+	// the rest of the workspace.
+	projectID string
 	// sessionBearer keeps the workspace access token after a key takes over as bearer.
 	sessionBearer        string
 	enabledModels        int
@@ -735,7 +757,7 @@ func saveAPIKeyProfile(key, workspace string) error {
 }
 
 func clearGatewayKeyFields(profile string) {
-	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
+	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "gateway_key_project"} {
 		auth.SetStateValue(profile, field, "")
 	}
 }
@@ -750,7 +772,7 @@ func clearGatewayKeyFields(profile string) {
 // new key while the old one survives — and api_key is the profile field
 // apiKeyConfigured accepts, so every command would keep authenticating with a
 // stale key for the workspace the user just left.
-func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
+func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, projectID string) error {
 	profile := auth.ActiveProfile()
 	// Clear a key written before the split: api_key is the field
 	// apiKeyConfigured accepts, so leaving it there keeps every command
@@ -758,6 +780,9 @@ func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace str
 	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
 	auth.SetStateValue(profile, "gateway_key_id", keyID)
 	auth.SetStateValue(profile, "gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
+	// Recorded so a later run can tell "the saved key is for another project"
+	// from "the saved key is fine", the same job the workspace field does.
+	auth.SetStateValue(profile, "gateway_key_project", projectID)
 	if err := writeGatewayKeyProfile(profile, key, workspace); err != nil {
 		return err
 	}
@@ -882,6 +907,19 @@ func wiredWorkspace(state *authState) string {
 // Either side unknown means no mismatch: an unrecorded workspace (pre-field keys, --api-key) must not invalidate a working credential.
 func keyWorkspaceMismatch(savedWS, active string) bool {
 	return savedWS != "" && active != "" && savedWS != active
+}
+
+// savedKeyProject is the project the saved gateway key was minted for. Empty
+// means workspace-wide, or minted before scoping existed.
+func savedKeyProject() string {
+	return auth.StateValue("gateway_key_project")
+}
+
+// keyProjectMismatch reports whether the saved key belongs to a different
+// project than the one now active. An unknown side is never a mismatch, so a
+// key minted before scoping existed keeps working until it expires.
+func keyProjectMismatch(savedProject, active string) bool {
+	return savedProject != active && savedProject != "" && active != ""
 }
 
 // bartolo's resolveAuthHandler looks a profile type up verbatim and falls back to the sole handler only when empty, so a descriptive type breaks every generated command; the name is read back from the registry.
@@ -1084,6 +1122,11 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case keyWorkspaceMismatch(tokenWS, active):
 		rep.info("creating a key for workspace %s", active)
 		token = ""
+	case keyProjectMismatch(savedKeyProject(), state.projectID):
+		// One key per project: reusing another project's key would leave the
+		// agents authenticated against a project the user just left.
+		rep.info("creating a key for this project")
+		token = ""
 	case gatewayKeyDueForRenewal(time.Now()):
 		// The superseded key is left alive until its own expiry: that overlap is
 		// what keeps an agent config working until this run rewrites it.
@@ -1124,17 +1167,23 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 		userID = state.session.User.ID
 	}
 	expiresAt := time.Now().Add(gatewayKeyLifetime)
-	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID))
+	req, err := auth.NewAPIKeyRequest(keyName, auth.GatewayAccess(), expiresAt, auth.WithUser(userID), auth.WithProject(state.projectID))
 	if err != nil {
 		return "", false, err
 	}
-	minted, keyID, _, err := client.CreateAPIKey(state.bearer, req)
+	minted, keyID, scopedToProject, err := client.CreateAPIKey(state.bearer, req)
 	if err != nil {
 		return "", false, err
 	}
 	// The API returns the raw token and its id once: persist before anything else can fail.
-	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active); err != nil {
+	if err := saveGatewayKeyProfile(minted, keyID, expiresAt, active, state.projectID); err != nil {
 		return "", false, fmt.Errorf("created a key but could not save it: %w", err)
+	}
+	if scopedToProject {
+		// Say what it is scoped to, because the dashboard lists it only as
+		// "Restricted", and because a key that cannot see the rest of the
+		// workspace is a surprise worth naming once.
+		rep.note("the key is scoped to this project; it routes model calls for the coding agents and reaches nothing else")
 	}
 	rep.ok("gateway key created — expires in %d days", int(gatewayKeyLifetime.Hours()/24))
 	return minted, true, nil

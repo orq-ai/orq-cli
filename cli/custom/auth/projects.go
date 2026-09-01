@@ -127,17 +127,9 @@ func DefaultProject(projects []Project) *Project {
 	return nil
 }
 
-// ulidPattern is the project_id format /v2/api-keys accepts. Note that
-// /v2/projects currently returns UUIDs, which this endpoint rejects — see
-// CreateAPIKey.
+// ulidPattern is the id format the opaque `sk-orq-<ULID>-<secret>` token
+// carries; see KeyIDFromToken.
 var ulidPattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{26}$`)
-
-// ProjectScopable reports whether an API key can be scoped to this project.
-// The two endpoints disagree about ID formats today, so callers must be
-// prepared to fall back to a workspace-wide key.
-func ProjectScopable(projectID string) bool {
-	return ulidPattern.MatchString(strings.TrimPrefix(projectID, "proj_"))
-}
 
 // gatewayAccessMap is the permission set for a key that only routes model
 // calls: every domain in the catalog's GATEWAY group except mcp_gateway, which
@@ -201,14 +193,6 @@ func GatewayAccess() map[string]string {
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
 // actually validates against (verified against /v2/api-keys, both owner types).
 func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject bool) {
-	scope := map[string]any{"mode": "all"}
-	if ProjectScopable(req.projectID) {
-		scope = map[string]any{
-			"mode":       "single",
-			"project_id": strings.TrimPrefix(req.projectID, "proj_"),
-		}
-		scopedToProject = true
-	}
 	owner := map[string]any{"type": "service_account"}
 	if id := strings.TrimSpace(req.userID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
@@ -221,10 +205,21 @@ func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject b
 	out := map[string]any{
 		"name":            req.name,
 		"owner":           owner,
-		"project_scope":   scope,
+		"project_scope":   map[string]any{"mode": "all"},
 		"source":          "router",
 		"permission_mode": "restricted",
 		"access":          req.access,
+	}
+	// Scoping goes through `projects`, not the `project_scope` object
+	// openapi.yaml documents: identity-api serves this route, accepts
+	// project_scope on create and silently discards it (BACK-2098). `projects`
+	// is what actually produces project_scope {mode: single} on the record, and
+	// it takes the UUIDs /v2/projects returns. The two are mutually exclusive,
+	// so the all-projects default is dropped when a project is named.
+	if id := strings.TrimSpace(req.projectID); id != "" {
+		delete(out, "project_scope")
+		out["projects"] = []string{id}
+		scopedToProject = true
 	}
 	// "expiration", not "expires_at": the live endpoint is identity-api's strict
 	// decoder, which rejects the field name the committed spec documents.
@@ -252,8 +247,8 @@ type APIKeyOption func(*APIKeyRequest)
 // service account, which only workspace admins may create; see createAPIKeyBody.
 func WithUser(id string) APIKeyOption { return func(r *APIKeyRequest) { r.userID = id } }
 
-// WithProject narrows the key to one project when the id is in the format this
-// endpoint accepts.
+// WithProject narrows the key to one project, so a leaked or shared credential
+// cannot reach the rest of the workspace.
 func WithProject(id string) APIKeyOption { return func(r *APIKeyRequest) { r.projectID = id } }
 
 // NewAPIKeyRequest refuses an empty access map and a zero expiry rather than

@@ -104,28 +104,6 @@ func TestAgentRegistryIsComplete(t *testing.T) {
 	}
 }
 
-// The API rejects project IDs that are not ULIDs, while /v2/projects currently
-// returns UUIDs. Getting this check wrong means either a hard failure at mint
-// time or a silently over-scoped key.
-func TestProjectScopableRejectsUUIDs(t *testing.T) {
-	cases := []struct {
-		id   string
-		want bool
-	}{
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},            // ULID
-		{"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},       // ULID with the documented prefix
-		{"019def44-a743-7000-a442-c0db96b06699", false}, // what /v2/projects returns today
-		{"", false},
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5", false},  // 25 chars
-		{"01hzxw2k7y8q9m0n1p2r3s4t5v", false}, // lowercase is not Crockford base32
-	}
-	for _, tc := range cases {
-		if got := auth.ProjectScopable(tc.id); got != tc.want {
-			t.Errorf("ProjectScopable(%q) = %v, want %v", tc.id, got, tc.want)
-		}
-	}
-}
-
 // Project names are user-supplied and the key name has validation rules we do
 // not control, so anything exotic must be stripped before it is sent.
 func TestSanitizeKeyName(t *testing.T) {
@@ -2139,7 +2117,7 @@ func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme"); err != nil {
+			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			auth.SetStateValue("default", "gateway_key_expires_at", tc.expiresAt)
@@ -2169,7 +2147,7 @@ func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	ws := "acme"
@@ -2245,7 +2223,7 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme"); err != nil {
+			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			check, ok := gatewayKeyExpiryCheck(now)
@@ -2542,7 +2520,7 @@ func TestLogoutFailsWhenShellEnvironmentCannotBeCleared(t *testing.T) {
 func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 	t.Run("gateway key", func(t *testing.T) {
 		credsHarness(t)
-		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 			t.Fatal(err)
 		}
 		held, err := clearAPIKeyProfile()
@@ -2627,7 +2605,7 @@ func assertNoKeylessProfileOnDisk(t *testing.T, dir, wantGatewayKey string) {
 // worst possible latency for this class of bug.
 func TestSuppliedKeyDisplacesAMintedOne(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := saveAPIKeyProfile("sk-orq-SUPPLIED", ""); err != nil {
@@ -2655,7 +2633,7 @@ func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
 	if err := saveAPIKeyProfile("sk-orq-LEGACY-for-A", "workspace-A"); err != nil {
 		t.Fatal(err)
 	}
-	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B", ""); err != nil {
 		t.Fatal(err)
 	}
 	if storedAPIKeyProfile() {
@@ -2671,7 +2649,7 @@ func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
 // job is to explain why nothing works.
 func TestStoredAPIKeyProfileIgnoresTheGatewayKey(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if storedAPIKeyProfile() {

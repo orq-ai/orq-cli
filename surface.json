@@ -7802,6 +7802,10 @@
           "type": "bool"
         },
         {
+          "name": "no-project",
+          "type": "bool"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"

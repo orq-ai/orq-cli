@@ -1730,7 +1730,7 @@ func TestDoctorWarnsWhenAnAgentHoldsAnOlderKey(t *testing.T) {
 		return doctorCheck{}
 	}
 
-	if err := saveGatewayKeyProfile("sk-orq-NEW", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-NEW", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := find(); got.Status != "warn" || got.Details["stale_key"] != true {

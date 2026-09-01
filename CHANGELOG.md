@@ -111,6 +111,18 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq setup` asks which project to work in**, between authenticating
+  and creating the key. It skips itself when the workspace has one project or
+  none, never offers to create one, and is skipped entirely on an `--api-key`
+  run, which has no session to record the choice on. `--project <id|key|name>`
+  pre-answers it and `--no-project` skips it.
+- **Changed: the key `orq setup` mints is scoped to the selected project.** It
+  is the credential the coding agents use for model calls, so a config file
+  another program reads can no longer reach the rest of the workspace. A saved
+  key belonging to a different project is replaced rather than reused. Keys
+  minted before this stay workspace-wide until they expire. This does not
+  affect the agents' MCP tools, which authenticate over OAuth.
+
 - **Added: an active project.** `orq projects use <project>` selects one by id,
   key or name and persists it, and every later invocation mints its access
   token scoped to that project — the server then narrows both reads and creates

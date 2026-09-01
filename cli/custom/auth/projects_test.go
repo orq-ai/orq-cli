@@ -32,30 +32,34 @@ func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
 	}
 }
 
-// The two endpoints disagree about project id formats, so a UUID from
-// /v2/projects must not be sent as a scope the key endpoint will reject.
-func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
-	for _, tc := range []struct {
-		projectID string
-		wantScope bool
-	}{
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},
-		{"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},
-		{"019def44-a743-7000-a442-c0db96b06699", false},
-		{"", false},
-	} {
-		body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: tc.projectID, userID: "user_1", access: GatewayAccess()})
-		if scoped != tc.wantScope {
-			t.Errorf("%q: scopedToProject = %v, want %v", tc.projectID, scoped, tc.wantScope)
-		}
-		scope := body["project_scope"].(map[string]any)
-		wantMode := "all"
-		if tc.wantScope {
-			wantMode = "single"
-		}
-		if scope["mode"] != wantMode {
-			t.Errorf("%q: mode = %v, want %v", tc.projectID, scope["mode"], wantMode)
-		}
+// A project-scoped key is what setup mints for the coding agents, so a leaked
+// config file cannot reach the rest of the workspace. Scoping travels in
+// `projects`, which takes the UUIDs /v2/projects returns; the `project_scope`
+// object openapi.yaml documents is accepted and discarded (BACK-2098), so
+// sending it as well would silently widen the key back to all projects.
+func TestCreateAPIKeyScopesThroughProjects(t *testing.T) {
+	id := "019def44-a743-7000-a442-c0db96b06699"
+	body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: id, userID: "user_1", access: GatewayAccess()})
+	if !scoped {
+		t.Fatal("a project id must produce a project-scoped key")
+	}
+	projects, ok := body["projects"].([]string)
+	if !ok || len(projects) != 1 || projects[0] != id {
+		t.Errorf("projects = %v, want [%s]", body["projects"], id)
+	}
+	if _, present := body["project_scope"]; present {
+		t.Error("project_scope must not travel alongside projects")
+	}
+
+	body, scoped = createAPIKeyBody(APIKeyRequest{name: "k", userID: "user_1", access: GatewayAccess()})
+	if scoped {
+		t.Error("no project id given, key should not claim project scope")
+	}
+	if scope := body["project_scope"].(map[string]any); scope["mode"] != "all" {
+		t.Errorf("mode = %v, want all", scope["mode"])
+	}
+	if _, present := body["projects"]; present {
+		t.Error("an unscoped key must not send projects")
 	}
 }
 
