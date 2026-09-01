@@ -126,14 +126,19 @@ jobs:
             fi
           fi
 
-          # The rc is resolved last, against the tag the stable run is about to
-          # cut, so it previews the release after that one rather than the one
-          # already being published. Resolving both from the same tag set is how
-          # a `both` run ended up with 5.2.0 and 5.2.0-rc.1 racing for the same
-          # base, one of which then failed its own floor check.
-          if [ "$stable" = "true" ]; then echo "v$stable_version" >> "$tags_file"; fi
+          # The rc is resolved last, from the release the stable run is about
+          # to cut, so it previews the release after that one rather than the
+          # one already being published. Resolving both from VERSION is how a
+          # `both` run ended up with 5.2.0 and 5.2.0-rc.1 racing for the same
+          # base - and, once stable's bump outran the rc's, with an rc under
+          # the floor that failed this whole step and took stable down with it.
+          rc_base_version="$file_version"
+          if [ "$stable" = "true" ]; then
+            echo "v$stable_version" >> "$tags_file"
+            rc_base_version="$stable_version"
+          fi
           rc_resolved="$(go run ./cmd/release-version \
-            --channel rc --version "$file_version" \
+            --channel rc --version "$rc_base_version" \
             --api-version "$rc_api_version" --released-api-version "$released_api" \
             --tags-file "$tags_file" --commits-file "$commits_file")"
           rc_version="$(printf '%s\n' "$rc_resolved" | awk -F= '$1 == "version" { print $2 }')"

@@ -120,10 +120,13 @@ controls on surface changes, whichever side they originate from.
   release too, not only the stable one. The rc channel used to invent the next
   minor above that tag. Fix `VERSION` and re-run.
 - **Fixed:** a run that cuts both channels no longer resolves the two from the
-  same tag set. The rc is resolved last, against the tag the stable run is about
-  to cut, so it previews the release after that one — `5.2.1-rc.1` alongside
-  `5.2.0`, rather than a `5.2.0-rc.1` that races the release it names and fails
-  its own floor check depending on which job tags first.
+  same `VERSION` and tag set. The rc is resolved last, from the release stable is
+  about to cut, so it previews the release after that one — `5.3.0-rc.1` next to
+  a `5.2.0` that came from a minor bump, rather than a `5.2.0-rc.1` that races
+  the release it names and fails its own floor check depending on which job tags
+  first. When the rc's own bump lagged stable's, the rc also resolved *under* the
+  release being cut and failed change detection outright, taking the stable
+  release down with it.
 - **Fixed:** both places that look for the last rc tag — release notes, and the
   change detection that decides whether an rc is worth cutting — walk the commit
   graph instead of sorting version numbers. Sorting assumed rc numbers only ever

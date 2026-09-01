@@ -201,7 +201,7 @@ func verify(in input, version string) (result, error) {
 		base = base[:i]
 	}
 	if err := checkFloor(base, tags); err != nil {
-		return result{}, err
+		return result{}, fmt.Errorf("%s: %w", version, err)
 	}
 	return result{Version: version, Tag: tag, Prerelease: in.Channel == "rc"}, nil
 }

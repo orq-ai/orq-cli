@@ -243,15 +243,31 @@ func TestResolveRefusesToPublishBelowTheHighestRelease(t *testing.T) {
 	}
 }
 
-// The rc is resolved against the tag the stable run is about to cut, so it
-// previews the release after that one and never collides with it.
+// On a run that cuts both channels the rc is resolved from the release stable
+// is about to cut, so it previews the release after that one and never collides
+// with it - whichever way the two channels' own bumps fall.
 func TestResolveRCPreviewsTheReleaseAfterTheOneBeingCut(t *testing.T) {
-	got, err := resolve(input{Version: "5.1.3", API: "4.16.0", ReleasedAPI: "4.15.0", Tags: "v5.1.3\nv5.2.0\n", Channel: "rc"})
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name     string
+		api      string
+		released string
+		want     string
+	}{
+		{"rc bumps a minor of its own", "4.16.0", "4.15.0", "5.3.0-rc.1"},
+		// The rc lagging stable used to resolve below the tag stable had just
+		// appended, failing the floor and taking the whole release down.
+		{"rc only has a patch", "4.15.0", "4.15.0", "5.2.1-rc.1"},
 	}
-	if got.Version != "5.2.1-rc.1" {
-		t.Fatalf("got %q, want 5.2.1-rc.1", got.Version)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolve(input{Version: "5.2.0", API: tt.api, ReleasedAPI: tt.released, Tags: "v5.1.3\nv5.2.0\n", Channel: "rc"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Version != tt.want {
+				t.Fatalf("got %q, want %q", got.Version, tt.want)
+			}
+		})
 	}
 }
 
