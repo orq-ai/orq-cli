@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registernotifiersCommands(root *cobra.Command) {
 	root.AddCommand(notifiersCmd)
 
 	func() {
+		parent := notifiersCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + notifiersCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registernotifiersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a notifier destination in a project. Choose `NOTIFIER_TYPE_EMAIL`, `NOTIFIER_TYPE_SLACK_WEBHOOK`, or `NOTIFIER_TYPE_WEBHOOK` and provide the matching destination fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `emails` (array)\n- `headers` (object)\n- `incoming_webhook_url` (string)\n- `metadata` (object)\n- `project_id` (string)\n- `type` (string, required)\n- `webhook_url` (string)\n\nRequired fields: `display_name`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"emails\": [\n    \"emails\"\n  ],\n  \"type\": \"NOTIFIER_TYPE_EMAIL\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -94,21 +98,23 @@ func registernotifiersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiNotifierCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		notifiersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -179,6 +185,8 @@ func registernotifiersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := notifiersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -190,23 +198,26 @@ func registernotifiersCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiNotifierDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		notifiersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -218,6 +229,8 @@ func registernotifiersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := notifiersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -228,20 +241,24 @@ func registernotifiersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves an existing notifier by ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiNotifierGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		notifiersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -252,6 +269,8 @@ func registernotifiersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := notifiersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -262,20 +281,24 @@ func registernotifiersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns notifier destinations visible to the caller, ordered by creation time with the newest notifier first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiNotifierList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		notifiersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Optional. Number of notifiers to return. Defaults to 25 and must be between 1 and 200.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
@@ -293,11 +316,13 @@ func registernotifiersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := notifiersCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + notifiersCmd.CommandPath() + " update notifier-id --example\n"
+		examples += "  " + parent.CommandPath() + " update notifier-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update notifier-id",
@@ -305,9 +330,11 @@ func registernotifiersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Partially updates an existing notifier. When changing `type`, provide the destination fields required by the new notifier type.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `emails` (array)\n- `headers` (object)\n- `incoming_webhook_url` (string)\n- `metadata` (object)\n- `project_id` (string)\n- `type` (string)\n- `webhook_url` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"type\": \"NOTIFIER_TYPE_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -368,21 +395,23 @@ func registernotifiersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiNotifierUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		notifiersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

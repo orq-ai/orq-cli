@@ -478,7 +478,7 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	if inspect.Status != auth.StatusOK {
 		return doctorCheck{}, false
 	}
-	gatewayKey := strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".gateway_key"))
+	gatewayKey := auth.StateValueOf(auth.ActiveProfile(), "gateway_key")
 	exported := strings.TrimSpace(UserEnvAPIKey())
 	if gatewayKey == "" || exported != gatewayKey {
 		return doctorCheck{}, false

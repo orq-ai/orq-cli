@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	root.AddCommand(webhooksCmd)
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,20 +31,24 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the total number of enabled and disabled webhooks in the current workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWebhookCount(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -53,11 +59,13 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + webhooksCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -65,9 +73,11 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a webhook that delivers the selected workspace events to an HTTPS endpoint. Generate a signing secret first with `GET /v2/webhooks/secret`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `_id` (string, required)\n- `content_type` (string, required)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `events` (array, required)\n- `secret` (string, required)\n- `url` (string, required)\n\nRequired fields: `_id`, `content_type`, `display_name`, `events`, `secret`, `url`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"_id\": \"_id\",\n  \"content_type\": \"application/json\",\n  \"display_name\": \"display_name\",\n  \"events\": [\n    \"events\"\n  ],\n  \"secret\": \"secret\",\n  \"url\": \"https://example.com\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -120,21 +130,23 @@ func registerwebhooksCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -197,6 +209,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -208,23 +222,26 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiWebhookDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -236,6 +253,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -246,20 +265,24 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Generates a signing secret for verifying webhook deliveries. The secret is not persisted until it is used to create or update a webhook; store it securely."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWebhookGenerateSecret(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -270,6 +293,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -280,20 +305,24 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a webhook in the current workspace by ID. The response includes its signing secret; treat it as sensitive."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWebhookGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -304,6 +333,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -314,20 +345,24 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a page of webhooks in the current workspace. By default, the first 20 matching webhooks are ordered by creation time, newest first. Supplied filters are combined, `count` reports the total number of matches before pagination, and `has_more` indicates whether another page is available."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWebhookList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("page", 0, "One-based page number. Defaults to 1 and must be between 1 and 1,000,000.")
 		cmd.Flags().Int64("limit", 0, "Number of webhooks to return per page. Defaults to 20 and must be between\n 1 and 200.")
@@ -336,7 +371,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		cmd.Flags().String("sort", "", "Field used to order results. Allowed values are `created`, `updated`, and\n `display_name`. Defaults to `created`.")
 		cmd.Flags().String("direction", "", "Sort direction. Allowed values are `asc` and `desc`. Defaults to `desc`.")
 		cmd.Flags().String("content-type", "", "Optional comma-separated content types to match, for example\n `application/json,application/x-www-form-urlencoded`. A webhook matches\n when its content type equals any supplied value.")
-		cmd.Flags().String("enabled", "", "Optional delivery status filter. When omitted, enabled and disabled\n webhooks are returned.")
+		cmd.Flags().Bool("enabled", false, "Optional delivery status filter. When omitted, enabled and disabled\n webhooks are returned.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -347,11 +382,13 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + webhooksCmd.CommandPath() + " query --example\n"
+		examples += "  " + parent.CommandPath() + " query --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "query",
@@ -359,9 +396,11 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("**Deprecated.** Returns webhooks matching legacy query filters. Use `GET /v2/webhooks` for pagination, search, event filtering, and sorting.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `includedFields` (object)\n- `pagination` (object)\n- `query` (object)\n- `sortingProps` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": [\n    {}\n  ],\n  \"includedFields\": {},\n  \"pagination\": {\n    \"firstId\": \"firstId\",\n    \"lastId\": \"lastId\",\n    \"limit\": 0,\n    \"page\": 0\n  },\n  \"query\": {},\n  \"sortingProps\": [\n    {\n      \"direction\": \"direction\",\n      \"key\": \"key\"\n    }\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -398,21 +437,23 @@ func registerwebhooksCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookQuery(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -459,6 +500,8 @@ func registerwebhooksCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := webhooksCmd
+
 		params := viper.New()
 
 		var examples string
@@ -469,26 +512,30 @@ func registerwebhooksCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates the supplied fields on a webhook in the current workspace. Omitted fields are unchanged. The response contains the applied fields rather than the complete webhook.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWebhookUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		webhooksCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},

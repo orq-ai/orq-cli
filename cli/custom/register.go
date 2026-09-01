@@ -91,6 +91,28 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
+	// as an alias because it is the machine contract this CLI shipped and
+	// documented; applyJSONAlias below turns it into --output-format json.
+	bartolocli.AddGlobalFlag("json", "", "Alias for --output-format json", false)
+}
+
+// applyJSONAlias makes --json mean `-o json` unless the user also passed an
+// explicit --output-format, which wins as the more specific request. It goes
+// through SetOutputFormat rather than viper: bartolo resolves the format in
+// its own PersistentPreRunE, before this hook runs, so a viper write here
+// would arrive too late to be read.
+func applyJSONAlias(cmd *cobra.Command) {
+	if !viper.GetBool("json") {
+		return
+	}
+	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
+		return
+	}
+	viper.Set("output-format", "json")
+	if _, err := bartolocli.SetOutputFormat("json"); err != nil {
+		commands.Warn("could not apply --json: %v", err)
+	}
 }
 
 // annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
@@ -130,6 +152,7 @@ func installSessionPreRun() {
 		}
 		repairAuthProfileType()
 		applyNoColor()
+		applyJSONAlias(cmd)
 		// Snapshot whether the USER configured an API key before this PreRun
 		// injects the session token into ORQ_API_KEY below - commands that
 		// read the env afterwards would see our own injection and cry wolf
@@ -146,6 +169,9 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
+		if err := auth.MigrateProfileState(viper.GetString("config-directory")); err != nil {
+			commands.Warn("could not migrate credentials.json: %v", err)
+		}
 		resolveServer(cmd)
 		applyProfileAPIKey(cmd)
 		override := strings.TrimSpace(viper.GetString("workspace"))
@@ -159,10 +185,10 @@ func installSessionPreRun() {
 			return nil
 		}
 		// The session's host is the last resort, below every explicit source.
-		// TODO(ENG-2902, orq-ai/bartolo#22): once a profile can carry its own server and
-		// the regenerated clients read it (a per-profile resolver, proposed in
-		// that PR and absent from the pinned bartolo), this bridge and
-		// mirrorServerToViper both go away — the profile becomes the one store.
+		// A profile carries its own server since bartolo 0.8, but a session
+		// login has no profile to carry one (auth.MigrateProfileState), so this
+		// bridge and mirrorServerToViper stay until the session store and the
+		// profile store are one thing.
 		if auth.Server() == "" && session.APIBaseURL != "" {
 			auth.SetServer(session.APIBaseURL, "session")
 			mirrorServerToViper()
@@ -244,8 +270,10 @@ func persistedServer() string {
 // stray ORQ_API_KEY in the shell otherwise sends the wrong credentials to the
 // host the named profile resolved — with no message at all. Promoting the
 // profile's own key into the env var that handler reads is what makes the flag
-// win; the structural fix is for bartolo to rank an explicit flag above the
-// environment, which would delete this (TODO(ENG-2902, orq-ai/bartolo#22)).
+// win. bartolo ranks the profile above the environment itself since 0.8, so
+// this is now belt and braces for that — and the part that is still ours: it
+// warns about the shadowed key, and it exports the winning one for the child
+// processes `orq launch` starts.
 //
 // Only the explicit flag counts. ORQ_PROFILE against ORQ_API_KEY is env versus
 // env, with no statement of intent to break the tie.
@@ -296,7 +324,7 @@ func applyNoColor() {
 	}
 	bartolocli.Stdout = colorable.NewNonColorable(os.Stdout)
 	bartolocli.Stderr = colorable.NewNonColorable(os.Stderr)
-	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 }
 
 // rejectUnknownProfile errors when the user explicitly selected a profile that

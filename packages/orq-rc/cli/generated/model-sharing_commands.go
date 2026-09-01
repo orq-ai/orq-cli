@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registermodelSharingCommands(root *cobra.Command) {
 	root.AddCommand(modelSharingCmd)
 
 	func() {
+		parent := modelSharingCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelSharingCmd.CommandPath() + " set model-id --example\n"
+		examples += "  " + parent.CommandPath() + " set model-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "set model-id",
@@ -32,9 +34,11 @@ func registermodelSharingCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"all_projects\": {},\n  \"allow_fork\": false,\n  \"allow_version_pin\": false,\n  \"auto_grant_new_projects\": false,\n  \"selected\": {\n    \"project_ids\": [\n      \"project_ids\"\n    ]\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -71,21 +75,23 @@ func registermodelSharingCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelSharingSet(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelSharingCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

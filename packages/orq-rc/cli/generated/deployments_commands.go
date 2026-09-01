@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerdeploymentsCommands(root *cobra.Command) {
 	root.AddCommand(deploymentsCmd)
 
 	func() {
+		parent := deploymentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + deploymentsCmd.CommandPath() + " get-config --example\n"
+		examples += "  " + parent.CommandPath() + " get-config --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "get-config",
@@ -31,9 +33,11 @@ func registerdeploymentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieve the deployment configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `context` (object)\n- `documents` (array)\n- `extra_params` (object)\n- `file_ids` (array)\n- `identity` (object)\n- `inputs` (object)\n- `invoke_options` (object)\n- `key` (string, required)\n- ... and 5 more fields\n\nRequired fields: `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"documents\": [\n    {\n      \"metadata\": {\n        \"file_name\": \"refund_policy.pdf\",\n        \"file_type\": \"application/pdf\",\n        \"page_number\": 1\n      },\n      \"text\": \"The refund policy allows customers to return items within 30 days of purchase for a full refund.\"\n    },\n    {\n      \"metadata\": {\n        \"file_name\": \"membership_benefits.md\",\n        \"file_type\": \"text/markdown\"\n      },\n      \"text\": \"Premium members receive free shipping on all orders over $50.\"\n    }\n  ],\n  \"key\": \"key\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -118,21 +122,23 @@ func registerdeploymentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiDeploymentGetConfig(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		deploymentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -227,6 +233,8 @@ func registerdeploymentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := deploymentsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -237,20 +245,24 @@ func registerdeploymentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a list of your deployments. The deployments are returned sorted by creation date, with the most recent deployments appearing first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiDeployments(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		deploymentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")

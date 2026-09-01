@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	root.AddCommand(guardrailRulesCmd)
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + guardrailRulesCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -32,9 +34,11 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -83,21 +87,23 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiGuardrailRuleCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -156,6 +162,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -168,23 +176,26 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiGuardrailRuleDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -196,6 +207,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -207,20 +220,24 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGuardrailRuleList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "")
@@ -228,7 +245,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 		cmd.Flags().String("project-id", "", "")
 		cmd.Flags().String("search", "", "")
 		cmd.Flags().String("sort-by", "", "")
-		cmd.Flags().String("enabled", "", "")
+		cmd.Flags().Bool("enabled", false, "")
 		cmd.Flags().String("guardrail-id", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -240,6 +257,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -251,20 +270,24 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGuardrailRuleListUsedGuardrails(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().String("project-id", "", "")
 
@@ -277,6 +300,8 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -288,20 +313,24 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGuardrailRuleGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -312,11 +341,13 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := guardrailRulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + guardrailRulesCmd.CommandPath() + " update guardrail-rule-id --example\n"
+		examples += "  " + parent.CommandPath() + " update guardrail-rule-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update guardrail-rule-id",
@@ -325,9 +356,11 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -370,21 +403,23 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiGuardrailRuleUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		guardrailRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

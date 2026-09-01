@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,13 +19,15 @@ func registerchunkingCommands(root *cobra.Command) {
 	root.AddCommand(chunkingCmd)
 
 	func() {
+		parent := chunkingCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + chunkingCmd.CommandPath() + " parse chunk_size: 256, dimensions: 512, embedding_model: openai/text-embedding-3-small, metadata: true, mode: window, similarity_window: 1, strategy: semantic, text: @file, threshold: 0.8\n"
+		examples += "  " + parent.CommandPath() + " parse chunk_size: 256, dimensions: 512, embedding_model: openai/text-embedding-3-small, metadata: true, mode: window, similarity_window: 1, strategy: semantic, text: @file, threshold: 0.8\n"
 
-		examples += "  " + chunkingCmd.CommandPath() + " parse --example\n"
+		examples += "  " + parent.CommandPath() + " parse --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "parse",
@@ -33,9 +35,11 @@ func registerchunkingCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Split large text documents into smaller, manageable chunks using different chunking strategies optimized for RAG (Retrieval-Augmented Generation) workflows. This endpoint supports multiple chunking algorithms including token-based, sentence-based, recursive, semantic, and specialized strategies.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `candidate_size` (integer)\n- `chunk_overlap` (integer)\n- `chunk_size` (integer)\n- `consecutive` (boolean)\n- `delimiters` (string)\n- `dimensions` (integer)\n- `embedding_model` (string)\n- `forward_fallback` (boolean)\n- ... and 16 more fields\n\nRequired fields: `strategy`, `text`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"chunk_size\": 256,\n  \"dimensions\": 512,\n  \"embedding_model\": \"openai/text-embedding-3-small\",\n  \"metadata\": true,\n  \"mode\": \"window\",\n  \"similarity_window\": 1,\n  \"strategy\": \"semantic\",\n  \"text\": \"The quick brown fox jumps over the lazy dog. This is a sample text that will be chunked into smaller pieces. Each chunk will maintain context while respecting the maximum chunk size.\",\n  \"threshold\": 0.8\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -203,21 +207,23 @@ func registerchunkingCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiParse(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		chunkingCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

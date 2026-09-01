@@ -41,7 +41,7 @@ func TestRenderProfileTableUsesBartoloTableFormatter(t *testing.T) {
 
 	viper.Set("output-format", "toon")
 	bartolocli.Root = nil
-	bartolocli.Formatter = bartolocli.NewDefaultFormatter(true)
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(true, true)
 	var out bytes.Buffer
 	bartolocli.Stdout = &out
 

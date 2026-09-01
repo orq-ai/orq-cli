@@ -39,7 +39,7 @@ func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)
 		AppName:             "orq",
 		EnvPrefix:           "ORQ",
 		APIKeyEnvVar:        "ORQ_API_KEY",
-		DefaultOutputFormat: "toon",
+		SerializationFormat: "toon",
 		Version:             version,
 	})
 

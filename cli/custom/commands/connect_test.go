@@ -315,7 +315,7 @@ func connectStatusHarness(t *testing.T) string {
 		})
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -681,7 +681,7 @@ func TestForeignMCPEntriesSurviveConnectAndDisconnect(t *testing.T) {
 	}
 	ensureCreds(t)
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -847,7 +847,7 @@ func TestDisconnectStaysQuietWithNoSavedKey(t *testing.T) {
 func ensureFormatter(t *testing.T) {
 	t.Helper()
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 }
@@ -1131,7 +1131,7 @@ func TestConnectSkillsInstallsAndDisconnectRemoves(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1171,7 +1171,7 @@ func TestDisconnectCombinesGatewayAndSkillsForClaude(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1208,7 +1208,7 @@ func TestConnectStatusReportsSkillsAlongsideAnUnwirableGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1286,7 +1286,7 @@ func TestConnectStatusGroupsByAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1324,7 +1324,7 @@ func TestConnectStatusWarnsAboutMissingSkillLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1396,7 +1396,7 @@ func TestConnectStatusWarnsAboutForeignSkillLinks(t *testing.T) {
 		}
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1475,7 +1475,7 @@ func TestConnectStatusWarnsAboutStaleSkillInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1658,7 +1658,7 @@ func TestAnUpdatedBinaryRelinksOnTheNextCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1717,7 +1717,7 @@ func TestBareStatusAndDisconnectSeeSkillsOnAClaudeOnlyMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1769,7 +1769,7 @@ func TestBareDisconnectReachesSkillsForAnUndetectedAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1814,7 +1814,7 @@ func TestConnectSkillsNeedsNoCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1930,7 +1930,7 @@ func TestSkillsAreVisibleInTheMachineReadableOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1993,7 +1993,7 @@ func TestKeylessBareConnectStillInstallsSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -2027,7 +2027,7 @@ func TestDecliningTheLoginStillInstallsSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -2065,7 +2065,7 @@ func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 

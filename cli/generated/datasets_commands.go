@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	root.AddCommand(datasetsCmd)
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -30,23 +32,26 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiClearDataset(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -58,11 +63,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + datasetsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -70,9 +77,11 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a new dataset in the specified project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string, required)\n\nRequired fields: `display_name`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"path\": \"Default Project\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -91,21 +100,23 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateDataset(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -134,11 +145,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + datasetsCmd.CommandPath() + " create-datapoint dataset-id --example\n"
+		examples += "  " + parent.CommandPath() + " create-datapoint dataset-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create-datapoint dataset-id",
@@ -146,29 +159,33 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a new datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"expected_output\": \"expected_output\",\n    \"inputs\": {},\n    \"messages\": [\n      {\n        \"content\": \"content\",\n        \"role\": \"system\"\n      }\n    ]\n  }\n]") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateDatasetItem(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -184,6 +201,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -195,23 +214,26 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeleteDataset(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -223,6 +245,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -234,23 +258,26 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeleteDatapoint(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -262,6 +289,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -272,20 +301,24 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a paginated list of datasets for the current workspace. Results can be paginated using cursor-based pagination."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListDatasets(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
@@ -302,6 +335,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -312,20 +347,24 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a paginated list of datapoints from a specific dataset."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListDatasetDatapoints(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
@@ -340,6 +379,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -350,20 +391,24 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a specific dataset by its unique identifier"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRetrieveDataset(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -374,6 +419,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -384,20 +431,24 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a datapoint object"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRetrieveDatapoint(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -408,11 +459,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + datasetsCmd.CommandPath() + " update dataset-id --example\n"
+		examples += "  " + parent.CommandPath() + " update dataset-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
@@ -420,9 +473,11 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"path\": \"Default Project\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -447,21 +502,23 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateDataset(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -496,11 +553,13 @@ func registerdatasetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := datasetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + datasetsCmd.CommandPath() + " update-datapoint dataset-id datapoint-id --example\n"
+		examples += "  " + parent.CommandPath() + " update-datapoint dataset-id datapoint-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update-datapoint dataset-id datapoint-id",
@@ -508,9 +567,11 @@ func registerdatasetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Update a datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"expected_output\": \"expected_output\",\n  \"inputs\": {},\n  \"messages\": [\n    {\n      \"content\": \"content\",\n      \"role\": \"system\"\n    }\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
@@ -535,21 +596,23 @@ func registerdatasetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateDatapoint(args[0], args[1], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		datasetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

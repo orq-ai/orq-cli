@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registermodelsCommands(root *cobra.Command) {
 	root.AddCommand(modelsCmd)
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " azure-foundry-deployments --example\n"
+		examples += "  " + parent.CommandPath() + " azure-foundry-deployments --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "azure-foundry-deployments",
@@ -31,9 +33,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists Azure Foundry deployments under the given base_url and joins each entry with the Orq master-data row. Only OpenAI-developed deployments in succeeded state with chat/completion/embedding/vision model types are returned.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string, required)\n- `provider` (string, required)\n\nRequired fields: `api_key`, `base_url`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"base_url\": \"base_url\",\n  \"provider\": \"provider\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -64,21 +68,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelAzureFoundryDeployments(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -119,11 +125,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -131,9 +139,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a new custom model for the workspace. Provider credentials in the configuration are encrypted using the workspace encryption key before being persisted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object, required)\n- `display_name` (string, required)\n- `has_functions` (boolean, required)\n- `id` (string, required)\n- `input_cost` (number, required)\n- `metadata` (object, required)\n- `model_developer` (string, required)\n- `model_family` (string, required)\n- ... and 5 more fields\n\nRequired fields: `configuration`, `display_name`, `has_functions`, `id`, `input_cost`, `metadata`, `model_developer`, `model_family`, `model_id`, `model_type`, `output_cost`, `parameters`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"configuration\": {},\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"id\": \"id\",\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"config\": {},\n      \"name\": \"name\",\n      \"parameter\": \"parameter\",\n      \"parameter_type\": \"parameter_type\"\n    }\n  ],\n  \"provider\": \"provider\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -218,21 +228,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -327,11 +339,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " create-aws-bedrock --example\n"
+		examples += "  " + parent.CommandPath() + " create-aws-bedrock --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create-aws-bedrock",
@@ -339,9 +353,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Registers an AWS Bedrock inference profile as a custom model for the workspace. Credentials are resolved at request time via either the integration reference or pod-identity — nothing is stored with the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- ... and 17 more fields\n\nRequired fields: `auth_mode`, `display_name`, `model_developer`, `model_id`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"display_name\": \"display_name\",\n  \"model_developer\": \"model_developer\",\n  \"model_id\": \"model_id\",\n  \"region\": \"region\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -498,21 +514,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateAwsBedrock(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -679,11 +697,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " create-openai-like --example\n"
+		examples += "  " + parent.CommandPath() + " create-openai-like --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create-openai-like",
@@ -691,9 +711,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- `max_tokens` (integer)\n- ... and 9 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"base_url\": \"base_url\",\n  \"display_name\": \"display_name\",\n  \"model_id\": \"model_id\",\n  \"model_type\": \"model_type\",\n  \"region\": \"region\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -802,21 +824,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateOpenAILike(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -935,11 +959,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " create-vertex --example\n"
+		examples += "  " + parent.CommandPath() + " create-vertex --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create-vertex",
@@ -947,9 +973,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Registers a Google Vertex AI model as a custom model for the workspace. The service account credentials are probed against Vertex AI with a minimal GenerateContent call before persisting.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object, required)\n- `display_name` (string, required)\n\nRequired fields: `configuration`, `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"configuration\": {\n    \"location\": \"location\",\n    \"modelConfiguration\": {\n      \"capabilities\": {\n        \"structuredOutput\": false,\n        \"supportToolCalling\": false,\n        \"vision\": false\n      },\n      \"id\": \"id\",\n      \"inputCost\": 0,\n      \"outputCost\": 0,\n      \"parameters\": {\n        \"maxTokens\": {\n          \"max\": 0,\n          \"min\": 0\n        },\n        \"temperature\": {\n          \"max\": 0,\n          \"min\": 0\n        },\n        \"topP\": {\n          \"max\": 0,\n          \"min\": 0\n        }\n      }\n    },\n    \"projectId\": \"projectId\",\n    \"serviceAccount\": {}\n  },\n  \"display_name\": \"display_name\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -968,21 +996,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelCreateVertex(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1011,6 +1041,8 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -1022,23 +1054,26 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiModelDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1050,6 +1085,8 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -1061,23 +1098,26 @@ func registermodelsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiModelDisable(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1089,11 +1129,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " enable --example\n"
+		examples += "  " + parent.CommandPath() + " enable --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "enable",
@@ -1101,9 +1143,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Adds the model to the workspace's enabled set. Idempotent — re-enabling an already-enabled model returns 204 with no state change.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `model_id` (string, required)\n\nRequired fields: `model_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"model_id\": \"model_id\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -1116,21 +1160,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelEnable(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1153,11 +1199,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " import-litellm --example\n"
+		examples += "  " + parent.CommandPath() + " import-litellm --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "import-litellm",
@@ -1165,29 +1213,33 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Bulk-imports a list of LiteLLM model definitions into the workspace model garden.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array | null`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "[\n  {\n    \"litellm_params\": {\n      \"merge_reasoning_content_in_choices\": false,\n      \"model\": \"model\",\n      \"use_in_pass_through\": false,\n      \"use_litellm_proxy\": false\n    },\n    \"model_info\": {\n      \"db_model\": false,\n      \"id\": \"id\",\n      \"key\": \"key\",\n      \"litellm_provider\": \"litellm_provider\",\n      \"mode\": \"mode\"\n    },\n    \"model_name\": \"model_name\"\n  }\n]") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelLiteLLMImport(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1203,6 +1255,8 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -1213,20 +1267,24 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists all available models for the workspace, including system and custom models with their enabled status."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiModelList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1237,6 +1295,8 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -1247,20 +1307,24 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists all models available through the AI Router. Returns each model in OpenAI-compatible shape with its provider, ID, and creation timestamp."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListModels(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1271,6 +1335,8 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -1281,20 +1347,24 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Fetches the list of models from the LiteLLM instance configured for the workspace. Requires a stored LiteLLM integration."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiModelListLitellm(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1305,11 +1375,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " update id --example\n"
+		examples += "  " + parent.CommandPath() + " update id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update id",
@@ -1317,9 +1389,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates a custom model. Only fields present in the request body are modified, except for `metadata` and `parameters`, which are fully replaced when present (preserved from the legacy handler's behavior).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `has_functions` (boolean)\n- `input_cost` (number)\n- `metadata` (object)\n- `model_type` (string)\n- `output_cost` (number)\n- `parameters` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"has_functions\": false,\n  \"input_cost\": 0,\n  \"metadata\": {\n    \"is_private\": false\n  },\n  \"model_type\": \"model_type\",\n  \"output_cost\": 0,\n  \"parameters\": [\n    {\n      \"id\": \"id\"\n    }\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -1368,21 +1442,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1441,11 +1517,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " update-aws-bedrock id --example\n"
+		examples += "  " + parent.CommandPath() + " update-aws-bedrock id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update-aws-bedrock id",
@@ -1453,9 +1531,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates an AWS Bedrock custom model. ARN changes are format-validated (live AWS validation lives in the dedicated validate endpoint). Configuration and metadata are spread-merged. Parameters are replaced only when the request produces a non-empty list.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `description` (string)\n- `display_name` (string)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- ... and 14 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -1594,21 +1674,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdateAwsBedrock(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1757,11 +1839,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " update-openai-like id --example\n"
+		examples += "  " + parent.CommandPath() + " update-openai-like id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update-openai-like id",
@@ -1769,9 +1853,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- `max_tokens` (integer)\n- `model_id` (string)\n- ... and 8 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"model_type\": \"model_type\",\n  \"region\": \"region\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -1874,21 +1960,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelUpdateOpenAILike(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -2001,11 +2089,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " validate --example\n"
+		examples += "  " + parent.CommandPath() + " validate --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "validate",
@@ -2013,9 +2103,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Validates a provider endpoint by performing a minimal live probe. Currently supports Azure OpenAI. Response includes the resolved region, whether the model is known to Orq, and either the full model document or a synthesized default.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `api_version` (string)\n- `base_url` (string)\n- `deployment_name` (string)\n- `endpoint` (string)\n- `provider` (string, required)\n- `subtype` (string)\n\nRequired fields: `api_key`, `provider`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"api_key\": \"api_key\",\n  \"provider\": \"provider\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -2064,21 +2156,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelValidate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -2137,11 +2231,13 @@ func registermodelsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + modelsCmd.CommandPath() + " validate-aws-bedrock --example\n"
+		examples += "  " + parent.CommandPath() + " validate-aws-bedrock --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "validate-aws-bedrock",
@@ -2149,9 +2245,11 @@ func registermodelsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Performs a live Bedrock Converse probe to verify the inference profile ARN and credentials, then best-effort enriches the response from known system models.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `inference_profile_arn` (string, required)\n- `integration_id` (string)\n- `model_type` (string)\n- `region` (string, required)\n\nRequired fields: `auth_mode`, `inference_profile_arn`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"auth_mode\": \"auth_mode\",\n  \"inference_profile_arn\": \"inference_profile_arn\",\n  \"region\": \"region\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -2200,21 +2298,23 @@ func registermodelsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiModelValidateAwsBedrock(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

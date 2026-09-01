@@ -37,7 +37,7 @@ func ProfileServer() string {
 	if bartolocli.Creds == nil {
 		return ""
 	}
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + auth.ActiveProfile() + ".server"))
+	return auth.StateValueOf(auth.ActiveProfile(), "server")
 }
 
 // BindProfileServer records a host on a profile, so `orq --profile acme ...`
@@ -49,10 +49,16 @@ func BindProfileServer(profile, server string) error {
 	if bartolocli.Creds == nil || profile == "" || server == "" {
 		return nil
 	}
-	if bartolocli.Creds.GetString("profiles."+profile+".server") == server {
+	if auth.StateValueOf(profile, "server") == server {
 		return nil
 	}
-	bartolocli.Creds.Set("profiles."+profile+".server", server)
+	// A profile that authenticates with an API key is bartolo's, and bartolo
+	// resolves its server itself; anything else is ours to record.
+	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" {
+		bartolocli.Creds.Set("profiles."+profile+".server", server)
+	} else {
+		auth.SetStateValue(profile, "server", server)
+	}
 	return saveCreds()
 }
 

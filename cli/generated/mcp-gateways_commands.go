@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	root.AddCommand(mcpGatewaysCmd)
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + mcpGatewaysCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a client-facing MCP gateway that links one or more synced upstream servers and exposes a unified MCP endpoint.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `key` (string, required)\n- `mode` (string)\n- `server_links` (array)\n- `sharing` (allOf)\n- `tool_naming` (string)\n\nRequired fields: `display_name`, `key`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"key\": \"key\",\n  \"mode\": \"MCP_GATEWAY_MODE_UNSPECIFIED\",\n  \"tool_naming\": \"MCP_TOOL_NAMING_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -92,21 +96,23 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiMcpGatewayCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -175,6 +181,8 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -186,23 +194,26 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiMcpGatewayDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -214,6 +225,8 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -224,26 +237,33 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a paginated list of MCP gateways in the workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiMcpGatewayList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
 		cmd.Flags().String("starting-after", "", "Cursor for the page after the given item id. Mutually exclusive with `ending_before`.")
 		cmd.Flags().String("ending-before", "", "Cursor for the page before the given item id. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("search", "", "Case-insensitive match against the gateway key and display name.")
-		cmd.Flags().String("status", "", "Returns only gateways in this status.")
+		cmd.Flags().String("status", "", "Returns only gateways in this status. (one of: MCP_GATEWAY_STATUS_UNSPECIFIED, MCP_GATEWAY_STATUS_ACTIVE, MCP_GATEWAY_STATUS_DISABLED)")
+		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"MCP_GATEWAY_STATUS_UNSPECIFIED", "MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -254,6 +274,8 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -264,20 +286,24 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the namespaced tool view for a gateway."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiMcpGatewayListTools(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size between 1 and 200. Defaults to 25.")
 		cmd.Flags().String("starting-after", "", "Cursor for the page after the given `exposed_name`. Mutually exclusive with `ending_before`.")
@@ -293,6 +319,8 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -303,20 +331,24 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves the details of an existing MCP gateway by its unique ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiMcpGatewayGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -327,11 +359,13 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := mcpGatewaysCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + mcpGatewaysCmd.CommandPath() + " update id --example\n"
+		examples += "  " + parent.CommandPath() + " update id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update id",
@@ -339,9 +373,11 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP gateway. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `clear_server_links` (boolean)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `mode` (string)\n- `server_links` (array)\n- `sharing` (allOf)\n- `status` (string)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"MCP_GATEWAY_MODE_UNSPECIFIED\",\n  \"status\": \"MCP_GATEWAY_STATUS_UNSPECIFIED\",\n  \"tool_naming\": \"MCP_TOOL_NAMING_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -417,21 +453,23 @@ func registermcpGatewaysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiMcpGatewayUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		mcpGatewaysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

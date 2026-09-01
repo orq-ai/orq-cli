@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 	root.AddCommand(workspaceSettingsCmd)
 
 	func() {
+		parent := workspaceSettingsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,20 +31,24 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the current settings for the authenticated workspace: its read-only key/slug, display name, the enforce-enabled-models flag, and the workspace-default PII redaction plugin configuration."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceSettingsGet(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSettingsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -53,11 +59,13 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSettingsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + workspaceSettingsCmd.CommandPath() + " update --example\n"
+		examples += "  " + parent.CommandPath() + " update --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update",
@@ -65,9 +73,11 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Partially updates workspace settings. Every field is optional; an omitted field is left unchanged. Provide `display_name` to rename the workspace, `enforce_enabled_models` to toggle model enforcement, or `pii_redaction` to replace the workspace-default PII redaction plugin configuration.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `pii_redaction` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"pii_redaction\": {\n    \"enabled\": false\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -92,21 +102,23 @@ func registerworkspaceSettingsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceSettingsUpdate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSettingsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

@@ -756,7 +756,7 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	key := "acme"
@@ -868,7 +868,7 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	resetSetupMemos(t)
@@ -1080,7 +1080,7 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 
@@ -1246,7 +1246,7 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	key := "acme"
@@ -1321,7 +1321,7 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED-DURABLE", "acme"); err != nil {
@@ -1824,7 +1824,7 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
@@ -2043,11 +2043,11 @@ func TestMintedKeyIsGatewayScopedAndStoredSeparately(t *testing.T) {
 		t.Errorf("gateway domains missing or mis-levelled: %v", access)
 	}
 
-	profile := bartolocli.GetProfile()
-	if profile["gateway_key"] != token || profile["gateway_key_id"] != "KEYID1" {
-		t.Errorf("profile = %v, want the key and its id under gateway_key*", profile)
+	stored := auth.StateOf(auth.ActiveProfile())
+	if stored["gateway_key"] != token || stored["gateway_key_id"] != "KEYID1" {
+		t.Errorf("state = %v, want the key and its id under gateway_key*", stored)
 	}
-	if profile["api_key"] != "" {
+	if storedAPIKeyProfile() {
 		t.Error("the minted key was stored as api_key and will shadow the session")
 	}
 	if got, _ := savedAPIKey(); got != token {
@@ -2142,7 +2142,7 @@ func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
 			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme"); err != nil {
 				t.Fatal(err)
 			}
-			bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", tc.expiresAt)
+			auth.SetStateValue("default", "gateway_key_expires_at", tc.expiresAt)
 			if got := gatewayKeyDueForRenewal(now); got != tc.want {
 				t.Errorf("dueForRenewal = %v, want %v", got, tc.want)
 			}
@@ -2185,9 +2185,9 @@ func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
 	if n := atomic.LoadInt64(&mints); n != 1 {
 		t.Errorf("minted %d keys, want 1", n)
 	}
-	profile := bartolocli.GetProfile()
-	if profile["gateway_key"] != token || profile["gateway_key_id"] != "NEWID" {
-		t.Errorf("profile still holds the superseded key: %v", profile)
+	stored := auth.StateOf(auth.ActiveProfile())
+	if stored["gateway_key"] != token || stored["gateway_key_id"] != "NEWID" {
+		t.Errorf("state still holds the superseded key: %v", stored)
 	}
 	at, ok := gatewayKeyExpiry()
 	if !ok || at.Before(time.Now().Add(80*24*time.Hour)) {
@@ -2510,11 +2510,12 @@ func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 		if err != nil || !held {
 			t.Fatalf("held=%v err=%v, want a cleared gateway key", held, err)
 		}
-		profile := bartolocli.GetProfile()
-		for _, field := range []string{"api_key", "gateway_key"} {
-			if profile[field] != "" {
-				t.Errorf("%s survived logout: %q", field, profile[field])
-			}
+		if storedAPIKeyProfile() {
+			t.Error("api_key survived logout")
+		}
+		state := auth.StateOf(auth.ActiveProfile())
+		if state["gateway_key"] != "" {
+			t.Errorf("gateway_key survived logout: %q", state["gateway_key"])
 		}
 		if key, _ := savedAPIKey(); key != "" {
 			t.Errorf("savedAPIKey still returns %q after logout", key)
@@ -2523,7 +2524,7 @@ func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 		// The id and the expiry authenticate nothing, and they are the only
 		// record of what is still live, so they are kept on purpose.
 		for _, field := range []string{"gateway_key_id", "gateway_key_expires_at"} {
-			if profile[field] == "" {
+			if state[field] == "" {
 				t.Errorf("%s was discarded, leaving no handle to revoke the surviving key", field)
 			}
 		}

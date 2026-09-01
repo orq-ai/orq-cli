@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	root.AddCommand(modelCatalogCmd)
 
 	func() {
+		parent := modelCatalogCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,20 +31,24 @@ func registermodelCatalogCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a single catalog entry by its id, `<provider>/<model>` (for example `openai/gpt-4o`). Unlike the list endpoints this also resolves deprecated models; check `deprecated` and `deprecation` on the response."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiModelCatalogGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelCatalogCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -53,6 +59,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelCatalogCmd
+
 		params := viper.New()
 
 		var examples string
@@ -63,20 +71,24 @@ func registermodelCatalogCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns every model orq offers, optionally filtered, searched and sorted. Deprecated models are never listed; fetch one directly by id to inspect it. Unset `limit` returns the whole catalog. Use `starting_after` or `ending_before` to page through the collection."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiModelCatalogList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelCatalogCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")
@@ -103,6 +115,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := modelCatalogCmd
+
 		params := viper.New()
 
 		var examples string
@@ -113,20 +127,24 @@ func registermodelCatalogCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns every provider offering of one base model, identified by `<developer>/<stem>` (for example `anthropic/claude-opus-4-7`). Deprecated models are never listed."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiModelCatalogListOfferings(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		modelCatalogCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")

@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 	root.AddCommand(budgetsCmd)
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + budgetsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  },\n  \"scope\": {\n    \"api_key\": {\n      \"api_key_id\": \"api_key_id\"\n    },\n    \"identity\": {\n      \"identity_external_id\": \"identity_external_id\"\n    },\n    \"model\": {\n      \"model_id\": \"model_id\"\n    },\n    \"project\": {\n      \"project_id\": \"project_id\"\n    },\n    \"provider\": {\n      \"provider\": \"provider\"\n    },\n    \"workspace\": {}\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -82,21 +86,23 @@ func registerbudgetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -155,6 +161,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -166,23 +174,26 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiBudgetDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -194,6 +205,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -204,20 +217,24 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves the metadata for an existing budget by its unique identifier. Returns `NotFound` when the budget does not exist in the caller's workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiBudgetGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -228,6 +245,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -238,30 +257,37 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns budgets visible to the current workspace, ordered by creation time with the newest first. Supports filtering by scope kind, scope target id, period, and active state, plus an optional free-text query that searches across denormalized target names via Typesense."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiBudgetList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `budget_id` of the last\n item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `budget_id` of the\n first item from the previous page.")
 		cmd.Flags().String("scope-kind", "", "Optional filter: only return budgets whose scope kind matches one\n of the listed values. Empty means no scope-kind filter.")
 		cmd.Flags().String("scope-target-id", "", "Optional filter: only return budgets whose scope target id matches.")
-		cmd.Flags().String("is-active", "", "Optional filter: only return budgets with this active state.")
+		cmd.Flags().Bool("is-active", false, "Optional filter: only return budgets with this active state.")
 		cmd.Flags().String("period", "", "Optional filter: only return budgets whose limits.period matches\n one of the listed values. Empty means no period filter.")
 		cmd.Flags().String("query", "", "Optional free-text query. Server translates this into a Typesense\n search over the denormalized `scope_target_name` and id fields on\n the per-workspace `{workspace_id}_budgets` collection.")
-		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated.")
+		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated. (one of: BUDGET_SORT_FIELD_UNSPECIFIED, BUDGET_SORT_FIELD_EXPIRES_AT, BUDGET_SORT_FIELD_CREATED_AT, BUDGET_SORT_FIELD_UPDATED_AT)")
+		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -272,6 +298,8 @@ func registerbudgetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -282,26 +310,30 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetResetConsumption(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{},
@@ -316,11 +348,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := budgetsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + budgetsCmd.CommandPath() + " update budget-id --example\n"
+		examples += "  " + parent.CommandPath() + " update budget-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update budget-id",
@@ -328,9 +362,11 @@ func registerbudgetsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `clear_alerts` (boolean)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"alerts\": [\n    {\n      \"dimension\": \"BUDGET_ALERT_DIMENSION_UNSPECIFIED\",\n      \"notifier_ids\": [\n        \"notifier_ids\"\n      ],\n      \"threshold_percent\": 0\n    }\n  ],\n  \"clear_alerts\": false,\n  \"clear_expires_at\": false,\n  \"expires_at\": \"2024-01-01T00:00:00Z\",\n  \"is_active\": false,\n  \"limits\": {\n    \"period\": \"BUDGET_PERIOD_UNSPECIFIED\"\n  },\n  \"match\": {\n    \"cel\": \"cel\"\n  },\n  \"rate_limit\": {\n    \"requests_per_minute\": 0\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -385,21 +421,23 @@ func registerbudgetsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiBudgetUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		budgetsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

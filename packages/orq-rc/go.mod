@@ -7,9 +7,8 @@ go 1.25.0
 replace orq => ../..
 
 require (
-	github.com/orq-ai/bartolo v0.6.0
+	github.com/orq-ai/bartolo v0.9.0
 	github.com/pkg/errors v0.9.1
-	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	gopkg.in/h2non/gentleman.v2 v2.0.5
@@ -40,6 +39,7 @@ require (
 	github.com/olekukonko/tablewriter v1.1.4 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect

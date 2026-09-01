@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerpoliciesCommands(root *cobra.Command) {
 	root.AddCommand(policiesCmd)
 
 	func() {
+		parent := policiesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + policiesCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -32,9 +34,11 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -95,21 +99,23 @@ func registerpoliciesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPolicyCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		policiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -180,6 +186,8 @@ func registerpoliciesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := policiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -192,23 +200,26 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiPolicyDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		policiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -220,6 +231,8 @@ func registerpoliciesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := policiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -231,20 +244,24 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiPolicyList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		policiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination.")
@@ -260,6 +277,8 @@ func registerpoliciesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := policiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -271,20 +290,24 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiPolicyGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		policiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -295,11 +318,13 @@ func registerpoliciesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := policiesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + policiesCmd.CommandPath() + " update policy-id --example\n"
+		examples += "  " + parent.CommandPath() + " update policy-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update policy-id",
@@ -308,9 +333,11 @@ func registerpoliciesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"evaluators\": [\n    {\n      \"execute_on\": \"input\",\n      \"id\": \"id\"\n    }\n  ],\n  \"limits\": {\n    \"budget\": {\n      \"amount\": 0.01,\n      \"currency\": \"usd\",\n      \"period\": \"hour\"\n    },\n    \"requests\": {\n      \"amount\": 1,\n      \"period\": \"hour\"\n    },\n    \"tokens\": {\n      \"amount\": 1,\n      \"period\": \"hour\"\n    }\n  },\n  \"models_config\": {\n    \"mode\": \"fallback\",\n    \"models\": [\n      {\n        \"model\": \"model\"\n      }\n    ]\n  },\n  \"project_id\": \"project_id\",\n  \"retry_config\": {\n    \"count\": 1\n  },\n  \"timeout\": 1000\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -371,21 +398,23 @@ func registerpoliciesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPolicyUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		policiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

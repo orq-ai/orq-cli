@@ -16,7 +16,7 @@ func buildRoot(t *testing.T) *cobra.Command {
 		AppName:             "orq",
 		EnvPrefix:           "ORQ",
 		APIKeyEnvVar:        "ORQ_API_KEY",
-		DefaultOutputFormat: "toon",
+		SerializationFormat: "toon",
 		Version:             "test",
 	})
 	// bartolocli.PreRun is a single package-level var that installSessionPreRun

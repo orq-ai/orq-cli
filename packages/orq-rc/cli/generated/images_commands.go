@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerimagesCommands(root *cobra.Command) {
 	root.AddCommand(imagesCmd)
 
 	func() {
+		parent := imagesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,7 +31,9 @@ func registerimagesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Edit an Image\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 7 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				body, err := bartolocli.GetBodyWithFlags(cmd, "multipart/form-data", args[0:], params,
 					[]bartolocli.BodyField{
 						{
@@ -129,21 +133,23 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImageEdit(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		imagesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
@@ -253,11 +259,13 @@ func registerimagesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := imagesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + imagesCmd.CommandPath() + " generate --example\n"
+		examples += "  " + parent.CommandPath() + " generate --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "generate",
@@ -265,9 +273,11 @@ func registerimagesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Create an Image\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `background` (string | null)\n- `cache` (object)\n- `fallbacks` (array)\n- `load_balancer` (oneOf)\n- `metadata` (object)\n- `model` (string, required)\n- `moderation` (string | null)\n- `n` (integer | null)\n- ... and 12 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `output_format` is `--body-output-format` (not `--output-format`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"background\": \"transparent\",\n  \"model\": \"model\",\n  \"moderation\": \"low\",\n  \"n\": 1,\n  \"output_format\": \"png\",\n  \"prompt\": \"prompt\",\n  \"quality\": \"auto\",\n  \"response_format\": \"url\",\n  \"style\": \"vivid\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -394,21 +404,23 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImage(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		imagesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -545,6 +557,8 @@ func registerimagesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := imagesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -555,7 +569,9 @@ func registerimagesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Create an Image Variation\n\nRequest body: `multipart/form-data`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `fallbacks` (array)\n- `image` (string)\n- `load_balancer` (oneOf)\n- `model` (string, required)\n- `n` (number | null)\n- `name` (string)\n- `orq` (object)\n- ... and 5 more fields\n\nRequired fields: `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				body, err := bartolocli.GetBodyWithFlags(cmd, "multipart/form-data", args[0:], params,
 					[]bartolocli.BodyField{
 						{
@@ -648,21 +664,23 @@ func registerimagesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateImageVariation(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		imagesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{

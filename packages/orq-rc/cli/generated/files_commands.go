@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerfilesCommands(root *cobra.Command) {
 	root.AddCommand(filesCmd)
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,20 +31,24 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a presigned URL for downloading the file content by file ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiFileContent(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -53,6 +59,8 @@ func registerfilesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -64,23 +72,26 @@ func registerfilesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiFileDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -92,6 +103,8 @@ func registerfilesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -102,20 +115,24 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves the details of an existing file object. After you supply a unique file ID, orq.ai returns the corresponding file object."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiFileGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -126,6 +143,8 @@ func registerfilesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -136,20 +155,24 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a list of the files that your account has access to. orq.ai sorts and returns the files by their creation dates, placing the most recently created files at the top."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiFileList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size. Unset uses the server default.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item\n from the previous page.")
@@ -166,11 +189,13 @@ func registerfilesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + filesCmd.CommandPath() + " update file-id --example\n"
+		examples += "  " + parent.CommandPath() + " update file-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update file-id",
@@ -178,9 +203,11 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"file_name\": \"file_name\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -193,21 +220,23 @@ func registerfilesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiFileUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -230,11 +259,13 @@ func registerfilesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := filesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + filesCmd.CommandPath() + " upload --example\n"
+		examples += "  " + parent.CommandPath() + " upload --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "upload",
@@ -242,9 +273,11 @@ func registerfilesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Files are used to upload documents that can be used with features like Deployments.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string, required)\n- `content_type` (string)\n- `filename` (string, required)\n- `project_id` (string)\n- `purpose` (string)\n\nRequired fields: `content`, `filename`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"content\": \"content\",\n  \"filename\": \"filename\",\n  \"purpose\": \"FILE_PURPOSE_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -288,21 +321,23 @@ func registerfilesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiFileUpload(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		filesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

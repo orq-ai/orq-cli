@@ -107,7 +107,7 @@ func dump() ([]byte, error) {
 		AppName:             "orq",
 		EnvPrefix:           "ORQ",
 		APIKeyEnvVar:        "ORQ_API_KEY",
-		DefaultOutputFormat: "toon",
+		SerializationFormat: "toon",
 		Version:             "surface", // fixed: the manifest must not churn per release
 	})
 	generated.Register(bartolocli.Root)

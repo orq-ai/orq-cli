@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	root.AddCommand(workspaceSecurityCmd)
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + workspaceSecurityCmd.CommandPath() + " add-ip-range workspace-key --example\n"
+		examples += "  " + parent.CommandPath() + " add-ip-range workspace-key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "add-ip-range workspace-key",
@@ -31,9 +33,11 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Adds an IPv4 or IPv6 CIDR range to the workspace allowlist.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cidr` (string)\n- `description` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"cidr\": \"cidr\",\n  \"description\": \"description\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -52,21 +56,23 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityAddIPRange(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -95,11 +101,13 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + workspaceSecurityCmd.CommandPath() + " create-domain workspace-key --example\n"
+		examples += "  " + parent.CommandPath() + " create-domain workspace-key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create-domain workspace-key",
@@ -107,9 +115,11 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a domain-verification challenge and returns the TXT record to add to DNS.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `domain` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"domain\": \"domain\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -122,21 +132,23 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityCreateDomain(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -159,6 +171,8 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
@@ -170,23 +184,26 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityDeleteDomain(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -198,6 +215,8 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
@@ -209,23 +228,26 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityDeleteIPRange(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -237,6 +259,8 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
@@ -247,20 +271,24 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the workspace IP allowlist and the current caller IP when available."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceSecurityGetIPAllowlist(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -271,6 +299,8 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
@@ -281,20 +311,24 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists domain-verification records for the workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceSecurityListDomains(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -305,11 +339,13 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + workspaceSecurityCmd.CommandPath() + " update-ip-allowlist workspace-key --example\n"
+		examples += "  " + parent.CommandPath() + " update-ip-allowlist workspace-key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update-ip-allowlist workspace-key",
@@ -317,9 +353,11 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates the workspace-level allowlist switch. Every listed range applies while the allowlist is enabled.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"enabled\": false\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -332,21 +370,23 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceSecurityUpdateIPAllowlist(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -369,6 +409,8 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspaceSecurityCmd
+
 		params := viper.New()
 
 		var examples string
@@ -379,20 +421,24 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Checks DNS for the expected TXT record and marks the domain as verified when it matches."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceSecurityVerifyDomain(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspaceSecurityCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 

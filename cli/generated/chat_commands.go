@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerchatCommands(root *cobra.Command) {
 	root.AddCommand(chatCmd)
 
 	func() {
+		parent := chatCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + chatCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registerchatCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a model response for the given chat conversation with support for retries, fallbacks, prompts, and variables.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `audio` (object | null)\n- `cache` (object)\n- `cache_control` (object)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `guardrails` (array)\n- `load_balancer` (oneOf)\n- `logprobs` (boolean | null)\n- ... and 30 more fields\n\nRequired fields: `messages`, `model`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"load_balancer\": {\n    \"models\": [\n      {\n        \"model\": \"openai/gpt-4o\",\n        \"weight\": 0.7\n      },\n      {\n        \"model\": \"anthropic/claude-3-5-sonnet\",\n        \"weight\": 0.3\n      }\n    ],\n    \"type\": \"weight_based\"\n  },\n  \"messages\": [\n    {\n      \"content\": \"content\",\n      \"role\": \"system\"\n    }\n  ],\n  \"model\": \"model\",\n  \"orq\": {\n    \"cache\": {\n      \"ttl\": 3600,\n      \"type\": \"exact_match\"\n    },\n    \"fallbacks\": [\n      {\n        \"model\": \"openai/gpt-5\"\n      },\n      {\n        \"model\": \"anthropic/claude-4-opus\"\n      }\n    ],\n    \"identity\": {\n      \"display_name\": \"Jane Doe\",\n      \"email\": \"jane.doe@example.com\",\n      \"id\": \"identity_01ARZ3NDEKTSV4RRFFQ69G5FAV\"\n    },\n    \"inputs\": {\n      \"customer_name\": \"John Smith\",\n      \"issue_type\": \"billing\"\n    },\n    \"knowledge_bases\": [\n      {\n        \"knowledge_id\": \"knowledge_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n        \"top_k\": 5\n      }\n    ],\n    \"retry\": {\n      \"count\": 3,\n      \"on_codes\": [\n        429,\n        500,\n        502\n      ]\n    },\n    \"security\": {\n      \"mask\": [\n        \"input\",\n        \"system\"\n      ]\n    },\n    \"thread\": {\n      \"id\": \"thread_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n      \"tags\": [\n        \"customer-support\"\n      ]\n    },\n    \"timeout\": {\n      \"call_timeout\": 30000\n    }\n  },\n  \"reasoning_effort\": \"none\",\n  \"stream\": false,\n  \"variables\": {\n    \"customer_name\": \"John Smith\",\n    \"product_name\": \"Premium Plan\"\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -277,21 +281,23 @@ func registerchatCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateChatCompletion(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		chatCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

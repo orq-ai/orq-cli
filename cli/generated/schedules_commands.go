@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,13 +19,15 @@ func registerschedulesCommands(root *cobra.Command) {
 	root.AddCommand(schedulesCmd)
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * *, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
+		examples += "  " + parent.CommandPath() + " create agent-key agent_tag: v2, display_name: Daily morning briefing, expression: 0 0 9 * * *, payload{input: Generate the morning briefing for {{region}}, memory_entity_id: mem_entity_123, metadata.run_source: daily-briefing, variables.region: EMEA}, type: cron\n"
 
-		examples += "  " + schedulesCmd.CommandPath() + " create agent-key --example\n"
+		examples += "  " + parent.CommandPath() + " create agent-key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
@@ -33,9 +35,11 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a cron cadence. Only `cron` is accepted, as a 6-field expression firing at most once per hour: hourly `0 0 * * * *`, daily `0 0 9 * * *`, or weekly `0 0 9 * * 1`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string, required)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `display_name`, `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"agent_tag\": \"v2\",\n  \"display_name\": \"Daily morning briefing\",\n  \"expression\": \"0 0 9 * * *\",\n  \"payload\": {\n    \"input\": \"Generate the morning briefing for {{region}}\",\n    \"memory_entity_id\": \"mem_entity_123\",\n    \"metadata\": {\n      \"run_source\": \"daily-briefing\"\n    },\n    \"variables\": {\n      \"region\": \"EMEA\"\n    }\n  },\n  \"type\": \"cron\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -75,21 +79,23 @@ func registerschedulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateAgentSchedule(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -139,6 +145,8 @@ func registerschedulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -150,23 +158,26 @@ func registerschedulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeleteAgentSchedule(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -178,6 +189,8 @@ func registerschedulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -188,20 +201,24 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists all schedules attached to the specified agent, most recent first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListAgentSchedules(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -212,6 +229,8 @@ func registerschedulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -222,20 +241,24 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a single schedule by ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRetrieveAgentSchedule(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -246,6 +269,8 @@ func registerschedulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -256,20 +281,24 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Runs the schedule's payload immediately (approximately 10 seconds after the request). The schedule's regular cadence is unaffected. Inactive schedules return 400."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiTriggerAgentSchedule(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -280,13 +309,15 @@ func registerschedulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := schedulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id expression: 0 0 9 * * *\n"
+		examples += "  " + parent.CommandPath() + " update agent-key schedule-id expression: 0 0 9 * * *\n"
 
-		examples += "  " + schedulesCmd.CommandPath() + " update agent-key schedule-id --example\n"
+		examples += "  " + parent.CommandPath() + " update agent-key schedule-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
@@ -294,9 +325,11 @@ func registerschedulesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) reschedules the next run and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"expression\": \"0 0 9 * * *\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[2:], params,
 					[]bartolocli.BodyField{
@@ -342,21 +375,23 @@ func registerschedulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateAgentSchedule(args[0], args[1], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		schedulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

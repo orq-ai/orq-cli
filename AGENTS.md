@@ -65,6 +65,15 @@ device login, the `~/.orq/sessions` profile store, self-hosted URL resolution),
 as their gateway), `cli/custom/skills` (agent skills embedded with `go:embed`,
 installed into each agent's config dir).
 
+**Who owns what in `~/.orq/credentials.json`.** `profiles.<name>` is bartolo's:
+a profile that exists but holds no `api_key` fails every request rather than
+falling back to `ORQ_API_KEY`, so this CLI writes one only for a real API key.
+Everything else it tracks per profile — the minted gateway key, its id and
+expiry, the workspace it was minted for, and a session-bound server — lives
+under the `state` key of the same file, read and written through
+`cli/custom/auth/state.go`. `auth.MigrateProfileState` moves any older layout
+across on the next command, so never add a field to a profile.
+
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,
 checksums and a stamped `install.sh` on the GitHub release. `install.sh` is

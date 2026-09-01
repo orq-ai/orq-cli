@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	root.AddCommand(routingRulesCmd)
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + routingRulesCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -32,9 +34,11 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -95,21 +99,23 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiRoutingRuleCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -180,6 +186,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -192,23 +200,26 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiRoutingRuleDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -220,6 +231,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -231,27 +244,31 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRoutingRuleList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "")
 		cmd.Flags().String("ending-before", "", "")
 		cmd.Flags().String("project-id", "", "")
 		cmd.Flags().String("search", "", "")
-		cmd.Flags().String("enabled", "", "")
+		cmd.Flags().Bool("enabled", false, "")
 		cmd.Flags().String("model", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -263,6 +280,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -274,20 +293,24 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRoutingRuleListUsedModels(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().String("project-id", "", "")
 
@@ -300,6 +323,8 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -311,20 +336,24 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRoutingRuleGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -335,11 +364,13 @@ func registerroutingRulesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := routingRulesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + routingRulesCmd.CommandPath() + " update routing-rule-id --example\n"
+		examples += "  " + parent.CommandPath() + " update routing-rule-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update routing-rule-id",
@@ -348,9 +379,11 @@ func registerroutingRulesCommands(root *cobra.Command) {
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"cache_config\": {\n    \"ttl\": 0\n  },\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"models_config\": {\n    \"mode\": \"mode\",\n    \"models\": [\n      {\n        \"display_name\": \"display_name\",\n        \"integration_id\": \"integration_id\",\n        \"model\": \"model\",\n        \"weight\": 0\n      }\n    ]\n  },\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"mask\": [\n        \"mask\"\n      ],\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ],\n  \"priority\": 0\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -405,21 +438,23 @@ func registerroutingRulesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiRoutingRuleUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		routingRulesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

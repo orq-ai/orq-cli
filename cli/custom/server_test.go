@@ -243,8 +243,14 @@ func TestProfileAPIKeyBeatsTheEnvironment(t *testing.T) {
 		t.Fatalf("no --profile: got %q, want the environment untouched", got)
 	}
 
-	// With it, the profile wins and says so on stderr.
+	// With it, the profile wins and says so on stderr. The flag carries the
+	// name: bartolo 0.8 retired the implicit `default` profile, so a changed
+	// but empty --profile puts no profile in force.
 	t.Setenv("ORQ_TOKEN", "env-token")
+	if err := flags.Set("profile", profile); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = flags.Set("profile", "") })
 	flags.Lookup("profile").Changed = true
 	_, stderr := captureOutput(t, func() { applyProfileAPIKey(root) })
 	if got := os.Getenv("ORQ_API_KEY"); got != "profile-key" {

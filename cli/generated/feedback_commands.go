@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerfeedbackCommands(root *cobra.Command) {
 	root.AddCommand(feedbackCmd)
 
 	func() {
+		parent := feedbackCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + feedbackCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string)\n- `product` (string)\n- `property` (string, required)\n- `trace_id` (string, required)\n- `value` (anyOf, required)\n\nRequired fields: `property`, `trace_id`, `value`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"product\": \"deployments\",\n  \"property\": \"property\",\n  \"trace_id\": \"trace_id\",\n  \"value\": \"value\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -89,21 +93,23 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2Feedback(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		feedbackCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -169,11 +175,13 @@ func registerfeedbackCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := feedbackCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + feedbackCmd.CommandPath() + " delete --example\n"
+		examples += "  " + parent.CommandPath() + " delete --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "delete",
@@ -181,9 +189,11 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `product` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `product`, `trace_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"id\": \"id\",\n  \"product\": \"remoteconfigs\",\n  \"trace_id\": \"trace_id\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -227,21 +237,23 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackRemove(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		feedbackCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -295,11 +307,13 @@ func registerfeedbackCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := feedbackCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + feedbackCmd.CommandPath() + " evaluation --example\n"
+		examples += "  " + parent.CommandPath() + " evaluation --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "evaluation",
@@ -307,9 +321,11 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluation_type` (string, required)\n- `explanation` (string)\n- `human_review_id` (string)\n- `id` (string, required)\n- `reviewed_at` (string)\n- `source` (string)\n- `trace_id` (string, required)\n- `type` (string, required)\n- ... and 2 more fields\n\nRequired fields: `evaluation_type`, `id`, `trace_id`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-09-01T07:51:16.247Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -389,21 +405,23 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackEvaluation(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		feedbackCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -493,11 +511,13 @@ func registerfeedbackCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := feedbackCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + feedbackCmd.CommandPath() + " evaluation-remove --example\n"
+		examples += "  " + parent.CommandPath() + " evaluation-remove --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "evaluation-remove",
@@ -505,9 +525,11 @@ func registerfeedbackCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `id` (string, required)\n- `trace_id` (string, required)\n\nRequired fields: `id`, `trace_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"id\": \"id\",\n  \"trace_id\": \"trace_id\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -526,21 +548,23 @@ func registerfeedbackCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiPostV2FeedbackEvaluationRemove(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		feedbackCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
