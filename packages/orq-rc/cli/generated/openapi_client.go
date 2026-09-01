@@ -5142,6 +5142,48 @@ func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gent
 	return resp, decoded, nil
 }
 
+// OpenapiPreviewDatasourceChunks Preview datasource chunks
+func OpenapiPreviewDatasourceChunks(paramKnowledgeId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "knowledge-bases preview-chunks knowledge-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/knowledge/{knowledge_id}/datasources/preview-chunks"
+	if paramKnowledgeId == "" {
+		return nil, nil, errors.Errorf("path parameter knowledge_id cannot be empty")
+	}
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, errors.Errorf("HTTP %d: %s", resp.StatusCode, resp.String())
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiGetOneKnowledge Retrieves a knowledge base
 func OpenapiGetOneKnowledge(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases retrieve knowledge-id"

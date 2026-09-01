@@ -889,6 +889,82 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + knowledgeBasesCmd.CommandPath() + " preview-chunks knowledge-id --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "preview-chunks knowledge-id",
+			Short:   "Preview datasource chunks",
+			Long:    bartolocli.Markdown("Parses an uploaded file and returns the chunks it would produce for the given chunking options without creating a datasource.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunking_options` (object)\n- `file_id` (string, required)\n\nRequired fields: `file_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			Run: func(cmd *cobra.Command, args []string) {
+				if bartolocli.PrintBodyExample(params, "{\n  \"file_id\": \"file_id\"\n}") {
+					return
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "chunking_options",
+							FlagName:    "chunking-options",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "file_id",
+							FlagName:    "file-id",
+							Type:        "string",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					log.Fatal().Err(err).Msg("unable to get body")
+				}
+
+				_, decoded, err := OpenapiPreviewDatasourceChunks(args[0], params, body)
+				if err != nil {
+					log.Fatal().Err(err).Msg("error calling operation")
+				}
+
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
+					log.Fatal().Err(err).Msg("formatting failed")
+				}
+
+			},
+		}
+		knowledgeBasesCmd.AddCommand(cmd)
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "chunking_options",
+					FlagName:    "chunking-options",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "file_id",
+					FlagName:    "file-id",
+					Type:        "string",
+					Description: "",
+				},
+			},
+		)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		params := viper.New()
+
+		var examples string
+
 		cmd := &cobra.Command{
 			Use:     "retrieve knowledge-id",
 			Short:   "Retrieves a knowledge base",
