@@ -108,6 +108,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.0) — 2026-09-01
+
 - **Added:** `orq orqi` runs [orqi](https://github.com/orq-ai/orqi), the orq.ai
   assistant in your terminal, and installs it first when it is missing — by
   running the orqi project's own `install.sh`, after asking, or refusing and
