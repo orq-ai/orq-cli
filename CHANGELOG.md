@@ -122,13 +122,19 @@ controls on surface changes, whichever side they originate from.
 - **Changed:** a credentials profile now outranks `ORQ_API_KEY` and `ORQ_SERVER`
   rather than losing to them, and a profile named with `--profile` that has no
   key is an error instead of a silent fall-through to whatever key is exported.
-  `--profile ""` turns profiles off for a single call.
+  If you saved an API-key profile once and now export `ORQ_API_KEY` for a
+  different workspace, the saved profile wins and the exported key is ignored —
+  the calls go to the profile's workspace, silently. `--profile ""` turns
+  profiles off for a single call.
 - **Changed:** the gateway key `orq setup` mints, its id and expiry, and the
   workspace it was minted for moved out of `profiles.<name>` in
   `credentials.json` into a `state` section of the same file. Existing files are
-  migrated in place on the next command. A profile now exists only when it holds
-  an API key, so a login that authenticates with a session no longer writes one
-  that authenticates nothing. `orq auth list-profiles` output is unchanged.
+  migrated in place on the next command: the fields move, and a profile left
+  holding no API key is deleted. If that profile was the selected one,
+  `profile-selected` is also removed from `~/.orq/config.json`. A profile now
+  exists only when it holds an API key, so a login that authenticates with a
+  session no longer writes one that authenticates nothing.
+  `orq auth list-profiles` output is unchanged.
 - **Changed:** boolean query parameters are typed flags — `--include-budget`
   instead of `--include-budget=true`. Passing `true`/`false` explicitly still
   works (`--include-budget=false`).

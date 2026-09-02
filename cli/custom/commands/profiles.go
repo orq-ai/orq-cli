@@ -67,9 +67,13 @@ func listAuthProfiles() []map[string]any {
 
 	rows := make([]map[string]any, 0, len(names))
 	for _, name := range names {
-		profile, _ := profiles[name].(map[string]interface{})
-		if profile == nil {
-			profile = map[string]interface{}{}
+		stored, _ := profiles[name].(map[string]interface{})
+		// Copy before decorating: profiles is bartolo's live in-memory
+		// credentials map, and merging state into it would mutate what every
+		// later reader in this process sees.
+		profile := make(map[string]interface{}, len(stored)+len(auth.StateFields))
+		for field, value := range stored {
+			profile[field] = value
 		}
 		for field, value := range auth.StateOf(name) {
 			if value != "" {

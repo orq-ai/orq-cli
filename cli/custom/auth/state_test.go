@@ -173,6 +173,11 @@ func TestMigrationClearsASelectionItInvalidates(t *testing.T) {
 	if _, still := doc["profile-selected"]; still {
 		t.Errorf("persisted selection survived: %v", doc)
 	}
+	// bartolo re-adopts a `default` profile unless profile-decided says the
+	// choice was already made, so clearing the selection must not clear that.
+	if doc["profile-decided"] != true {
+		t.Errorf("profile-decided was lost, bartolo will re-adopt: %v", doc)
+	}
 	if doc["server-default"] != "https://keep.me" {
 		t.Errorf("the rest of config.json was lost: %v", doc)
 	}

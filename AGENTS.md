@@ -72,7 +72,12 @@ Everything else it tracks per profile — the minted gateway key, its id and
 expiry, the workspace it was minted for, and a session-bound server — lives
 under the `state` key of the same file, read and written through
 `cli/custom/auth/state.go`. `auth.MigrateProfileState` moves any older layout
-across on the next command, so never add a field to a profile.
+across on the next command, so never add a field to a profile. One exception:
+an API-key profile keeps its own `server`, because bartolo resolves that one
+itself — state only carries the server of a profile that has no key.
+`state.go` also depends on two field names bartolo owns and does not export,
+`profile-selected` and `profile-decided` in `config.json`; a rename upstream
+breaks it silently, so check them when bumping the generator.
 
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,

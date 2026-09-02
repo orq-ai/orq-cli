@@ -949,28 +949,11 @@ func clearShellEnvFile() []string {
 			continue
 		}
 		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
-		if writeSecretFile(path, []byte(body)) == nil {
+		if auth.WriteSecretFile(path, []byte(body)) == nil {
 			cleared = append(cleared, path)
 		}
 	}
 	return cleared
-}
-
-// writeSecretFile replaces the contents of a secret-bearing file only after
-// tightening its held descriptor. The permission argument to os.WriteFile is
-// ignored for an existing file, which would otherwise expose newly written
-// secret data until a later chmod.
-func writeSecretFile(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := f.Chmod(0o600); err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	return err
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that

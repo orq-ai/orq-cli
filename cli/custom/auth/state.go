@@ -69,7 +69,14 @@ func StateProfiles() []string {
 	}
 	names := make([]string, 0)
 	for name := range bartolocli.Creds.GetStringMap(stateSection) {
-		names = append(names, name)
+		// Clearing a field writes an empty string rather than deleting it (viper
+		// cannot delete), so an entry emptied by logout is not a profile.
+		for _, value := range StateOf(name) {
+			if strings.TrimSpace(value) != "" {
+				names = append(names, name)
+				break
+			}
+		}
 	}
 	return names
 }
@@ -118,7 +125,7 @@ func MigrateProfileState(configDir string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeSecretFile(path, out); err != nil {
+	if err := WriteSecretFile(path, out); err != nil {
 		return err
 	}
 
@@ -244,7 +251,7 @@ func dropRemovedSelection(configDir string, removed []string) error {
 	if err != nil {
 		return err
 	}
-	return writeSecretFile(path, out)
+	return WriteSecretFile(path, out)
 }
 
 func stringField(m map[string]any, field string) string {
@@ -255,17 +262,33 @@ func stringField(m map[string]any, field string) string {
 	return strings.TrimSpace(v)
 }
 
-// writeSecretFile writes with the mode credentials.json already carries; the
-// chmod is explicit because O_CREATE's mode is ignored for an existing file.
-func writeSecretFile(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+// WriteSecretFile replaces a secret-bearing file through a temp file in the
+// same directory, so a crash or a concurrent reader never sees a half-written
+// credentials.json — truncating the real file in place can lose every stored
+// credential, not only the one being written. This is what bartolo's own
+// credentials writer does; it is unexported there, hence the copy.
+func WriteSecretFile(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmp := f.Name()
+	defer os.Remove(tmp)
 	if err := f.Chmod(0o600); err != nil {
+		f.Close()
 		return err
 	}
-	_, err = f.Write(data)
-	return err
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

@@ -56,6 +56,10 @@ func BindProfileServer(profile, server string) error {
 	// resolves its server itself; anything else is ours to record.
 	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" {
 		bartolocli.Creds.Set("profiles."+profile+".server", server)
+		// State outranks the profile in StateValueOf, so a server left there by
+		// an earlier session login would keep winning against the host this
+		// profile just bound.
+		auth.SetStateValue(profile, "server", "")
 	} else {
 		auth.SetStateValue(profile, "server", server)
 	}
