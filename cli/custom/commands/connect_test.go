@@ -2629,3 +2629,77 @@ func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
 		t.Errorf("an unsupported agent got a row: %v", got)
 	}
 }
+
+func TestScopedDisconnectPreviewListsOnlyThatScope(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	run := func(args ...string) {
+		c := NewConnectCommand()
+		c.SetArgs(args)
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %v: %v", args, err)
+		}
+	}
+	t.Chdir(project)
+	run("claude", "skills")
+	run("claude", "skills", "--local")
+
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--local", "--dry-run"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, tilde(filepath.Join(project, ".claude", "skills"))) {
+		t.Errorf("local directory not previewed:\n%s", out)
+	}
+	if strings.Contains(out, tilde(filepath.Join(home, ".claude", "skills"))) {
+		t.Errorf("--local preview listed the global directory it will not remove:\n%s", out)
+	}
+}
+
+func TestDisconnectCountsInstallsElsewhereWhenNothingIsWiredHere(t *testing.T) {
+	_, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	other := t.TempDir()
+	t.Chdir(other)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills", "--local"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	t.Chdir(project)
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--yes"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "other director") {
+		t.Errorf("an install elsewhere was not counted:\n%s", out)
+	}
+}
+
+func TestStatusCountsSharedSkillsAsWiredForEveryReader(t *testing.T) {
+	_, project := mcpMachine(t, ".codex")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(project)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"codex", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"codex", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "not wired") {
+		t.Errorf("codex reads the shared directory and is wired:\n%s", out)
+	}
+}

@@ -1395,7 +1395,7 @@ func reportLocalSkillsNotes(rep *reporter, agents []string, targets []skills.Tar
 		return
 	}
 	root, inRepo := skills.RepoRoot(cwd)
-	if inRepo && !sameDir(root, cwd) && slices.Contains(agents, "kimi") {
+	if inRepo && !skills.SameDir(root, cwd) && slices.Contains(agents, "kimi") {
 		rep.warn("--local writes into %s, but the repository root is %s; kimi reads project skills from the root only", tilde(cwd), tilde(root))
 	}
 	if inRepo {
@@ -1405,7 +1405,13 @@ func reportLocalSkillsNotes(rep *reporter, agents []string, targets []skills.Tar
 				rels = append(rels, filepath.ToSlash(rel)+"/")
 			}
 		}
-		rep.info("add %s to .gitignore — the links point into ~/.orq and mean nothing to anyone else", strings.Join(rels, " and "))
+		if runtime.GOOS == "windows" {
+			// Copy mode: real directories, and a committed one pins a
+			// generation the CLI later expects to own.
+			rep.info("add %s to .gitignore — orq manages these copies and replaces them on update", strings.Join(rels, " and "))
+		} else {
+			rep.info("add %s to .gitignore — the links point into ~/.orq and mean nothing to anyone else", strings.Join(rels, " and "))
+		}
 	}
 	if slices.Contains(agents, "pi") {
 		rep.info("%-8s %-9s pi loads project skills only for a trusted project — approve it in pi once", "pi", capSkills)
@@ -1678,7 +1684,7 @@ func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
 	if !scopeMatters(caps) {
 		return nil
 	}
-	global, err := promptForScope()
+	global, err := promptForScope(caps)
 	if err != nil {
 		return err
 	}
@@ -1711,16 +1717,29 @@ func scopeMatters(caps []string) bool {
 	return false
 }
 
+// scopePrompt names only the capabilities this run writes: a skills-only run
+// asked about "the MCP entry" is told something it did not ask for.
+func scopePrompt(caps []string) string {
+	var what []string
+	if hasCap(caps, capMCP) {
+		what = append(what, "the MCP entry")
+	}
+	if hasCap(caps, capSkills) {
+		what = append(what, "skills")
+	}
+	return fmt.Sprintf("Where should %s go?", strings.Join(what, " and "))
+}
+
 // promptForScope is one question for every scope-capable capability rather than
 // one each: the answer is the same kind of answer, and asking twice in a
 // four-question wizard buys nothing. Global leads because it is the default.
-func promptForScope() (bool, error) {
+func promptForScope(caps []string) (bool, error) {
 	globalOption := fmt.Sprintf("%-9s every project on this machine", "global")
 	localOption := fmt.Sprintf("%-9s this project only", "local")
 
 	var chosen string
 	if err := survey.AskOne(&survey.Select{
-		Message: "Where should the MCP entry and skills go?",
+		Message: scopePrompt(caps),
 		Options: []string{globalOption, localOption},
 		Default: globalOption,
 	}, &chosen, promptStdio()); err != nil {

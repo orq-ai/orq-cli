@@ -3407,3 +3407,16 @@ func TestWriteShellEnvFileWarnsOnPreexistingLooseFile(t *testing.T) {
 		}
 	})
 }
+
+func TestScopePromptNamesOnlyTheCapabilitiesInTheRun(t *testing.T) {
+	cases := map[string][]string{
+		"Where should skills go?":                   {capSkills},
+		"Where should the MCP entry go?":            {capMCP},
+		"Where should the MCP entry and skills go?": {capMCP, capSkills},
+	}
+	for want, caps := range cases {
+		if got := scopePrompt(caps); got != want {
+			t.Errorf("scopePrompt(%v) = %q, want %q", caps, got, want)
+		}
+	}
+}

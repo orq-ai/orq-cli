@@ -133,8 +133,11 @@ links under `~/.codex/skills`, `~/.kimi-code/skills` and, on Linux, the XDG path
 in `install()` or `refresh()` removes a link because its directory dropped out of
 `Targets` — `refresh` prunes by *skill name* only (`project.go`, the `!inSet[l.Skill]`
 branch). So install gains one step, under the manifest lock, before it projects: every
-recorded non-session link whose directory is not in the current global target set, and
-that `isOurs` still proves is ours, is removed and dropped from the manifest. A path
+recorded non-session link in a *retired* directory — `~/.codex/skills`,
+`~/.kimi-code/skills` (each honouring its home variable) and the Linux XDG path — that
+`isOurs` still proves is ours, is removed and dropped from the manifest. The rule is the
+explicit list, not "every directory outside the current global target set": that broader
+predicate would delete other repositories' local installs from a global run. A path
 something else now occupies is reported as skipped, the same as everywhere else. This is
 the only place the old layout is ever consulted.
 

@@ -182,9 +182,7 @@ func reconcileRetired(m *Manifest, res *Result) error {
 // Remove deletes only what the manifest records for the given agents in the
 // given scope. An empty agent list means every agent.
 //
-// Two rules select a link. Membership: a link with an empty Agent is the
-// shared agents-spec directory (see Targets) and belongs to the request
-// whenever any named agent is a shared reader. Place: the link's directory
+// Two rules select a link. Membership is Belongs. Place: the link's directory
 // is one the scope means at this cwd — ScopeBoth is the global set plus the
 // local set here. A local install in another directory matches the first
 // rule and not the second; it is counted in Elsewhere and left alone, and
@@ -232,19 +230,10 @@ func remove(agents []string, scope Scope) (*Result, error) {
 	for _, tg := range reachable {
 		inReach[filepath.Clean(tg.Dir)] = true
 	}
-	wanted := map[string]bool{}
-	sharedWanted := false
-	for _, a := range all {
-		wanted[a] = true
-		sharedWanted = sharedWanted || sharedReaders[a]
-	}
 	res := &Result{}
 	var gone []string
 	for _, l := range m.Links {
-		if l.Session {
-			continue
-		}
-		if !wanted[l.Agent] && !(l.Agent == "" && sharedWanted) {
+		if l.Session || !Belongs(l.Agent, all) {
 			continue
 		}
 		if dir := filepath.Dir(filepath.Clean(l.Path)); !inScope[dir] {

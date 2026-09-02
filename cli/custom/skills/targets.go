@@ -36,7 +36,7 @@ func ScopeFor(cwd string) Scope {
 	if err != nil {
 		return ScopeLocal
 	}
-	if sameDir(cwd, home) {
+	if SameDir(cwd, home) {
 		return ScopeGlobal
 	}
 	return ScopeLocal
@@ -53,8 +53,12 @@ func RepoRoot(dir string) (string, bool) {
 	}
 	cur := filepath.Clean(resolved)
 	for {
-		if _, err := os.Lstat(filepath.Join(cur, ".git")); err == nil {
+		_, err := os.Lstat(filepath.Join(cur, ".git"))
+		if err == nil {
 			return cur, true
+		}
+		if !os.IsNotExist(err) {
+			return "", false
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -64,7 +68,9 @@ func RepoRoot(dir string) (string, bool) {
 	}
 }
 
-func sameDir(a, b string) bool {
+// SameDir reports whether two paths name one directory once symlinks are
+// resolved, which a symlinked $HOME otherwise defeats.
+func SameDir(a, b string) bool {
 	if a == b {
 		return true
 	}
@@ -90,6 +96,18 @@ var sharedReaders = map[string]bool{"opencode": true, "kilo": true, "pi": true, 
 // whose Agent is empty: they belong to the request whenever any named agent
 // is a shared reader.
 func SharedReader(agent string) bool { return sharedReaders[agent] }
+
+// Belongs is the membership rule for a recorded link: a named agent owns its
+// own links, and the shared directory (empty Agent) belongs to the request
+// whenever any named agent is a shared reader.
+func Belongs(linkAgent string, agents []string) bool {
+	for _, id := range agents {
+		if id == linkAgent || (linkAgent == "" && sharedReaders[id]) {
+			return true
+		}
+	}
+	return false
+}
 
 // Receives reports whether agent has anywhere to put skills at all — its own
 // directory or the shared one. It is what lets a caller ask "which agents can
@@ -134,7 +152,11 @@ func Targets(agents []string, scope Scope) ([]Target, error) {
 		if err != nil {
 			return nil, err
 		}
-		bases = append(bases, base{cwd, false})
+		// Run from $HOME, both scopes name one directory; a second entry
+		// for it would let PlaceOf call a global link local.
+		if !(scope == ScopeBoth && SameDir(cwd, bases[0].dir)) {
+			bases = append(bases, base{cwd, false})
+		}
 	}
 	var out []Target
 	for _, b := range bases {

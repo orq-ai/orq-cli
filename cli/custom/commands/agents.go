@@ -1226,6 +1226,10 @@ func skillsCheck() (doctorCheck, bool) {
 	case missingGlobal == 0 && missingLocal == 0 && foreign == 0 && !status.Stale:
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
+	case missingGlobal > 0 && missingLocal > 0:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' for the global set and 'orq connect skills --local' from this directory for the local one",
+			missingGlobal+missingLocal, recorded, strings.Join(skillDirsIn(status, skills.LinkMissing, ""), ", "))
 	case missingGlobal > 0:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
@@ -1241,6 +1245,9 @@ func skillsCheck() (doctorCheck, bool) {
 	default:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d orq skills are from an older CLI version — run 'orq connect skills' to update them", recorded)
+	}
+	if elsewhere > 0 {
+		check.Message += fmt.Sprintf(" (%d links in other directories are not checked from here)", elsewhere)
 	}
 	return check, true
 }

@@ -1981,3 +1981,44 @@ func assertProjectedFrom(t *testing.T, path, wantGen string) {
 		t.Errorf("manifest generation is %s, want %s", m.Generation, wantGen)
 	}
 }
+
+func TestTargetsFromHomeNameEachDirectoryOnce(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	got, err := Targets([]string{"claude", "codex"}, ScopeBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, tg := range got {
+		if seen[tg.Dir] {
+			t.Errorf("%s listed twice", tg.Dir)
+		}
+		seen[tg.Dir] = true
+		if !tg.Global {
+			t.Errorf("%s is local from $HOME", tg.Dir)
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("got %d targets, want 2", len(got))
+	}
+}
+
+func TestBelongs(t *testing.T) {
+	cases := []struct {
+		link   string
+		agents []string
+		want   bool
+	}{
+		{"claude", []string{"claude"}, true},
+		{"claude", []string{"codex"}, false},
+		{"", []string{"codex"}, true},
+		{"", []string{"claude"}, false},
+		{"", nil, false},
+	}
+	for _, c := range cases {
+		if got := Belongs(c.link, c.agents); got != c.want {
+			t.Errorf("Belongs(%q, %v) = %v", c.link, c.agents, got)
+		}
+	}
+}

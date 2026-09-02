@@ -308,7 +308,7 @@ Capabilities:
   tracing   Parses, but is not available yet.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
-instead, for the agents that read a project config (Claude Code and Kimi Code).
+instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
 
 ` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
 orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
@@ -414,7 +414,16 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
-		isWired[w.agent] = true
+		if w.agent != "" {
+			isWired[w.agent] = true
+			continue
+		}
+		// The shared skills row wires every shared reader that was asked about.
+		for _, id := range agents {
+			if skills.SharedReader(id) {
+				isWired[id] = true
+			}
+		}
 	}
 	// Scoped to what was asked about: `--status codex` reporting on kimi is an
 	// answer to a question nobody asked.
@@ -978,6 +987,11 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	wired := wiredTargets(agents, caps, opts)
 	if len(wired) == 0 {
 		rep.info(nothingWired(namedAgents, agents))
+		if hasCap(caps, capSkills) {
+			if status, err := skills.ReadStatus(); err == nil && status != nil {
+				reportSkillsElsewhere(rep, status, agents)
+			}
+		}
 		return nil
 	}
 	if dryRun {
@@ -1095,14 +1109,15 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		// A skills row carries the same ✓ the disk-probed rows do, so it rests
 		// on the same kind of evidence: ReadStatus probes each recorded link
 		// rather than trusting the manifest that records it. Rows are the
-		// global set and this directory's local set; a local install made
-		// elsewhere is counted by reportBrokenSkillLinks, not listed.
+		// global set and this directory's local set, narrowed to the scope
+		// the flags name so the preview never lists a directory disconnect
+		// will not touch; a local install made elsewhere is counted by
+		// reportBrokenSkillLinks, not listed.
 		status, err := skills.ReadStatus()
 		if err == nil && status != nil {
 			idx := map[string]int{}
-			wanted, sharedWanted := skillsMembership(agents)
 			for _, l := range status.Links {
-				if !skillLinkWanted(l, wanted, sharedWanted) || l.Place == skills.PlaceElsewhere {
+				if !skills.Belongs(l.Agent, agents) || !placeInScope(l.Place, skillsRemoveScope(opts)) {
 					continue
 				}
 				dir := filepath.Dir(l.Path)
@@ -1121,23 +1136,23 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 	return out
 }
 
-// skillsMembership is the rule skills.Remove applies to a link: a named agent
-// owns its own links, and the shared directory (empty Agent) belongs to the
-// request whenever any named agent is a shared reader.
-func skillsMembership(agents []string) (wanted map[string]bool, sharedWanted bool) {
-	wanted = map[string]bool{}
-	for _, id := range agents {
-		wanted[id] = true
-		sharedWanted = sharedWanted || skills.SharedReader(id)
+func placeInScope(p skills.Place, scope skills.Scope) bool {
+	switch scope {
+	case skills.ScopeGlobal:
+		return p == skills.PlaceGlobal
+	case skills.ScopeLocal:
+		return p == skills.PlaceLocal
 	}
-	return wanted, sharedWanted
+	return p != skills.PlaceElsewhere
 }
 
-func skillLinkWanted(l skills.LinkStatus, wanted map[string]bool, sharedWanted bool) bool {
-	if l.Agent == "" {
-		return sharedWanted
+// countDirs is (links, directories) for a set of link paths.
+func countDirs(paths []string) (int, int) {
+	dirs := map[string]bool{}
+	for _, p := range paths {
+		dirs[filepath.Dir(p)] = true
 	}
-	return wanted[l.Agent]
+	return len(paths), len(dirs)
 }
 
 // reportBrokenSkillLinks warns about every recorded link the table renders a
@@ -1157,9 +1172,8 @@ func reportBrokenSkillLinks(rep *reporter, agents []string) {
 	if err != nil || status == nil {
 		return
 	}
-	wanted, sharedWanted := skillsMembership(agents)
 	inScope := func(l skills.LinkStatus) bool {
-		return skillLinkWanted(l, wanted, sharedWanted) && l.Place != skills.PlaceElsewhere
+		return skills.Belongs(l.Agent, agents) && l.Place != skills.PlaceElsewhere
 	}
 	// Entries are collapsed per directory rather than printed one per file:
 	// deleting a whole skills directory recorded a dozen links, and a dozen
@@ -1222,19 +1236,21 @@ func reportBrokenSkillLinks(rep *reporter, agents []string) {
 		}
 	}
 
-	// Local installs in other directories: one count, not rows. They are
-	// real, and the agents reading them from here (codex, opencode, pi,
-	// kilo walk up to the git root) may well load them, but the table
-	// describes what a disconnect run here can undo.
-	elsewhere := map[string]int{}
-	total := 0
+	reportSkillsElsewhere(rep, status, agents)
+}
+
+// reportSkillsElsewhere counts local installs in other directories: one
+// line, not rows. They are real, and the agents reading them from here
+// (codex, opencode, pi, kilo walk up to the git root) may well load them,
+// but the table describes what a disconnect run here can undo.
+func reportSkillsElsewhere(rep *reporter, status *skills.Status, agents []string) {
+	var paths []string
 	for _, l := range status.Links {
-		if l.Place == skills.PlaceElsewhere && skillLinkWanted(l, wanted, sharedWanted) {
-			elsewhere[filepath.Dir(l.Path)]++
-			total++
+		if l.Place == skills.PlaceElsewhere && skills.Belongs(l.Agent, agents) {
+			paths = append(paths, l.Path)
 		}
 	}
-	if n := len(elsewhere); n > 0 {
+	if total, n := countDirs(paths); n > 0 {
 		rep.info("skills   %d links in %d other director%s are not shown — run from there to see or remove them", total, n, plural(n, "y", "ies"))
 	}
 }
@@ -1320,12 +1336,8 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		for _, path := range res.Skipped {
 			rep.warn("%s is no longer ours — left in place, and orq has stopped tracking it", tilde(path))
 		}
-		if n := len(res.Elsewhere); n > 0 {
-			dirs := map[string]bool{}
-			for _, path := range res.Elsewhere {
-				dirs[filepath.Dir(path)] = true
-			}
-			rep.info("%-8s %-9s left %d links in %d other director%s — run 'orq disconnect skills --local' from there", "", capSkills, n, len(dirs), plural(len(dirs), "y", "ies"))
+		if n, dirs := countDirs(res.Elsewhere); n > 0 {
+			rep.info("%-8s %-9s left %d links in %d other director%s — run 'orq disconnect skills --local' from there", "", capSkills, n, dirs, plural(dirs, "y", "ies"))
 		}
 	}
 	return rows, skillsRemoved, failed
@@ -1409,7 +1421,7 @@ func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
 		return nil
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		if cwd, cerr := os.Getwd(); cerr == nil && sameDir(cwd, home) {
+		if cwd, cerr := os.Getwd(); cerr == nil && skills.SameDir(cwd, home) {
 			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — config written there applies to every session you start from home rather than to one project. Use --global", tilde(home))
 		}
 	}
