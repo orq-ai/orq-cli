@@ -954,6 +954,22 @@ func TestSetupHasNoAgentFlags(t *testing.T) {
 	}
 }
 
+func TestSetupInteractiveFlagDescribesItsRemainingChoices(t *testing.T) {
+	cmd := NewSetupCommand()
+	flag := cmd.Flags().Lookup("interactive")
+	if flag == nil {
+		t.Fatal("setup missing --interactive")
+	}
+	if got, want := flag.Usage, "Revisit inferred workspace and API-key choices"; got != want {
+		t.Errorf("--interactive help = %q, want %q", got, want)
+	}
+	for _, phrase := range []string{"guided setup", "revisit inferred workspace and API-key choices", "--no-input"} {
+		if !strings.Contains(cmd.Long, phrase) {
+			t.Errorf("setup long help does not contain %q:\n%s", phrase, cmd.Long)
+		}
+	}
+}
+
 // The final screen must not tell the user to append a source line to a profile
 // that already has one. The "is it exported here" check is always false on the
 // run that just wrote the profile — the edit lands in new shells, not this one

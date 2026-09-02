@@ -207,8 +207,8 @@ func NewSetupCommand() *cobra.Command {
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
 			`workspace API key, and wires your coding agents to route model calls through the orq AI Gateway.
 
-Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
-			`flagged with ` + "`--no-input`" + ` for CI.
+Run it bare for guided setup, with ` + "`-i`" + ` to revisit inferred workspace and API-key choices,
+or fully flagged with ` + "`--no-input`" + ` for CI.
 
 Supported agents: ` + strings.Join(agentIDs(), ", ") + `.
 
@@ -226,7 +226,7 @@ wins over a key left exported in your shell.`),
 	}
 
 	f := cmd.Flags()
-	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
+	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Revisit inferred workspace and API-key choices")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked (except switching workspace, which always needs a person)")
 	f.StringSliceVar(&opts.caps, "capability", nil,

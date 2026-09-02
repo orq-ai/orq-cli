@@ -111,6 +111,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `orq setup` now shows the project picker during ordinary terminal
+  setup.** With multiple projects it previously prompted only when the optional
+  `-i` flag was present, so the default interactive flow silently selected the
+  workspace's default project. Non-interactive and `--no-input` runs still use
+  that default without prompting, and a sole project is still selected
+  automatically.
+
 ## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
 
 - **Added: time flags accept relative values.** `--from`, `--to`, and any other
