@@ -761,8 +761,8 @@ func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace str
 	if err := writeGatewayKeyProfile(profile, key, workspace); err != nil {
 		return err
 	}
-	// The profile has no API key now, which bartolo fails every request on;
-	// the migration is what removes such an entry.
+	// The profile has no API key now, which bartolo fails every request on. Its
+	// state entry proves it is ours, so migration can see and remove the husk.
 	return auth.MigrateProfileState(viper.GetString("config-directory"))
 }
 
@@ -807,7 +807,8 @@ func clearAPIKeyProfile() (bool, error) {
 		return true, err
 	}
 	// The profile is now keyless, which bartolo treats as a hard failure for
-	// every later command; purge it rather than wait for the next PreRun.
+	// every later command. Its state entry proves it is ours, so migration can
+	// see and remove the husk now.
 	return true, auth.MigrateProfileState(viper.GetString("config-directory"))
 }
 
@@ -931,17 +932,20 @@ func writeCredsProfile(profile, workspace string) error {
 // and forgotten in the other.
 var shellEnvFileNames = []string{"env", "env.fish"}
 
+var writeSecretFile = auth.WriteSecretFile
+
 // clearShellEnvFile removes the exported key from the file `orq setup` wrote,
 // leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
 // and deleting the target would make every new shell report a missing file.
 // Both spellings are cleared — a user who changed shells since setup has the
 // other one still sitting there.
-func clearShellEnvFile() []string {
+func clearShellEnvFile() ([]string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
-		return nil
+		return nil, nil
 	}
 	var cleared []string
+	var clearErrors []error
 	for _, name := range shellEnvFileNames {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
@@ -949,11 +953,13 @@ func clearShellEnvFile() []string {
 			continue
 		}
 		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
-		if auth.WriteSecretFile(path, []byte(body)) == nil {
-			cleared = append(cleared, path)
+		if err := writeSecretFile(path, []byte(body)); err != nil {
+			clearErrors = append(clearErrors, fmt.Errorf("clear %s: %w", path, err))
+			continue
 		}
+		cleared = append(cleared, path)
 	}
-	return cleared
+	return cleared, errors.Join(clearErrors...)
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that

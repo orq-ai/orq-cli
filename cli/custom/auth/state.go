@@ -22,13 +22,14 @@ import (
 // falling back to ORQ_API_KEY (bartolo >=0.8, apikey.lookupKey). A session
 // login has exactly that shape — no API key, but a gateway key and a workspace
 // — so storing this state as a profile made bartolo reject this CLI's own
-// primary credential. A profile now exists only when it holds an API key.
+// primary credential. Migration restores this CLI's invariant that its bartolo
+// profile exists only when it holds an API key before the next command.
 const stateSection = "state"
 
 // StateFields are the fields that moved out of the profile. `server` is not
 // here: a profile that keeps an api_key keeps its server too, because bartolo
-// resolves that one itself. Only a profile being removed hands its server over
-// (see migrateProfileState).
+// resolves that one itself. Keyless session state records its server here at
+// runtime, and migration moves it here when removing the profile.
 var StateFields = []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "workspace"}
 
 func stateKey(profile, field string) string {
@@ -60,9 +61,8 @@ func SetStateValue(profile, field, value string) {
 	bartolocli.Creds.Set(stateKey(profile, field), value)
 }
 
-// StateProfiles lists the profiles that have state of ours but no bartolo
-// profile, so `auth list-profiles` still shows a session-only login after its
-// keyless profile is gone.
+// StateProfiles lists profile names with non-empty state. Callers that combine
+// these names with bartolo profiles are responsible for deduplicating them.
 func StateProfiles() []string {
 	if bartolocli.Creds == nil {
 		return nil
@@ -91,72 +91,74 @@ func StateOf(profile string) map[string]string {
 }
 
 // MigrateProfileState moves our fields out of `profiles.<name>` and removes
-// the profiles that are left holding no API key — the ones bartolo would fail
+// our profiles that are left holding no API key — the ones bartolo would fail
 // every request on. It rewrites credentials.json directly and then reloads the
 // process-wide handle, because viper (which backs bartolo's credentials file)
 // can set a key but cannot delete one.
 //
-// It is a no-op once done, so it can run on every invocation: needsMigration
-// answers from the already-loaded file, and nothing touches the disk until
-// there is something to move.
+// It is a no-op once migration and selection repair are done, so it can run on
+// every invocation: needsMigration answers from the already-loaded file, and
+// the disk changes only when state must move or selection must be repaired.
 func MigrateProfileState(configDir string) error {
-	if bartolocli.Creds == nil || !needsMigration() {
+	if bartolocli.Creds == nil {
 		return nil
 	}
-
-	path := filepath.Join(configDir, "credentials.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		// No file means the in-memory profiles came from somewhere else (a
-		// test, or a caller that seeded Creds); there is nothing to rewrite.
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
+	if needsMigration() {
+		path := filepath.Join(configDir, "credentials.json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			// No file means the in-memory profiles came from somewhere else (a
+			// test, or a caller that seeded Creds); there is nothing to rewrite.
+			if errors.Is(err, fs.ErrNotExist) {
+				return repairProfileSelection(configDir)
+			}
+			return err
 		}
-		return err
-	}
-	doc := map[string]any{}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return err
+		doc := map[string]any{}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return err
+		}
+
+		migrateProfileState(doc)
+
+		out, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := WriteSecretFile(path, out); err != nil {
+			return err
+		}
+
+		reloaded, err := bartolocli.NewCredentialsFile(configDir)
+		if err != nil {
+			return err
+		}
+		bartolocli.Creds = reloaded
 	}
 
-	removed := migrateProfileState(doc)
-
-	out, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := WriteSecretFile(path, out); err != nil {
-		return err
-	}
-
-	reloaded, err := bartolocli.NewCredentialsFile(configDir)
-	if err != nil {
-		return err
-	}
-	bartolocli.Creds = reloaded
-
-	return dropRemovedSelection(configDir, removed)
+	return repairProfileSelection(configDir)
 }
 
-// migrateProfileState is the pure half: it edits doc in place and reports the
-// profiles it removed.
-func migrateProfileState(doc map[string]any) []string {
+// migrateProfileState is the pure half: it edits doc in place.
+func migrateProfileState(doc map[string]any) {
 	profiles, _ := doc["profiles"].(map[string]any)
 	if len(profiles) == 0 {
-		return nil
+		return
 	}
 	state, _ := doc[stateSection].(map[string]any)
 	if state == nil {
 		state = map[string]any{}
 	}
 
-	var removed []string
 	for name, value := range profiles {
 		profile, ok := value.(map[string]any)
 		if !ok {
 			continue
 		}
-		entry, _ := state[name].(map[string]any)
+		stateName, entry := mapEntryEqualFold(state, name)
+		if stateName == "" {
+			stateName = name
+		}
 		if entry == nil {
 			entry = map[string]any{}
 		}
@@ -165,7 +167,7 @@ func migrateProfileState(doc map[string]any) []string {
 		// keyless profile someone else left here is theirs: bartolo will
 		// reject it if it is ever selected, which is the honest answer, and
 		// deleting a credentials entry we do not own is not.
-		ours := ownedProfile(profile)
+		ours := ownedProfile(profile, entry)
 
 		fields := StateFields
 		// A profile with no API key is going away, so its server binding has
@@ -174,32 +176,50 @@ func migrateProfileState(doc map[string]any) []string {
 		if ours && stringField(profile, "api_key") == "" {
 			fields = append(append([]string{}, StateFields...), "server")
 		}
-		for _, field := range fields {
-			if v := stringField(profile, field); v != "" && stringField(entry, field) == "" {
-				entry[field] = v
+		if ours {
+			for _, field := range fields {
+				if hasValue(entry, field) {
+					delete(profile, field)
+					continue
+				}
+				if hasValue(profile, field) {
+					entry[field] = profile[field]
+					delete(profile, field)
+				}
 			}
-			delete(profile, field)
 		}
 		if len(entry) > 0 {
-			state[name] = entry
+			state[stateName] = entry
 		}
 
 		if ours && stringField(profile, "api_key") == "" {
 			delete(profiles, name)
-			removed = append(removed, name)
 		}
 	}
 
 	if len(state) > 0 {
 		doc[stateSection] = state
 	}
-	return removed
 }
 
-// ownedProfile reports whether a profile carries a field only this CLI writes.
-func ownedProfile(profile map[string]any) bool {
+// ownedProfile reports whether a profile carries a field only this CLI writes,
+// or is the keyless profile husk proved ours by its sibling state entry.
+func ownedProfile(profile, entry map[string]any) bool {
+	keyless := stringField(profile, "api_key") == ""
+	if keyless && len(entry) > 0 {
+		return true
+	}
+	// A keyless profile that still names an auth `type` is also ours: bartolo's
+	// own writers always store an api_key beside the type, and versions before
+	// this split left exactly that husk behind on logout — an empty api_key, a
+	// type, and a blank workspace, with nothing under `state` to prove it.
+	if keyless && hasValue(profile, "type") {
+		return true
+	}
 	for _, field := range StateFields {
-		if stringField(profile, field) != "" {
+		// A workspace alone does not prove ownership of a keyless profile:
+		// other tools can record one while configuring their own credentials.
+		if hasValue(profile, field) && (!keyless || field != "workspace") {
 			return true
 		}
 	}
@@ -209,38 +229,45 @@ func ownedProfile(profile map[string]any) bool {
 // needsMigration answers from the loaded credentials: a profile of ours still
 // holding fields that belong under `state`.
 func needsMigration() bool {
-	for _, value := range bartolocli.Creds.GetStringMap("profiles") {
+	profiles := bartolocli.Creds.GetStringMap("profiles")
+	state := bartolocli.Creds.GetStringMap(stateSection)
+	for name, value := range profiles {
 		profile, ok := value.(map[string]any)
 		if !ok {
 			continue
 		}
-		if ownedProfile(profile) {
+		_, entry := mapEntryEqualFold(state, name)
+		if ownedProfile(profile, entry) {
 			return true
 		}
 	}
 	return false
 }
 
-// dropRemovedSelection clears a persisted profile selection that names a
-// profile this migration deleted. Left behind, bartolo resolves it as in force
-// and fails every request with "profile is not configured" — the same dead end
-// under a different message.
-func dropRemovedSelection(configDir string, removed []string) error {
-	if len(removed) == 0 {
-		return nil
+func mapEntryEqualFold(m map[string]any, name string) (string, map[string]any) {
+	if entry, ok := m[name].(map[string]any); ok {
+		return name, entry
 	}
+	for key, value := range m {
+		if !strings.EqualFold(key, name) {
+			continue
+		}
+		entry, _ := value.(map[string]any)
+		return key, entry
+	}
+	return "", nil
+}
+
+// repairProfileSelection clears a persisted selection naming no configured
+// profile. Left behind, bartolo v0.9.0 resolves it as in force and fails every
+// request with `profile "name" is not configured` — the same dead end under a
+// different message.
+func repairProfileSelection(configDir string) error {
 	selected := strings.TrimSpace(viper.GetString("profile-selected"))
 	if selected == "" {
 		return nil
 	}
-	var gone bool
-	for _, name := range removed {
-		if strings.EqualFold(name, selected) {
-			gone = true
-			break
-		}
-	}
-	if !gone {
+	if bartolocli.ProfileExists(selected) {
 		return nil
 	}
 	viper.Set("profile-selected", "")
@@ -273,11 +300,25 @@ func stringField(m map[string]any, field string) string {
 	return strings.TrimSpace(v)
 }
 
+func hasValue(m map[string]any, field string) bool {
+	if m == nil {
+		return false
+	}
+	v, ok := m[field]
+	if !ok {
+		return false
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s) != ""
+	}
+	return v != nil
+}
+
 // WriteSecretFile replaces a secret-bearing file through a temp file in the
 // same directory, so a crash or a concurrent reader never sees a half-written
 // credentials.json — truncating the real file in place can lose every stored
-// credential, not only the one being written. This is what bartolo's own
-// credentials writer does; it is unexported there, hence the copy.
+// credential, not only the one being written. This matches bartolo v0.9.0's
+// own credentials writer; it is unexported there, hence the copy.
 func WriteSecretFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, ".tmp-*")
@@ -286,10 +327,6 @@ func WriteSecretFile(path string, data []byte) error {
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
-	if err := f.Chmod(0o600); err != nil {
-		f.Close()
-		return err
-	}
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return err

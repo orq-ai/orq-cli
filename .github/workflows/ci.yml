@@ -91,15 +91,14 @@ jobs:
         run: go build ./...
       - name: go test
         run: go test ./...
-      - name: bartolo pin matches across modules
+      - name: --json contract
+        run: go run ./cmd/orq --json version | jq .
+      - name: bartolo version matches across modules
+        shell: bash
         run: |
           set -euo pipefail
-          root="$(go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
-          rc="$(cd packages/orq-rc && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
-          if [ "$root" != "$rc" ]; then
-            echo "bartolo drift: root is $root, packages/orq-rc is $rc" >&2
-            exit 1
-          fi
+          diff <(go list -m -f '{{.Version}}' github.com/orq-ai/bartolo) \
+            <(cd packages/orq-rc && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)
       - name: command surface matches surface.json
         run: go run ./cmd/surface-dump -check
       - name: changelog stamping

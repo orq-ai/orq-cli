@@ -119,6 +119,9 @@ controls on surface changes, whichever side they originate from.
 - **Added:** `--columns id,name` picks and orders the columns of a table.
 - **Added:** an `orq auth profile` command group — `add`, `list`, `current`,
   `use`, `clear`. `auth add-profile` and `auth list-profiles` keep working.
+- **Changed:** `orq auth add-profile` is still supported and works when invoked
+  by name, but it is hidden from help output; use `orq auth profile add` to
+  discover the current spelling.
 - **Changed:** a credentials profile now outranks `ORQ_API_KEY` and `ORQ_SERVER`
   rather than losing to them, and a profile named with `--profile` that has no
   key is an error instead of a silent fall-through to whatever key is exported.
@@ -135,7 +138,10 @@ controls on surface changes, whichever side they originate from.
   `profile-selected` is also removed from `~/.orq/config.json`. A profile now
   exists only when it holds an API key, so a login that authenticates with a
   session no longer writes one that authenticates nothing.
-  `orq auth list-profiles` output is unchanged.
+  `orq auth list-profiles` output is unchanged. For now, trust that command
+  when listing profiles: `orq auth profile list` reads Bartolo's `profiles` map
+  alone and can omit a session-only login. A follow-up will make `--profile`
+  mean an API key and key sessions by server.
 - **Changed:** boolean query parameters are typed flags — `--include-budget`
   instead of `--include-budget=true`. Passing `true`/`false` explicitly still
   works (`--include-budget=false`).

@@ -2474,7 +2474,10 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 		}
 	}
 
-	cleared := clearShellEnvFile()
+	cleared, err := clearShellEnvFile()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(cleared) != 2 {
 		t.Fatalf("cleared %v, want both spellings", cleared)
 	}
@@ -2492,8 +2495,44 @@ func TestClearShellEnvFileEmptiesRatherThanDeletes(t *testing.T) {
 	}
 
 	// Nothing to clear is not an error, and reports nothing.
-	if got := clearShellEnvFile(); len(got) != 0 {
+	if got, err := clearShellEnvFile(); err != nil || len(got) != 0 {
 		t.Errorf("second run reported %v, want nothing", got)
+	}
+}
+
+func TestLogoutFailsWhenShellEnvironmentCannotBeCleared(t *testing.T) {
+	credsHarness(t)
+	dir := viper.GetString("config-directory")
+	path := filepath.Join(dir, "env")
+	if err := os.WriteFile(path, []byte("export ORQ_API_KEY=sk-orq-LIVE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fish := filepath.Join(dir, "env.fish")
+	if err := os.WriteFile(fish, []byte("set -gx ORQ_API_KEY sk-orq-LIVE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous := writeSecretFile
+	t.Cleanup(func() { writeSecretFile = previous })
+	want := errors.New("disk full")
+	writeSecretFile = func(target string, data []byte) error {
+		if target == path {
+			return want
+		}
+		return auth.WriteSecretFile(target, data)
+	}
+
+	cleared, err := clearShellEnvFile()
+	if !errors.Is(err, want) {
+		t.Fatalf("clearShellEnvFile error = %v, want %v", err, want)
+	}
+	if len(cleared) != 1 || cleared[0] != fish {
+		t.Fatalf("cleared = %v, want the unaffected fish file to be cleared", cleared)
+	}
+	if got := string(mustRead(t, path)); !strings.Contains(got, "sk-orq-LIVE") {
+		t.Fatalf("failed write unexpectedly changed the previous file: %q", got)
+	}
+	if got := string(mustRead(t, fish)); strings.Contains(got, "ORQ_API_KEY") {
+		t.Fatalf("failure in the first file prevented clearing the second: %q", got)
 	}
 }
 
@@ -2547,6 +2586,39 @@ func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 			t.Errorf("held=%v err=%v, want (false, nil)", held, err)
 		}
 	})
+}
+
+func TestGatewayKeyWritersLeaveNoKeylessProfileOnDisk(t *testing.T) {
+	credsHarness(t)
+	dir := viper.GetString("config-directory")
+
+	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme"); err != nil {
+		t.Fatal(err)
+	}
+	assertNoKeylessProfileOnDisk(t, dir, "sk-orq-K")
+
+	held, err := clearAPIKeyProfile()
+	if err != nil || !held {
+		t.Fatalf("clearAPIKeyProfile = (%v, %v), want (true, nil)", held, err)
+	}
+	assertNoKeylessProfileOnDisk(t, dir, "")
+}
+
+func assertNoKeylessProfileOnDisk(t *testing.T, dir, wantGatewayKey string) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(mustRead(t, filepath.Join(dir, "credentials.json")), &doc); err != nil {
+		t.Fatal(err)
+	}
+	profiles, _ := doc["profiles"].(map[string]any)
+	if _, ok := profiles["default"]; ok {
+		t.Errorf("profiles.default survived on disk: %v", profiles["default"])
+	}
+	state, _ := doc["state"].(map[string]any)
+	entry, _ := state["default"].(map[string]any)
+	if got, _ := entry["gateway_key"].(string); got != wantGatewayKey {
+		t.Errorf("state.default.gateway_key = %q, want %q", got, wantGatewayKey)
+	}
 }
 
 // A key passed with --api-key must be the one later commands wire. savedAPIKey

@@ -117,6 +117,7 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 // Precedence, and the provenance `orq doctor` reports. The session is layered
 // on by the PreRun itself, below every source here.
 func TestResolveServerPrecedence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	root := buildRoot(t)
 	t.Cleanup(func() {
 		auth.SetServer("", "default")

@@ -3,6 +3,7 @@ package custom
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +13,10 @@ import (
 
 	"orq/cli/custom/skills"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 )
 
 // A machine that never ran `orq connect` has no manifest. The sweep half of
@@ -243,6 +247,167 @@ func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
 	// The root itself is `orq` with no subcommand — help output, nothing else.
 	if skillsCommand(root) {
 		t.Error("bare `orq` refreshed skills")
+	}
+}
+
+func TestProfileExemptCommandsAreScopedByCommandPath(t *testing.T) {
+	want := []string{
+		"auth login",
+		"auth logout",
+		"setup",
+		"auth add-profile",
+		"auth list-profiles",
+		"auth profile add",
+		"auth profile list",
+		"auth profile current",
+		"auth profile use",
+		"auth profile clear",
+		"doctor",
+		"update",
+		"orqi",
+		"version",
+		"help",
+		"completion",
+		"man-pages",
+	}
+	for _, path := range want {
+		if !profileExemptCommands[path] {
+			t.Errorf("profileExemptCommands[%q] = false, want true", path)
+		}
+	}
+	for _, bare := range []string{"login", "logout", "add-profile", "list-profiles", "add", "list", "current", "use", "clear"} {
+		if profileExemptCommands[bare] {
+			t.Errorf("bare command name %q is exempt; this can exempt unrelated generated commands", bare)
+		}
+	}
+}
+
+func TestApplyJSONAliasReturnsFormatterErrors(t *testing.T) {
+	previous := setOutputFormat
+	t.Cleanup(func() { setOutputFormat = previous })
+	want := errors.New("formatter unavailable")
+	setOutputFormat = func(string) (func(), error) { return nil, want }
+	viper.Set("json", true)
+	t.Cleanup(func() { viper.Set("json", false) })
+
+	cmd := &cobra.Command{Use: "doctor"}
+	cmd.Flags().String("output-format", "toon", "")
+	if err := applyJSONAlias(cmd); !errors.Is(err, want) {
+		t.Fatalf("applyJSONAlias error = %v, want %v", err, want)
+	}
+}
+
+func TestApplyNoColorPreservesTerminalTableRendering(t *testing.T) {
+	previousTerminal := stdoutIsTerminal
+	previousFormatter := bartolocli.Formatter
+	previousStdout := bartolocli.Stdout
+	t.Cleanup(func() {
+		stdoutIsTerminal = previousTerminal
+		bartolocli.Formatter = previousFormatter
+		bartolocli.Stdout = previousStdout
+	})
+	stdoutIsTerminal = func() bool { return true }
+	t.Setenv("NO_COLOR", "1")
+
+	applyNoColor()
+	var out bytes.Buffer
+	bartolocli.Stdout = &out
+	restore, err := bartolocli.SetOutputFormat("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restore()
+	if err := bartolocli.FormatList(map[string]any{"items": []map[string]any{{"name": "acme"}}}, "name"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.String(), "┌") {
+		t.Fatalf("NO_COLOR disabled table rendering: %q", out.String())
+	}
+}
+
+func TestMigrationRunsBeforeInMemoryProfileTypeRepair(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("ORQ_NO_COLOR", "")
+	previousStdout := bartolocli.Stdout
+	cleanCreds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		bartolocli.Creds = cleanCreds
+		bartolocli.Stdout = previousStdout
+	})
+	root := buildRoot(t)
+	viper.Set("no-color", false)
+	bartolocli.Stdout = &bytes.Buffer{}
+	dir := viper.GetString("config-directory")
+	credentials := `{"profiles":{"default":{"api_key":"sk-orq-REAL","type":"stale","workspace":"acme"}}}`
+	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte(credentials), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	creds, err := bartolocli.NewCredentialsFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bartolocli.Creds = creds
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	root.SetArgs([]string{"version"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	stored := bartolocli.Creds.GetString("profiles.default.type")
+	if _, ok := bartolocli.AuthHandlers[stored]; !ok {
+		t.Fatalf("profile type repair was discarded by migration reload: %q", stored)
+	}
+}
+
+func TestJSONAliasAndExplicitOutputFormatPrecedence(t *testing.T) {
+	binPath := filepath.Join(t.TempDir(), "orq-json-contract")
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller: could not determine this file's path")
+	}
+	moduleRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	build := exec.Command("go", "build", "-o", binPath, "./cmd/orq")
+	build.Dir = moduleRoot
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build orq for JSON contract test: %v\n%s", err, out)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "explicit yaml wins", args: []string{"--json", "-o", "yaml", "version"}},
+		{name: "json alias", args: []string{"--json", "version"}, json: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(binPath, tc.args...)
+			cmd.Dir = t.TempDir()
+			cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("orq %v: %v", tc.args, err)
+			}
+			if tc.json {
+				var payload map[string]any
+				if err := json.Unmarshal(out, &payload); err != nil {
+					t.Fatalf("--json output is not JSON: %v\n%s", err, out)
+				}
+				return
+			}
+			var payload map[string]any
+			if err := yaml.Unmarshal(out, &payload); err != nil {
+				t.Fatalf("explicit YAML output is not YAML: %v\n%s", err, out)
+			}
+			if json.Valid(out) {
+				t.Fatalf("--json overrode explicit -o yaml: %s", out)
+			}
+		})
 	}
 }
 
