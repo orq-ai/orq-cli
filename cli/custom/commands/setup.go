@@ -857,8 +857,8 @@ func agentWiring(id string) (workspace, keyID string) {
 }
 
 // clearAgentWiring drops the record when disconnect removes a provider config.
-// Blanks the fields rather than deleting the block, matching how
-// clearAPIKeyProfile treats "present but empty" as not-configured.
+// Blanks the fields rather than deleting the block, so readers treat an
+// existing-but-empty record as unconfigured.
 func clearAgentWiring(id string) error {
 	if bartolocli.Creds == nil {
 		return nil

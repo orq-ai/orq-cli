@@ -86,8 +86,8 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		name     string
 		savedWS  string
 		activeWS string
-		// savedKey is the key seedProfile records as minted; empty means "same
-		// as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
+		// savedKey is the key recorded on the session as minted; empty means
+		// "same as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
 		savedKey string
 		// envKey overrides the exported ORQ_API_KEY; empty means "sk-minted",
 		// the ordinary case.

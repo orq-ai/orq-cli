@@ -230,9 +230,8 @@ func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
 	connectHarness(t, srv)
 	saveConnectSession(t, srv.URL, "A", "sk-orq-SAVED", "A")
 
-	// connect against workspace A: no session file exists yet, so
-	// resolveConnectAuth takes the saved-key fast path and records the key's
-	// own workspace.
+	// Connect against workspace A using the gateway key stored on that
+	// resolved-server session, and record the key's own workspace.
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
 	if err := cmd.Execute(); err != nil {
@@ -307,8 +306,7 @@ func connectStatusHarness(t *testing.T) string {
 	t.Setenv("ORQ_API_KEY", "")
 	t.Chdir(t.TempDir())
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
