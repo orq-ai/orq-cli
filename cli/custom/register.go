@@ -33,29 +33,6 @@ var (
 // where the docs live and where to report problems).
 const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-ai/orq-cli/issues"
 
-// profileExemptCommands are commands that must work with a profile that has no
-// session yet (creating one, or diagnosing why it is missing), so the
-// unknown-profile guard skips them.
-var profileExemptCommands = map[string]bool{
-	"auth login":           true,
-	"auth logout":          true,
-	"setup":                true,
-	"auth add-profile":     true,
-	"auth list-profiles":   true, // listing profiles is how you diagnose an unknown one
-	"auth profile add":     true,
-	"auth profile list":    true,
-	"auth profile current": true,
-	"auth profile use":     true,
-	"auth profile clear":   true,
-	"doctor":               true,
-	"update":               true, // updating must work without a session; it touches no orq API
-	"orqi":                 true, // installs and launches orqi; touches no orq API
-	"version":              true, // reports build info only; never calls the API
-	"help":                 true,
-	"completion":           true,
-	"man-pages":            true,
-}
-
 // interactiveWizardCommands are bartolo-owned commands whose prompts run
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
@@ -141,19 +118,11 @@ func appendHelpFooter(root *cobra.Command) {
 	root.SetHelpTemplate(root.HelpTemplate() + "\n" + helpFooter + "\n")
 }
 
-// installSessionPreRun runs once per command invocation, after cobra parses
-// flags and before the command handler fires. When the active profile's
-// session has an apiBaseUrl set and the user did NOT pass --server explicitly,
-// we point bartolo's generated commands at the same host the session was
-// authenticated against. This keeps "login against local → query against
-// local" working without a separate --server flag on every call.
-//
-// It also bridges the session into bartolo's API-key auth: bartolo's apikey
-// handler aborts the request with "missing API key" before our request
-// middleware runs, so a logged-in user with no explicit key would never
-// authenticate. When no key is configured, we feed the active workspace token
-// via ORQ_API_KEY (bartolo's InitBearer adds the "Bearer " prefix) so generated
-// commands authenticate as the session user.
+// installSessionPreRun runs once per invocation, after cobra parsed flags and
+// before the handler. It decides the server, brings ~/.orq up to date, and —
+// only when no user-supplied API key is in force — authenticates generated
+// commands as the login session by minting the active workspace/project token
+// into ORQ_API_KEY. Bartolo resolves profiles and explicit keys itself.
 func installSessionPreRun() {
 	prev := bartolocli.PreRun
 	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
@@ -162,22 +131,10 @@ func installSessionPreRun() {
 				return err
 			}
 		}
-		// Migration reloads the credentials handle, so it must finish before
-		// repairAuthProfileType layers an in-memory compatibility fix onto it.
-		if err := auth.MigrateProfileState(viper.GetString("config-directory")); err != nil {
-			return fmt.Errorf("could not migrate credentials.json: %w", err)
-		}
-		repairAuthProfileType()
 		applyNoColor()
 		if err := applyJSONAlias(cmd); err != nil {
 			return err
 		}
-		// Snapshot whether the USER configured an API key before this PreRun
-		// injects the session token into ORQ_API_KEY below - commands that
-		// read the env afterwards would see our own injection and cry wolf
-		// on every invocation.
-		explicitKey := apiKeyConfigured() && !ownExportedKey()
-		commands.SetExplicitAPIKey(explicitKey)
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
@@ -186,11 +143,17 @@ func installSessionPreRun() {
 				commandPath(cmd),
 			)
 		}
-		if err := rejectUnknownProfile(cmd); err != nil {
-			return err
-		}
 		resolveServer(cmd)
-		applyProfileAPIKey(cmd)
+		// Migration reloads bartolo's credentials handle, so it must finish
+		// before the in-memory profile-type repair.
+		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
+			return fmt.Errorf("could not migrate ~/.orq: %w", err)
+		}
+		repairAuthProfileType()
+		// A sourced gateway key written by this CLI defers to its session; every
+		// user-supplied env key or bartolo profile remains authoritative.
+		explicitKey := apiKeyConfigured() && !ownExportedKey()
+		commands.SetExplicitAPIKey(explicitKey)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
@@ -202,15 +165,6 @@ func installSessionPreRun() {
 			// No session to narrow, so --project can only be a request
 			// parameter. API-key-only users live entirely on this path.
 			return bridgeProjectFlag(cmd, nil)
-		}
-		// The session's host is the last resort, below every explicit source.
-		// A profile carries its own server since bartolo 0.8, but a session
-		// login has no profile to carry one (auth.MigrateProfileState), so this
-		// bridge and mirrorServerToViper stay until the session store and the
-		// profile store are one thing.
-		if auth.Server() == "" && session.APIBaseURL != "" {
-			auth.SetServer(session.APIBaseURL, "session")
-			mirrorServerToViper()
 		}
 		if explicitKey {
 			// An explicit key carries its own scope, so there is no token to
@@ -244,9 +198,6 @@ func installSessionPreRun() {
 // the env directly — so the same run could reach two hosts. One decision here,
 // mirrored into viper for the generated commands and into auth for everything
 // else, is what makes --server mean the same thing everywhere.
-//
-// The session's own host is layered on afterwards by the caller: it loses to
-// every explicit source, so it cannot be decided until they are ruled out.
 func resolveServer(cmd *cobra.Command) {
 	envServer, envVar := auth.ServerFromEnv(os.Getenv)
 	switch {
@@ -291,42 +242,6 @@ func persistedServer() string {
 	return strings.TrimSpace(viper.GetString("server"))
 }
 
-// applyProfileAPIKey makes an explicitly typed --profile outrank an exported
-// key. bartolo's apikey handler reads its env vars before the profile, so a
-// stray ORQ_API_KEY in the shell otherwise sends the wrong credentials to the
-// host the named profile resolved — with no message at all. Promoting the
-// profile's own key into the env var that handler reads is what makes the flag
-// win. bartolo ranks the profile above the environment itself since 0.8, so
-// this is now belt and braces for that — and the part that is still ours: it
-// warns about the shadowed key, and it exports the winning one for the child
-// processes `orq launch` starts.
-//
-// Only the explicit flag counts. ORQ_PROFILE against ORQ_API_KEY is env versus
-// env, with no statement of intent to break the tie.
-func applyProfileAPIKey(cmd *cobra.Command) {
-	f := cmd.Root().PersistentFlags().Lookup("profile")
-	if f == nil || !f.Changed {
-		return
-	}
-	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
-	if key == "" {
-		return
-	}
-	var shadowed []string
-	for _, envVar := range apiKeyEnvVars {
-		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key {
-			shadowed = append(shadowed, envVar)
-		}
-		os.Unsetenv(envVar)
-	}
-	if len(shadowed) > 0 {
-		// Say it once, and say which key won: silently swapping credentials is
-		// the failure this whole ordering exists to prevent.
-		commands.Warn("using the API key from profile %q; %s set but an explicit --profile takes precedence", auth.ActiveProfile(), strings.Join(shadowed, " and "))
-	}
-	os.Setenv(apiKeyEnvVars[0], key)
-}
-
 // mirrorServerToViper hands the resolved host to the generated commands, which
 // read viper's `server` key directly (bartolo cli.ResolveServer). They cannot
 // see the session host, --api-base-url or ORQ_API_BASE_URL; the mirror is the
@@ -356,42 +271,6 @@ func applyNoColor() {
 	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, stdoutIsTerminal())
 }
 
-// rejectUnknownProfile errors when the user explicitly selected a profile that
-// has neither a session file nor a credentials entry. Without this the CLI
-// silently falls through to ORQ_API_KEY and returns real data from the wrong
-// context — the worst kind of success. Commands that create or diagnose
-// profiles are exempt.
-func rejectUnknownProfile(cmd *cobra.Command) error {
-	if profileExemptCommands[commandPath(cmd)] {
-		return nil
-	}
-	explicit := os.Getenv("ORQ_PROFILE") != ""
-	// Only the ROOT persistent flag selects a credentials profile. A generated
-	// command may define a LOCAL --profile request field (e.g. `models
-	// create-autorouter --profile balanced`) that shadows the global flag in
-	// cmd.Flags(); that is request data, not a credentials selection.
-	if f := cmd.Root().PersistentFlags().Lookup("profile"); f != nil && f.Changed {
-		explicit = true
-	}
-	if !explicit {
-		return nil
-	}
-	if auth.InspectSession().Status != auth.StatusMissing {
-		return nil
-	}
-	// An explicit API key (env var or credentials entry) is a complete,
-	// working credential config - the standard CI shape is ORQ_API_KEY with
-	// no session file, and blocking it would reject legitimate calls.
-	if apiKeyConfigured() {
-		return nil
-	}
-	profile := auth.ActiveProfile()
-	return fmt.Errorf(
-		"unknown profile %q: no session at %s and no credentials entry; run `orq auth login --profile %s` first",
-		profile, auth.SessionFilePath(), profile,
-	)
-}
-
 // repairAuthProfileType rewrites, in memory only, a stored profile whose "type"
 // no auth handler answers to.
 //
@@ -403,8 +282,8 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 // Only the in-memory value is corrected: rewriting credentials.json from a
 // PreRun would mean every command silently mutating the user's credential file.
 func repairAuthProfileType() {
-	profile := auth.ActiveProfile()
-	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
+	profile := bartolocli.ActiveProfileName()
+	if profile == "" || strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
 		return
 	}
 	stored := bartolocli.Creds.GetString("profiles." + profile + ".type")
@@ -445,8 +324,15 @@ func configuredAPIKey() string {
 // profile, still wins. Only the exact string we exported defers.
 func ownExportedKey() bool {
 	profile := bartolocli.GetProfile()
-	saved := strings.TrimSpace(profile["gateway_key"])
-	if saved == "" || strings.TrimSpace(profile["api_key"]) != "" {
+	if strings.TrimSpace(profile["api_key"]) != "" {
+		return false
+	}
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		return false
+	}
+	saved := strings.TrimSpace(session.GatewayKey)
+	if saved == "" {
 		return false
 	}
 	for _, envVar := range apiKeyEnvVars {
@@ -454,8 +340,7 @@ func ownExportedKey() bool {
 			return false
 		}
 	}
-	session, err := auth.ReadSession()
-	return err == nil && session != nil
+	return true
 }
 
 func activeWorkspaceToken(ctx context.Context, projectID string) string {
