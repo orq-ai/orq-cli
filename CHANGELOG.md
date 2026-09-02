@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [6.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.0.0) — 2026-09-02
+
 - **Added:** `-o table` renders a list command as a table, and it is the default
   for a list at a terminal. Piped, redirected and explicitly formatted runs are
   unchanged — they still serialize to TOON, so no script's output moves. Pin a
