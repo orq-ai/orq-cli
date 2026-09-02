@@ -46,6 +46,15 @@ type Session struct {
 	RefreshToken       string                       `json:"refreshToken"`
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
+
+	// The gateway key `orq setup` minted from this login for coding agents,
+	// its id (the handle for revoking it), its expiry, and the workspace it
+	// was minted for. Not a credential for the platform API, so never a
+	// bartolo profile.
+	GatewayKey          string `json:"gatewayKey,omitempty"`
+	GatewayKeyID        string `json:"gatewayKeyId,omitempty"`
+	GatewayKeyExpiresAt string `json:"gatewayKeyExpiresAt,omitempty"`
+	GatewayWorkspace    string `json:"gatewayWorkspace,omitempty"`
 }
 
 type SessionInspectStatus string
@@ -299,25 +308,18 @@ func ClearSession() error {
 }
 
 // SavedAgentKey returns the credential agent configs are wired with, and the
-// workspace it was minted for. gateway_key is what `orq setup` writes now;
-// api_key is the fallback for keys minted before the split and for keys the
-// user brought themselves.
-//
-// It lives here rather than in commands because launch needs it too, and
-// launch cannot import commands. Three copies of this lookup drifted apart
-// once already: the split moved the key and one caller kept reading api_key,
-// which made every `orq launch` warn about a workspace mismatch that was not
-// there.
+// workspace it was minted for: the gateway key on the login session, else the
+// API key of the bartolo profile in force (a key the user brought, whose
+// workspace is unknowable). It lives here because launch needs it too and
+// launch cannot import commands.
 func SavedAgentKey() (key, workspace string) {
+	if session, err := ReadSession(); err == nil && session != nil && session.GatewayKey != "" {
+		return session.GatewayKey, session.GatewayWorkspace
+	}
 	if bartolocli.Creds == nil {
 		return "", ""
 	}
-	profile := ActiveProfile()
-	workspace = StateValueOf(profile, "workspace")
-	if key = StateValueOf(profile, "gateway_key"); key != "" {
-		return key, workspace
-	}
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + profile + ".api_key")), workspace
+	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]), ""
 }
 
 // EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts

@@ -229,3 +229,19 @@ func TestSessionFilePathFollowsTheResolvedServer(t *testing.T) {
 		t.Errorf("staging session file = %q, want my.staging.orq.ai.json", got)
 	}
 }
+
+// The credential agents are wired with is the minted gateway key, recorded on
+// the login it was minted from. A bartolo profile in force is the fallback: its
+// key is what the agents got, and its workspace is unknowable.
+func TestSavedAgentKeyReadsTheSession(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+	s := validSession("acme")
+	s.GatewayKey, s.GatewayWorkspace = "sk-orq-GW", "acme"
+	if err := SaveSession(s); err != nil {
+		t.Fatal(err)
+	}
+	if key, ws := SavedAgentKey(); key != "sk-orq-GW" || ws != "acme" {
+		t.Errorf("SavedAgentKey = (%q, %q), want the session's gateway key", key, ws)
+	}
+}
