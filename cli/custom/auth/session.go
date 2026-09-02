@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -149,8 +148,8 @@ func SessionsDir() string {
 
 // LegacySessionFilePath exposes the pre-multi-profile `~/.orq/session.json`
 // path. It normally disappears into the per-profile layout the first time
-// InspectSession runs (see migrateLegacySession), but a caller auditing
-// credentials on disk should not have to assume that migration already ran.
+// InspectSession runs, but a caller auditing credentials on disk should not
+// have to assume that migration already ran.
 func LegacySessionFilePath() string {
 	return legacySessionFilePath()
 }
@@ -335,15 +334,4 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 		return true
 	}
 	return savedWS != "" && savedWS != activeWS
-}
-
-// TODO(Task 3): remove. Temporary stub kept only so this package and its
-// remaining callers (state.go, SavedAgentKey) still compile between Task 1
-// and Task 3, which deletes state.go and every ActiveProfile reference.
-func ActiveProfile() string {
-	name := viper.GetString("profile")
-	if name == "" {
-		return "default"
-	}
-	return name
 }
