@@ -160,6 +160,14 @@ Claude Code and Kimi Code have two scopes — claude `./.mcp.json` (project) and
 and kilo read MCP config from a fixed location, so `--local` against them warns and
 writes the global path.
 
+> **Correction, 2026-09-02.** The fixed-location claim was made from `--help` output
+> and config docs. Probes that ran the agents from scratch repos showed all three read a
+> project config too: codex `.codex/config.toml` (gated on `trust_level = "trusted"`),
+> opencode `opencode.json`, kilo `kilo.json`, each layered from the git root down to cwd.
+> The project scope for these three is specified in
+> `2026-08-25-orq-cli-skills-scopes-design.md` §8 (RES-1437). The gateway paragraph
+> below is unaffected: provider configs are still home- or env-rooted only.
+
 **Gateway is global-only, verified.** Every provider resolver in the registry is
 home- or env-rooted with no project variant: `alwaysGlobalPath` (opencode, kilo, kimi),
 `codexPath` (`$CODEX_HOME`, else `~/.codex`), `piPath` (`$PI_CODING_AGENT_DIR`, else
