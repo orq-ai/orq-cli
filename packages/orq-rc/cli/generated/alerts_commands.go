@@ -194,7 +194,7 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete alert-id",
 			Short:   "Delete an alert",
-			Long:    bartolocli.Markdown("Permanently deletes an alert together with its trigger history and events, and stops the evaluation schedule."),
+			Long:    bartolocli.Markdown("Permanently deletes an alert together with its trigger history and events, and stops the evaluation schedule.\n\n## Arguments\n\n- `alert-id` — Alert ID to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,7 +238,7 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get alert-id",
 			Short:   "Retrieve an alert",
-			Long:    bartolocli.Markdown("Retrieves an alert by ID."),
+			Long:    bartolocli.Markdown("Retrieves an alert by ID.\n\n## Arguments\n\n- `alert-id` — Alert ID to retrieve."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -301,8 +301,8 @@ func registeralertsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `alert_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `alert_id` of the first\n item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `alert_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `alert_id` of the first item from the previous page.")
 		cmd.Flags().String("project-id", "", "Restrict results to one project.")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -323,7 +323,7 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-trigger-events alert-id trigger-id",
 			Short:   "List alert trigger events",
-			Long:    bartolocli.Markdown("Returns the evaluation events recorded while a trigger was open, newest first. Each event carries the observed value and, when available, exemplar traces that contributed to the breach."),
+			Long:    bartolocli.Markdown("Returns the evaluation events recorded while a trigger was open, newest first. Each event carries the observed value and, when available, exemplar traces that contributed to the breach.\n\n## Arguments\n\n- `alert-id` — Alert the trigger belongs to.\n- `trigger-id` — Trigger whose events to list."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -346,8 +346,8 @@ func registeralertsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `event_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `event_id` of the first\n item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `event_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `event_id` of the first item from the previous page.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -367,7 +367,7 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-triggers alert-id",
 			Short:   "List alert triggers",
-			Long:    bartolocli.Markdown("Returns the trigger history of an alert, newest first. A trigger is one breach incident: it opens when the threshold is first crossed and resolves when the value recovers."),
+			Long:    bartolocli.Markdown("Returns the trigger history of an alert, newest first. A trigger is one breach incident: it opens when the threshold is first crossed and resolves when the value recovers.\n\n## Arguments\n\n- `alert-id` — Alert whose triggers to list."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -390,8 +390,8 @@ func registeralertsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `trigger_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `trigger_id` of the\n first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `trigger_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `trigger_id` of the first item from the previous page.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -413,7 +413,7 @@ func registeralertsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update alert-id",
 			Short:   "Update an alert",
-			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `alert-id` — Alert ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -194,7 +194,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete notifier-id",
 			Short:   "Delete a notifier",
-			Long:    bartolocli.Markdown("Deletes an existing notifier by ID."),
+			Long:    bartolocli.Markdown("Deletes an existing notifier by ID.\n\n## Arguments\n\n- `notifier-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,7 +238,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get notifier-id",
 			Short:   "Retrieve a notifier",
-			Long:    bartolocli.Markdown("Retrieves an existing notifier by ID."),
+			Long:    bartolocli.Markdown("Retrieves an existing notifier by ID.\n\n## Arguments\n\n- `notifier-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -327,7 +327,7 @@ func registernotifiersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update notifier-id",
 			Short:   "Update a notifier",
-			Long:    bartolocli.Markdown("Partially updates an existing notifier. When changing `type`, provide the destination fields required by the new notifier type.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `emails` (array)\n- `headers` (object)\n- `incoming_webhook_url` (string)\n- `metadata` (object)\n- `project_id` (string)\n- `type` (string)\n- `webhook_url` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates an existing notifier. When changing `type`, provide the destination fields required by the new notifier type.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `emails` (array)\n- `headers` (object)\n- `incoming_webhook_url` (string)\n- `metadata` (object)\n- `project_id` (string)\n- `type` (string)\n- `webhook_url` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `notifier-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

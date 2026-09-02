@@ -30,7 +30,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new budget",
-			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new budget in the workspace. Exactly one scope variant must be set (workspace / project / identity / api_key / provider / model). At least one of `limits.amount`, `limits.token_limit`, or `rate_limit.requests_per_minute` MUST be provided. Uniqueness is enforced across (workspace_id, scope_kind, scope_target_id).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n- `scope` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the handler rejects past values.",
 						},
 						{
@@ -116,7 +116,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Optional expiration. When set in combination with is_active=true,\n the value MUST be in the future; the handler rejects past values.",
 				},
 				{
@@ -170,7 +170,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete budget-id",
 			Short:   "Delete a budget",
-			Long:    bartolocli.Markdown("Permanently deletes a budget. Its consumption counters are cleared immediately. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes a budget. Its consumption counters are cleared immediately. The response body is empty on success.\n\n## Arguments\n\n- `budget-id` — Budget id to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -214,7 +214,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get budget-id",
 			Short:   "Retrieve a budget",
-			Long:    bartolocli.Markdown("Retrieves the metadata for an existing budget by its unique identifier. Returns `NotFound` when the budget does not exist in the caller's workspace."),
+			Long:    bartolocli.Markdown("Retrieves the metadata for an existing budget by its unique identifier. Returns `NotFound` when the budget does not exist in the caller's workspace.\n\n## Arguments\n\n- `budget-id` — Budget id to retrieve."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -277,13 +277,13 @@ func registerbudgetsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `budget_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `budget_id` of the\n first item from the previous page.")
-		cmd.Flags().String("scope-kind", "", "Optional filter: only return budgets whose scope kind matches one\n of the listed values. Empty means no scope-kind filter.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `budget_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `budget_id` of the first item from the previous page.")
+		cmd.Flags().String("scope-kind", "", "Optional filter: only return budgets whose scope kind matches one of the listed values. Empty means no scope-kind filter.")
 		cmd.Flags().String("scope-target-id", "", "Optional filter: only return budgets whose scope target id matches.")
 		cmd.Flags().Bool("is-active", false, "Optional filter: only return budgets with this active state.")
-		cmd.Flags().String("period", "", "Optional filter: only return budgets whose limits.period matches\n one of the listed values. Empty means no period filter.")
-		cmd.Flags().String("query", "", "Optional free-text query. Server translates this into a Typesense\n search over the denormalized `scope_target_name` and id fields on\n the per-workspace `{workspace_id}_budgets` collection.")
+		cmd.Flags().String("period", "", "Optional filter: only return budgets whose limits.period matches one of the listed values. Empty means no period filter.")
+		cmd.Flags().String("query", "", "Optional free-text query. Server translates this into a Typesense search over the denormalized `scope_target_name` and id fields on the per-workspace `{workspace_id}_budgets` collection.")
 		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated. (one of: BUDGET_SORT_FIELD_UNSPECIFIED, BUDGET_SORT_FIELD_EXPIRES_AT, BUDGET_SORT_FIELD_CREATED_AT, BUDGET_SORT_FIELD_UPDATED_AT)")
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp
@@ -307,7 +307,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "reset-consumption budget-id",
 			Short:   "Reset budget consumption",
-			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Long:    bartolocli.Markdown("Clears the current-period cost, token, and request counters for the budget. The budget record itself is preserved.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `budget-id` — Budget id whose current-period counters should be cleared."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -359,7 +359,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update budget-id",
 			Short:   "Update a budget",
-			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `clear_alerts` (boolean)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of a budget: limits, rate limit, activation, and expiration. The scope is immutable — to change a budget's target, delete and recreate it. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `alerts` (array)\n- `clear_alerts` (boolean)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `is_active` (boolean)\n- `limits` (allOf)\n- `match` (allOf)\n- `rate_limit` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\n## Arguments\n\n- `budget-id` — Budget id to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -391,7 +391,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration.",
 						},
 						{
@@ -463,7 +463,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration.",
 				},
 				{

@@ -28,7 +28,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve a model catalog entry",
-			Long:    bartolocli.Markdown("Retrieves a single catalog entry by its id, `<provider>/<model>` (for example `openai/gpt-4o`). Unlike the list endpoints this also resolves deprecated models; check `deprecated` and `deprecation` on the response."),
+			Long:    bartolocli.Markdown("Retrieves a single catalog entry by its id, `<provider>/<model>` (for example `openai/gpt-4o`). Unlike the list endpoints this also resolves deprecated models; check `deprecated` and `deprecation` on the response.\n\n## Arguments\n\n- `id` — Catalog identifier, `<provider>/<model>` (for example `openai/gpt-4o`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -91,16 +91,16 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item\n from the previous page.")
-		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several\n providers.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("output-modality", "", "Filter by output modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("location", "", "Filter by region. Repeat to match any of several regions.")
-		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several\n features.")
-		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several\n parameters.")
-		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several\n tiers.")
+		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several features.")
+		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several parameters.")
+		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several tiers.")
 		cmd.Flags().String("offering-of", "", "Filter to offerings of one base model reference, `<developer>/<stem>`.")
 		cmd.Flags().String("search", "", "Case-insensitive substring search over `id`, `name` and `description`.")
 		cmd.Flags().String("sort-by", "", "Field to sort by.")
@@ -124,7 +124,7 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-offerings model",
 			Short:   "List model catalog offerings",
-			Long:    bartolocli.Markdown("Returns every provider offering of one base model, identified by `<developer>/<stem>` (for example `anthropic/claude-opus-4-7`). Deprecated models are never listed."),
+			Long:    bartolocli.Markdown("Returns every provider offering of one base model, identified by `<developer>/<stem>` (for example `anthropic/claude-opus-4-7`). Deprecated models are never listed.\n\n## Arguments\n\n- `model` — Base model reference, `<developer>/<stem>` (for example `anthropic/claude-opus-4-7`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -147,16 +147,16 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from\n the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item\n from the previous page.")
-		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several\n providers.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("output-modality", "", "Filter by output modality. Repeat to match any of several modalities.")
 		cmd.Flags().String("location", "", "Filter by region. Repeat to match any of several regions.")
-		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several\n features.")
-		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several\n parameters.")
-		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several\n tiers.")
+		cmd.Flags().String("feature", "", "Filter by normalized feature name. Repeat to match any of several features.")
+		cmd.Flags().String("supported-parameter", "", "Filter by supported parameter key. Repeat to match any of several parameters.")
+		cmd.Flags().String("tier", "", "Filter by supported service tier. Repeat to match any of several tiers.")
 		cmd.Flags().String("search", "", "Case-insensitive substring search over `id`, `name` and `description`.")
 		cmd.Flags().String("sort-by", "", "Field to sort by.")
 		cmd.Flags().String("order", "", "Sort order. Defaults to ascending.")

@@ -28,7 +28,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "content file-id-or-path",
 			Short:   "Download file content",
-			Long:    bartolocli.Markdown("Returns a presigned URL for downloading the file content by file ID."),
+			Long:    bartolocli.Markdown("Returns a presigned URL for downloading the file content by file ID.\n\n## Arguments\n\n- `file-id-or-path` — File ID or path used to locate the file content."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,7 +68,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete file-id",
 			Short:   "Delete a file",
-			Long:    bartolocli.Markdown("Permanently deletes a file and its stored content from the project."),
+			Long:    bartolocli.Markdown("Permanently deletes a file and its stored content from the project.\n\n## Arguments\n\n- `file-id` — File ID to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -112,7 +112,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get file-id",
 			Short:   "Retrieve a file",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing file object. After you supply a unique file ID, orq.ai returns the corresponding file object."),
+			Long:    bartolocli.Markdown("Retrieves the details of an existing file object. After you supply a unique file ID, orq.ai returns the corresponding file object.\n\n## Arguments\n\n- `file-id` — File ID to retrieve."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -175,10 +175,10 @@ func registerfilesCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size. Unset uses the server default.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item\n from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item\n from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `file_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `file_id` of the first item from the previous page.")
 		cmd.Flags().String("project-id", "", "")
-		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose\n alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`)\n or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files\n of every purpose.")
+		cmd.Flags().String("purpose", "", "Restrict results to files declared with this purpose. Accepts a purpose alias (`retrieval`, `knowledge_datasource`, `batch`, `code_interpreter`) or canonical `FILE_PURPOSE_*` name case-insensitively. Omit to list files of every purpose.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -200,7 +200,7 @@ func registerfilesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update file-id",
 			Short:   "Update a file",
-			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates the metadata of an existing file object.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `file_name` (string, required)\n\nRequired fields: `file_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `file-id` — File ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

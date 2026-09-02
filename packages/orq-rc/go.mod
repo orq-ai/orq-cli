@@ -7,7 +7,7 @@ go 1.25.0
 replace orq => ../..
 
 require (
-	github.com/orq-ai/bartolo v0.9.0
+	github.com/orq-ai/bartolo v0.10.0
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

@@ -310,7 +310,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete agent-key",
 			Short:   "Delete agent",
-			Long:    bartolocli.Markdown("Permanently remove an agent and all associated configuration from the workspace. Terminate active sessions and the key becomes reusable."),
+			Long:    bartolocli.Markdown("Permanently remove an agent and all associated configuration from the workspace. Terminate active sessions and the key becomes reusable.\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to delete"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -354,7 +354,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-response agent-key task-id",
 			Short:   "Get response",
-			Long:    bartolocli.Markdown("Retrieve an agent response by task ID, including output, model info, token usage, and execution status."),
+			Long:    bartolocli.Markdown("Retrieve an agent response by task ID, including output, model info, token usage, and execution status.\n\n## Arguments\n\n- `agent-key` — The unique key identifier of the agent\n- `task-id` — The agent execution task ID returned from create response"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -396,7 +396,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "invoke key",
 			Short:   "Execute an agent task",
-			Long:    bartolocli.Markdown("Invoke an agent to perform a task with input messages. Supports tool execution, knowledge retrieval, memory context, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Invoke an agent to perform a task with input messages. Supports tool execution, knowledge retrieval, memory context, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key` — The key or ID of the agent to invoke"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -630,7 +630,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve agent-key",
 			Short:   "Retrieve agent",
-			Long:    bartolocli.Markdown("Retrieve the complete agent manifest by key, including model assignments, tools, knowledge bases, memory stores, and execution parameters."),
+			Long:    bartolocli.Markdown("Retrieve the complete agent manifest by key, including model assignments, tools, knowledge bases, memory stores, and execution parameters.\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to retrieve"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -992,7 +992,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stream key",
 			Short:   "Stream agent execution in real-time",
-			Long:    bartolocli.Markdown("Stream an existing agent execution in real-time via SSE, providing live message chunks, tool calls, and status updates until completion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Stream an existing agent execution in real-time via SSE, providing live message chunks, tool calls, and status updates until completion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key` — The key or ID of the agent to invoke"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1524,7 +1524,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
 			Short:   "Update agent",
-			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to update"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -195,7 +195,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete routing-rule-id",
 			Short:   "Delete a routing rule",
-			Long:    bartolocli.Markdown("Permanently deletes a routing rule."),
+			Long:    bartolocli.Markdown("Permanently deletes a routing rule.\n\n## Arguments\n\n- `routing-rule-id`"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -332,7 +332,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve routing-rule-id",
 			Short:   "Retrieve a routing rule",
-			Long:    bartolocli.Markdown("Retrieves a routing rule by its unique identifier."),
+			Long:    bartolocli.Markdown("Retrieves a routing rule by its unique identifier.\n\n## Arguments\n\n- `routing-rule-id`"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -375,7 +375,7 @@ func registerroutingRulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update routing-rule-id",
 			Short:   "Update a routing rule",
-			Long:    bartolocli.Markdown("Partially updates routing-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_config` (object)\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `plugins` (array)\n- `priority` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates routing-rule metadata or configuration. Project scope is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache_config` (object)\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `expression` (object)\n- `models_config` (object)\n- `plugins` (array)\n- `priority` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `routing-rule-id`"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),

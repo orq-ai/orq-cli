@@ -30,7 +30,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new management key",
-			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
 						},
 						{
@@ -104,7 +104,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
 				},
 				{
@@ -146,7 +146,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete management-key-id",
 			Short:   "Delete a management key",
-			Long:    bartolocli.Markdown("Permanently deletes a management key. Cache entries are invalidated immediately so an in-flight token cannot ride out the TTL. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes a management key. Cache entries are invalidated immediately so an in-flight token cannot ride out the TTL. The response body is empty on success.\n\n## Arguments\n\n- `management-key-id` — Management key id to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -190,7 +190,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get management-key-id",
 			Short:   "Retrieve a management key",
-			Long:    bartolocli.Markdown("Retrieves the metadata for an existing management key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, and lifecycle fields."),
+			Long:    bartolocli.Markdown("Retrieves the metadata for an existing management key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, and lifecycle fields.\n\n## Arguments\n\n- `management-key-id` — Management key id to retrieve (e.g. `01H...`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -253,14 +253,14 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `management_key_id` of the\n last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `management_key_id` of the\n first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `management_key_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `management_key_id` of the first item from the previous page.")
 		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: MANAGEMENT_KEY_STATUS_UNSPECIFIED, MANAGEMENT_KEY_STATUS_ACTIVE, MANAGEMENT_KEY_STATUS_DISABLED, MANAGEMENT_KEY_STATUS_REVOKED)")
 		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"MANAGEMENT_KEY_STATUS_UNSPECIFIED", "MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the management-key\n name. Empty means no name filter.")
-		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one of\n the listed presets. Empty means no permission-mode filter.")
+		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the management-key name. Empty means no name filter.")
+		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one of the listed presets. Empty means no permission-mode filter.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -322,7 +322,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update management-key-id",
 			Short:   "Update a management key",
-			Long:    bartolocli.Markdown("Updates mutable fields of a management key: display name, status (active / disabled / revoked), permission mode and access map, and expiry. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of a management key: display name, status (active / disabled / revoked), permission mode and access map, and expiry. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `name` (string)\n- `permission_mode` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\n## Arguments\n\n- `management-key-id` — Management key id to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -348,7 +348,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration.",
 						},
 						{
@@ -420,7 +420,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration.",
 				},
 				{

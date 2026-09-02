@@ -111,6 +111,25 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: time flags accept relative values.** `--from`, `--to`, and any other
+  field or parameter the schema marks `format: date-time`, now take a bare date
+  (`2026-08-31`), a date and time read as UTC (`2026-08-31 14:00:00`), or a
+  relative value such as `24h`, `7d`, `2w`, `30m`, `now`, `now-24h`, `now+1h`. A
+  bare duration always means "ago", so `--from 24h --to now` is the last day.
+  Values are normalized to RFC 3339 before the request is sent, and an
+  unparseable one fails locally, naming the accepted forms, instead of reaching
+  the API and returning a protobuf timestamp error. Full RFC 3339 keeps working
+  unchanged, with `Z` or a numeric offset. This covers `orq traces search`,
+  `traces aggregate`, `traces query-oql`, `logs query`, `logs search`, `logs
+  aggregate`, `logs get-patterns` and `logs get-context`. A body supplied through
+  `--from-file` or stdin is sent as written and is not normalized (RES-1489).
+
+- **Changed: commands taking positional arguments now document them.** `orq logs
+  get id`, `orq agents retrieve agent-key` and the rest carry an `## Arguments` section
+  in `--help`, listing each required argument with its description, its enum
+  values and, for a timestamp, the forms it accepts. Those reached the user only
+  as a bare name on the usage line before.
+
 ## [6.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.1.0) — 2026-09-02
 
 - **Fixed: the key `orq setup` exports no longer shadows the session.** When

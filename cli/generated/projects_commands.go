@@ -122,7 +122,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete project-id",
 			Short:   "Delete a project",
-			Long:    bartolocli.Markdown("Deletes a project from the workspace. The response body is empty when the delete succeeds."),
+			Long:    bartolocli.Markdown("Deletes a project from the workspace. The response body is empty when the delete succeeds.\n\n## Arguments\n\n- `project-id` — Project ID to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -166,7 +166,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get project-id",
 			Short:   "Retrieve a project",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing project by its unique project ID."),
+			Long:    bartolocli.Markdown("Retrieves the details of an existing project by its unique project ID.\n\n## Arguments\n\n- `project-id` — Project ID to retrieve."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -229,8 +229,8 @@ func registerprojectsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `project_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `project_id` of the first\n item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `project_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `project_id` of the first item from the previous page.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -252,7 +252,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update project-id",
 			Short:   "Update a project",
-			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `project-id` — Project ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

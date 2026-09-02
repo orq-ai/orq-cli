@@ -230,7 +230,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete tool-id",
 			Short:   "Delete tool",
-			Long:    bartolocli.Markdown("Deletes a tool by key."),
+			Long:    bartolocli.Markdown("Deletes a tool by key.\n\n## Arguments\n\n- `tool-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -274,7 +274,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-version tool-id version-id",
 			Short:   "Get tool version",
-			Long:    bartolocli.Markdown("Returns a specific version of a tool"),
+			Long:    bartolocli.Markdown("Returns a specific version of a tool\n\n## Arguments\n\n- `tool-id`\n- `version-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -358,7 +358,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-versions tool-id",
 			Short:   "List tool versions",
-			Long:    bartolocli.Markdown("Returns version history for a specific tool"),
+			Long:    bartolocli.Markdown("Returns version history for a specific tool\n\n## Arguments\n\n- `tool-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -402,7 +402,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve tool-id",
 			Short:   "Retrieve tool",
-			Long:    bartolocli.Markdown("Retrieves a tool by id."),
+			Long:    bartolocli.Markdown("Retrieves a tool by id.\n\n## Arguments\n\n- `tool-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -444,7 +444,7 @@ func registertoolsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update tool-id",
 			Short:   "Update tool",
-			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string)\n- `path` (string)\n- ... and 4 more fields\n\nRequired fields: `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates a tool in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `code_tool` (object)\n- `description` (string)\n- `display_name` (string)\n- `function` (object)\n- `http` (object)\n- `json_schema` (object)\n- `key` (string)\n- `path` (string)\n- ... and 4 more fields\n\nRequired fields: `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `tool-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -28,7 +28,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get key",
 			Short:   "Retrieve a workspace",
-			Long:    bartolocli.Markdown("Retrieves a workspace by its key. A user session must be a member and does not need a workspace-scoped token. A management key may only retrieve the workspace bound to the key."),
+			Long:    bartolocli.Markdown("Retrieves a workspace by its key. A user session must be a member and does not need a workspace-scoped token. A management key may only retrieve the workspace bound to the key.\n\n## Arguments\n\n- `key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -114,7 +114,7 @@ func registerworkspacesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update key",
 			Short:   "Update a workspace",
-			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

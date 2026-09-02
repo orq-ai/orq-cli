@@ -146,7 +146,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete a prompt",
-			Long:    bartolocli.Markdown("Delete a prompt and all its versions by ID."),
+			Long:    bartolocli.Markdown("Delete a prompt and all its versions by ID.\n\n## Arguments\n\n- `id` — Unique identifier of the prompt"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -190,7 +190,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-version prompt-id version-id",
 			Short:   "Retrieve a prompt version",
-			Long:    bartolocli.Markdown("Retrieves a specific version of a prompt by its ID and version ID."),
+			Long:    bartolocli.Markdown("Retrieves a specific version of a prompt by its ID and version ID.\n\n## Arguments\n\n- `prompt-id` — The unique identifier of the prompt\n- `version-id` — The unique identifier of the prompt version"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -274,7 +274,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-versions prompt-id",
 			Short:   "List all prompt versions",
-			Long:    bartolocli.Markdown("Returns a list of your prompt versions. The prompt versions are returned sorted by creation date, with the most recent prompt versions appearing first"),
+			Long:    bartolocli.Markdown("Returns a list of your prompt versions. The prompt versions are returned sorted by creation date, with the most recent prompt versions appearing first\n\n## Arguments\n\n- `prompt-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -318,7 +318,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve id",
 			Short:   "Retrieve a prompt",
-			Long:    bartolocli.Markdown("Retrieves a prompt object"),
+			Long:    bartolocli.Markdown("Retrieves a prompt object\n\n## Arguments\n\n- `id` — Unique identifier of the prompt"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -360,7 +360,7 @@ func registerpromptsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a prompt",
-			Long:    bartolocli.Markdown("Update a prompt by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `created` (string)\n- `created_by_id` (string | null)\n- `description` (string | null)\n- `display_name` (string)\n- `domain_id` (string)\n- `metadata` (object)\n- `owner` (string)\n- `path` (string)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Update a prompt by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `created` (string)\n- `created_by_id` (string | null)\n- `description` (string | null)\n- `display_name` (string)\n- `domain_id` (string)\n- `metadata` (object)\n- `owner` (string)\n- `path` (string)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the prompt"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

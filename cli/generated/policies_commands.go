@@ -195,7 +195,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete policy-id",
 			Short:   "Delete policy",
-			Long:    bartolocli.Markdown("Deletes an existing policy by ID."),
+			Long:    bartolocli.Markdown("Deletes an existing policy by ID.\n\n## Arguments\n\n- `policy-id` — The ID of the policy"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -286,7 +286,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve policy-id",
 			Short:   "Get policy",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing policy by ID."),
+			Long:    bartolocli.Markdown("Retrieves the details of an existing policy by ID.\n\n## Arguments\n\n- `policy-id` — The ID of the policy"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -329,7 +329,7 @@ func registerpoliciesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update policy-id",
 			Short:   "Update policy",
-			Long:    bartolocli.Markdown("Partially updates an existing policy. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `evaluators` (array)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates an existing policy. Only provided fields are updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `enabled` (boolean)\n- `evaluators` (array)\n- `limits` (object)\n- `models_config` (object)\n- `project_id` (string)\n- `retry_config` (object)\n- ... and 1 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `policy-id` — The ID of the policy"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
