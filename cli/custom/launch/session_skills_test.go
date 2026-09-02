@@ -20,6 +20,11 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
+	// cwd too: a session links into cwd unless cwd is $HOME, and the package
+	// source directory is not where test links belong.
+	if err := os.Chdir(home); err != nil {
+		panic(err)
+	}
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
@@ -41,7 +46,7 @@ func sessionSkillsCtx(flags GatewayFlags) *AgentContext {
 func realHomeSkillAgents() map[string]string {
 	return map[string]string{
 		"claude":   filepath.Join(".claude", "skills"),
-		"codex":    filepath.Join(".codex", "skills"),
+		"codex":    filepath.Join(".agents", "skills"),
 		"opencode": filepath.Join(".agents", "skills"),
 		"pi":       filepath.Join(".agents", "skills"),
 	}
@@ -60,6 +65,7 @@ func TestSessionSkillsLandInTheAgentsRealDirectoryAndAreReleased(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			t.Chdir(home)
 			def := FindAgent(agent)
 			if def == nil {
 				t.Fatalf("no such agent: %s", agent)
@@ -97,6 +103,7 @@ func TestNoSkillsLeavesTheRealHomeAlone(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			t.Chdir(home)
 			plan, err := FindAgent(agent).Resolve(sessionSkillsCtx(GatewayFlags{MCP: true, NoSkills: true}))
 			if err != nil {
 				t.Fatal(err)
@@ -132,6 +139,7 @@ func TestDryRunReportsSessionSkillsWithoutInstallingThem(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
+			t.Chdir(home)
 			plan, err := FindAgent(agent).Resolve(sessionSkillsCtx(GatewayFlags{MCP: true, DryRun: true}))
 			if err != nil {
 				t.Fatal(err)
@@ -193,4 +201,22 @@ func TestKimiDryRunUnpacksNothingAndSaysWhatItWouldDo(t *testing.T) {
 	if !found {
 		t.Errorf("--dry-run said nothing about the %d skills it would link: %v", len(names), plan.Notes)
 	}
+}
+
+func TestDryRunNamesTheLocalSkillsDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("session skills are not installed on the copy-fallback platform")
+	}
+	project := t.TempDir()
+	t.Chdir(project)
+	ctx := sessionSkillsCtx(GatewayFlags{DryRun: true})
+	plan := &LaunchPlan{}
+	maybeInstallSessionSkills(ctx, plan, "claude")
+	want := filepath.Join(project, ".claude", "skills")
+	for _, n := range plan.Notes {
+		if strings.Contains(n, want) {
+			return
+		}
+	}
+	t.Errorf("dry-run notes do not name %s:\n%v", want, plan.Notes)
 }

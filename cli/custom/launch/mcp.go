@@ -40,7 +40,8 @@ func skillsPluginURL(ctx *AgentContext) string {
 // release onto the plan's cleanup. It is for the agents whose skills
 // directory cannot be redirected (claude, codex, and the shared-directory
 // readers); kimi instead gets a launcher-owned KIMI_CODE_HOME and uses
-// maybeWriteSessionSkills.
+// maybeWriteSessionSkills. Links land in the current directory's local set,
+// or the global set when launched from $HOME (skills.ScopeFor).
 //
 // Failure is loud but never fatal: an agent that starts without skills is far
 // better than an agent that refuses to start.
@@ -61,7 +62,12 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 		// rearrange the agent's real skills directory on the way. Report the
 		// destination instead of writing to it: the point is to lose the side
 		// effect, not the information.
-		targets, err := skills.Targets([]string{agent})
+		cwd, err := os.Getwd()
+		if err != nil {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
+			return
+		}
+		targets, err := skills.Targets([]string{agent}, skills.ScopeFor(cwd))
 		if err != nil {
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf("skills unavailable this session: %v", err))
 			return

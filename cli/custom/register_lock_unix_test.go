@@ -46,7 +46,7 @@ func TestSkillsRefreshHookDoesNotDoubleTheLockWaitWhenContended(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := skills.Install([]string{"claude"}); err != nil {
+	if _, err := skills.Install([]string{"claude"}, skills.ScopeGlobal); err != nil {
 		t.Fatalf("seed install: %v", err)
 	}
 	// Refresh compares the fingerprint before it locks anything, so a manifest
