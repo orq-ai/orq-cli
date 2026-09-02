@@ -43,12 +43,15 @@ type setupOptions struct {
 	// or name. noProject skips the step outright.
 	project   string
 	noProject bool
-	apiKey    string
-	agents    []string
-	caps      []string
-	noGateway bool
-	noInput   bool
-	yes       bool
+	// pickProjectFn overrides the picker in tests. Keeping it on the options
+	// avoids a mutable package global and models a TTY deterministically.
+	pickProjectFn func([]auth.Project) (*auth.Project, error)
+	apiKey        string
+	agents        []string
+	caps          []string
+	noGateway     bool
+	noInput       bool
+	yes           bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
 	// finalScreen marks a run that ends in printFinalScreen, which reports every
@@ -137,6 +140,13 @@ func (o *setupOptions) confirmPersistent(message string) bool {
 		return false
 	}
 	return o.confirm(message, false)
+}
+
+func (o *setupOptions) pickProject(projects []auth.Project) (*auth.Project, error) {
+	if o.pickProjectFn != nil {
+		return o.pickProjectFn(projects)
+	}
+	return pickProject(projects)
 }
 
 // setupComplete is the run's verdict, and drives both the final screen and the

@@ -60,8 +60,8 @@ func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, op
 		}
 	case len(projects) == 1:
 		chosen = &projects[0]
-	case opts.interactive:
-		chosen, err = pickProject(projects)
+	case !opts.noInput:
+		chosen, err = opts.pickProject(projects)
 		if err != nil {
 			return nil, err
 		}

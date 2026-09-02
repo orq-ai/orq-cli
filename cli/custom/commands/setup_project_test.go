@@ -36,7 +36,13 @@ func projectStepState(t *testing.T, apiBase string) *authState {
 func TestProjectStepRecordsTheChoice(t *testing.T) {
 	srv := projectsServer(t, `{"project_id":"id-1","key":"banking","name":"Banking"},{"project_id":"id-2","key":"other","name":"Other","is_default":true}`)
 	state := projectStepState(t, srv.URL)
-	opts := &setupOptions{project: "banking"}
+	opts := &setupOptions{
+		project: "banking",
+		pickProjectFn: func([]auth.Project) (*auth.Project, error) {
+			t.Fatal("an explicit --project reached the picker")
+			return nil, nil
+		},
+	}
 
 	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, opts)
 	if err != nil {
@@ -101,9 +107,66 @@ func TestProjectStepAutoSelects(t *testing.T) {
 
 	many := projectsServer(t, `{"project_id":"id-1","key":"a","name":"A"},{"project_id":"id-2","key":"b","name":"B","is_default":true}`)
 	state = projectStepState(t, many.URL)
-	got, err = resolveProjectStep(newReporter(true), auth.NewClient(many.URL), state, &setupOptions{})
+	nonInteractive := &setupOptions{
+		noInput:     true,
+		interactive: true,
+		pickProjectFn: func([]auth.Project) (*auth.Project, error) {
+			t.Fatal("--no-input reached the project picker")
+			return nil, nil
+		},
+	}
+	got, err = resolveProjectStep(newReporter(true), auth.NewClient(many.URL), state, nonInteractive)
 	if err != nil || got == nil || got.ProjectID != "id-2" {
 		t.Fatalf("non-interactive: got %+v, err %v; want the default project id-2", got, err)
+	}
+}
+
+// A normal TTY setup is already interactive; choosing a project must not
+// require the broader -i flag.
+func TestProjectStepUsesPickerInDefaultTTYMode(t *testing.T) {
+	srv := projectsServer(t, `{"project_id":"id-1","key":"a","name":"A","is_default":true},{"project_id":"id-2","key":"b","name":"B"}`)
+	state := projectStepState(t, srv.URL)
+	pickerCalled := false
+	opts := &setupOptions{
+		pickProjectFn: func(projects []auth.Project) (*auth.Project, error) {
+			pickerCalled = true
+			if len(projects) != 2 {
+				t.Fatalf("picker received %d projects, want 2", len(projects))
+			}
+			return &projects[1], nil
+		},
+	}
+
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, opts)
+	if err != nil {
+		t.Fatalf("resolveProjectStep: %v", err)
+	}
+	if !pickerCalled {
+		t.Fatal("default TTY setup did not call the project picker")
+	}
+	if got == nil || got.ProjectID != "id-2" {
+		t.Fatalf("chose %+v, want picker result id-2", got)
+	}
+	if state.session.ActiveProjectID != "id-2" || state.projectID != "id-2" {
+		t.Errorf("project was not persisted and forwarded: session=%q state=%q", state.session.ActiveProjectID, state.projectID)
+	}
+}
+
+func TestProjectStepReturnsPickerError(t *testing.T) {
+	srv := projectsServer(t, `{"project_id":"id-1","key":"a","name":"A"},{"project_id":"id-2","key":"b","name":"B"}`)
+	state := projectStepState(t, srv.URL)
+	opts := &setupOptions{
+		pickProjectFn: func([]auth.Project) (*auth.Project, error) {
+			return nil, fmt.Errorf("picker cancelled")
+		},
+	}
+
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, opts)
+	if err == nil || err.Error() != "picker cancelled" {
+		t.Fatalf("resolveProjectStep = (%+v, %v), want nil project and picker cancellation", got, err)
+	}
+	if state.projectID != "" {
+		t.Errorf("state.projectID = %q after cancellation, want empty", state.projectID)
 	}
 }
 
