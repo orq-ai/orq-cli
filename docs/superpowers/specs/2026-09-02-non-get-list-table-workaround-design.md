@@ -117,13 +117,19 @@ Five allowlisted operations use `matches`, `deployments`, `buckets`, `audit_logs
 so merely selecting `FormatList` would still serialize an empty response. When, and only when,
 the captured delegate is Bartolo's default formatter and the invocation is eligible for terminal
 table output (`stdoutIsTerminal()`, no `--raw`, and resolved output format `table`), the adapter
-builds a shallow table-view copy of the envelope and aliases the configured row array under
-`data`. The original row field remains present, so JMESPath expressions referring to the wire
-shape continue to work; Bartolo gives the conventional `data` alias precedence and ignores both
-arrays in its metadata footer. This also makes the configured row field operational rather than
-relying on Bartolo to guess among future peer arrays. If a terminal-table response lacks its
-configured row field, formatting fails clearly instead of guessing another array and displaying
-the wrong resource.
+builds a shallow table-view copy of the envelope. Bartolo probes conventional keys in the fixed
+order `items`, `data`, `results`, `records`, `entries`, `servers`, so adding a `data` alias alone
+does not make the configured field win over a peer `items` array. The copy therefore removes
+other conventional object-row arrays that could win Bartolo's probe, retains the configured wire
+row field, and then aliases that value under `data`. A configured field that is present with a
+nil value is normalized to an empty object-row slice in the copy so the configured columns still
+render; an absent configured field remains an error. The original envelope is never mutated.
+This makes row selection deterministic without relying on map iteration or Bartolo's conventional
+key precedence.
+
+The shared terminal predicate matches Bartolo on Windows: stdout is interactive when either
+`isatty.IsTerminal` or `isatty.IsCygwinTerminal` recognizes its file descriptor. Tests that
+replace those process-global probes do not run in parallel.
 
 Passing the untouched envelope outside that narrow table branch is load-bearing. For a pipe,
 `--json`, `--raw`, YAML, explicit TOON, or a custom formatter, the delegate receives the exact
@@ -134,9 +140,9 @@ The wrapper is marked in the Cobra command's annotations so installing custom re
 second time cannot stack adapters. Tests prove every expected stable command resolves; RC-only
 absence is tested separately from RC-tree resolution so optional handling cannot mask drift.
 
-Each function and configuration comment names ENG-2942 and the removal condition: delete the
-workaround after both generated modules use a Bartolo release that emits `FormatList` for these
-operations.
+The central source comment names ENG-2942 and the complete removal condition: both generated
+modules must emit `FormatList` for all 13 operations, and generated `x-cli-list-fields` values
+must replace every local column list in the same change.
 
 ## Error handling
 
@@ -161,7 +167,10 @@ the full response envelope including paging and metadata.
 A second empty-response case uses a nonconventional key such as `matches` and proves both sides
 of the table-view boundary: terminal table output has configured headers, while piped or explicit
 JSON receives the original `matches` envelope with no synthetic `data` field. A multi-array
-fixture proves the configured row field, rather than map iteration, selects the table rows.
+fixture drives Bartolo's real default formatter with a conflicting `items` peer and proves the
+configured row field wins. A focused `deployments: null` fixture proves present nil rows normalize
+to a headed empty table, while the existing missing-field test keeps absence as an error. The
+shared terminal-predicate test covers native, Cygwin, and piped stdout without `t.Parallel`.
 
 Focused wiring tests then cover:
 
@@ -183,9 +192,11 @@ remain unchanged.
 
 Removing the workaround after ENG-2942 ships consists of deleting its source and tests,
 removing the `Register` call, and regenerating both modules with the Bartolo version carrying
-explicit non-GET list classification, row-path metadata where needed, and the corresponding
-`x-cli-list-fields` values. The local columns are intentional compatibility duplicates and are
-deleted in the same change; they must not become a second long-lived source of truth.
+explicit non-GET list classification. Removal is not complete until all 13 operations also carry
+the corresponding generated `x-cli-list-fields` values; only then are the local columns deleted
+in the same change. The local lists are intentional compatibility duplicates and must not become
+a second long-lived source of truth. Row-path metadata remains the separate removal boundary for
+the nested OQL commands excluded from this workaround.
 
 ## Out of scope
 

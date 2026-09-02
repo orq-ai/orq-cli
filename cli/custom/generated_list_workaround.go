@@ -47,9 +47,34 @@ func tableEnvelope(data interface{}, rowField string) (interface{}, error) {
 	if !found {
 		return nil, fmt.Errorf("generated list response has no configured row field %q", rowField)
 	}
+	if rows == nil {
+		rows = []map[string]interface{}{}
+	}
 	view := maps.Clone(object)
+	view[rowField] = rows
+	for _, key := range []string{"items", "data", "results", "records", "entries", "servers"} {
+		if key != rowField && isObjectRowArray(view[key]) {
+			delete(view, key)
+		}
+	}
 	view["data"] = rows
 	return view, nil
+}
+
+func isObjectRowArray(value interface{}) bool {
+	switch rows := value.(type) {
+	case []map[string]interface{}:
+		return true
+	case []interface{}:
+		for _, row := range rows {
+			if _, ok := row.(map[string]interface{}); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 const generatedListAnnotation = "orq.ai/eng-2942-list-format"
@@ -61,7 +86,8 @@ type generatedListOperation struct {
 	requiredInStable bool
 }
 
-// Delete this ENG-2942 compatibility metadata when both schemas generate list formatting.
+// Delete this ENG-2942 workaround only after both schemas generate list formatting
+// for all 13 operations and their x-cli-list-fields replace the local columns below.
 var generatedListOperations = []generatedListOperation{
 	{[]string{"documentation", "search"}, "results", []string{"path", "content"}, true},
 	{[]string{"knowledge-bases", "list-chunks-paginated"}, "data", []string{"_id", "status", "enabled", "created"}, true},

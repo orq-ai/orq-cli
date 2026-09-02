@@ -21,6 +21,37 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+func TestInteractiveTerminalRecognizesNativeAndCygwin(t *testing.T) {
+	previousNative, previousCygwin := nativeTerminal, cygwinTerminal
+	t.Cleanup(func() { nativeTerminal, cygwinTerminal = previousNative, previousCygwin })
+
+	for _, tc := range []struct {
+		name           string
+		native, cygwin bool
+		want           bool
+	}{
+		{name: "native", native: true, want: true},
+		{name: "cygwin", cygwin: true, want: true},
+		{name: "pipe", want: false},
+	} {
+		nativeTerminal = func(fd uintptr) bool {
+			if fd != 42 {
+				t.Fatalf("%s native probe fd=%d, want 42", tc.name, fd)
+			}
+			return tc.native
+		}
+		cygwinTerminal = func(fd uintptr) bool {
+			if fd != 42 {
+				t.Fatalf("%s Cygwin probe fd=%d, want 42", tc.name, fd)
+			}
+			return tc.cygwin
+		}
+		if got := interactiveTerminal(42); got != tc.want {
+			t.Errorf("%s interactiveTerminal=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestPrintWorkspaceListTable(t *testing.T) {
 	rows := []workspaceRow{
 		{Key: "ws1", Name: "Acme", TotalMembers: 12, Active: false},

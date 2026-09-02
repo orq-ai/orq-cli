@@ -4,7 +4,7 @@
 
 **Goal:** Make the allowlisted POST-backed list commands render tables at a terminal while preserving their exact API envelopes for JSON, YAML, TOON, raw, and piped output.
 
-**Architecture:** Wrap only the generated RunE handlers named in a declarative compatibility list. During one wrapped invocation, an adapter turns the generated Formatter.Format call into a direct call to the captured formatter's optional FormatList; for Bartolo's default terminal-table path, it aliases the configured top-level row field to data in a shallow presentation-only copy so empty nonconventional envelopes remain tabular. Stable paths are registration invariants, RC-only paths are optional in the stable tree and asserted in the RC module, and ENG-2942 is the removal boundary.
+**Architecture:** Wrap only the generated RunE handlers named in a declarative compatibility list. During one wrapped invocation, an adapter turns the generated Formatter.Format call into a direct call to the captured formatter's optional FormatList. For Bartolo's default terminal-table path, it makes a shallow presentation-only copy, normalizes a present nil configured row value to an empty object-row slice, removes conventional peer object-row arrays that Bartolo would probe ahead of or instead of the configured field, retains the configured wire field, and then adds a data alias. Stable paths are registration invariants, RC-only paths are optional in the stable tree and asserted in the RC module. ENG-2942 plus generated x-cli-list-fields for all 13 operations is the removal boundary.
 
 **Tech Stack:** Go 1.25, Cobra, Viper, Bartolo v0.10.0, net/http/httptest, root and packages/orq-rc Go modules.
 
@@ -17,6 +17,9 @@
 - Keep logs query, traces query-oql, and logs get-context out of scope because they require nested or multiple row paths.
 - Treat every stable path as required; only audit-logs query and knowledge-bases preview-chunks may be absent from the stable tree.
 - Never call package-level bartolocli.FormatList from the adapter; call the captured delegate directly to avoid recursion.
+- Bartolo probes items, data, results, records, entries, and servers in that order; remove conflicting conventional peer object-row arrays only in the shallow terminal-table copy before adding the data alias.
+- Normalize a present nil configured row value only in the terminal-table copy; continue to reject a missing configured key and never mutate the wire envelope.
+- Match Bartolo's terminal predicate by accepting either isatty.IsTerminal or isatty.IsCygwinTerminal.
 - Do not mark command-execution tests t.Parallel; Bartolo, Cobra, Viper, and this CLI use process-global execution state.
 - Do not add dependencies, edit VERSION, or change surface.json.
 - Add a **Fixed:** entry under ## Unreleased in CHANGELOG.md.
@@ -27,6 +30,7 @@
 - Create cli/custom/generated_list_workaround_test.go: formatter, envelope, registration, restoration, and stable integration coverage.
 - Create packages/orq-rc/cmd/orq/generated_list_workaround_test.go: staging-only path assertions.
 - Modify cli/custom/register.go: install after registerCommands.
+- Modify cli/custom/commands/ui.go and ui_test.go: share native/Cygwin terminal detection and cover the predicate without parallel execution.
 - Modify CHANGELOG.md: describe the terminal fix and unchanged machine output.
 
 ---
@@ -38,8 +42,8 @@
 - Create: cli/custom/generated_list_workaround_test.go
 
 **Interfaces:**
-- Consumes: bartolocli.ResponseFormatter, optional FormatList(interface{}, ...string) error, bartolocli.OutputFormat(), stdoutIsTerminal, and Viper raw state.
-- Produces: generatedListFormatter.Format(interface{}) error and tableEnvelope(interface{}, string) (interface{}, error).
+- Consumes: bartolocli.ResponseFormatter, optional FormatList(interface{}, ...string) error, bartolocli.OutputFormat(), stdoutIsTerminal, Viper raw state, and Bartolo's conventional-key order.
+- Produces: generatedListFormatter.Format(interface{}) error, tableEnvelope(interface{}, string) (interface{}, error), deterministic configured-row selection, and present-nil normalization in the table-only copy.
 
 - [ ] **Step 1: Write the failing adapter tests**
 
@@ -218,6 +222,12 @@ func TestTableEnvelopeRejectsMissingConfiguredRows(t *testing.T) {
 }
 ~~~
 
+Also add focused tests through Bartolo's real `DefaultFormatter`: one passes
+`deployments: nil` and requires the configured headers, and one passes configured
+`matches` rows alongside a conflicting `items` array and requires the configured row
+to render. The latter also asserts that the original envelope retains every field and
+does not gain the table-only `data` alias.
+
 - [ ] **Step 2: Run the tests to verify the red state**
 
 Run:
@@ -279,9 +289,34 @@ func tableEnvelope(data interface{}, rowField string) (interface{}, error) {
 	if !found {
 		return nil, fmt.Errorf("generated list response has no configured row field %q", rowField)
 	}
+	if rows == nil {
+		rows = []map[string]interface{}{}
+	}
 	view := maps.Clone(object)
+	view[rowField] = rows
+	for _, key := range []string{"items", "data", "results", "records", "entries", "servers"} {
+		if key != rowField && isObjectRowArray(view[key]) {
+			delete(view, key)
+		}
+	}
 	view["data"] = rows
 	return view, nil
+}
+
+func isObjectRowArray(value interface{}) bool {
+	switch rows := value.(type) {
+	case []map[string]interface{}:
+		return true
+	case []interface{}:
+		for _, row := range rows {
+			if _, ok := row.(map[string]interface{}); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 ~~~
 
@@ -527,7 +562,8 @@ type generatedListOperation struct {
 	requiredInStable bool
 }
 
-// Delete this ENG-2942 compatibility metadata when both schemas generate list formatting.
+// Delete this ENG-2942 workaround only after both schemas generate list formatting
+// for all 13 operations and their x-cli-list-fields replace the local columns below.
 var generatedListOperations = []generatedListOperation{
 	{[]string{"documentation", "search"}, "results", []string{"path", "content"}, true},
 	{[]string{"knowledge-bases", "list-chunks-paginated"}, "data", []string{"_id", "status", "enabled", "created"}, true},

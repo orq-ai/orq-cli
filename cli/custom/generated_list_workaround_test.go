@@ -89,6 +89,75 @@ func TestGeneratedListFormatterHeadsEmptyNonconventionalRows(t *testing.T) {
 	}
 }
 
+func TestGeneratedListFormatterHeadsNullConfiguredRows(t *testing.T) {
+	previousTerminal, previousStdout := stdoutIsTerminal, bartolocli.Stdout
+	previousRaw := viper.GetBool("raw")
+	t.Cleanup(func() {
+		stdoutIsTerminal, bartolocli.Stdout = previousTerminal, previousStdout
+		viper.Set("raw", previousRaw)
+	})
+	stdoutIsTerminal = func() bool { return true }
+	viper.Set("raw", false)
+	var output bytes.Buffer
+	bartolocli.Stdout = &output
+	restore, err := bartolocli.SetOutputFormat("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restore()
+	formatter := generatedListFormatter{
+		delegate: bartolocli.NewDefaultFormatter(false, true),
+		rowField: "deployments",
+		columns:  []string{"id", "model", "publisher", "wire"},
+	}
+	if err := formatter.Format(map[string]interface{}{"deployments": nil}); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); !strings.Contains(got, "ID") || !strings.Contains(got, "MODEL") {
+		t.Fatalf("null rows did not render configured headers: %q", got)
+	}
+}
+
+func TestGeneratedListFormatterConfiguredRowsOverrideConventionalPeer(t *testing.T) {
+	previousTerminal, previousStdout := stdoutIsTerminal, bartolocli.Stdout
+	previousRaw := viper.GetBool("raw")
+	t.Cleanup(func() {
+		stdoutIsTerminal, bartolocli.Stdout = previousTerminal, previousStdout
+		viper.Set("raw", previousRaw)
+	})
+	stdoutIsTerminal = func() bool { return true }
+	viper.Set("raw", false)
+	var output bytes.Buffer
+	bartolocli.Stdout = &output
+	restore, err := bartolocli.SetOutputFormat("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restore()
+	envelope := map[string]interface{}{
+		"matches":  []interface{}{map[string]interface{}{"id": "match-1", "text": "configured row"}},
+		"items":    []interface{}{map[string]interface{}{"id": "peer-1", "text": "wrong row"}},
+		"has_more": false,
+	}
+	formatter := generatedListFormatter{
+		delegate: bartolocli.NewDefaultFormatter(false, true),
+		rowField: "matches",
+		columns:  []string{"id", "text"},
+	}
+	if err := formatter.Format(envelope); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); !strings.Contains(got, "match-1") || strings.Contains(got, "peer-1") {
+		t.Fatalf("configured rows did not win over conventional peer: %q", got)
+	}
+	if _, found := envelope["data"]; found {
+		t.Fatalf("wire envelope gained table-only alias: %#v", envelope)
+	}
+	if got := envelope["items"].([]interface{})[0].(map[string]interface{})["id"]; got != "peer-1" {
+		t.Fatalf("wire envelope peer changed: %#v", envelope)
+	}
+}
+
 func TestGeneratedListFormatterPreservesJSONEnvelope(t *testing.T) {
 	previousTerminal, previousStdout := stdoutIsTerminal, bartolocli.Stdout
 	t.Cleanup(func() { stdoutIsTerminal, bartolocli.Stdout = previousTerminal, previousStdout })

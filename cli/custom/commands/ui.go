@@ -50,11 +50,18 @@ func brandPalette(getenv func(string) string) (brand, ok, warn string) {
 	}
 }
 
+var nativeTerminal = isatty.IsTerminal
+var cygwinTerminal = isatty.IsCygwinTerminal
+
+func interactiveTerminal(fd uintptr) bool {
+	return nativeTerminal(fd) || cygwinTerminal(fd)
+}
+
 // humanOutput reports whether stdout is an interactive terminal, i.e. a person
 // is watching rather than a pipe or file consuming structured output.
 // Variable so tests can force the colour path, which no test TTY provides.
 var humanOutput = func() bool {
-	return isatty.IsTerminal(os.Stdout.Fd())
+	return interactiveTerminal(os.Stdout.Fd())
 }
 
 // StdoutIsTerminal exposes the shared terminal decision to the root package,
