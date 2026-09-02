@@ -151,6 +151,30 @@ func TestMigrationIsIdempotent(t *testing.T) {
 	}
 }
 
+// A keyless profile with none of our fields was written by something else —
+// another tool, or a user halfway through configuring one. bartolo rejects it
+// if it is ever selected; deleting it is not this migration's call.
+func TestMigrationLeavesAForeignKeylessProfileAlone(t *testing.T) {
+	dir := stateHarness(t, `{"profiles":{
+		"staged":{"api_key":"","server":"https://staged.example"},
+		"default":{"api_key":"","gateway_key":"sk-orq-GW"}
+	}}`)
+
+	if err := MigrateProfileState(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	doc := readJSON(t, filepath.Join(dir, "credentials.json"))
+	profiles, _ := doc["profiles"].(map[string]any)
+	staged, _ := profiles["staged"].(map[string]any)
+	if staged == nil || staged["server"] != "https://staged.example" {
+		t.Errorf("a profile this CLI never wrote was touched: %v", profiles)
+	}
+	if _, still := profiles["default"]; still {
+		t.Errorf("our own keyless profile survived: %v", profiles)
+	}
+}
+
 // A selection naming a profile this migration removed is the same dead end
 // under a different message: bartolo resolves it as in force and every request
 // fails with "profile is not configured".

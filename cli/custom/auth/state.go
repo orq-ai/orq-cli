@@ -161,11 +161,17 @@ func migrateProfileState(doc map[string]any) []string {
 			entry = map[string]any{}
 		}
 
+		// Only a profile carrying a field of ours is one this CLI wrote. A
+		// keyless profile someone else left here is theirs: bartolo will
+		// reject it if it is ever selected, which is the honest answer, and
+		// deleting a credentials entry we do not own is not.
+		ours := ownedProfile(profile)
+
 		fields := StateFields
 		// A profile with no API key is going away, so its server binding has
 		// to travel with the rest of its state or `orq --profile acme` stops
 		// finding acme's host.
-		if stringField(profile, "api_key") == "" {
+		if ours && stringField(profile, "api_key") == "" {
 			fields = append(append([]string{}, StateFields...), "server")
 		}
 		for _, field := range fields {
@@ -178,7 +184,7 @@ func migrateProfileState(doc map[string]any) []string {
 			state[name] = entry
 		}
 
-		if stringField(profile, "api_key") == "" {
+		if ours && stringField(profile, "api_key") == "" {
 			delete(profiles, name)
 			removed = append(removed, name)
 		}
@@ -190,21 +196,26 @@ func migrateProfileState(doc map[string]any) []string {
 	return removed
 }
 
-// needsMigration answers from the loaded credentials: anything of ours still
-// sitting in a profile, or a profile with no API key for bartolo to trip over.
+// ownedProfile reports whether a profile carries a field only this CLI writes.
+func ownedProfile(profile map[string]any) bool {
+	for _, field := range StateFields {
+		if stringField(profile, field) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// needsMigration answers from the loaded credentials: a profile of ours still
+// holding fields that belong under `state`.
 func needsMigration() bool {
 	for _, value := range bartolocli.Creds.GetStringMap("profiles") {
 		profile, ok := value.(map[string]any)
 		if !ok {
 			continue
 		}
-		if stringField(profile, "api_key") == "" {
+		if ownedProfile(profile) {
 			return true
-		}
-		for _, field := range StateFields {
-			if stringField(profile, field) != "" {
-				return true
-			}
 		}
 	}
 	return false

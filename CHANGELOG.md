@@ -129,8 +129,9 @@ controls on surface changes, whichever side they originate from.
 - **Changed:** the gateway key `orq setup` mints, its id and expiry, and the
   workspace it was minted for moved out of `profiles.<name>` in
   `credentials.json` into a `state` section of the same file. Existing files are
-  migrated in place on the next command: the fields move, and a profile left
-  holding no API key is deleted. If that profile was the selected one,
+  migrated in place on the next command: the fields move, and a profile this
+  CLI wrote that is left holding no API key is deleted. A keyless profile with
+  none of those fields is someone else's and is left alone. If that profile was the selected one,
   `profile-selected` is also removed from `~/.orq/config.json`. A profile now
   exists only when it holds an API key, so a login that authenticates with a
   session no longer writes one that authenticates nothing.

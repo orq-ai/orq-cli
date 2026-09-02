@@ -169,8 +169,11 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
+		// Fail closed: a migration that did not run leaves a keyless profile
+		// bartolo rejects, so continuing only trades this error for a worse
+		// one about an API key the user does have.
 		if err := auth.MigrateProfileState(viper.GetString("config-directory")); err != nil {
-			commands.Warn("could not migrate credentials.json: %v", err)
+			return fmt.Errorf("could not migrate credentials.json: %w", err)
 		}
 		resolveServer(cmd)
 		applyProfileAPIKey(cmd)
