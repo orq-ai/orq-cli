@@ -251,7 +251,9 @@ fix is to run doctor from that directory. Never a non-zero exit for any of them.
 
 None of this reports cross-reads. opencode reads `~/.claude/skills`; codex reads
 `~/.agents/skills`; an agent can see our skills without us having written a directory for
-it. Status describes what `disconnect` can undo.
+it. Status describes what `disconnect` can undo. Links under an *ancestor* of cwd land in
+the "elsewhere" count here even though codex, opencode, pi and kilo read them from cwd;
+classifying those as local-ancestor is RES-1501 too.
 
 ### 7. What connect prints on a local install
 
@@ -282,9 +284,9 @@ In the registry:
 - kilo: `projectOrGlobalPath("kilo.json", ".config/kilo/kilo.json")`.
 
 The write path is one file per scope (the bold entries in the table). The agents also
-read every layer between the git root and cwd; whether `mcpPresent`, `--status` and
-disconnect should read that whole chain is a separate decision, tracked outside this
-ticket, because a false "not wired" from a subdirectory is an MCP-only problem.
+read every layer between the git root and cwd, so from a subdirectory `mcpPresent`,
+`--status` and disconnect miss an entry the agent genuinely loads. Reading the whole
+chain is RES-1501; it reuses the root helper from §3.
 
 `mcpScopeAware` then reports all five agents correctly, `orq setup` asks the scope
 question on machines that only have those agents, and `orq connect codex mcp --local`
@@ -322,7 +324,8 @@ scope cell).
 - Per-repo generation snapshots or manifests; garbage-collecting local links whose
   repo is gone.
 - A scope flag or opt-out on `orq launch`.
-- Reading the full ancestor chain of project MCP files for presence checks (§8).
+- Reading the full ancestor chain of project MCP files and ancestor skill links for
+  status, doctor and disconnect (RES-1501).
 - Tying the local scope to the active orq project (RES-1497). That scopes credentials
   and workspace data; this scopes where files land. Two axes that share a word.
 - Migrating an existing global install into a repo. `orq connect skills --local` in a repo
