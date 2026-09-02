@@ -48,9 +48,6 @@ and the hand-written commands on top of the generated tree.
 **Guards that live in `register.go`,** and are the reason a new command sometimes
 fails in a non-obvious way:
 
-- `profileExemptCommands` — commands that must work before a session exists
-  (`login`, `setup`, `doctor`, `update`, `version`, …). A new command that never
-  calls the orq API belongs here.
 - `interactiveWizardCommands` — bartolo-owned prompts that ignore `--no-input`,
   refused up front so `--no-input` never prompts.
 - `commandGroup` in `groups.go` — every visible command needs an entry, or
@@ -63,27 +60,22 @@ it, so a surface change has to be committed deliberately and shows up in the PR.
 It ships to nobody and exists only for that diff.
 
 **Subpackages worth knowing before adding to them:** `cli/custom/auth` (OAuth
-device login, the `~/.orq/sessions` profile store, self-hosted URL resolution),
+device login, the server-keyed `~/.orq/sessions` browser-session store,
+self-hosted URL resolution),
 `cli/custom/launch` (runs coding agents — one file per agent — with orq wired in
 as their gateway), `cli/custom/skills` (agent skills embedded with `go:embed`,
 installed into each agent's config dir).
 
-**Who owns what in `~/.orq/credentials.json`.** `profiles.<name>` is bartolo's:
-a profile that exists but holds no `api_key` fails every request rather than
-falling back to `ORQ_API_KEY`, so this CLI writes one only for a real API key.
-Everything else it tracks per profile — the minted gateway key, its id and
-expiry, the workspace it was minted for, and a session-bound server — lives
-under the `state` key of the same file, read and written through
-`cli/custom/auth/state.go`. `auth.MigrateProfileState` moves any older layout
-across on the next command, so never add a field of ours to a profile: the
-closed list this CLI may write there is `api_key`, `type`, and `server`. An
-API-key profile keeps its own `server`, because bartolo resolves that one
-itself — state only carries the server of a profile that has no key.
-`state.go` relies on bartolo's unexported `profile-selected` field in
-`config.json` when repairing a dangling selection. That repair rewrites
-`config.json` wholesale and must preserve `profile-decided`, or bartolo
-re-adopts a default profile on the next run; check both names when bumping the
-generator.
+**Who owns what under `~/.orq`.** `credentials.json` is bartolo's: `profiles.<name>`
+holds a saved API key, its handler type and its server, written only through
+bartolo's `auth profile add` path (`commands.saveAPIKeyProfile`). Never add a
+field there. A browser login lives in `sessions/<host>.json` — host from
+`auth.SessionHost`, selected by the server `custom.resolveServer` decided — and
+everything this CLI records about that login (the gateway key `orq setup` minted,
+its id, expiry, workspace and project) is a field on `auth.Session`. `auth.MigrateLayout`
+brings older trees up to this on the next command. `state.go`'s dependency on
+bartolo's `profile-selected` / `profile-decided` config keys moved to
+`auth/migrate.go`; check them when bumping the generator.
 
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,

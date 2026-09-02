@@ -111,6 +111,20 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Breaking:** `--profile` names a saved API-key profile and nothing else. A
+  browser login belongs to a server: `~/.orq/sessions/<host>.json`
+  (`my.orq.ai.json` for the hosted service), chosen by `--server`, `ORQ_SERVER`
+  or `orq server set`. `orq auth login --profile x` is an error; use `--server`
+  for another host. While a profile is in force the session is not consulted,
+  and `orq whoami` / `orq doctor` report the profile. Existing session files
+  are renamed to their host on the next command; a second file for the same
+  host is kept as `<name>.json.deprecated`. The gateway key `orq setup` minted,
+  including its workspace and project scope, moves from `credentials.json`
+  into the session file, and a keyless profile this CLI wrote is deleted. A
+  keyless profile with none of this CLI's fields is left alone.
+- **Deprecated:** `auth list-profiles` and `auth add-profile` print a notice;
+  use `auth profile list` and `auth profile add`. Removed in the next minor.
+
 ## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
 
 - **Fixed: `orq setup` now shows the project picker during ordinary terminal
