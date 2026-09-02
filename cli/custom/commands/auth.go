@@ -88,7 +88,7 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 	}
 	// A user-supplied key carries no workspace provenance — saved as unknown,
 	// so setup's reuse check treats it as such rather than as a mismatch.
-	if err := saveAPIKeyProfile(key, ""); err != nil {
+	if err := saveAPIKeyProfile(key); err != nil {
 		return err
 	}
 

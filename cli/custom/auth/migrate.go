@@ -17,7 +17,7 @@ import (
 // ownedFields are the fields only this CLI ever wrote into a bartolo profile.
 // Their presence is what marks a profile as ours to migrate; a keyless profile
 // without any of them belongs to someone else and is left alone.
-var ownedFields = []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "workspace"}
+var ownedFields = []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "gateway_key_project", "workspace"}
 
 // MigrateLayout brings an older ~/.orq up to the current layout in one pass:
 // session files are named by host, and everything this CLI records about a
@@ -253,6 +253,7 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 	set(&s.GatewayKey, fields["gateway_key"])
 	set(&s.GatewayKeyID, fields["gateway_key_id"])
 	set(&s.GatewayKeyExpiresAt, fields["gateway_key_expires_at"])
+	set(&s.GatewayProject, fields["gateway_key_project"])
 	set(&s.GatewayWorkspace, fields["workspace"])
 	if !changed {
 		return nil

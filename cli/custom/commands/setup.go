@@ -298,7 +298,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if err != nil {
 		return err
 	}
-	result["profile"] = auth.ActiveProfile()
+	result["profile"] = bartoloProfileName()
 
 	client := auth.NewClient(authState.apiBase)
 
@@ -431,7 +431,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
 		if opts.persistKey {
-			if err := saveAPIKeyProfile(key, ""); err != nil {
+			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
 			rep.ok("using the key you passed")
@@ -559,11 +559,6 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	}
 	session, err := client.CreateSessionFromDeviceApproval(approved, profile, workspace)
 	if err != nil {
-		return nil, err
-	}
-	// Bind the host to the profile this login belongs to, so an OAuth profile
-	// routes without a flag the same way an API-key one does.
-	if err := BindProfileServer(auth.ActiveProfile(), auth.Server()); err != nil {
 		return nil, err
 	}
 	return &deviceLoginResult{
@@ -754,61 +749,47 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 	return strings.Contains(string(data), needle)
 }
 
-// Mirrors bartolo's saveAuthProfile, then chmods: viper writes 0644 and this file holds a live credential.
-//
-// Clears the gateway triple: savedAPIKey prefers gateway_key, so leaving a
-// previously minted key in place meant a key the user passed with --api-key was
-// silently ignored by the next command that wired an agent.
-func saveAPIKeyProfile(key, workspace string) error {
-	profile := auth.ActiveProfile()
-	clearGatewayKeyFields(profile)
-	return writeAPIKeyProfile(profile, key, workspace)
-}
-
-func clearGatewayKeyFields(profile string) {
-	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "gateway_key_project"} {
-		auth.SetStateValue(profile, field, "")
+// saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
+// handler type and the resolved server, nothing of ours. bartolo resolves it
+// from here on.
+func saveAPIKeyProfile(key string) error {
+	name := bartoloProfileName()
+	bartolocli.Creds.Set("profiles."+name+".api_key", key)
+	bartolocli.Creds.Set("profiles."+name+".type", BartoloAuthType())
+	if server := auth.Server(); server != "" {
+		bartolocli.Creds.Set("profiles."+name+".server", server)
 	}
+	return saveCreds()
 }
 
-// saveGatewayKeyProfile stores the minted key under its own field. Writing it as
-// api_key would make apiKeyConfigured true, and every generated command would
-// then authenticate with a gateway-scoped credential instead of the session.
-//
-// Clears api_key for the mirror reason saveAPIKeyProfile clears the gateway
-// triple. Versions before the split wrote the minted key to api_key with a
-// workspace beside it, so an upgraded machine that switches workspace mints a
-// new key while the old one survives — and api_key is the profile field
-// apiKeyConfigured accepts, so every command would keep authenticating with a
-// stale key for the workspace the user just left.
+// saveGatewayKeyProfile records the minted key on the login it was minted
+// from. It is gateway-scoped, so it never becomes a bartolo profile: a profile
+// that cannot authenticate the platform API is exactly what bartolo refuses to
+// fall back from.
 func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, projectID string) error {
-	profile := auth.ActiveProfile()
-	// Clear a key written before the split: api_key is the field
-	// apiKeyConfigured accepts, so leaving it there keeps every command
-	// authenticating with a stale key for the workspace the user just left.
-	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
-	auth.SetStateValue(profile, "gateway_key_id", keyID)
-	auth.SetStateValue(profile, "gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
-	// Recorded so a later run can tell "the saved key is for another project"
-	// from "the saved key is fine", the same job the workspace field does.
-	auth.SetStateValue(profile, "gateway_key_project", projectID)
-	if err := writeGatewayKeyProfile(profile, key, workspace); err != nil {
+	session, err := auth.ReadSession()
+	if err != nil {
 		return err
 	}
-	// The profile has no API key now, which bartolo fails every request on. Its
-	// state entry proves it is ours, so migration can see and remove the husk.
-	return auth.MigrateProfileState(viper.GetString("config-directory"))
+	if session == nil {
+		return errors.New("no login session to record the gateway key on")
+	}
+	session.GatewayKey = key
+	session.GatewayKeyID = keyID
+	session.GatewayKeyExpiresAt = expiresAt.UTC().Format(time.RFC3339)
+	session.GatewayWorkspace = workspace
+	session.GatewayProject = projectID
+	return auth.SaveSession(session)
 }
 
-// gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry is
-// recorded — a key minted before expiry existed, or one the user brought — and
-// callers must treat that as "unknown", never as "expired".
+// gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry
+// is recorded, and callers must treat that as "unknown", never as "expired".
 func gatewayKeyExpiry() (time.Time, bool) {
-	raw := auth.StateValue("gateway_key_expires_at")
-	if raw == "" {
+	session, err := auth.ReadSession()
+	if err != nil || session == nil || session.GatewayKeyExpiresAt == "" {
 		return time.Time{}, false
 	}
-	at, err := time.Parse(time.RFC3339, raw)
+	at, err := time.Parse(time.RFC3339, session.GatewayKeyExpiresAt)
 	if err != nil {
 		return time.Time{}, false
 	}
@@ -822,38 +803,16 @@ func gatewayKeyDueForRenewal(now time.Time) bool {
 	return ok && at.Sub(now) < gatewayKeyRenewWindow
 }
 
-// clearAPIKeyProfile removes the stored keys; without it logout leaves a live key in credentials.json.
-//
-// Deliberately keeps gateway_key_id and gateway_key_expires_at. Neither can
-// authenticate anything — a key id is not a secret, it is on the dashboard —
-// and logout does not revoke the key server-side, so discarding them destroys
-// the only record of what is still out there. They are what lets logout print
-// the revoke command, and doctor keep counting down to the expiry.
-func clearAPIKeyProfile() (bool, error) {
-	profile := auth.ActiveProfile()
-	held := strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" ||
-		auth.StateValueOf(profile, "gateway_key") != ""
-	if !held {
-		return false, nil
-	}
-	auth.SetStateValue(profile, "gateway_key", "")
-	if err := writeAPIKeyProfile(profile, "", ""); err != nil {
-		return true, err
-	}
-	// The profile is now keyless, which bartolo treats as a hard failure for
-	// every later command. Its state entry proves it is ours, so migration can
-	// see and remove the husk now.
-	return true, auth.MigrateProfileState(viper.GetString("config-directory"))
-}
-
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 
+// savedGatewayKeyID is the handle for revoking the minted key; logout prints
+// it because logout cannot revoke the key itself.
 func savedGatewayKeyID() string {
-	// bartolo's GetProfile panics on a nil Creds; guard once for every caller.
-	if bartolocli.Creds == nil {
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
 		return ""
 	}
-	return auth.StateValue("gateway_key_id")
+	return session.GatewayKeyID
 }
 
 // recordAgentWiring notes which workspace an agent was wired against. Stored at
@@ -921,7 +880,14 @@ func keyWorkspaceMismatch(savedWS, active string) bool {
 // savedKeyProject is the project the saved gateway key was minted for. Empty
 // means workspace-wide, or minted before scoping existed.
 func savedKeyProject() string {
-	return auth.StateValue("gateway_key_project")
+	if profileInForce() {
+		return ""
+	}
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		return ""
+	}
+	return session.GatewayProject
 }
 
 // keyProjectMismatch reports whether the saved key belongs to a different
@@ -944,32 +910,18 @@ func BartoloAuthType() string {
 	return ""
 }
 
-func writeAPIKeyProfile(profile, key, workspace string) error {
-	bartolocli.Creds.Set("profiles."+profile+".api_key", key)
-	return writeCredsProfile(profile, workspace)
-}
+// profileInForce reports whether bartolo will authenticate with a saved API
+// key on this call (--profile, ORQ_PROFILE or `auth profile use`). When it
+// does, the login session is not consulted at all.
+func profileInForce() bool { return bartolocli.ActiveProfileName() != "" }
 
-// The minted key never becomes a bartolo profile: it is gateway-scoped, and a
-// profile entry that cannot authenticate the platform API is exactly what
-// bartolo now refuses to fall back from (see auth.MigrateProfileState).
-func writeGatewayKeyProfile(profile, key, workspace string) error {
-	auth.SetStateValue(profile, "gateway_key", key)
-	auth.SetStateValue(profile, "workspace", workspace)
-	if server := auth.Server(); server != "" {
-		auth.SetStateValue(profile, "server", server)
+// bartoloProfileName is the profile an API-key write lands in: the one in
+// force, else `default`.
+func bartoloProfileName() string {
+	if name := bartolocli.ActiveProfileName(); name != "" {
+		return name
 	}
-	return saveCreds()
-}
-
-func writeCredsProfile(profile, workspace string) error {
-	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
-	auth.SetStateValue(profile, "workspace", workspace)
-	// An explicit host travels with the credentials it was used against, so a
-	// later `orq --profile <name> ...` needs no flag.
-	if server := auth.Server(); server != "" {
-		bartolocli.Creds.Set("profiles."+profile+".server", server)
-	}
-	return saveCreds()
+	return "default"
 }
 
 // shellEnvFileNames are the shell-integration files `orq setup` writes under
@@ -1009,15 +961,9 @@ func clearShellEnvFile() ([]string, error) {
 	return cleared, errors.Join(clearErrors...)
 }
 
-// storedAPIKeyProfile reports whether the active profile holds a key that
-// authenticates commands, so it reads the one profile field apiKeyConfigured
-// accepts. Doctor asks about the environment separately, hence no env check here.
-// Counting gateway_key here made doctor answer "authenticated: credentials.json"
-// for a key no command authenticates with, on the one screen whose job is to
-// explain why nothing works. Callers must not log the value.
+// storedAPIKeyProfile reports whether a bartolo profile in force holds a key.
 func storedAPIKeyProfile() bool {
-	prefix := "profiles." + auth.ActiveProfile()
-	return strings.TrimSpace(bartolocli.Creds.GetString(prefix+".api_key")) != ""
+	return bartolocli.Creds != nil && strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
 // Bartolo loads these files before any command runs, so a key here outlives 'unset' and logout; the parsing mirrors its loadDotEnvFile.
@@ -1110,7 +1056,7 @@ func envAPIKeySet() bool {
 // (minted or reused), and whether this run minted it. The last is separate
 // because only a fresh key needs the verification retry window.
 func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, bool, error) {
-	info := map[string]any{"created": false, "profile": auth.ActiveProfile()}
+	info := map[string]any{"created": false, "profile": bartoloProfileName()}
 
 	if state.suppliedKey != "" {
 		rep.ok("using the API key you passed")
@@ -2066,11 +2012,12 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	if probed != saved || recorded == keyWS {
 		return
 	}
-	// Only the workspace field. writeCredsProfile also persists `server`, and a
-	// profile server outranks `orq server set`, so backfilling through it would
-	// pin the profile to this run's host without anyone asking for it.
-	auth.SetStateValue(auth.ActiveProfile(), "workspace", keyWS)
-	if err := saveCreds(); err != nil {
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		return
+	}
+	session.GatewayWorkspace = keyWS
+	if err := auth.SaveSession(session); err != nil {
 		// Not fatal: the key itself is fine, this only re-arms the local guard.
 		rep.warn("could not record the key's workspace: %v", err)
 	}

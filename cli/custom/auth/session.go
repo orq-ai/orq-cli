@@ -54,6 +54,7 @@ type Session struct {
 	GatewayKeyID        string `json:"gatewayKeyId,omitempty"`
 	GatewayKeyExpiresAt string `json:"gatewayKeyExpiresAt,omitempty"`
 	GatewayWorkspace    string `json:"gatewayWorkspace,omitempty"`
+	GatewayProject      string `json:"gatewayProject,omitempty"`
 }
 
 type SessionInspectStatus string
