@@ -90,6 +90,7 @@ func Register(root *cobra.Command) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	registerCommands(root)
+	installGeneratedListWorkarounds(root)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)
 	annotateGlobalFlagEnvVars(root)
