@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [6.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.1.0) — 2026-09-02
+
 - **Fixed: the key `orq setup` exports no longer shadows the session.** When
   `ORQ_API_KEY` holds exactly the key setup minted and wrote into `~/.orq/env`,
   and a session exists, the session wins — that key is ours, not a deliberate
