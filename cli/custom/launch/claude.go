@@ -69,6 +69,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 			// A nested `orq` invocation from inside the session reads this, so the
 			// launch-follows-session invariant holds even one process down.
 			"ORQ_API_KEY":                ctx.Creds.APIKey,
+			"ORQ_SERVER":                 ctx.Creds.APIBaseURL,
 			"ANTHROPIC_MODEL":            model,
 			"ANTHROPIC_SMALL_FAST_MODEL": smallFast,
 			// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
