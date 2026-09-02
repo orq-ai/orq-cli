@@ -2,8 +2,12 @@ package custom
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"orq/cli/generated"
 	"reflect"
 	"strings"
@@ -343,5 +347,78 @@ func TestGeneratedListOperationsAreIdempotent(t *testing.T) {
 	}
 	if err := command.RunE(command, nil); err != nil {
 		t.Fatal("second installation stacked another wrapper")
+	}
+}
+
+func TestTracesSearchUsesTableOnlyForTerminalPresentation(t *testing.T) {
+	testCases := []struct {
+		name, response, format string
+		assert                 func(*testing.T, string)
+	}{
+		{
+			name: "empty table", format: "table",
+			response: "{\"object\":\"list\",\"data\":[],\"has_more\":false,\"next_page_token\":\"\",\"meta\":{\"row_count\":0}}",
+			assert: func(t *testing.T, output string) {
+				if !strings.Contains(output, "TRACE ID") || strings.Contains(output, "data[0]:") {
+					t.Fatalf("empty response was not a headed table: %q", output)
+				}
+			},
+		},
+		{
+			name: "populated table", format: "table",
+			response: "{\"object\":\"list\",\"data\":[{\"trace_id\":\"trace-1\",\"name\":\"checkout\",\"status\":\"ok\",\"duration_ms\":42}],\"has_more\":false}",
+			assert: func(t *testing.T, output string) {
+				if !strings.Contains(output, "trace-1") || !strings.Contains(output, "checkout") {
+					t.Fatalf("table lacks row: %q", output)
+				}
+			},
+		},
+		{
+			name: "complete JSON", format: "json",
+			response: "{\"object\":\"list\",\"data\":[],\"has_more\":false,\"next_page_token\":\"next-1\",\"meta\":{\"row_count\":0,\"request_id\":\"req-1\"}}",
+			assert: func(t *testing.T, output string) {
+				var decoded map[string]interface{}
+				if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+					t.Fatal(err)
+				}
+				meta := decoded["meta"].(map[string]interface{})
+				if decoded["object"] != "list" || decoded["next_page_token"] != "next-1" || meta["request_id"] != "req-1" {
+					t.Fatalf("JSON envelope changed: %#v", decoded)
+				}
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.Method != http.MethodPost || request.URL.Path != "/v3/traces/search" {
+					t.Errorf("request=%s %s", request.Method, request.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, testCase.response)
+			}))
+			t.Cleanup(server.Close)
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("NO_COLOR", "")
+			t.Setenv("ORQ_API_KEY", "test-key")
+			root := buildRoot(t)
+			previousTerminal, previousStdout := stdoutIsTerminal, bartolocli.Stdout
+			previousStderr, previousFormatter := bartolocli.Stderr, bartolocli.Formatter
+			t.Cleanup(func() {
+				stdoutIsTerminal, bartolocli.Stdout = previousTerminal, previousStdout
+				bartolocli.Stderr, bartolocli.Formatter = previousStderr, previousFormatter
+			})
+			stdoutIsTerminal = func() bool { return true }
+			var stdout, stderr bytes.Buffer
+			bartolocli.Stdout, bartolocli.Stderr = &stdout, &stderr
+			bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, true)
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs([]string{"--server", server.URL, "-o", testCase.format, "traces", "search"})
+			if _, err := root.ExecuteContextC(context.Background()); err != nil {
+				t.Fatalf("execute: %v; stderr=%q", err, stderr.String())
+			}
+			testCase.assert(t, stdout.String())
+		})
 	}
 }
