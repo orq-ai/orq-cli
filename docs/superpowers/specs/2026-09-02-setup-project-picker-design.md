@@ -26,10 +26,12 @@ workspace selection.
   supplied key and are not acted upon in that mode; setup keeps its existing
   explanatory note.
 
-The broader `--interactive` (`-i`) behavior remains unchanged: it can force
-workspace selection and API-key confirmation. Project prompting no longer
-depends on it. Update the flag and command help to describe those remaining
-effects instead of claiming that `-i` controls every setup choice.
+The broader `--interactive` (`-i`) behavior remains unchanged: it revisits
+inferred workspace and API-key choices. An explicit `--workspace` still wins,
+and the API-key confirmation still appears only when setup needs to create a
+key. Project prompting no longer depends on `-i`. Update the flag and command
+help to describe those remaining effects instead of claiming that `-i`
+controls every setup choice.
 
 ## Implementation
 
@@ -52,7 +54,8 @@ Add a project-picker function to `setupOptions`, analogous to its existing
 `confirmFn` test seam. A small method uses the injected function when present
 and otherwise delegates to the existing `pickProject`. This makes the normal
 TTY branch deterministic in unit tests without package-global mutation or a
-pseudo-terminal.
+pseudo-terminal. Keep that method beside the other `setupOptions` prompt
+methods in `setup.go`.
 
 The chosen project continues through the existing data flow:
 
@@ -86,6 +89,8 @@ the broader `-i` behavior. The tests should prove that:
   unit-test fixture, cannot reach the picker;
 - explicit `--project`, `--no-project`, zero-project, and single-project paths
   retain their current behavior;
+- explicit `--project` suppresses the picker, and picker cancellation is
+  returned as an error;
 - the selected project is persisted and passed forward for API-key scoping.
 
 Update `CHANGELOG.md` under `## Unreleased` because this changes visible setup
