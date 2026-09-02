@@ -2574,7 +2574,7 @@ func TestGatewayKeyWritersLeaveNoKeylessProfileOnDisk(t *testing.T) {
 	credsHarness(t)
 	dir := viper.GetString("config-directory")
 
-	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	assertNoKeylessProfileOnDisk(t, dir, "sk-orq-K")

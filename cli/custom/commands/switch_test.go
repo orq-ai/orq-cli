@@ -86,7 +86,7 @@ func switchTestEnv(t *testing.T) {
 		viper.Set("no-input", prevNoInput)
 	})
 	if bartolocli.Formatter == nil {
-		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
 }
