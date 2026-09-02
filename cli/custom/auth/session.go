@@ -154,10 +154,6 @@ func LegacySessionFilePath() string {
 	return legacySessionFilePath()
 }
 
-func ensureSessionDir() error {
-	return os.MkdirAll(filepath.Dir(SessionFilePath()), 0o700)
-}
-
 func validateSession(s *Session) error {
 	if s.Version != 1 {
 		return errors.New("unsupported session version")
@@ -266,7 +262,14 @@ func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
 func SaveSession(s *Session) error {
-	if err := ensureSessionDir(); err != nil {
+	return saveSessionTo(SessionFilePath(), s)
+}
+
+// saveSessionTo writes atomically: temp file in the same directory, then
+// rename, so a concurrent reader never sees a torn file and two writers end
+// with one intact winner.
+func saveSessionTo(path string, s *Session) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	// Shallow copy so the pruned token map is this write's alone; every other
@@ -277,7 +280,6 @@ func SaveSession(s *Session) error {
 	if err != nil {
 		return err
 	}
-	path := SessionFilePath()
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".session-*.json")
 	if err != nil {
 		return err
