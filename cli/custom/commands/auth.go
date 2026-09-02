@@ -9,8 +9,15 @@ import (
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
+
+// profileInForceError is what login and logout say when --profile names an
+// API key: the session they act on is not what that flag selects.
+func profileInForceError(verb string) error {
+	return fmt.Errorf("profile %q is an API key, not a login; %s without --profile, or pass --profile \"\" for this call", bartolocli.ActiveProfileName(), verb)
+}
 
 func NewLoginCommand() *cobra.Command {
 	var workspace string
@@ -34,6 +41,10 @@ func NewLoginCommand() *cobra.Command {
 				}, &method, promptStdio()); err != nil {
 					return err
 				}
+			}
+
+			if method != "API key" && profileInForce() {
+				return profileInForceError("log in to another server with --server")
 			}
 
 			if method == "API key" {
@@ -93,12 +104,12 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 	}
 
 	if wantsHumanView(cmd) {
-		success("Signed in with an API key (profile: %s, %d projects visible)", auth.ActiveProfile(), len(projects))
+		success("Signed in with an API key (profile: %s, %d projects visible)", bartoloProfileName(), len(projects))
 		return nil
 	}
 	return emit(map[string]any{
 		"method":   "api_key",
-		"profile":  auth.ActiveProfile(),
+		"profile":  bartoloProfileName(),
 		"verified": true,
 	})
 }
@@ -112,17 +123,14 @@ func NewLogoutCommand() *cobra.Command {
 		Use:   "logout",
 		Short: "Revoke the refresh token and clear local credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if profileInForce() {
+				return profileInForceError("log out")
+			}
 			session, err := auth.ReadSession()
 			if err != nil {
 				return err
 			}
-			// A stored API key authenticates on its own, so logging out has to
-			// clear it too — otherwise "logged out" still runs every command.
 			if session == nil {
-				keyCleared, err := clearAPIKeyProfile()
-				if err != nil {
-					return err
-				}
 				envCleared, err := clearShellEnvFile()
 				if err != nil {
 					return err
@@ -130,19 +138,14 @@ func NewLogoutCommand() *cobra.Command {
 				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
-					if keyCleared {
-						success("Cleared the stored API key")
-					} else {
-						info("Not logged in - nothing to clear.")
-					}
+					info("Not logged in - nothing to clear.")
 					reportClearedEnvFiles(envCleared)
 					reportSurvivingGatewayKey()
 					return removalError(removeFailed)
 				}
 				if err := emit(map[string]any{
 					"authenticated":               false,
-					"cleared":                     keyCleared,
-					"api_key_profile_cleared":     keyCleared,
+					"cleared":                     false,
 					"env_files_cleared":           envCleared,
 					"coding_agents_removed":       removed,
 					"coding_agents_remove_failed": removeFailed,
@@ -204,10 +207,6 @@ func NewLogoutCommand() *cobra.Command {
 			if err := client.ClearLocalSession(); err != nil {
 				return err
 			}
-			keyCleared, err := clearAPIKeyProfile()
-			if err != nil {
-				return err
-			}
 			envCleared, err := clearShellEnvFile()
 			if err != nil {
 				return err
@@ -233,7 +232,6 @@ func NewLogoutCommand() *cobra.Command {
 				"authenticated":               false,
 				"cleared":                     true,
 				"revoked":                     revokeErr == nil,
-				"api_key_profile_cleared":     keyCleared,
 				"env_files_cleared":           envCleared,
 				"coding_agents_removed":       removed,
 				"coding_agents_remove_failed": removeFailed,
@@ -286,6 +284,20 @@ func NewWhoAmICommand() *cobra.Command {
 		Use:   "whoami",
 		Short: "Show the current authenticated user and workspace",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if profileInForce() {
+				if wantsHumanView(cmd) {
+					success("Using API-key profile %s", bartolocli.ActiveProfileName())
+					kv(9, "server", "%s", auth.ResolveURLs(serverURL()).APIBaseURL)
+					kv(9, "api_key", "%s", maskToken(bartolocli.GetProfile()["api_key"]))
+					return nil
+				}
+				return emit(map[string]any{
+					"profile":  bartolocli.ActiveProfileName(),
+					"server":   auth.ResolveURLs(serverURL()).APIBaseURL,
+					"api_key":  maskToken(bartolocli.GetProfile()["api_key"]),
+					"identity": nil,
+				})
+			}
 			session, err := auth.ReadSession()
 			if err != nil {
 				return err
