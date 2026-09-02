@@ -79,6 +79,57 @@ func TestLogoutRefusesAProfileBeforeReadingTheSession(t *testing.T) {
 	}
 }
 
+func TestLogoutReportsGatewayKeyAfterClearingItsSession(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v2/auth/refresh-token" {
+			t.Errorf("logout request = %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session = %+v, err = %v", session, err)
+	}
+	urls := auth.ResolveURLs(srv.URL)
+	session.APIBaseURL = urls.APIBaseURL
+	session.V1BaseURL = urls.V1BaseURL
+	session.AuthBaseURL = urls.AuthBaseURL
+	session.ProfileBaseURL = urls.ProfileBaseURL
+	session.GatewayKeyID = "gateway-key-id"
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+
+	cmd := NewLogoutCommand()
+	cmd.SetArgs([]string{"--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("logout output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload["gateway_key_id"] != "gateway-key-id" {
+		t.Errorf("gateway_key_id = %v, want the surviving key handle", payload["gateway_key_id"])
+	}
+	if remaining, err := auth.ReadSession(); err != nil || remaining != nil {
+		t.Errorf("session after logout = %+v, err = %v", remaining, err)
+	}
+}
+
 func TestWhoAmIStructuredOutputForAPIKeyProfile(t *testing.T) {
 	credsHarness(t)
 	ensureFormatter(t)

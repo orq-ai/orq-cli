@@ -140,7 +140,7 @@ func NewLogoutCommand() *cobra.Command {
 				if wantsHumanView(cmd) {
 					info("Not logged in - nothing to clear.")
 					reportClearedEnvFiles(envCleared)
-					reportSurvivingGatewayKey()
+					reportSurvivingGatewayKey("")
 					return removalError(removeFailed)
 				}
 				if err := emit(map[string]any{
@@ -149,13 +149,17 @@ func NewLogoutCommand() *cobra.Command {
 					"env_files_cleared":           envCleared,
 					"coding_agents_removed":       removed,
 					"coding_agents_remove_failed": removeFailed,
-					"gateway_key_id":              savedGatewayKeyID(),
+					"gateway_key_id":              "",
 					"session_file":                auth.SessionFilePath(),
 				}); err != nil {
 					return err
 				}
 				return removalError(removeFailed)
 			}
+			// The gateway key is deliberately not revoked by logout. Capture its
+			// handle before deleting the session that owns the metadata so both
+			// human and machine output can still tell the user what survives.
+			gatewayKeyID := session.GatewayKeyID
 
 			// --force clears local credentials no matter what, so it implies
 			// consent; asking "are you sure?" after the user said "force" is noise.
@@ -225,7 +229,7 @@ func NewLogoutCommand() *cobra.Command {
 					Warn("local credentials cleared, but the server-side token was not revoked")
 				}
 				reportClearedEnvFiles(envCleared)
-				reportSurvivingGatewayKey()
+				reportSurvivingGatewayKey(gatewayKeyID)
 				return removalError(removeFailed)
 			}
 			if err := emit(map[string]any{
@@ -235,7 +239,7 @@ func NewLogoutCommand() *cobra.Command {
 				"env_files_cleared":           envCleared,
 				"coding_agents_removed":       removed,
 				"coding_agents_remove_failed": removeFailed,
-				"gateway_key_id":              savedGatewayKeyID(),
+				"gateway_key_id":              gatewayKeyID,
 				"session_file":                auth.SessionFilePath(),
 			}); err != nil {
 				return err
@@ -262,8 +266,8 @@ func removalError(failed bool) error {
 // reportSurvivingGatewayKey names the one thing logout cannot undo. The key is
 // still Active in the workspace until its own expiry, and the id is the only
 // handle for killing it, so saying nothing here strands a live credential.
-func reportSurvivingGatewayKey() {
-	if id := savedGatewayKeyID(); id != "" {
+func reportSurvivingGatewayKey(id string) {
+	if id != "" {
 		info("the gateway key is still active — revoke it with: orq api-keys delete %s", id)
 	}
 }

@@ -83,6 +83,27 @@ func TestMigrateRenamesSessionFilesToTheirHost(t *testing.T) {
 	}
 }
 
+func TestMigrateDoesNotOverwriteUnreadableHostSession(t *testing.T) {
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		"default.json": sessionOn("https://api.orq.ai", "valid"),
+	})
+	target := filepath.Join(dir, "sessions", "my.orq.ai.json")
+	corrupt := []byte("{not valid json")
+	if err := os.WriteFile(target, corrupt, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MigrateLayout(dir); err == nil {
+		t.Fatal("expected migration to refuse the occupied target")
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != string(corrupt) {
+		t.Fatalf("host session was overwritten: contents=%q err=%v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sessions", "default.json")); err != nil {
+		t.Fatalf("legacy session moved despite failed migration: %v", err)
+	}
+}
+
 // Two logins to one host: the newer file wins, the other is kept, renamed so
 // it is recognisable, and nothing is deleted.
 func TestMigrateKeepsTheLoserAsDeprecated(t *testing.T) {
@@ -115,6 +136,7 @@ func TestMigrateMovesLegacyProfileFieldsIntoTheSession(t *testing.T) {
 		"gateway_key":"sk-orq-GW",
 		"gateway_key_id":"KEYID",
 		"gateway_key_expires_at":"2027-01-01T00:00:00Z",
+		"gateway_key_project":"project-1",
 		"workspace":"acme"
 	}}}`, map[string]*Session{
 		"default.json": sessionOn("https://api.orq.ai", "acme"),
@@ -125,7 +147,8 @@ func TestMigrateMovesLegacyProfileFieldsIntoTheSession(t *testing.T) {
 	s := readDoc(t, filepath.Join(dir, "sessions", "my.orq.ai.json"))
 	for field, want := range map[string]string{
 		"gatewayKey": "sk-orq-GW", "gatewayKeyId": "KEYID",
-		"gatewayKeyExpiresAt": "2027-01-01T00:00:00Z", "gatewayWorkspace": "acme",
+		"gatewayKeyExpiresAt": "2027-01-01T00:00:00Z", "gatewayProject": "project-1",
+		"gatewayWorkspace": "acme",
 	} {
 		if s[field] != want {
 			t.Errorf("session[%q] = %v, want %q", field, s[field], want)

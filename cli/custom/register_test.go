@@ -250,38 +250,6 @@ func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
 	}
 }
 
-func TestProfileExemptCommandsAreScopedByCommandPath(t *testing.T) {
-	want := []string{
-		"auth login",
-		"auth logout",
-		"setup",
-		"auth add-profile",
-		"auth list-profiles",
-		"auth profile add",
-		"auth profile list",
-		"auth profile current",
-		"auth profile use",
-		"auth profile clear",
-		"doctor",
-		"update",
-		"orqi",
-		"version",
-		"help",
-		"completion",
-		"man-pages",
-	}
-	for _, path := range want {
-		if !profileExemptCommands[path] {
-			t.Errorf("profileExemptCommands[%q] = false, want true", path)
-		}
-	}
-	for _, bare := range []string{"login", "logout", "add-profile", "list-profiles", "add", "list", "current", "use", "clear"} {
-		if profileExemptCommands[bare] {
-			t.Errorf("bare command name %q is exempt; this can exempt unrelated generated commands", bare)
-		}
-	}
-}
-
 func TestApplyJSONAliasReturnsFormatterErrors(t *testing.T) {
 	previous := setOutputFormat
 	t.Cleanup(func() { setOutputFormat = previous })

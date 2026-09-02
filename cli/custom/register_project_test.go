@@ -22,10 +22,6 @@ import (
 func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	prevProfile := viper.GetString("profile")
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", prevProfile) })
-
 	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewCredentialsFile: %v", err)
@@ -35,14 +31,12 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	prevCreds := bartolocli.Creds
 	bartolocli.Creds = creds
 	t.Cleanup(func() { bartolocli.Creds = prevCreds })
-	creds.Set("profiles.default.gateway_key", "sk-orq-OURS")
-
 	writeSession := func() {
 		dir := filepath.Join(home, ".orq", "sessions")
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "default.json"), []byte(`{"version":1,"apiBaseUrl":"https://api.orq.ai","v1BaseUrl":"https://api.orq.ai/v1","authBaseUrl":"https://api.orq.ai/v2/auth","profileBaseUrl":"https://api.orq.ai/v2/auth/profile","user":{"id":"u"},"workspaces":[],"activeWorkspaceKey":"acme","refreshToken":"r","bootstrapToken":{"token":"t","expiresAt":"2099-01-01T00:00:00Z"},"workspaceTokens":{}}`), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "my.orq.ai.json"), []byte(`{"version":1,"apiBaseUrl":"https://api.orq.ai","v1BaseUrl":"https://api.orq.ai/v1","authBaseUrl":"https://api.orq.ai/v2/auth","profileBaseUrl":"https://api.orq.ai/v2/auth/profile","user":{"id":"u"},"workspaces":[],"activeWorkspaceKey":"acme","refreshToken":"r","bootstrapToken":{"token":"t","expiresAt":"2099-01-01T00:00:00Z"},"workspaceTokens":{},"gatewayKey":"sk-orq-OURS"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -66,6 +60,9 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 
 	// A credentials profile is an explicit choice too.
 	t.Setenv("ORQ_API_KEY", "sk-orq-OURS")
+	prevProfile := viper.GetString("profile")
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("profile", prevProfile) })
 	creds.Set("profiles.default.api_key", "sk-orq-PROFILE")
 	if ownExportedKey() {
 		t.Error("a profile api_key must keep winning")

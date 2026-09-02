@@ -104,6 +104,20 @@ func migrateSessionFiles() (map[string]string, error) {
 		if len(paths) == 1 && paths[0] == target {
 			continue // already named for its host
 		}
+		targetIsCandidate := false
+		for _, path := range paths {
+			if path == target {
+				targetIsCandidate = true
+				break
+			}
+		}
+		// A file at the destination that was not grouped above is unreadable or
+		// lacks an API base URL. It may still contain the user's only session;
+		// never let os.Rename replace it silently on platforms where rename
+		// overwrites an existing file.
+		if fileExists(target) && !targetIsCandidate {
+			return nil, fmt.Errorf("refusing to replace unrecognised session file %s", target)
+		}
 		winner := paths[0]
 		for _, p := range paths[1:] {
 			if newerThan(p, winner) {

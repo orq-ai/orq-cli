@@ -154,7 +154,7 @@ func configuredCredential() (key, source string) {
 		}
 	}
 	if v := profileAPIKey(); v != "" {
-		return v, "profile " + auth.ActiveProfile()
+		return v, "profile " + bartolocli.ActiveProfileName()
 	}
 	return "", ""
 }

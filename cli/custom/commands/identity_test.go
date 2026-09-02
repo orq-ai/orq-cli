@@ -10,6 +10,7 @@ import (
 	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // jwtCredential builds a token of the shape auth.InspectToken reads claims
@@ -170,6 +171,7 @@ func TestDescribeCredentialNamesEveryAcceptedKeySpelling(t *testing.T) {
 			SetExplicitAPIKey(true)
 			if tc.profileKey != "" {
 				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
+				viper.Set("profile", "default")
 			}
 
 			cred := describeCredential(&auth.Session{})

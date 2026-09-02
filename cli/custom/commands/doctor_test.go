@@ -835,7 +835,7 @@ func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 func doctorAuthHarness(t *testing.T, profile string) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	for _, name := range apiKeyEnvVars {
+	for _, name := range APIKeyEnvVars {
 		t.Setenv(name, "")
 	}
 
@@ -1216,9 +1216,7 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 		explicitAPIKey = prevExplicit
 		userEnvAPIKey, userEnvAPIKeyTaken = prevEnv, prevTaken
 	})
-	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-orq-MINTED")
-
-	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK}
+	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{GatewayKey: "sk-orq-MINTED"}}
 	loggedOut := auth.SessionInspectResult{Status: auth.StatusMissing}
 
 	for name, tc := range map[string]struct {
@@ -1235,9 +1233,10 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			inspect: loggedIn, exported: "sk-orq-MINTED",
 			wantRow: true, wantStatus: "pass", wantSaid: "login session instead",
 		},
-		"our key with no session to fall back to": {
+		// Gateway metadata belongs to the session now. Without one, doctor
+		// cannot identify an opaque exported key as one setup minted.
+		"no session means no gateway identity to compare": {
 			inspect: loggedOut, exported: "sk-orq-MINTED",
-			wantRow: true, wantStatus: "warn", wantSaid: "orq auth login",
 		},
 		"a key that really outranks the login": {
 			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
@@ -1267,7 +1266,11 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			}
 			if tc.profileKey != "" {
 				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
-				t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.api_key", "") })
+				viper.Set("profile", "default")
+				t.Cleanup(func() {
+					bartolocli.Creds.Set("profiles.default.api_key", "")
+					viper.Set("profile", "")
+				})
 			}
 			SetUserEnvAPIKey(tc.exported)
 			SetExplicitAPIKey(tc.explicit)

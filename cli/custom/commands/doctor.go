@@ -489,7 +489,7 @@ func mcpCheck() (doctorCheck, bool) {
 func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorCheck, bool) {
 	// A doctor run must survive a credentials file that never initialized:
 	// this is the command people reach for when their setup is broken.
-	if bartolocli.Creds == nil {
+	if bartolocli.Creds == nil || inspect.Status != auth.StatusOK || inspect.Session == nil {
 		return doctorCheck{}, false
 	}
 	gatewayKey := inspect.Session.GatewayKey
@@ -535,7 +535,7 @@ func otherExplicitKeySources() []string {
 		}
 	}
 	if profileAPIKey() != "" {
-		out = append(out, "the api_key in profile "+auth.ActiveProfile())
+		out = append(out, "the api_key in profile "+bartolocli.ActiveProfileName())
 	}
 	return out
 }
