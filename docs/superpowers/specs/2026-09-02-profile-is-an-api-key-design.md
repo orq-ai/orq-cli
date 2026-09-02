@@ -1,7 +1,7 @@
 # orq CLI: `--profile` names an API key; a login belongs to a server
 
 Date: 2026-09-02
-Status: approved design, ready for an implementation plan
+Status: approved design; plan at `docs/superpowers/plans/2026-09-02-profile-is-an-api-key.md`
 Stacked on: PR #63 (bartolo 0.6.0 → 0.9.0), same release
 Related: orq-ai/bartolo#37
 
@@ -33,7 +33,7 @@ server it was issued by. Three knobs, none overloaded:
 
 | knob | picks | set by |
 |---|---|---|
-| server | which login | `--server` > `ORQ_SERVER` > `orq server set` > `https://api.orq.ai` |
+| server | which login | `--server` > `ORQ_SERVER` > `orq server set` > `https://my.orq.ai` |
 | workspace | where entities land | `orq workspace use`, `--workspace` for one call |
 | profile | a saved API key instead of the login | `--profile`, `ORQ_PROFILE`, `auth profile use` |
 
@@ -58,15 +58,16 @@ dots kept, `_<port>` appended only when a port is present, any other character o
 `[a-z0-9.-]` replaced with `_`. No scheme: http and https to one host are one login.
 
 ```
-https://api.orq.ai          → api.orq.ai.json
+https://my.orq.ai           → my.orq.ai.json
+https://api.orq.ai          → my.orq.ai.json   (legacy hosted alias, same login)
 https://my.staging.orq.ai   → my.staging.orq.ai.json
 http://localhost:8080       → localhost_8080.json
 ```
 
 The session a command uses is the one for the resolved server. The existing bridge that fell
 back to the session's host when nothing else set a server (`register.go`, the
-`session.APIBaseURL → auth.SetServer(…, "session")` step) becomes circular and is deleted,
-together with `mirrorServerToViper`.
+`session.APIBaseURL → auth.SetServer(…, "session")` step) becomes circular and is deleted.
+`mirrorServerToViper` stays: it is how the generated commands see the resolved server.
 
 `auth login` logs into the resolved server and writes that host's file. `auth logout` revokes
 and removes only the resolved server's session.
@@ -86,7 +87,7 @@ the existing `apiKeyConfigured()` branch, no new behaviour.
 ### Commands
 
 bartolo's `auth profile add | list | current | use | clear` is canonical, names unchanged.
-`auth list-profiles` and `auth add-profile` get `cmd.Deprecated` (hidden from help, one stderr
+`auth list-profiles` and `auth add-profile` are already deprecated in bartolo 0.9 (hidden from help, one stderr
 line pointing at the replacement) and are removed in the next minor. The custom
 `list-profiles` union with session state goes away with it: the listing is bartolo's table,
 because that is what a profile is now.
@@ -106,7 +107,7 @@ child picks the same session the parent authenticated against.
    `gateway_key`, `gateway_key_id`, `gateway_key_expires_at`, `workspace` (the fields only this
    CLI writes), and for each `state.<name>` written by #63: move them into the session file of
    the profile's host (the profile's `server`, else the session named `<name>` before step 1,
-   else `api.orq.ai`), delete them from `credentials.json`, and delete the profile if it is
+   else `my.orq.ai`), delete them from `credentials.json`, and delete the profile if it is
    left with no `api_key`. A keyless profile with none of our fields belongs to someone else and
    is not touched. `state` is removed once empty. `profile-selected` in `config.json` is
    cleared if it names a profile that was deleted, `profile-decided` is kept.
@@ -121,7 +122,7 @@ Idempotent: a migrated tree has nothing matching either step.
 - `auth.ActiveProfile()` as a session selector, and `SessionFilePath()` keyed by it
 - `rejectUnknownProfile` — bartolo reports an unknown profile itself
 - `applyProfileAPIKey` — bartolo ranks a profile above the environment itself
-- `mirrorServerToViper` and the session-host bridge in `installSessionPreRun`
+- the session-host bridge in `installSessionPreRun` (`mirrorServerToViper` stays)
 - `cli/custom/auth/state.go` and its tests; `StateProfiles`, `StateOf`, `StateValueOf`
 - `BindProfileServer`'s keyless branch; a server is bound only by `auth profile add`
 - the custom `listAuthProfiles` union
