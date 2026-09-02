@@ -298,7 +298,7 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if err != nil {
 		return err
 	}
-	result["profile"] = bartoloProfileName()
+	result["profile"] = setupResultProfile(opts)
 
 	client := auth.NewClient(authState.apiBase)
 
@@ -942,6 +942,19 @@ func bartoloProfileName() string {
 	return "default"
 }
 
+// setupResultProfile names a bartolo profile only when one is genuinely part
+// of this run. An explicit key persisted without a profile writes `default`;
+// session and environment credentials have no profile and report "".
+func setupResultProfile(opts *setupOptions) string {
+	if name := bartolocli.ActiveProfileName(); name != "" {
+		return name
+	}
+	if opts != nil && opts.persistKey && strings.TrimSpace(opts.apiKey) != "" {
+		return "default"
+	}
+	return ""
+}
+
 // shellEnvFileNames are the shell-integration files `orq setup` writes under
 // the config directory: "env" for POSIX shells, "env.fish" for fish. Anything
 // that enumerates them (clearShellEnvFile, doctor's permission check) ranges
@@ -1074,7 +1087,7 @@ func envAPIKeySet() bool {
 // (minted or reused), and whether this run minted it. The last is separate
 // because only a fresh key needs the verification retry window.
 func resolveAPIKey(rep *reporter, client *auth.Client, state *authState, opts *setupOptions) (map[string]any, string, bool, error) {
-	info := map[string]any{"created": false, "profile": bartoloProfileName()}
+	info := map[string]any{"created": false, "profile": setupResultProfile(opts)}
 
 	if state.suppliedKey != "" {
 		rep.ok("using the API key you passed")
