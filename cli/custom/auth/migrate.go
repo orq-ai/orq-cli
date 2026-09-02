@@ -25,13 +25,25 @@ var ownedFields = []string{"gateway_key", "gateway_key_id", "gateway_key_expires
 // It returns an error rather than warning: a migration that did not run leaves
 // a keyless profile bartolo fails every request on.
 //
-// Idempotent and cheap once done — both halves check before touching disk.
+// Sessions are always under $HOME/.orq/sessions (sessionsDir, pre-existing
+// behaviour); configDir only governs where credentials.json and config.json
+// are read and rewritten, so `--config-directory` never relocates sessions.
+//
+// Idempotent and cheap once done — every step checks before touching disk.
 func MigrateLayout(configDir string) error {
 	renamed, err := migrateSessionFiles()
 	if err != nil {
 		return err
 	}
-	return migrateCredentials(configDir, renamed)
+	if err := migrateCredentials(configDir, renamed); err != nil {
+		return err
+	}
+	// Runs unconditionally, not only when migrateCredentials just deleted a
+	// profile: a prior interrupted run (or one whose migrateCredentials wrote
+	// credentials.json but then died before clearing the selection) can leave
+	// profile-selected naming a profile that is already gone, with nothing
+	// left in this run's state to say so.
+	return reconcileSelectedProfile(configDir)
 }
 
 // migrateSessionFiles renames sessions/<name>.json to sessions/<host>.json and
@@ -46,7 +58,11 @@ func migrateSessionFiles() (map[string]string, error) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
-		if err := os.Rename(legacy, filepath.Join(dir, "session.json")); err != nil {
+		// Kept as a .json name (not the bare-append uniquePath uses for
+		// .deprecated targets) so, if it collided, it still gets picked up
+		// and renamed to its real host name by the scan just below.
+		target := uniqueJSONPath(filepath.Join(dir, "session.json"))
+		if err := os.Rename(legacy, target); err != nil {
 			return nil, err
 		}
 	}
@@ -98,7 +114,7 @@ func migrateSessionFiles() (map[string]string, error) {
 			if p == winner {
 				continue
 			}
-			loser := deprecatedName(p)
+			loser := uniquePath(deprecatedName(p))
 			if err := os.Rename(p, loser); err != nil {
 				return nil, err
 			}
@@ -136,7 +152,6 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 
 	profiles, _ := doc["profiles"].(map[string]any)
 	state, _ := doc["state"].(map[string]any)
-	var removed []string
 
 	for name, value := range profiles {
 		profile, ok := value.(map[string]any)
@@ -149,13 +164,16 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		}
 		if stringField(profile, "api_key") == "" {
 			// A session login's profile: its server travels with the fields,
-			// and the entry itself has no reason to exist.
+			// and the entry itself has no reason to exist. attachToSession
+			// erroring here means the fields it carried are about to have no
+			// other copy, so the deletion below must not happen — bail before
+			// mutating profiles, leaving credentials.json exactly as it was
+			// on disk (nothing is written until the whole pass succeeds).
 			fields["server"] = stringField(profile, "server")
-			delete(profiles, name)
-			removed = append(removed, name)
 			if err := attachToSession(name, fields, renamed); err != nil {
 				return err
 			}
+			delete(profiles, name)
 		}
 		// An API-key profile keeps its key, type and server; the workspace we
 		// recorded next to it is dropped — a brought key has no known workspace.
@@ -167,6 +185,13 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		}
 		if err := attachToSession(name, stringMap(entry), renamed); err != nil {
 			return err
+		}
+		// #63 deleted the companion keyless profile itself when it wrote
+		// state.<name>, so this should not be reachable — but a state entry
+		// is proof of ownership for a same-named keyless profile, so if one
+		// is still there, it goes too rather than surviving keyless forever.
+		if profile, ok := profiles[name].(map[string]any); ok && stringField(profile, "api_key") == "" {
+			delete(profiles, name)
 		}
 	}
 	delete(doc, "state")
@@ -186,7 +211,7 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		return err
 	}
 	bartolocli.Creds = reloaded
-	return dropRemovedSelection(configDir, removed)
+	return nil
 }
 
 // attachToSession writes gateway fields onto the session for the host a
@@ -206,7 +231,16 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 	}
 	path := sessionPathFor(host)
 	s, err := readSessionFile(path)
-	if err != nil || s == nil {
+	if err != nil {
+		// The session exists but is unreadable (truncated by a full disk, an
+		// interrupted write, …): the caller is about to delete this field's
+		// only other copy, so surfacing this as success would lose the key
+		// for good. Fail closed instead.
+		return fmt.Errorf("reading session for %s: %w", host, err)
+	}
+	if s == nil {
+		// No session for this host — the documented drop: a gateway key with
+		// nowhere to attach is dead weight, not a failure.
 		return nil
 	}
 	changed := false
@@ -268,23 +302,27 @@ func stringField(m map[string]any, field string) string {
 	return strings.TrimSpace(v)
 }
 
-// dropRemovedSelection clears a persisted `auth profile use` that names a
-// profile this migration deleted; left behind, bartolo resolves it as in force
-// and fails every request with "profile is not configured". profile-decided is
-// kept, or bartolo re-adopts `default` on the next run.
-func dropRemovedSelection(configDir string, removed []string) error {
+// reconcileSelectedProfile clears a persisted `auth profile use` that names a
+// profile which no longer exists; left behind, bartolo resolves it as in
+// force and fails every request with "profile is not configured".
+// profile-decided is kept, or bartolo re-adopts `default` on the next run.
+//
+// This checks against bartolocli.Creds's current profile set rather than
+// against a list of names this run happened to remove: a profile can be gone
+// for reasons outside this invocation (a previous run that wrote
+// credentials.json but was interrupted before it got here), and the
+// selection left dangling by that run is otherwise unrecoverable — every
+// later run's credentialsNeedMigration is false, so migrateCredentials never
+// runs again to notice.
+func reconcileSelectedProfile(configDir string) error {
 	selected := strings.TrimSpace(viper.GetString("profile-selected"))
-	if selected == "" {
+	if selected == "" || bartolocli.Creds == nil {
 		return nil
 	}
-	gone := false
-	for _, name := range removed {
+	for name := range bartolocli.Creds.GetStringMap("profiles") {
 		if strings.EqualFold(name, selected) {
-			gone = true
+			return nil // still there
 		}
-	}
-	if !gone {
-		return nil
 	}
 	viper.Set("profile-selected", "")
 	path := filepath.Join(configDir, "config.json")
@@ -334,3 +372,36 @@ func newerThan(a, b string) bool {
 }
 
 func deprecatedName(path string) string { return path + ".deprecated" }
+
+// uniquePath returns path if nothing is there, else the first path.1, path.2,
+// … that is free. Every destructive rename in this file goes through it
+// rather than os.Rename directly, so a name already taken — by a file left
+// over from an earlier interrupted run — is never silently clobbered.
+func uniquePath(path string) string {
+	if !fileExists(path) {
+		return path
+	}
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s.%d", path, i)
+		if !fileExists(candidate) {
+			return candidate
+		}
+	}
+}
+
+// uniqueJSONPath is uniquePath for a name that must keep its .json suffix so
+// it stays eligible for the session-file scan that follows the legacy
+// fold-in, rather than falling out of migration entirely under a name like
+// "session.json.1".
+func uniqueJSONPath(path string) string {
+	if !fileExists(path) {
+		return path
+	}
+	base := strings.TrimSuffix(path, ".json")
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s-%d.json", base, i)
+		if !fileExists(candidate) {
+			return candidate
+		}
+	}
+}
