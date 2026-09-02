@@ -1062,3 +1062,91 @@ func TestCredentialPermissionsFixFailsForUnreadablePath(t *testing.T) {
 		t.Fatalf("wrong-type --fix = ok=%v status=%q err=%v, want failure", ok, check.Status, err)
 	}
 }
+
+// RES-1465: the key `orq setup` mints and exports no longer outranks the
+// session, so telling that user their commands "will be refused" and to unset
+// ORQ_API_KEY described a state they were not in and prescribed a no-op. The
+// warning still belongs to the shells that earn it: a session-less machine,
+// and a key that outranks the login for real.
+func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
+	credsHarness(t)
+	prevExplicit := explicitAPIKey
+	prevEnv, prevTaken := userEnvAPIKey, userEnvAPIKeyTaken
+	t.Cleanup(func() {
+		explicitAPIKey = prevExplicit
+		userEnvAPIKey, userEnvAPIKeyTaken = prevEnv, prevTaken
+	})
+	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-orq-MINTED")
+
+	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK}
+	loggedOut := auth.SessionInspectResult{Status: auth.StatusMissing}
+
+	for name, tc := range map[string]struct {
+		inspect auth.SessionInspectResult
+		exported,
+		profileKey string
+		otherEnv   map[string]string
+		explicit   bool
+		wantRow    bool
+		wantStatus string
+		wantSaid   string
+	}{
+		"our key defers to the session": {
+			inspect: loggedIn, exported: "sk-orq-MINTED",
+			wantRow: true, wantStatus: "pass", wantSaid: "login session instead",
+		},
+		"our key with no session to fall back to": {
+			inspect: loggedOut, exported: "sk-orq-MINTED",
+			wantRow: true, wantStatus: "warn", wantSaid: "orq auth login",
+		},
+		"a key that really outranks the login": {
+			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
+			wantRow: true, wantStatus: "warn", wantSaid: "unset ORQ_API_KEY",
+		},
+		// Prescribing the unset is only honest when nothing is queued behind
+		// it: ORQ_TOKEN would take over the moment ORQ_API_KEY went away and
+		// still outrank the login, so the remedy has to name it instead.
+		"another env spelling waits behind ORQ_API_KEY": {
+			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
+			otherEnv: map[string]string{"ORQ_TOKEN": "sk-orq-SOMEONE-ELSES"},
+			wantRow:  true, wantStatus: "warn", wantSaid: "ORQ_TOKEN also takes precedence",
+		},
+		"a profile api_key waits behind ORQ_API_KEY": {
+			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
+			profileKey: "sk-orq-PROFILE",
+			wantRow:    true, wantStatus: "warn", wantSaid: "api_key in profile default also takes precedence",
+		},
+		"a key we did not mint is not this row's business": {
+			inspect: loggedIn, exported: "sk-orq-SOMEONE-ELSES", explicit: true,
+		},
+		"nothing exported": {inspect: loggedIn},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, envVar := range []string{"ORQ_TOKEN", "ORQ_AUTHORIZATION"} {
+				t.Setenv(envVar, tc.otherEnv[envVar])
+			}
+			if tc.profileKey != "" {
+				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
+				t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.api_key", "") })
+			}
+			SetUserEnvAPIKey(tc.exported)
+			SetExplicitAPIKey(tc.explicit)
+			check, ok := gatewayKeyShadowsSessionCheck(tc.inspect)
+			if ok != tc.wantRow {
+				t.Fatalf("row emitted = %v, want %v (%+v)", ok, tc.wantRow, check)
+			}
+			if !tc.wantRow {
+				return
+			}
+			if check.Status != tc.wantStatus {
+				t.Errorf("status = %q, want %q (%s)", check.Status, tc.wantStatus, check.Message)
+			}
+			if !strings.Contains(check.Message, tc.wantSaid) {
+				t.Errorf("message %q does not say %q", check.Message, tc.wantSaid)
+			}
+			if strings.Contains(check.Message, "sk-orq-MINTED") {
+				t.Error("the check printed the credential")
+			}
+		})
+	}
+}

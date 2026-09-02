@@ -32,30 +32,34 @@ func TestCreateAPIKeyPrefersUserOwnership(t *testing.T) {
 	}
 }
 
-// The two endpoints disagree about project id formats, so a UUID from
-// /v2/projects must not be sent as a scope the key endpoint will reject.
-func TestCreateAPIKeyScopesOnlyOnULIDs(t *testing.T) {
-	for _, tc := range []struct {
-		projectID string
-		wantScope bool
-	}{
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},
-		{"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},
-		{"019def44-a743-7000-a442-c0db96b06699", false},
-		{"", false},
-	} {
-		body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: tc.projectID, userID: "user_1", access: GatewayAccess()})
-		if scoped != tc.wantScope {
-			t.Errorf("%q: scopedToProject = %v, want %v", tc.projectID, scoped, tc.wantScope)
-		}
-		scope := body["project_scope"].(map[string]any)
-		wantMode := "all"
-		if tc.wantScope {
-			wantMode = "single"
-		}
-		if scope["mode"] != wantMode {
-			t.Errorf("%q: mode = %v, want %v", tc.projectID, scope["mode"], wantMode)
-		}
+// A project-scoped key is what setup mints for the coding agents, so a leaked
+// config file cannot reach the rest of the workspace. Scoping travels in
+// `projects`, which takes the UUIDs /v2/projects returns; the `project_scope`
+// object openapi.yaml documents is accepted and discarded (BACK-2098), so
+// sending it as well would silently widen the key back to all projects.
+func TestCreateAPIKeyScopesThroughProjects(t *testing.T) {
+	id := "019def44-a743-7000-a442-c0db96b06699"
+	body, scoped := createAPIKeyBody(APIKeyRequest{name: "k", projectID: id, userID: "user_1", access: GatewayAccess()})
+	if !scoped {
+		t.Fatal("a project id must produce a project-scoped key")
+	}
+	projects, ok := body["projects"].([]string)
+	if !ok || len(projects) != 1 || projects[0] != id {
+		t.Errorf("projects = %v, want [%s]", body["projects"], id)
+	}
+	if _, present := body["project_scope"]; present {
+		t.Error("project_scope must not travel alongside projects")
+	}
+
+	body, scoped = createAPIKeyBody(APIKeyRequest{name: "k", userID: "user_1", access: GatewayAccess()})
+	if scoped {
+		t.Error("no project id given, key should not claim project scope")
+	}
+	if scope := body["project_scope"].(map[string]any); scope["mode"] != "all" {
+		t.Errorf("mode = %v, want all", scope["mode"])
+	}
+	if _, present := body["projects"]; present {
+		t.Error("an unscoped key must not send projects")
 	}
 }
 
@@ -299,6 +303,86 @@ func TestAPIErrorPredicatesMatchTheStatusesSetupBranchesOn(t *testing.T) {
 	for _, err := range []error{fmt.Errorf("dial tcp: connection refused"), nil} {
 		if Unauthorized(err) || Forbidden(err) || NotFound(err) {
 			t.Errorf("%v must not read as any API refusal", err)
+		}
+	}
+}
+
+func TestResolveProject(t *testing.T) {
+	projects := []Project{
+		{ProjectID: "019a-id-1", Key: "banking", Name: "Banking"},
+		{ProjectID: "019a-id-2", Key: "moneybird", Name: "Moneybird"},
+		{ProjectID: "019a-id-3", Key: "dup-a", Name: "Shared"},
+		{ProjectID: "019a-id-4", Key: "dup-b", Name: "Shared"},
+		// A name that collides with another project's key must lose to the
+		// key, or `use banking` would resolve to the wrong project.
+		{ProjectID: "019a-id-5", Key: "decoy", Name: "banking"},
+	}
+	for _, tc := range []struct{ ref, want string }{
+		{"019a-id-2", "019a-id-2"},
+		{"banking", "019a-id-1"},
+		{"Moneybird", "019a-id-2"},
+		{"moneybird", "019a-id-2"},
+	} {
+		got, err := ResolveProject(projects, tc.ref)
+		if err != nil {
+			t.Fatalf("ResolveProject(%q): %v", tc.ref, err)
+		}
+		if got.ProjectID != tc.want {
+			t.Errorf("ResolveProject(%q) = %s, want %s", tc.ref, got.ProjectID, tc.want)
+		}
+	}
+	if _, err := ResolveProject(projects, "Shared"); err == nil {
+		t.Error("an ambiguous name must be an error, not a guess")
+	}
+	if _, err := ResolveProject(projects, "missing"); err == nil {
+		t.Error("an unknown ref must be an error")
+	}
+}
+
+func TestTokenKeyIsolatesProjects(t *testing.T) {
+	unscoped := NewClient("https://api.orq.ai")
+	if got := unscoped.tokenKey("acme"); got != "acme" {
+		t.Errorf("an unscoped token must keep the bare workspace key, got %q", got)
+	}
+	scoped := NewClient("https://api.orq.ai").WithProject("pid")
+	if scoped.tokenKey("acme") == unscoped.tokenKey("acme") {
+		t.Error("a project-scoped token must not reuse the workspace-wide cache entry")
+	}
+}
+
+// The list endpoint hands back a masked token rather than the documented
+// token_prefix, and a project-scoped key has no key_id claim to look up
+// instead — so this match is the only route from such a key to its record.
+func TestMaskedTokenMatches(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiJ9.payloadpayload.signaturekK-d2A"
+	opaque := "sk-orq-01ARZ3NDEKTSV4RRFFQ69G5FAV-secretsecret"
+	for _, tc := range []struct {
+		name, masked, token string
+		want                bool
+	}{
+		{"live mask", "eyJhbG********kK-d2A", jwt, true},
+		{"documented prefix", "eyJhbGciOiJI", jwt, true},
+		{"wrong tail", "eyJhbG********ZZZZZZ", jwt, false},
+		{"wrong head", "abcdef********kK-d2A", jwt, false},
+		{"empty", "", jwt, false},
+		// Every orq JWT opens with the same base64 header, so a head this
+		// short matches every key in the workspace and identifies none.
+		{"head too short", "eyJ***kK-d2A", jwt, false},
+		// An empty tail leaves the head as the sole evidence: HasSuffix(token, "")
+		// is vacuously true, so this must not pass on the head alone even though
+		// it would with any other key sharing the same head.
+		{"empty tail", "eyJhbG********", jwt, false},
+		// "sk-orq-" is the literal every opaque key opens with. It clears
+		// minMaskedHead on length alone but identifies no key in particular —
+		// this masked value is shared by every key in existence, including the
+		// one behind opaque here.
+		{"universal opaque prefix", "sk-orq-", opaque, false},
+		// One character shorter, still six, still shared by every opaque key in
+		// existence: the length guard alone let this through.
+		{"universal opaque prefix without the trailing dash", "sk-orq", opaque, false},
+	} {
+		if got := maskedTokenMatches(tc.masked, tc.token); got != tc.want {
+			t.Errorf("%s: maskedTokenMatches(%q) = %v, want %v", tc.name, tc.masked, got, tc.want)
 		}
 	}
 }

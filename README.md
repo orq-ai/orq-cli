@@ -60,13 +60,13 @@ make build
 ## Quick start
 
 ```sh
-orq setup                # sign in, wire up your coding agents
+orq setup                # sign in, pick a project, wire up your coding agents
 ```
 
-That is the whole first run. It signs you in, creates a workspace API key (reused on later runs), and wires your coding agents to orq. Projects are never asked about: keys are workspace-scoped, and project scope belongs where resources are created (agents, deployments). After that:
+That is the whole first run. It signs you in, asks which project to work in when the workspace has more than one, creates an API key scoped to that project (reused on later runs), and wires your coding agents to orq. After that:
 
 ```sh
-orq whoami               # verify identity
+orq status               # verify identity, workspace and project
 orq workspace list       # see available workspaces
 orq prompts list         # run any generated command
 orq doctor               # diagnose auth, config, and endpoint reachability
@@ -87,6 +87,8 @@ orq disconnect codex               # remove exactly what connect wrote
 ```
 
 An interactive `orq setup` ends by offering to connect the agents it detects, so one command still takes a new machine to working. Non-interactive runs stop after the key and print `Next: orq connect` — in CI, compose the two: `orq setup --no-input --api-key "$KEY" && orq connect codex`.
+
+Between signing in and creating the key, setup asks which project to work in. It skips itself automatically at zero or one project — there is nothing to choose — and never offers to create one. `--project <id|key|name>` pre-answers it for a non-interactive run; `--no-project` skips it and leaves the session unscoped. An `--api-key` run skips it entirely, since there is no session for a project choice to narrow.
 
 Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route its model calls. It does receive `skills` and `mcp`.
 
@@ -109,7 +111,9 @@ Your API key is **not written into an agent config**, with one exception — tho
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
-Setup flags: `--workspace <key>` (activate a workspace), `--api-key <key>` (use this key instead of logging in and creating one), `-i` (ask about every choice), `--no-input` (never prompt; missing values become errors).
+The key setup mints is scoped to the project you chose in the step above. That is what the coding agents use for model calls, so a config file another program reads — `~/.kimi-code/config.toml` included — can no longer reach the rest of the workspace. It does not scope the agents' MCP tools: those authenticate to the orq MCP server over OAuth, independent of the API key.
+
+Setup flags: `--workspace <key>` (activate a workspace), `--project <id|key|name>` (pre-answer the project step), `--no-project` (skip the project step, leave the session unscoped), `--api-key <key>` (use this key instead of logging in and creating one), `-i` (ask about every choice), `--no-input` (never prompt; missing values become errors).
 
 Connect and disconnect take agents and capabilities as arguments, plus:
 
@@ -181,8 +185,29 @@ After login, every command on that profile automatically routes to the host you 
 ```sh
 orq workspace list         # list workspaces available to the active identity
 orq workspace use <key>    # switch active workspace (persists in the session)
-orq whoami                 # current user + active workspace + URL config
+orq status                 # current user + active workspace + active project + server + credential in use (alias: orq whoami)
 ```
+
+---
+
+## Projects
+
+Projects organize resources within a workspace. Selecting one narrows the session, not just the display: reads and creates are both scoped, with no per-command flag needed.
+
+```sh
+orq projects list                # list projects in the active workspace
+orq projects use <project>       # select the active project, by id, key or name (persists in the session)
+orq projects use                 # no argument at a terminal opens a picker; otherwise prints the active project
+orq projects use --clear         # unset the active project
+```
+
+Selecting a project exchanges the session's access token for one scoped to it — `POST /v2/auth/access-token` takes the `project_id` and returns a token whose `projects` claim carries only that project. The server enforces the scope on both reads and creates: `orq agents list` goes from 112 agents workspace-wide down to the 9 that belong to the selected project, and `orq agents create` with no `--project-id` lands there.
+
+For a single invocation without switching the session, pass `--project <id|key|name>` (env `ORQ_PROJECT`) on any command. Under an explicit API key there is no session token to narrow, so `--project` fills the command's own `--project-id` instead — an explicit `--project-id` always wins over it. Resolution order, highest first: the command's own `--project-id`, `--project`/`ORQ_PROJECT`, the session's active project, the workspace's default project.
+
+`orq switch [workspace] [project]` walks both selections in one command. Switching workspaces clears the active project, since a project belongs to the workspace it was chosen in — `orq workspace use <other>` does the same, and `orq workspace use` on the workspace already active leaves the chosen project alone, because it only ever writes the workspace. `orq switch` has no such exemption: naming a workspace tells it to rewrite both halves, so `orq switch <already-active>` re-runs the project selection too.
+
+Without a terminal, `orq switch` needs both halves named — `orq switch <workspace> <project>`. It rewrites your whole identity, so guessing at either half would replace a deliberately chosen project with the workspace default and report success. To move workspace alone, use `orq workspace use <workspace>`, which leaves the project untouched and re-asserts rather than failing when given no argument. Neither restriction applies at a terminal, where both commands open a picker.
 
 ---
 
@@ -248,12 +273,16 @@ surface changes are always a reviewed diff.
 | `orq setup` | First-run onboarding: auth, API key, coding agents |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
-| `orq auth whoami` | Show current identity (alias: `orq whoami`) |
+| `orq auth whoami` | Show the current authenticated user and workspace |
 | `orq auth add-profile apikey <name> <key>` | Save an API-key profile |
 | `orq auth list-profiles` | List configured credential profiles |
 | `orq auth profile list\|current\|use\|add\|clear` | Inspect and switch the active credentials profile |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
+| `orq projects list` | List projects in the active workspace |
+| `orq projects use [project]` | Switch active project, by id, key or name (`--clear` unsets it) |
+| `orq status` | Show active user, workspace, project, server and the credential in use (alias: `orq whoami`) |
+| `orq switch [workspace] [project]` | Switch active workspace and/or project in one command |
 | `orq doctor` | Diagnose config, auth, reachability (`--fix` repairs loose credential permissions) |
 | `orq update` | Update this binary to the latest release (`--check` reports only) |
 | `orq version` | Print the CLI version, the orq API version it was built against, and the install method |

@@ -540,3 +540,45 @@ func TestRemedyForWorkspace(t *testing.T) {
 		})
 	}
 }
+
+// The token cache is keyed on (workspace, project), so once a project is
+// selected the session's own token is filed under "<workspace>#<project>".
+// Looking it up under the bare workspace key found nothing, which classified
+// the token the PreRun had just injected as a foreign API key and brought back
+// the spurious "ORQ_API_KEY may not belong to the workspace" note.
+func TestInjectedSessionTokenIsRecognisedWhenAProjectIsActive(t *testing.T) {
+	const active = "acme"
+	const project = "01JPROJECT"
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"scope":["openid"]}`))
+	scoped := "header." + payload + ".sig"
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	writeSessionFile(t, home, map[string]any{
+		"version": 1, "activeWorkspaceKey": active, "activeProjectId": project,
+		"apiBaseUrl": "https://api.orq.ai", "v1BaseUrl": "https://api.orq.ai",
+		"authBaseUrl": "https://api.orq.ai", "profileBaseUrl": "https://api.orq.ai/me",
+		"refreshToken":   "rt",
+		"bootstrapToken": map[string]any{"token": "bt", "expiresAt": future},
+		"workspaceTokens": map[string]any{
+			active + "#" + project: map[string]any{"token": scoped, "expiresAt": future},
+		},
+	})
+
+	creds, err := ResolveCredentials(func(k string) string {
+		if k == "ORQ_API_KEY" {
+			return scoped // as installSessionPreRun leaves it
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Kind != CredentialSessionToken {
+		t.Error("a project-scoped session token was treated as a user-supplied key")
+	}
+	if creds.ShadowsSession {
+		t.Error("our own project-scoped session token was reported as shadowing the session")
+	}
+}

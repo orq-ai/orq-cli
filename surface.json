@@ -36,6 +36,10 @@
           "type": "string"
         },
         {
+          "name": "project",
+          "type": "string"
+        },
+        {
           "name": "raw",
           "type": "bool"
         },
@@ -6931,6 +6935,16 @@
       ]
     },
     {
+      "path": "orq projects use",
+      "use": "use [project]",
+      "flags": [
+        {
+          "name": "clear",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "path": "orq prompts",
       "use": "prompts"
     },
@@ -7788,6 +7802,10 @@
           "type": "bool"
         },
         {
+          "name": "no-project",
+          "type": "bool"
+        },
+        {
           "name": "yes",
           "shorthand": "y",
           "type": "bool"
@@ -8079,6 +8097,23 @@
           "type": "string"
         }
       ]
+    },
+    {
+      "path": "orq status",
+      "use": "status",
+      "aliases": [
+        "whoami"
+      ],
+      "flags": [
+        {
+          "name": "api-base-url",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq switch",
+      "use": "switch [workspace] [project]"
     },
     {
       "path": "orq tools",
@@ -9211,17 +9246,6 @@
         {
           "name": "stdin",
           "type": "bool"
-        }
-      ]
-    },
-    {
-      "path": "orq whoami",
-      "use": "whoami",
-      "hidden": true,
-      "flags": [
-        {
-          "name": "api-base-url",
-          "type": "string"
         }
       ]
     },

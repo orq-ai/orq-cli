@@ -36,7 +36,8 @@ var commandGroup = map[string]string{
 	"auth":       groupGetStarted,
 	"login":      groupGetStarted,
 	"logout":     groupGetStarted,
-	"whoami":     groupGetStarted,
+	"status":     groupGetStarted,
+	"switch":     groupGetStarted,
 
 	"models":          groupGateway,
 	"model-catalog":   groupGateway,

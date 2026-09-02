@@ -20,7 +20,9 @@ import (
 
 // apiKeyEnvVars mirrors the env vars bartolo's apikey handler looks up for the
 // `Authorization` bearer flow (see apikey.InitBearer in the generated client).
-var apiKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
+// One list shared with the commands package: two copies is how `orq status`
+// and `--project` each ended up blind to every spelling but ORQ_API_KEY.
+var apiKeyEnvVars = commands.APIKeyEnvVars
 
 var (
 	setOutputFormat  = bartolocli.SetOutputFormat
@@ -101,6 +103,7 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+	bartolocli.AddGlobalFlag("project", "", "Project id, key or name to use for this invocation (overrides the session's active project)", "")
 	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
 	// as an alias because it is the machine contract this CLI shipped and
 	// documented; applyJSONAlias below turns it into --output-format json.
@@ -173,7 +176,8 @@ func installSessionPreRun() {
 		// injects the session token into ORQ_API_KEY below - commands that
 		// read the env afterwards would see our own injection and cry wolf
 		// on every invocation.
-		commands.SetExplicitAPIKey(apiKeyConfigured())
+		explicitKey := apiKeyConfigured() && !ownExportedKey()
+		commands.SetExplicitAPIKey(explicitKey)
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
@@ -190,12 +194,14 @@ func installSessionPreRun() {
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
 		// is surfaced even when there is no session at all (API-key-only use).
-		if override != "" && apiKeyConfigured() {
+		if override != "" && explicitKey {
 			commands.Warn("--workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
 		}
 		session, err := auth.ReadSession()
 		if err != nil || session == nil {
-			return nil
+			// No session to narrow, so --project can only be a request
+			// parameter. API-key-only users live entirely on this path.
+			return bridgeProjectFlag(cmd, nil)
 		}
 		// The session's host is the last resort, below every explicit source.
 		// A profile carries its own server since bartolo 0.8, but a session
@@ -206,11 +212,18 @@ func installSessionPreRun() {
 			auth.SetServer(session.APIBaseURL, "session")
 			mirrorServerToViper()
 		}
-		if apiKeyConfigured() {
-			return nil
+		if explicitKey {
+			// An explicit key carries its own scope, so there is no token to
+			// narrow. --project still has to mean something, so it is passed
+			// through as the request's project_id.
+			return bridgeProjectFlag(cmd, session)
+		}
+		projectID, err := resolveProjectID(cmd, session, override)
+		if err != nil {
+			return err
 		}
 		if override != "" {
-			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
+			client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context()).WithProject(projectID)
 			token, err := client.WorkspaceToken(session, override)
 			if err != nil {
 				return fmt.Errorf("workspace %q: %w", override, err)
@@ -218,7 +231,7 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 			return nil
 		}
-		if token := activeWorkspaceToken(cmd.Context()); token != "" {
+		if token := activeWorkspaceToken(cmd.Context(), projectID); token != "" {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
@@ -405,20 +418,52 @@ func repairAuthProfileType() {
 // the environment or the active credentials profile. When true we leave auth
 // untouched so an explicit key always wins over the session token.
 func apiKeyConfigured() bool {
-	for _, envVar := range apiKeyEnvVars {
-		if strings.TrimSpace(os.Getenv(envVar)) != "" {
-			return true
-		}
-	}
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
+	return configuredAPIKey() != ""
 }
 
-func activeWorkspaceToken(ctx context.Context) string {
+// configuredAPIKey returns the key bartolo would authenticate with, in the
+// order its apikey handler resolves them: the env vars first, then the active
+// credentials profile. Anything that needs to make an API call of its own has
+// to use this and not one hard-coded env var, or it authenticates as nobody.
+func configuredAPIKey() string {
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" {
+			return v
+		}
+	}
+	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+}
+
+// ownExportedKey reports whether the only API key in the environment is the one
+// `orq setup` minted and wrote into ~/.orq/env, with a session available to use
+// instead. That key is ours, not a deliberate override by the user, and letting
+// it outrank the session made `orq workspace use` and `orq projects use` silent
+// no-ops on every machine that had run setup and sourced the file (RES-1465).
+// setup already applies this same rule to itself.
+//
+// Deliberately narrow: any key we did not mint, and any key in a credentials
+// profile, still wins. Only the exact string we exported defers.
+func ownExportedKey() bool {
+	profile := bartolocli.GetProfile()
+	saved := strings.TrimSpace(profile["gateway_key"])
+	if saved == "" || strings.TrimSpace(profile["api_key"]) != "" {
+		return false
+	}
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != saved {
+			return false
+		}
+	}
+	session, err := auth.ReadSession()
+	return err == nil && session != nil
+}
+
+func activeWorkspaceToken(ctx context.Context, projectID string) string {
 	session, err := auth.ReadSession()
 	if err != nil || session == nil {
 		return ""
 	}
-	client := auth.NewClient(session.APIBaseURL).WithContext(ctx)
+	client := auth.NewClient(session.APIBaseURL).WithContext(ctx).WithProject(projectID)
 	active, err := client.GetActiveWorkspaceAccessToken()
 	if err != nil {
 		return ""
@@ -426,11 +471,118 @@ func activeWorkspaceToken(ctx context.Context) string {
 	return active.AccessToken
 }
 
+// projectRef is the --project / ORQ_PROJECT value: a project id, key or name.
+func projectRef() string {
+	return strings.TrimSpace(viper.GetString("project"))
+}
+
+// explicitProjectIDFlag returns the --project-id the user actually typed. The
+// generator puts that flag on 31 commands, so its presence says nothing; only
+// .Changed distinguishes a typed value from the empty default.
+func explicitProjectIDFlag(cmd *cobra.Command) (string, bool) {
+	f := cmd.Flags().Lookup("project-id")
+	if f == nil || !f.Changed {
+		return "", false
+	}
+	return strings.TrimSpace(f.Value.String()), true
+}
+
+// resolveProjectID decides which project this invocation runs against, highest
+// precedence first: an explicitly typed --project-id, then --project /
+// ORQ_PROJECT, then the session's active project. An id needs no lookup; a key
+// or a name costs one /v2/projects call.
+func resolveProjectID(cmd *cobra.Command, session *auth.Session, workspaceOverride string) (string, error) {
+	ref := projectRef()
+	// Narrow the token to an explicit --project-id rather than leaving it on
+	// the session's active project: the projects claim is what the server
+	// enforces on reads AND creates, so a token scoped to `banking` answers
+	// `--project-id <marketing>` with banking's rows and files new rows in
+	// banking. Narrowing to the id the user typed is the only outcome that is
+	// right for both.
+	if explicit, ok := explicitProjectIDFlag(cmd); ok {
+		if ref != "" && ref != explicit {
+			commands.Warn("--project-id %s takes precedence over --project/ORQ_PROJECT for this command", explicit)
+		}
+		// The token exchange takes a project UUID and nothing else. Narrowing
+		// to the session's project instead would send a token for one project
+		// alongside a project_id parameter for another, which is the mismatch
+		// this whole branch exists to prevent — so leave the token
+		// workspace-wide and let the flag travel as a request parameter.
+		if !auth.LooksLikeProjectID(explicit) {
+			return "", nil
+		}
+		return explicit, nil
+	}
+	if ref == "" {
+		return session.ActiveProjectID, nil
+	}
+	if auth.LooksLikeProjectID(ref) {
+		return ref, nil
+	}
+	workspaceKey := workspaceOverride
+	if workspaceKey == "" && session.ActiveWorkspaceKey != nil {
+		workspaceKey = *session.ActiveWorkspaceKey
+	}
+	client := auth.NewClient(session.APIBaseURL).WithContext(cmd.Context())
+	bearer, err := client.WorkspaceToken(session, workspaceKey)
+	if err != nil {
+		return "", fmt.Errorf("project %q: %w", ref, err)
+	}
+	return lookupProjectID(client, bearer, ref)
+}
+
+func lookupProjectID(client *auth.Client, bearer, ref string) (string, error) {
+	projects, err := client.ListProjects(bearer)
+	if err != nil {
+		return "", fmt.Errorf("project %q: %w", ref, err)
+	}
+	project, err := auth.ResolveProject(projects, ref)
+	if err != nil {
+		return "", err
+	}
+	return project.ProjectID, nil
+}
+
+// bridgeProjectFlag fills the generated commands' own --project-id from
+// --project, for the API-key path where there is no session token to narrow.
+// An explicit --project-id always wins.
+func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
+	ref := projectRef()
+	if ref == "" {
+		return nil
+	}
+	flag := cmd.Flags().Lookup("project-id")
+	if flag == nil || flag.Changed {
+		return nil
+	}
+	id := ref
+	if !auth.LooksLikeProjectID(ref) {
+		base := auth.Server()
+		if base == "" && session != nil {
+			base = session.APIBaseURL
+		}
+		client := auth.NewClient(base).WithContext(cmd.Context())
+		// configuredAPIKey, not ORQ_API_KEY: a user whose credential is
+		// ORQ_TOKEN, ORQ_AUTHORIZATION or a credentials-profile api_key was
+		// resolving `--project <key-or-name>` with an empty bearer and getting
+		// a 401 out of a flag that should have cost them nothing.
+		resolved, err := lookupProjectID(client, configuredAPIKey(), ref)
+		if err != nil {
+			return err
+		}
+		id = resolved
+	}
+	return cmd.Flags().Set("project-id", id)
+}
+
 func registerCommands(root *cobra.Command) {
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
 	root.AddCommand(commands.NewWorkspaceCommand())
+	root.AddCommand(commands.NewStatusCommand())
+	root.AddCommand(commands.NewSwitchCommand())
+	attachProjectsUse(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewOrqiCommand())
@@ -562,6 +714,17 @@ func replaceDoctor(root *cobra.Command) {
 	root.AddCommand(commands.NewDoctorCommand())
 }
 
+// attachProjectsUse hangs `use` off the generated `projects` group, so the
+// active-project verb sits with list/get/create rather than at the root.
+func attachProjectsUse(root *cobra.Command) {
+	for _, c := range root.Commands() {
+		if c.Name() == "projects" {
+			c.AddCommand(commands.NewProjectsUseCommand())
+			return
+		}
+	}
+}
+
 func attachAuthSubcommands(root *cobra.Command) {
 	var authParent *cobra.Command
 	for _, c := range root.Commands() {
@@ -612,10 +775,11 @@ func removeString(slice []string, target string) []string {
 }
 
 func addHiddenAuthAliases(root *cobra.Command) {
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
 	for _, factory := range []func() *cobra.Command{
 		commands.NewLoginCommand,
 		commands.NewLogoutCommand,
-		commands.NewWhoAmICommand,
 	} {
 		alias := factory()
 		alias.Hidden = true

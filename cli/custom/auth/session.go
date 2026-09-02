@@ -201,6 +201,43 @@ func ReadSession() (*Session, error) {
 	}
 }
 
+// pruneExpiredWorkspaceTokens drops cache entries whose token has actually
+// expired, so a user cycling through (workspace, project) pairs — each one its
+// own WorkspaceTokens entry, see Client.tokenKey — doesn't accumulate dead
+// JWTs in the session file forever.
+//
+// Zero skew, not the 60s skew the read paths use: EnsureWorkspaceToken and
+// WorkspaceToken already re-exchange anything expiring within that window, so
+// nothing a concurrent invocation could still treat as usable is ever evicted
+// here — only entries no reader would accept regardless.
+//
+// An absent or unparseable ExpiresAt is left alone. isExpired answers "yes" on
+// a parse error, which is the right default for a read path about to use the
+// token, but hygiene must not be the thing that destroys an entry a caller was
+// about to judge for itself — including entries written by a CLI older than
+// this field.
+//
+// Returns a new map rather than deleting in place: SaveSession's caller keeps
+// using its *Session afterwards, and entries vanishing from underneath it is a
+// change it never asked for.
+func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string]StoredAccessToken {
+	if tokens == nil {
+		return nil
+	}
+	kept := make(map[string]StoredAccessToken, len(tokens))
+	for key, tok := range tokens {
+		if _, err := parseISO(tok.ExpiresAt); err != nil {
+			kept[key] = tok
+			continue
+		}
+		if isExpired(tok.ExpiresAt, 0) {
+			continue
+		}
+		kept[key] = tok
+	}
+	return kept
+}
+
 // SaveSession writes the session atomically: temp file in the same directory,
 // then rename. A concurrent reader can never observe a torn/interleaved file,
 // and two concurrent writers end with one intact winner (last writer wins on
@@ -210,7 +247,11 @@ func SaveSession(s *Session) error {
 	if err := ensureSessionDir(); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	// Shallow copy so the pruned token map is this write's alone; every other
+	// field is shared with the caller unchanged.
+	written := *s
+	written.WorkspaceTokens = pruneExpiredWorkspaceTokens(s.WorkspaceTokens)
+	data, err := json.MarshalIndent(written, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -470,12 +470,20 @@ func mcpCheck() (doctorCheck, bool) {
 	return check, true
 }
 
-// gatewayKeyShadowsSessionCheck names the one state the credential split can
-// still land a user in: the minted key is gateway-scoped, so exporting it makes
-// every `orq <entity>` command authenticate with a key that cannot reach the
-// platform, in a shell where the login would have worked.
+// gatewayKeyShadowsSessionCheck describes the shell where ORQ_API_KEY holds
+// the gateway-scoped key `orq setup` minted. That key cannot reach the
+// platform, so it used to mean every `orq <entity>` command was refused in a
+// shell where the login would have worked.
+//
+// Since RES-1465 that is no longer the ordinary outcome: our own exported key
+// defers to the session, so the row reports which credential is in force
+// instead of prescribing an unset that changes nothing. explicitAPIKey is the
+// post-deferral answer PreRun computed — a key we did not mint, or a
+// credentials-profile api_key, still outranks the session and still warns.
 func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorCheck, bool) {
-	if inspect.Status != auth.StatusOK {
+	// A doctor run must survive a credentials file that never initialized:
+	// this is the command people reach for when their setup is broken.
+	if bartolocli.Creds == nil {
 		return doctorCheck{}, false
 	}
 	gatewayKey := auth.StateValueOf(auth.ActiveProfile(), "gateway_key")
@@ -483,11 +491,47 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	if gatewayKey == "" || exported != gatewayKey {
 		return doctorCheck{}, false
 	}
-	return doctorCheck{
-		ID:      "gateway_key_exported",
-		Status:  "warn",
-		Message: "ORQ_API_KEY in this shell is the gateway-scoped key, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead",
-	}, true
+	check := doctorCheck{ID: "gateway_key_exported"}
+	switch {
+	case inspect.Status != auth.StatusOK:
+		// No session to defer to, so the gateway key really is what every
+		// command authenticates with — and unsetting it leaves nothing behind.
+		check.Status = "warn"
+		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key, so commands like 'orq prompts list' will be refused, and there is no login session to fall back to. Run 'orq auth login'"
+	case explicitAPIKey:
+		check.Status = "warn"
+		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key and takes precedence over your login, so commands like 'orq prompts list' will be refused. Run 'unset ORQ_API_KEY' to use your login instead"
+		// Unsetting one variable is only the whole remedy when nothing else is
+		// waiting behind it. A key in ORQ_TOKEN, ORQ_AUTHORIZATION or the
+		// profile's api_key would take over the moment ORQ_API_KEY goes away
+		// and still outrank the login, so name it instead of prescribing a fix
+		// that leaves the user exactly where they were.
+		if others := otherExplicitKeySources(); len(others) > 0 {
+			check.Message = fmt.Sprintf(
+				"ORQ_API_KEY in this shell is the gateway-scoped key and takes precedence over your login, so commands like 'orq prompts list' will be refused. Unsetting it is not enough: %s also takes precedence over your login",
+				strings.Join(others, " and "))
+		}
+	default:
+		check.Status = "pass"
+		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key 'orq setup' exported; commands authenticate with your login session instead"
+	}
+	return check, true
+}
+
+// otherExplicitKeySources names the credentials, besides ORQ_API_KEY, that
+// would still outrank the login session. Ordered as the apikey handler
+// resolves them, so the first entry is the one that would win next.
+func otherExplicitKeySources() []string {
+	var out []string
+	for _, envVar := range APIKeyEnvVars[1:] {
+		if strings.TrimSpace(os.Getenv(envVar)) != "" {
+			out = append(out, envVar)
+		}
+	}
+	if profileAPIKey() != "" {
+		out = append(out, "the api_key in profile "+auth.ActiveProfile())
+	}
+	return out
 }
 
 // gatewayKeyExpiryCheck counts down to the minted key's expiry. Wired agents

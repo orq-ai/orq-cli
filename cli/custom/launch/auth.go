@@ -44,20 +44,30 @@ type Credentials struct {
 	SupersededWorkspace string
 }
 
-// isSessionWorkspaceToken reports whether ORQ_API_KEY holds the session's own
-// token for its active workspace rather than a key the user exported. Active
-// only, so it agrees with shadowsSession, which also reads
-// WorkspaceTokens[active] alone.
+// isSessionWorkspaceToken reports whether ORQ_API_KEY holds one of the
+// session's own tokens for its active workspace rather than a key the user
+// exported. Every cache entry for that workspace is compared, not only the one
+// under the bare key: auth.Client.tokenKey now files a project-scoped token
+// under a composite workspace/project key, so the exact-key lookup found nothing the
+// moment a project was selected and resurrected the "may not belong to the
+// workspace" false positive this function exists to prevent.
 func isSessionWorkspaceToken(key string, session *auth.Session) bool {
-	if session.ActiveWorkspaceKey == nil {
+	if session == nil || session.ActiveWorkspaceKey == nil {
 		return false
 	}
 	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
 	if active == "" {
 		return false
 	}
-	tok, ok := session.WorkspaceTokens[active]
-	return ok && strings.TrimSpace(tok.Token) == key
+	for cacheKey, tok := range session.WorkspaceTokens {
+		if auth.TokenCacheKeyWorkspace(cacheKey) != active {
+			continue
+		}
+		if strings.TrimSpace(tok.Token) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // shadowsSession reports whether the env key provably belongs to a different
@@ -75,8 +85,9 @@ func shadowsSession(key string, session *auth.Session) bool {
 	// installSessionPreRun injects the session's own workspace token into
 	// ORQ_API_KEY whenever no api_key is configured, which is now the ordinary
 	// state. That token is ours, not a key the user exported, so comparing it to
-	// the saved key reported a mismatch on every single launch.
-	if tok, ok := session.WorkspaceTokens[active]; ok && strings.TrimSpace(tok.Token) == key {
+	// the saved key reported a mismatch on every single launch. Shared with
+	// isSessionWorkspaceToken so the two cannot answer differently.
+	if isSessionWorkspaceToken(key, session) {
 		return false
 	}
 	// auth.SavedAgentKey, not a local profile read: the minted key moved to

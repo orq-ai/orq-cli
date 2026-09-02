@@ -72,17 +72,64 @@ func (c *Client) CreateProject(bearer, name, description string) (*Project, erro
 	return &resp.Project, nil
 }
 
-// ulidPattern is the project_id format /v2/api-keys accepts. Note that
-// /v2/projects currently returns UUIDs, which this endpoint rejects — see
-// CreateAPIKey.
-var ulidPattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{26}$`)
+// uuidPattern matches the project_id format /v2/projects returns. Used only to
+// tell an id apart from a key or a name, so `--project <id>` skips the lookup.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// ProjectScopable reports whether an API key can be scoped to this project.
-// The two endpoints disagree about ID formats today, so callers must be
-// prepared to fall back to a workspace-wide key.
-func ProjectScopable(projectID string) bool {
-	return ulidPattern.MatchString(strings.TrimPrefix(projectID, "proj_"))
+// LooksLikeProjectID reports whether ref is already a project id.
+func LooksLikeProjectID(ref string) bool {
+	return uuidPattern.MatchString(strings.TrimSpace(ref))
 }
+
+// ResolveProject finds the project a user named, accepting its id, its key or
+// its name. Match order is id, then key, then name: the first two are unique,
+// so only a name can be ambiguous, and an ambiguous name is an error rather
+// than a guess.
+func ResolveProject(projects []Project, ref string) (*Project, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, errors.New("no project given")
+	}
+	for _, field := range []func(Project) string{
+		func(p Project) string { return p.ProjectID },
+		func(p Project) string { return p.Key },
+	} {
+		for i := range projects {
+			if field(projects[i]) == ref {
+				return &projects[i], nil
+			}
+		}
+	}
+	var byName []int
+	for i := range projects {
+		if strings.EqualFold(projects[i].Name, ref) {
+			byName = append(byName, i)
+		}
+	}
+	switch len(byName) {
+	case 0:
+		return nil, fmt.Errorf("no project matches %q", ref)
+	case 1:
+		return &projects[byName[0]], nil
+	default:
+		return nil, fmt.Errorf("%d projects are named %q; use the project id or key instead", len(byName), ref)
+	}
+}
+
+// DefaultProject returns the workspace's default project, the fallback when no
+// project was ever selected.
+func DefaultProject(projects []Project) *Project {
+	for i := range projects {
+		if projects[i].IsDefault && !projects[i].IsArchived {
+			return &projects[i]
+		}
+	}
+	return nil
+}
+
+// ulidPattern is the id format the opaque `sk-orq-<ULID>-<secret>` token
+// carries; see KeyIDFromToken.
+var ulidPattern = regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{26}$`)
 
 // gatewayAccessMap is the permission set for a key that only routes model
 // calls: every domain in the catalog's GATEWAY group except mcp_gateway, which
@@ -146,14 +193,6 @@ func GatewayAccess() map[string]string {
 // PERMISSION_MODE_* constants. The spec is stale; this is what the server
 // actually validates against (verified against /v2/api-keys, both owner types).
 func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject bool) {
-	scope := map[string]any{"mode": "all"}
-	if ProjectScopable(req.projectID) {
-		scope = map[string]any{
-			"mode":       "single",
-			"project_id": strings.TrimPrefix(req.projectID, "proj_"),
-		}
-		scopedToProject = true
-	}
 	owner := map[string]any{"type": "service_account"}
 	if id := strings.TrimSpace(req.userID); id != "" {
 		owner = map[string]any{"type": "user", "user_id": id}
@@ -166,10 +205,21 @@ func createAPIKeyBody(req APIKeyRequest) (body map[string]any, scopedToProject b
 	out := map[string]any{
 		"name":            req.name,
 		"owner":           owner,
-		"project_scope":   scope,
+		"project_scope":   map[string]any{"mode": "all"},
 		"source":          "router",
 		"permission_mode": "restricted",
 		"access":          req.access,
+	}
+	// Scoping goes through `projects`, not the `project_scope` object
+	// openapi.yaml documents: identity-api serves this route, accepts
+	// project_scope on create and silently discards it (BACK-2098). `projects`
+	// is what actually produces project_scope {mode: single} on the record, and
+	// it takes the UUIDs /v2/projects returns. The two are mutually exclusive,
+	// so the all-projects default is dropped when a project is named.
+	if id := strings.TrimSpace(req.projectID); id != "" {
+		delete(out, "project_scope")
+		out["projects"] = []string{id}
+		scopedToProject = true
 	}
 	// "expiration", not "expires_at": the live endpoint is identity-api's strict
 	// decoder, which rejects the field name the committed spec documents.
@@ -197,8 +247,8 @@ type APIKeyOption func(*APIKeyRequest)
 // service account, which only workspace admins may create; see createAPIKeyBody.
 func WithUser(id string) APIKeyOption { return func(r *APIKeyRequest) { r.userID = id } }
 
-// WithProject narrows the key to one project when the id is in the format this
-// endpoint accepts.
+// WithProject narrows the key to one project, so a leaked or shared credential
+// cannot reach the rest of the workspace.
 func WithProject(id string) APIKeyOption { return func(r *APIKeyRequest) { r.projectID = id } }
 
 // NewAPIKeyRequest refuses an empty access map and a zero expiry rather than
@@ -435,6 +485,80 @@ type APIKeyRecord struct {
 	ID       string   `json:"id"`
 	Projects []string `json:"projects"`
 	Active   *bool    `json:"active"`
+	// TokenPrefix is what openapi.yaml documents; Token is what the live list
+	// endpoint actually returns, masked (`eyJhbG********kK-d2A`). Read both.
+	TokenPrefix string `json:"token_prefix"`
+	Token       string `json:"token"`
+}
+
+// KeyIDByToken finds a key's id by matching the raw token against the masked
+// one the list endpoint returns (`eyJhbG********kK-d2A`). It exists for the
+// project-scoped JWT, which carries no key_id claim: without it, every
+// diagnosis that starts from an id goes silent for exactly the keys this CLI
+// now mints.
+//
+// Authenticate with the session token; a router key cannot list keys.
+func (c *Client) KeyIDByToken(bearer, token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	var keys []APIKeyRecord
+	if err := c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/api-keys", bearer, nil, &keys); err != nil {
+		return ""
+	}
+	found := ""
+	for _, k := range keys {
+		if !maskedTokenMatches(k.TokenPrefix, token) && !maskedTokenMatches(k.Token, token) {
+			continue
+		}
+		// Two matches identify neither, and a wrong id is worse than no id: it
+		// addresses somebody else's key.
+		if found != "" {
+			return ""
+		}
+		found = k.ID
+	}
+	return found
+}
+
+// minMaskedHead is how much of the visible head a masked token must show
+// before a match means anything. The live endpoint shows six characters, and
+// every orq JWT starts with the same base64 header, so a shorter head would
+// match every key in the workspace.
+const minMaskedHead = 6
+
+// universalOpaquePrefix is the literal every sk-orq-* key opens with. A
+// documented token_prefix of this, or of any leading slice of it, distinguishes
+// no key from any other opaque key in the workspace — and "sk-orq" is six
+// characters, so minMaskedHead does not catch it.
+const universalOpaquePrefix = "sk-orq-"
+
+// maskedTokenMatches reports whether token is the key behind a masked value.
+// The mask keeps a visible head and tail around a run of asterisks; a value
+// with no mask at all is treated as a plain prefix, which is what the
+// documented token_prefix field holds.
+func maskedTokenMatches(masked, token string) bool {
+	masked = strings.TrimSpace(masked)
+	if masked == "" {
+		return false
+	}
+	head, tail, masked_ := strings.Cut(masked, "*")
+	if !masked_ {
+		// Any head that is itself a leading slice of the universal prefix
+		// matches every opaque key in the workspace, so it identifies none.
+		if strings.HasPrefix(universalOpaquePrefix, head) {
+			return false
+		}
+		return len(head) >= minMaskedHead && strings.HasPrefix(token, head)
+	}
+	tail = strings.TrimLeft(tail, "*")
+	// An empty tail leaves the head as the only evidence — same gap as the
+	// unmasked branch above, since HasSuffix(token, "") is vacuously true.
+	if len(head) < minMaskedHead || tail == "" {
+		return false
+	}
+	return strings.HasPrefix(token, head) && strings.HasSuffix(token, tail)
 }
 
 // GetAPIKey looks a key up by id. Authenticate with the session's workspace

@@ -23,6 +23,9 @@ type Client struct {
 	// Ctrl+C during a slow call (device-login start, profile fetch) returns
 	// immediately instead of hanging until the 30s HTTP timeout.
 	ctx context.Context
+	// projectID narrows every access token this client mints to one project.
+	// Empty means all projects the user can see.
+	projectID string
 }
 
 func NewClient(apiBase string) *Client {
@@ -37,6 +40,40 @@ func NewClient(apiBase string) *Client {
 func (c *Client) WithContext(ctx context.Context) *Client {
 	c.ctx = ctx
 	return c
+}
+
+// WithProject narrows the access tokens this client mints to one project, so
+// the server scopes both reads and creates to it. Returns the client for
+// chaining.
+func (c *Client) WithProject(projectID string) *Client {
+	c.projectID = strings.TrimSpace(projectID)
+	return c
+}
+
+// TokenCacheKey is the WorkspaceTokens cache key for a workspace/project pair.
+// An unscoped token keeps the bare workspace key, so sessions written before
+// project scoping stay valid.
+//
+// Exported because three packages read this map and each one spelled the
+// separator itself. When project scoping landed, the two that were not updated
+// stopped finding the active token and resurrected a credential warning that
+// had already been fixed once.
+func TokenCacheKey(workspaceKey, projectID string) string {
+	if strings.TrimSpace(projectID) == "" {
+		return workspaceKey
+	}
+	return workspaceKey + "#" + strings.TrimSpace(projectID)
+}
+
+// TokenCacheKeyWorkspace returns the workspace a cache key belongs to,
+// whichever project it is scoped to.
+func TokenCacheKeyWorkspace(cacheKey string) string {
+	key, _, _ := strings.Cut(cacheKey, "#")
+	return key
+}
+
+func (c *Client) tokenKey(workspaceKey string) string {
+	return TokenCacheKey(workspaceKey, c.projectID)
 }
 
 func (c *Client) reqContext() context.Context {
@@ -207,6 +244,9 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 	if workspaceKey != "" {
 		body["workspace_key"] = workspaceKey
 	}
+	if c.projectID != "" {
+		body["project_id"] = c.projectID
+	}
 	var resp struct {
 		AccessToken string `json:"access_token"`
 	}
@@ -372,7 +412,8 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 }
 
 func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*Session, error) {
-	current, cached := session.WorkspaceTokens[workspaceKey]
+	cacheKey := c.tokenKey(workspaceKey)
+	current, cached := session.WorkspaceTokens[cacheKey]
 	if !cached || isExpired(current.ExpiresAt, 60) {
 		tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
 		if err != nil {
@@ -381,7 +422,7 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 		if session.WorkspaceTokens == nil {
 			session.WorkspaceTokens = map[string]StoredAccessToken{}
 		}
-		session.WorkspaceTokens[workspaceKey] = tok
+		session.WorkspaceTokens[cacheKey] = tok
 	}
 	session.ActiveWorkspaceKey = stringPtr(workspaceKey)
 	if err := SaveSession(session); err != nil {
@@ -403,7 +444,8 @@ func (c *Client) EnsureWorkspaceToken(session *Session, workspaceKey string) (*S
 // SAME workspace last-writer-wins on that one entry, costing at most one extra
 // exchange.
 func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, error) {
-	if tok, ok := session.WorkspaceTokens[workspaceKey]; ok && !isExpired(tok.ExpiresAt, 60) {
+	cacheKey := c.tokenKey(workspaceKey)
+	if tok, ok := session.WorkspaceTokens[cacheKey]; ok && !isExpired(tok.ExpiresAt, 60) {
 		return tok.Token, nil
 	}
 	tok, err := c.ExchangeAccessToken(session.RefreshToken, workspaceKey)
@@ -415,8 +457,8 @@ func (c *Client) WorkspaceToken(session *Session, workspaceKey string) (string, 
 	if session.WorkspaceTokens == nil {
 		session.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
-	session.WorkspaceTokens[workspaceKey] = tok
-	if err := mergeWorkspaceToken(workspaceKey, tok); err != nil {
+	session.WorkspaceTokens[cacheKey] = tok
+	if err := mergeWorkspaceToken(cacheKey, tok); err != nil {
 		// Not fatal - the token works for this invocation - but a silent drop
 		// (e.g. a read-only session dir) would re-exchange on every single call
 		// with no explanation. Route through bartolo's writer so --no-color and
@@ -468,6 +510,16 @@ func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 	if !found {
 		return nil, fmt.Errorf("workspace %q is not available to this user", workspaceKey)
 	}
+	// The active project belongs to the workspace it was chosen in. Carrying it
+	// across a move leaves every later command asking for a token narrowed to a
+	// project the new workspace does not contain. Cleared here rather than in
+	// each caller so `workspace use`, `switch` and `setup` cannot disagree.
+	//
+	// Only on an actual change: re-asserting the workspace already active is
+	// not a reason to discard a project the user deliberately chose.
+	if session.ActiveWorkspaceKey == nil || *session.ActiveWorkspaceKey != workspaceKey {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
 	return c.EnsureWorkspaceToken(session, workspaceKey)
 }
 
@@ -508,7 +560,7 @@ func (c *Client) GetActiveWorkspaceAccessToken() (*ActiveAccessToken, error) {
 	if err != nil {
 		return nil, err
 	}
-	tok := session.WorkspaceTokens[key]
+	tok := session.WorkspaceTokens[c.tokenKey(key)]
 	return &ActiveAccessToken{
 		AccessToken:  tok.Token,
 		Session:      session,

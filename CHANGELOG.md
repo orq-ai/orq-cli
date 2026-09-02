@@ -111,6 +111,95 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: the key `orq setup` exports no longer shadows the session.** When
+  `ORQ_API_KEY` holds exactly the key setup minted and wrote into `~/.orq/env`,
+  and a session exists, the session wins — that key is ours, not a deliberate
+  override, and letting it rank first made `orq workspace use` and `orq projects
+  use` silent no-ops on every machine that had run setup and sourced the file.
+  Any key we did not mint, and any key in a credentials profile, still wins.
+
+- **Added: `orq setup` asks which project to work in**, between authenticating
+  and creating the key. It skips itself when the workspace has one project or
+  none, never offers to create one, and is skipped entirely on an `--api-key`
+  run, which has no session to record the choice on. `--project <id|key|name>`
+  pre-answers it and `--no-project` skips it.
+- **Changed: the key `orq setup` mints is scoped to the selected project.** It
+  is the credential the coding agents use for model calls, so a config file
+  another program reads can no longer reach the rest of the workspace. A saved
+  key belonging to a different project is replaced rather than reused. Keys
+  minted before this stay workspace-wide until they expire. This does not
+  affect the agents' MCP tools, which authenticate over OAuth.
+
+- **Added: an active project.** `orq projects use <project>` selects one by id,
+  key or name and persists it, and every later invocation mints its access
+  token scoped to that project — the server then narrows both reads and creates
+  to it, so `orq agents list` shows that project's agents and `orq agents
+  create` lands there without a `--project-id` on every call. `orq projects
+  use` with no argument prints the active project (or opens a picker at a
+  terminal); `--clear` unsets it.
+- **Added: a global `--project` flag (`ORQ_PROJECT`)**, a per-invocation
+  override that takes a project id, key or name. Under an explicit API key
+  there is no session token to narrow, so it fills the command's own
+  `--project-id` instead; an explicit `--project-id` always wins.
+
+- **Added: `orq status`**, aliased to `whoami`. It shows the active user,
+  workspace, and project, plus which credential the next command will
+  actually authenticate with and that credential's scope — all projects, or
+  one. A key can outrank the session, so "signed in as X" on its own can
+  describe a state no command runs in. The old hidden `orq whoami` keeps
+  working. The `credential` object in `orq status --json` gains a `scope`
+  field, which reads `unknown` for the opaque key shape rather than claiming
+  workspace-wide reach it cannot see, and its `source` can now be `session`
+  alongside the environment variable and named-profile answers it already
+  gave. It is `null` only when there is neither a session nor a configured
+  key — a state in which `orq status` reports that you are not logged in.
+- **Added: `orq switch [workspace] [project]`**, which picks a workspace and
+  then a project in one walk. It is two stages rather than one combined
+  picker on purpose: the project list needs a token for the workspace it
+  belongs to, so a single picker would mint a token for every workspace the
+  user can see. Without a terminal it requires both halves named: it rewrites
+  your whole identity, and guessing at either half would replace a
+  deliberately chosen project with the workspace default and report success.
+  To move workspace alone, `orq workspace use <workspace>` leaves the project
+  untouched, and still re-asserts rather than failing when given no argument.
+- **Fixed: `orq workspace use <other>` no longer leaves the previous
+  workspace's project on the session.** The active project belongs to the
+  workspace it was chosen in, so carrying it across a move left every later
+  command asking for a token narrowed to a project the new workspace does not
+  contain. The clear now lives in the one place both `workspace use` and
+  `switch` go through, and only fires when the workspace actually changes —
+  re-asserting the workspace already active keeps the chosen project.
+- **Fixed: `orq status` names the credential of an `ORQ_TOKEN` or
+  `ORQ_AUTHORIZATION` user.** It resolved the key from `ORQ_API_KEY` and the
+  profile's `api_key` only, so those users got no `key:` line and a `null`
+  `credential` while the session line was still printed — describing a state
+  no command runs in. The `source` now names whichever of the three variables
+  (or the profile) actually wins.
+- **Changed: `orq status` marks the active project as inactive** when a
+  credential outranks the session, instead of printing a project no command
+  will narrow a token to.
+- **Fixed: credential introspection now reads every token shape in
+  circulation**, not just the opaque `sk-orq-<ULID>-<secret>` one. A
+  workspace JWT (`workspace_id`, `key_id`) and a project JWT (`workspace_id`,
+  `projects[]`, no `key_id`) previously reported as unknown, which is most
+  keys in a real credentials file. The `sk-orq-` prefix is optional on the
+  JWT shapes, since dashboard-issued keys arrive without it. This affects
+  `orq status` and `orq doctor` only — the claims are unverified and never
+  grant access.
+- **Added: `orq doctor` and `orq setup` diagnose rejected project-scoped
+  keys.** A project-scoped JWT has no `key_id`, so the diagnosis now falls
+  back to matching the masked token the key-list endpoint returns
+  (`eyJhbG********kK-d2A`) — without it, the diagnosis that explains a
+  rejected key went silent for exactly the keys `orq setup` now mints. A
+  mask whose visible head is too short to identify a single key is ignored
+  rather than guessed at.
+- **Changed: `orq doctor`'s gateway-key check reports the state that actually
+  holds.** It used to warn that commands "will be refused" and tell you to
+  unset `ORQ_API_KEY` even where the session already wins, which was false
+  advice and a no-op remedy; that machine now gets a `pass` row. The warning
+  is kept for a key we did not mint, and it now also fires when a minted key
+  is exported with no session behind it.
+
 ## [6.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.0.0) — 2026-09-02
 
 - **Added:** `-o table` renders a list command as a table, and it is the default
@@ -172,7 +261,6 @@ controls on surface changes, whichever side they originate from.
   instead of warning and writing the machine-wide file. Codex loads its project
   config only for a repository marked trusted in `~/.codex/config.toml`;
   connect prints the line to add.
-
 ## [5.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.1) — 2026-09-01
 
 - **Changed:** `rc` releases are numbered as the stable release they preview.

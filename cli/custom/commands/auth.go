@@ -270,6 +270,17 @@ func reportSurvivingGatewayKey() {
 	}
 }
 
+// NewStatusCommand is whoami under the name people reach for first, and the
+// one the help lists. Same report: who you are, where you are, and which
+// credential the next command will use.
+func NewStatusCommand() *cobra.Command {
+	cmd := NewWhoAmICommand()
+	cmd.Use = "status"
+	cmd.Aliases = append(cmd.Aliases, "whoami")
+	cmd.Short = "Show the active user, workspace, project and credential"
+	return cmd
+}
+
 func NewWhoAmICommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "whoami",
@@ -329,10 +340,47 @@ func printIdentity(report IdentityReport, verb string) {
 	if activeName != "" && report.ActiveWorkspaceKey != nil {
 		kv(w, "workspace", "%s (%s)", activeName, *report.ActiveWorkspaceKey)
 	}
+	if report.ActiveProjectName != "" {
+		// Marked, not hidden: the session really does record this project, but
+		// under a credential that outranks the session nothing narrows a token
+		// to it, so printing it bare names a project no command will use.
+		if credentialOutranksSession(report) {
+			kv(w, "project", "%s (inactive: the %s credential decides the scope)", report.ActiveProjectName, report.Credential.Source)
+		} else {
+			kv(w, "project", "%s", report.ActiveProjectName)
+		}
+	}
 	if len(report.Workspaces) > 1 {
 		kv(w, "access", "%d workspaces", len(report.Workspaces))
 	}
+	if report.Server != "" {
+		kv(w, "server", "%s", report.Server)
+	}
+	// The credential the next command will authenticate with, named because
+	// "signed in as X" alone can describe a state no command actually runs in
+	// — a configured key outranks the session for every API call.
+	if c := report.Credential; c != nil {
+		kv(w, "key", "%s (%s)", c.Source, describeScope(*c))
+	}
 	kv(w, "session", "%s", report.SessionFile)
+}
+
+// describeScope renders a credential's reach. "scope not recorded" rather than
+// "all projects" for the opaque key shape: that token carries no scope claims
+// at all, and printing the silence as workspace-wide access told users
+// something no local check could know.
+func describeScope(c IdentityCredential) string {
+	switch c.Scope {
+	case scopeAllProjects:
+		return "all projects"
+	case scopeProject:
+		if c.ProjectID != "" {
+			return "one project"
+		}
+		return "specific projects"
+	default:
+		return "scope not recorded in the key"
+	}
 }
 
 // reportClearedEnvFiles names the files logout emptied. A credential leaving

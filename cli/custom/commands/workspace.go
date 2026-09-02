@@ -108,7 +108,12 @@ func newWorkspaceUseCommand() *cobra.Command {
 				}
 			case session.ActiveWorkspaceKey != nil:
 				// Non-interactive with no argument: re-assert the active
-				// workspace rather than fail, so scripts stay deterministic.
+				// workspace rather than fail. This command writes exactly one
+				// thing, and re-asserting the workspace already in force
+				// changes nothing else — UseWorkspace only clears the active
+				// project when the workspace actually moves. `orq switch`
+				// refuses the same run because it would also rewrite the
+				// project, which is not a choice a script implied.
 				workspaceKey = *session.ActiveWorkspaceKey
 			}
 			if workspaceKey == "" {

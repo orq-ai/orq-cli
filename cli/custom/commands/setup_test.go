@@ -104,28 +104,6 @@ func TestAgentRegistryIsComplete(t *testing.T) {
 	}
 }
 
-// The API rejects project IDs that are not ULIDs, while /v2/projects currently
-// returns UUIDs. Getting this check wrong means either a hard failure at mint
-// time or a silently over-scoped key.
-func TestProjectScopableRejectsUUIDs(t *testing.T) {
-	cases := []struct {
-		id   string
-		want bool
-	}{
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},            // ULID
-		{"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V", true},       // ULID with the documented prefix
-		{"019def44-a743-7000-a442-c0db96b06699", false}, // what /v2/projects returns today
-		{"", false},
-		{"01HZXW2K7Y8Q9M0N1P2R3S4T5", false},  // 25 chars
-		{"01hzxw2k7y8q9m0n1p2r3s4t5v", false}, // lowercase is not Crockford base32
-	}
-	for _, tc := range cases {
-		if got := auth.ProjectScopable(tc.id); got != tc.want {
-			t.Errorf("ProjectScopable(%q) = %v, want %v", tc.id, got, tc.want)
-		}
-	}
-}
-
 // Project names are user-supplied and the key name has validation rules we do
 // not control, so anything exotic must be stripped before it is sent.
 func TestSanitizeKeyName(t *testing.T) {
@@ -381,14 +359,18 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 func credsHarness(t *testing.T) {
 	t.Helper()
 	restoreCreds, restoreHandlers := bartolocli.Creds, bartolocli.AuthHandlers
+	// Restore the previous values rather than zeroing them: these viper keys are
+	// process globals shared with every other test in the package, and zeroing
+	// them has broken unrelated tests here before.
+	prevDir, prevProfile := viper.GetString("config-directory"), viper.GetString("profile")
 	bartolocli.Creds = newTestCreds(t)
 	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
 	viper.Set("config-directory", t.TempDir())
 	viper.Set("profile", "default")
 	t.Cleanup(func() {
 		bartolocli.Creds, bartolocli.AuthHandlers = restoreCreds, restoreHandlers
-		viper.Set("config-directory", "")
-		viper.Set("profile", "")
+		viper.Set("config-directory", prevDir)
+		viper.Set("profile", prevProfile)
 	})
 }
 
@@ -2139,7 +2121,7 @@ func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme"); err != nil {
+			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			auth.SetStateValue("default", "gateway_key_expires_at", tc.expiresAt)
@@ -2169,7 +2151,7 @@ func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-OLD", "OLDID", time.Now().Add(10*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	ws := "acme"
@@ -2245,7 +2227,7 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			credsHarness(t)
-			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme"); err != nil {
+			if err := saveGatewayKeyProfile("sk-orq-k", "KEYID", tc.expiresAt, "acme", ""); err != nil {
 				t.Fatal(err)
 			}
 			check, ok := gatewayKeyExpiryCheck(now)
@@ -2542,7 +2524,7 @@ func TestLogoutFailsWhenShellEnvironmentCannotBeCleared(t *testing.T) {
 func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
 	t.Run("gateway key", func(t *testing.T) {
 		credsHarness(t)
-		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 			t.Fatal(err)
 		}
 		held, err := clearAPIKeyProfile()
@@ -2592,7 +2574,7 @@ func TestGatewayKeyWritersLeaveNoKeylessProfileOnDisk(t *testing.T) {
 	credsHarness(t)
 	dir := viper.GetString("config-directory")
 
-	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	assertNoKeylessProfileOnDisk(t, dir, "sk-orq-K")
@@ -2627,7 +2609,7 @@ func assertNoKeylessProfileOnDisk(t *testing.T, dir, wantGatewayKey string) {
 // worst possible latency for this class of bug.
 func TestSuppliedKeyDisplacesAMintedOne(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := saveAPIKeyProfile("sk-orq-SUPPLIED", ""); err != nil {
@@ -2655,7 +2637,7 @@ func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
 	if err := saveAPIKeyProfile("sk-orq-LEGACY-for-A", "workspace-A"); err != nil {
 		t.Fatal(err)
 	}
-	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B", ""); err != nil {
 		t.Fatal(err)
 	}
 	if storedAPIKeyProfile() {
@@ -2671,7 +2653,7 @@ func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
 // job is to explain why nothing works.
 func TestStoredAPIKeyProfileIgnoresTheGatewayKey(t *testing.T) {
 	credsHarness(t)
-	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme"); err != nil {
+	if err := saveGatewayKeyProfile("sk-orq-GATEWAY", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
 	if storedAPIKeyProfile() {
@@ -3491,5 +3473,65 @@ func TestScopePromptNamesOnlyTheCapabilitiesInTheRun(t *testing.T) {
 		if got := scopePrompt(caps); got != want {
 			t.Errorf("scopePrompt(%v) = %q, want %q", caps, got, want)
 		}
+	}
+}
+
+// auth.Client.tokenKey files a project-scoped token under
+// "<workspace>#<project>", so reading WorkspaceTokens[activeWorkspaceKey]
+// found nothing the moment a project was selected: setup and every other
+// caller then behaved as if the session held no token at all.
+func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	active := "acme"
+
+	for name, tc := range map[string]struct {
+		projectID string
+		tokens    map[string]auth.StoredAccessToken
+		want      string
+	}{
+		"project scoped entry": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj1": {Token: "scoped", ExpiresAt: future}},
+			want:      "scoped",
+		},
+		"project active, only an unscoped entry": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme": {Token: "unscoped", ExpiresAt: future}},
+			want:      "unscoped",
+		},
+		"the active project's entry wins": {
+			projectID: "proj1",
+			tokens: map[string]auth.StoredAccessToken{
+				"acme":       {Token: "unscoped", ExpiresAt: future},
+				"acme#proj1": {Token: "scoped", ExpiresAt: future},
+			},
+			want: "scoped",
+		},
+		"another project's entry is not ours": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj2": {Token: "other", ExpiresAt: future}},
+			want:      "",
+		},
+		"expired is no token": {
+			projectID: "proj1",
+			tokens:    map[string]auth.StoredAccessToken{"acme#proj1": {Token: "scoped", ExpiresAt: past}},
+			want:      "",
+		},
+		"no project": {
+			tokens: map[string]auth.StoredAccessToken{"acme": {Token: "unscoped", ExpiresAt: future}},
+			want:   "unscoped",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			session := &auth.Session{
+				ActiveWorkspaceKey: &active,
+				ActiveProjectID:    tc.projectID,
+				WorkspaceTokens:    tc.tokens,
+			}
+			if got := storedWorkspaceToken(session); got != tc.want {
+				t.Errorf("storedWorkspaceToken = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
