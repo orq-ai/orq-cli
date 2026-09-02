@@ -33,7 +33,7 @@ server it was issued by. Three knobs, none overloaded:
 
 | knob | picks | set by |
 |---|---|---|
-| server | which login | `--server` > `ORQ_SERVER` > `orq server set` > `https://my.orq.ai` |
+| server | request host | `--server` > active profile's server > `ORQ_SERVER` > `orq server set` > `https://my.orq.ai` |
 | workspace | where entities land | `orq workspace use`, `--workspace` for one call |
 | profile | a saved API key instead of the login | `--profile`, `ORQ_PROFILE`, `auth profile use` |
 
@@ -101,10 +101,11 @@ child picks the same session the parent authenticated against.
 ### Migration, on the first command of the new binary
 
 1. **Session files.** Each `sessions/<name>.json` is renamed to its host. When two resolve to
-   the same host, the one with the freshest refresh token (mtime as tiebreak) wins; the other
-   is renamed `<name>.json.deprecated` and left in place, one stderr line naming it.
+   the same host, the file with the newest mtime wins; refresh tokens are opaque and carry no
+   comparable freshness metadata. The other is renamed `<name>.json.deprecated` and left in
+   place, one stderr line naming it.
 2. **Our fields out of bartolo's table.** For each `profiles.<name>` carrying any of
-   `gateway_key`, `gateway_key_id`, `gateway_key_expires_at`, `workspace` (the fields only this
+   `gateway_key`, `gateway_key_id`, `gateway_key_expires_at`, `gateway_key_project`, `workspace` (the fields only this
    CLI writes), and for each `state.<name>` written by #63: move them into the session file of
    the profile's host (the profile's `server`, else the session named `<name>` before step 1,
    else `my.orq.ai`), delete them from `credentials.json`, and delete the profile if it is

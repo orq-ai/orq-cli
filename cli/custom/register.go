@@ -212,16 +212,15 @@ func resolveServer(cmd *cobra.Command) {
 		// have to swallow, and swallowing it would drop a host the user typed.
 		commands.Warn("--api-base-url is deprecated and will be removed in a future release; use --server instead")
 		auth.SetServer(cmd.Flags().Lookup("api-base-url").Value.String(), "flag")
+	case commands.ProfileServer() != "":
+		// A profile binds a key and server as one credential. Letting an ambient
+		// ORQ_SERVER replace only its host can send that key to another backend.
+		auth.SetServer(commands.ProfileServer(), "profile")
 	case envServer != "":
 		if envVar == auth.DeprecatedServerEnvVar {
 			commands.Warn("ORQ_API_BASE_URL is deprecated and will be removed in a future release; use ORQ_SERVER (or --server) instead")
 		}
 		auth.SetServer(envServer, "env")
-	case commands.ProfileServer() != "":
-		// A host bound to the credentials profile. More specific than the
-		// global `orq server set`, so it outranks it: selecting a profile is
-		// how you select a backend.
-		auth.SetServer(commands.ProfileServer(), "profile")
 	case persistedServer() != "":
 		auth.SetServer(persistedServer(), "config") // persisted `orq server set`
 	default:
@@ -300,17 +299,22 @@ func apiKeyConfigured() bool {
 	return configuredAPIKey() != ""
 }
 
-// configuredAPIKey returns the key bartolo would authenticate with, in the
-// order its apikey handler resolves them: the env vars first, then the active
-// credentials profile. Anything that needs to make an API call of its own has
-// to use this and not one hard-coded env var, or it authenticates as nobody.
+// configuredAPIKey returns the key bartolo would authenticate with. A selected
+// profile is authoritative, including when it is invalid or keyless: bartolo
+// does not fall through from that profile to an ambient environment key.
 func configuredAPIKey() string {
+	if bartolocli.ActiveProfileName() != "" {
+		if bartolocli.Creds == nil {
+			return ""
+		}
+		return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	}
 	for _, envVar := range apiKeyEnvVars {
 		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" {
 			return v
 		}
 	}
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	return ""
 }
 
 // ownExportedKey reports whether the only API key in the environment is the one

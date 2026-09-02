@@ -3,9 +3,11 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -127,6 +129,49 @@ func TestLogoutReportsGatewayKeyAfterClearingItsSession(t *testing.T) {
 	}
 	if remaining, err := auth.ReadSession(); err != nil || remaining != nil {
 		t.Errorf("session after logout = %+v, err = %v", remaining, err)
+	}
+}
+
+func TestLogoutCleanupErrorReportsSurvivingGatewayKey(t *testing.T) {
+	credsHarness(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session = %+v, err = %v", session, err)
+	}
+	urls := auth.ResolveURLs(srv.URL)
+	session.APIBaseURL, session.V1BaseURL = urls.APIBaseURL, urls.V1BaseURL
+	session.AuthBaseURL, session.ProfileBaseURL = urls.AuthBaseURL, urls.ProfileBaseURL
+	session.GatewayKeyID = "gateway-key-survives"
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	dir := viper.GetString("config-directory")
+	if err := os.WriteFile(filepath.Join(dir, "env"), []byte("export ORQ_API_KEY=sk-orq-LIVE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous := writeSecretFile
+	want := errors.New("disk full")
+	writeSecretFile = func(string, []byte) error { return want }
+	t.Cleanup(func() { writeSecretFile = previous })
+
+	cmd := NewLogoutCommand()
+	cmd.SetArgs([]string{"--yes"})
+	err = cmd.Execute()
+	if !errors.Is(err, want) {
+		t.Fatalf("logout error = %v, want wrapped disk error", err)
+	}
+	if !strings.Contains(err.Error(), "gateway-key-survives") {
+		t.Errorf("logout error lost the surviving gateway key ID: %v", err)
+	}
+	if remaining, readErr := auth.ReadSession(); readErr != nil || remaining != nil {
+		t.Errorf("session after logout = %+v, err = %v", remaining, readErr)
 	}
 }
 

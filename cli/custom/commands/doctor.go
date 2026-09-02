@@ -149,13 +149,13 @@ func NewDoctorCommand() *cobra.Command {
 				}
 				activeWS = inspect.Session.ActiveWorkspaceKey
 				workspaceCount = len(inspect.Session.Workspaces)
+			} else if storedAPIKeyProfile() {
+				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
 			} else if envAPIKeySet() {
 				// No session, but an env key authenticates every command. Saying
 				// "missing" here sends people hunting for a login problem that
 				// does not exist.
 				authStatus, authSource = "authenticated", "env:ORQ_API_KEY"
-			} else if storedAPIKeyProfile() {
-				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
 			}
 
 			authMap := map[string]any{
@@ -489,7 +489,7 @@ func mcpCheck() (doctorCheck, bool) {
 func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorCheck, bool) {
 	// A doctor run must survive a credentials file that never initialized:
 	// this is the command people reach for when their setup is broken.
-	if bartolocli.Creds == nil || inspect.Status != auth.StatusOK || inspect.Session == nil {
+	if bartolocli.Creds == nil || profileInForce() || inspect.Status != auth.StatusOK || inspect.Session == nil {
 		return doctorCheck{}, false
 	}
 	gatewayKey := inspect.Session.GatewayKey
@@ -524,18 +524,15 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	return check, true
 }
 
-// otherExplicitKeySources names the credentials, besides ORQ_API_KEY, that
-// would still outrank the login session. Ordered as the apikey handler
-// resolves them, so the first entry is the one that would win next.
+// otherExplicitKeySources names the environment spellings besides ORQ_API_KEY
+// that would still outrank the login session. A profile never reaches this
+// diagnostic: while one is selected the exported gateway key is irrelevant.
 func otherExplicitKeySources() []string {
 	var out []string
 	for _, envVar := range APIKeyEnvVars[1:] {
 		if strings.TrimSpace(os.Getenv(envVar)) != "" {
 			out = append(out, envVar)
 		}
-	}
-	if profileAPIKey() != "" {
-		out = append(out, "the api_key in profile "+bartolocli.ActiveProfileName())
 	}
 	return out
 }

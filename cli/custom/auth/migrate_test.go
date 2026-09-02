@@ -198,6 +198,62 @@ func TestMigrateLeavesAnAPIKeyProfileAuthenticating(t *testing.T) {
 	}
 }
 
+// Older CLIs could leave gateway metadata beside a real API key. Keeping the
+// Bartolo-owned key profile must not mean throwing away the independent
+// gateway key's only revocation handle and expiry: those fields still belong
+// on the browser session for the profile's server.
+func TestMigrateMovesGatewayMetadataOffAnAPIKeyProfile(t *testing.T) {
+	dir := layoutHarness(t, `{"profiles":{"acme":{
+		"api_key":"sk-orq-REAL","type":"apikey","server":"https://acme.example",
+		"gateway_key":"sk-orq-GW","gateway_key_id":"KEYID",
+		"gateway_key_expires_at":"2027-01-01T00:00:00Z",
+		"gateway_key_project":"project-1","workspace":"acme"
+	}}}`, map[string]*Session{
+		"acme.json": sessionOn("https://acme.example", "acme"),
+	})
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	s := readDoc(t, filepath.Join(dir, "sessions", "acme.example.json"))
+	for field, want := range map[string]string{
+		"gatewayKey": "sk-orq-GW", "gatewayKeyId": "KEYID",
+		"gatewayKeyExpiresAt": "2027-01-01T00:00:00Z",
+		"gatewayProject":      "project-1", "gatewayWorkspace": "acme",
+	} {
+		if s[field] != want {
+			t.Errorf("session[%q] = %v, want %q", field, s[field], want)
+		}
+	}
+	creds := readDoc(t, filepath.Join(dir, "credentials.json"))
+	profile := creds["profiles"].(map[string]any)["acme"].(map[string]any)
+	if profile["api_key"] != "sk-orq-REAL" || profile["server"] != "https://acme.example" {
+		t.Fatalf("Bartolo profile was damaged: %v", profile)
+	}
+	for _, field := range ownedFields {
+		if _, present := profile[field]; present {
+			t.Errorf("legacy field %q remained on profile: %v", field, profile)
+		}
+	}
+}
+
+func TestMigrateFailsClosedOnCorruptLegacySessionCandidate(t *testing.T) {
+	dir := layoutHarness(t, `{}`, nil)
+	path := filepath.Join(dir, "sessions", "default.json")
+	want := []byte("{not valid json")
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := MigrateLayout(dir)
+	if err == nil {
+		t.Fatal("corrupt legacy session was silently ignored")
+	}
+	if got, readErr := os.ReadFile(path); readErr != nil || string(got) != string(want) {
+		t.Fatalf("corrupt candidate was not preserved: contents=%q err=%v", got, readErr)
+	}
+}
+
 // A keyless profile carrying none of our fields was written by something else.
 func TestMigrateLeavesAForeignKeylessProfileAlone(t *testing.T) {
 	dir := layoutHarness(t, `{"profiles":{"staged":{"api_key":"","server":"https://staged.example"}}}`, nil)

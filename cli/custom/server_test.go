@@ -154,9 +154,9 @@ func TestResolveServerPrecedence(t *testing.T) {
 			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{
-			name: "env beats the profile",
+			name: "profile beats the env",
 			env:  map[string]string{"ORQ_SERVER": "https://env.example"}, profile: "https://profile.example",
-			wantServer: "https://env.example", wantSource: "env",
+			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{name: "env", env: map[string]string{"ORQ_SERVER": "https://env.example"}, wantServer: "https://env.example", wantSource: "env"},
 		{name: "deprecated env", env: map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"}, wantServer: "https://legacy.example", wantSource: "env"},

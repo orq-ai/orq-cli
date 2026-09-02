@@ -91,7 +91,10 @@ func migrateSessionFiles() (map[string]string, error) {
 	for _, name := range names {
 		path := filepath.Join(dir, name)
 		s, err := readSessionFile(path)
-		if err != nil || s == nil || s.APIBaseURL == "" {
+		if err != nil {
+			return nil, fmt.Errorf("reading legacy session candidate %s: %w", path, err)
+		}
+		if s == nil || s.APIBaseURL == "" {
 			continue // not a session of ours; leave it where it is
 		}
 		host := SessionHost(s.APIBaseURL)
@@ -176,17 +179,23 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		for _, f := range ownedFields {
 			delete(profile, f)
 		}
-		if stringField(profile, "api_key") == "" {
+		apiKeyProfile := stringField(profile, "api_key") != ""
+		// Gateway metadata belongs to the browser login even when an older CLI
+		// happened to store it beside a real API-key profile. A lone workspace
+		// on a brought-key profile has no such provenance and is intentionally
+		// dropped.
+		if !apiKeyProfile || hasGatewayMetadata(fields) {
 			// A session login's profile: its server travels with the fields,
-			// and the entry itself has no reason to exist. attachToSession
-			// erroring here means the fields it carried are about to have no
-			// other copy, so the deletion below must not happen — bail before
-			// mutating profiles, leaving credentials.json exactly as it was
-			// on disk (nothing is written until the whole pass succeeds).
+			// and an API-key profile's server identifies the matching login.
 			fields["server"] = stringField(profile, "server")
 			if err := attachToSession(name, fields, renamed); err != nil {
 				return err
 			}
+		}
+		if !apiKeyProfile {
+			// The entry itself has no reason to exist. attachToSession erroring
+			// above means its fields are about to have no other copy, so bail
+			// before credentials.json is rewritten.
 			delete(profiles, name)
 		}
 		// An API-key profile keeps its key, type and server; the workspace we
@@ -302,6 +311,15 @@ func collectOwned(profile map[string]any) map[string]string {
 		out[f] = stringField(profile, f)
 	}
 	return out
+}
+
+func hasGatewayMetadata(fields map[string]string) bool {
+	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at", "gateway_key_project"} {
+		if strings.TrimSpace(fields[field]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func stringMap(m map[string]any) map[string]string {

@@ -107,7 +107,7 @@ Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Nam
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable. A gateway key minted from a browser login lives in the server-keyed `~/.orq/sessions/<host>.json`; a saved API-key profile lives in `~/.orq/credentials.json`. Setup also writes the effective key to `~/.orq/env`, which it offers to source from your shell profile (`~/.orq/env.fish` for fish). These credential files are mode 0600.
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
@@ -435,9 +435,9 @@ so and stops.
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_API_KEY` | API key for headless/CI auth. An explicitly typed `--profile` outranks it: the flag names credentials, and the CLI warns on stderr when it overrides an exported key |
-| `ORQ_PROFILE` | Default profile (same as `--profile`, except that it does not outrank an exported `ORQ_API_KEY` — env against env has no tie-breaker) |
-| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
+| `ORQ_API_KEY` | API key for headless/CI auth. Any active profile outranks it because the profile is the selected credential |
+| `ORQ_PROFILE` | Default profile (same as `--profile`). A selected profile's API key and server both outrank ambient `ORQ_API_KEY` and `ORQ_SERVER` values |
+| `ORQ_SERVER` | The orq host (same as `--server`). Used when no active profile supplies a server, and drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
 | `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release. The matching `--api-base-url` flag on `auth`, `workspace` and `doctor` is deprecated the same way |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
@@ -493,8 +493,9 @@ The server selects the login session. There is one name for it, the global
 `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a
 call. No per-command flag. Persist a host with `orq server set` when you do not
 want to pass it on subsequent calls. The full order, highest first: `--server`,
-`ORQ_SERVER`, a host persisted globally with `orq server set`, then
-`https://my.orq.ai`. `orq doctor` reports which of those the current run used.
+the active profile's server, `ORQ_SERVER`, a host persisted globally with
+`orq server set`, then `https://my.orq.ai`. `orq doctor` reports which of those
+the current run used.
 Switch back and forth between servers without logging out of either:
 
 ```sh

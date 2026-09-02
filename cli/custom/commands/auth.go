@@ -213,7 +213,7 @@ func NewLogoutCommand() *cobra.Command {
 			}
 			envCleared, err := clearShellEnvFile()
 			if err != nil {
-				return err
+				return postLogoutError(gatewayKeyID, err)
 			}
 			removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
@@ -230,7 +230,7 @@ func NewLogoutCommand() *cobra.Command {
 				}
 				reportClearedEnvFiles(envCleared)
 				reportSurvivingGatewayKey(gatewayKeyID)
-				return removalError(removeFailed)
+				return postLogoutError(gatewayKeyID, removalError(removeFailed))
 			}
 			if err := emit(map[string]any{
 				"authenticated":               false,
@@ -242,9 +242,9 @@ func NewLogoutCommand() *cobra.Command {
 				"gateway_key_id":              gatewayKeyID,
 				"session_file":                auth.SessionFilePath(),
 			}); err != nil {
-				return err
+				return postLogoutError(gatewayKeyID, err)
 			}
-			return removalError(removeFailed)
+			return postLogoutError(gatewayKeyID, removalError(removeFailed))
 		},
 	}
 	DeprecatedAPIBaseFlag(cmd)
@@ -261,6 +261,19 @@ func removalError(failed bool) error {
 		return errRemovalFailed
 	}
 	return nil
+}
+
+// postLogoutError preserves the only handle for a gateway key after its
+// owning session has been deleted. Keep wrapping the original error so callers
+// can still classify it with errors.Is/errors.As.
+func postLogoutError(gatewayKeyID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if gatewayKeyID == "" {
+		return fmt.Errorf("local session cleared: %w", err)
+	}
+	return fmt.Errorf("local session cleared; gateway key %s remains active and must be revoked separately: %w", gatewayKeyID, err)
 }
 
 // reportSurvivingGatewayKey names the one thing logout cannot undo. The key is

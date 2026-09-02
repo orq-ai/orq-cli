@@ -905,6 +905,7 @@ func TestDoctorReportPrefersActiveAPIKeyProfileOverExistingSession(t *testing.T)
 	if err := saveAPIKeyProfile("sk-orq-profile"); err != nil {
 		t.Fatalf("save API-key profile: %v", err)
 	}
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
 	saveDoctorSession(t, srv.URL, "session@example.com", "session-workspace")
 
 	report := runDoctorJSON(t)
@@ -1250,10 +1251,9 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			otherEnv: map[string]string{"ORQ_TOKEN": "sk-orq-SOMEONE-ELSES"},
 			wantRow:  true, wantStatus: "warn", wantSaid: "ORQ_TOKEN also takes precedence",
 		},
-		"a profile api_key waits behind ORQ_API_KEY": {
+		"a profile api_key makes the exported gateway key irrelevant": {
 			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
 			profileKey: "sk-orq-PROFILE",
-			wantRow:    true, wantStatus: "warn", wantSaid: "api_key in profile default also takes precedence",
 		},
 		"a key we did not mint is not this row's business": {
 			inspect: loggedIn, exported: "sk-orq-SOMEONE-ELSES", explicit: true,
