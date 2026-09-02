@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [5.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.3.0) — 2026-09-02
+
 - **Added:** `orq connect skills --local` installs the skill set into the current
   directory (`./.claude/skills` for Claude Code, `./.agents/skills` for every
   other agent) instead of `$HOME`; `--global` stays the default. A bare
