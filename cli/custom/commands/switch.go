@@ -91,7 +91,12 @@ func NewSwitchCommand() *cobra.Command {
 			case hasInteractiveTTY():
 				chosen, err = pickProject(projects)
 			default:
-				chosen = auth.DefaultProject(projects)
+				// A workspace with no project named is half an instruction, and
+				// switch writes both halves: falling back to the workspace
+				// default replaced a deliberately chosen project and reported
+				// success. Anyone who only means to move workspace has
+				// `orq workspace use`, which leaves the project alone.
+				err = fmt.Errorf("no project given and no terminal to ask on: run `orq switch %s <project>`, or `orq workspace use %s` to move workspace only", workspaceKey, workspaceKey)
 			}
 			if err != nil {
 				return err

@@ -119,28 +119,32 @@ func TestSwitchRecordsWorkspaceAndProject(t *testing.T) {
 	}
 }
 
-// A non-interactive run given only a workspace has no picker to fall back on,
-// so with several projects in play it must take the workspace's declared
-// default rather than erroring or blocking on a prompt that will never be
-// answered.
-func TestSwitchWorkspaceOnlyFallsBackToDefaultProject(t *testing.T) {
+// A non-interactive run given only a workspace has half an instruction, and
+// switch writes both halves. Taking the workspace default here replaced a
+// deliberately chosen project and reported success; `orq workspace use` is the
+// command that moves workspace alone.
+func TestSwitchWorkspaceOnlyWithoutATerminalFails(t *testing.T) {
 	switchTestEnv(t)
 	srv := switchServer(t, []string{"acme"},
 		`{"project_id":"id-1","key":"a","name":"A"},{"project_id":"id-2","key":"b","name":"B","is_default":true}`)
-	switchSession(t, srv.URL, "", []string{"acme"}, "", "")
+	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "A")
 
 	cmd := NewSwitchCommand()
 	cmd.SetArgs([]string{"acme"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("switch: %v", err)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("switch with no project and no terminal succeeded, want an error naming the usage")
+	}
+	if !strings.Contains(err.Error(), "orq workspace use acme") {
+		t.Errorf("error does not point at the command that moves workspace alone: %v", err)
 	}
 
-	session, err := auth.ReadSession()
-	if err != nil {
-		t.Fatal(err)
+	session, readErr := auth.ReadSession()
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
-	if session.ActiveProjectID != "id-2" || session.ActiveProjectName != "B" {
-		t.Errorf("active project = %q/%q, want the workspace default id-2/B", session.ActiveProjectID, session.ActiveProjectName)
+	if session.ActiveProjectID != "id-1" || session.ActiveProjectName != "A" {
+		t.Errorf("active project = %q/%q, want the chosen id-1/A left untouched by the failed switch", session.ActiveProjectID, session.ActiveProjectName)
 	}
 }
 

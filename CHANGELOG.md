@@ -157,12 +157,11 @@ controls on surface changes, whichever side they originate from.
   then a project in one walk. It is two stages rather than one combined
   picker on purpose: the project list needs a token for the workspace it
   belongs to, so a single picker would mint a token for every workspace the
-  user can see. A bare `orq switch` with no terminal to ask on is an error
-  ("no workspace given and no terminal to ask on"), not a silent re-assertion
-  of the active workspace: re-asserting would also rewrite the project half,
-  replacing a deliberately chosen project with the workspace default.
-  `orq workspace use` with no argument still re-asserts, because it writes
-  only the workspace.
+  user can see. Without a terminal it requires both halves named: it rewrites
+  your whole identity, and guessing at either half would replace a
+  deliberately chosen project with the workspace default and report success.
+  To move workspace alone, `orq workspace use <workspace>` leaves the project
+  untouched, and still re-asserts rather than failing when given no argument.
 - **Fixed: `orq workspace use <other>` no longer leaves the previous
   workspace's project on the session.** The active project belongs to the
   workspace it was chosen in, so carrying it across a move left every later

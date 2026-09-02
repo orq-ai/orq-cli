@@ -207,7 +207,7 @@ For a single invocation without switching the session, pass `--project <id|key|n
 
 `orq switch [workspace] [project]` walks both selections in one command. Switching workspaces clears the active project, since a project belongs to the workspace it was chosen in — `orq workspace use <other>` does the same, and `orq workspace use` on the workspace already active leaves the chosen project alone, because it only ever writes the workspace. `orq switch` has no such exemption: naming a workspace tells it to rewrite both halves, so `orq switch <already-active>` re-runs the project selection too.
 
-A bare `orq switch` with no terminal to ask on fails with `no workspace given and no terminal to ask on`: it rewrites both halves of your identity, and re-asserting the active workspace would replace a deliberately chosen project with the workspace default. Pass the workspace explicitly in scripts. `orq workspace use` with no argument re-asserts instead of failing, because it only ever writes the workspace.
+Without a terminal, `orq switch` needs both halves named — `orq switch <workspace> <project>`. It rewrites your whole identity, so guessing at either half would replace a deliberately chosen project with the workspace default and report success. To move workspace alone, use `orq workspace use <workspace>`, which leaves the project untouched and re-asserts rather than failing when given no argument. Neither restriction applies at a terminal, where both commands open a picker.
 
 ---
 
