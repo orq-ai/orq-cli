@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
+
 - **Added: time flags accept relative values.** `--from`, `--to`, and any other
   field or parameter the schema marks `format: date-time`, now take a bare date
   (`2026-08-31`), a date and time read as UTC (`2026-08-31 14:00:00`), or a
