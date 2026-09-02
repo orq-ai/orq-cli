@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerpromptsCommands(root *cobra.Command) {
 	root.AddCommand(promptsCmd)
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + promptsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Create a new prompt in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `display_name` (string, required)\n- `metadata` (object)\n- `path` (string, required)\n- `prompt` (object, required)\n\nRequired fields: `display_name`, `path`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"display_name\": \"display_name\",\n  \"metadata\": {\n    \"language\": \"English\"\n  },\n  \"path\": \"Default Project\",\n  \"prompt\": {\n    \"max_tokens\": 1000,\n    \"messages\": [\n      {\n        \"content\": \"You are a helpful assistant\",\n        \"role\": \"system\"\n      },\n      {\n        \"content\": \"What is the weather today?\",\n        \"role\": \"user\"\n      }\n    ],\n    \"model\": \"openai/gpt-4o\",\n    \"temperature\": 0.7\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -70,21 +74,23 @@ func registerpromptsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreatePrompt(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -131,6 +137,8 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -142,23 +150,26 @@ func registerpromptsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeletePrompt(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -170,6 +181,8 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -180,20 +193,24 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a specific version of a prompt by its ID and version ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetPromptVersion(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -204,6 +221,8 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -214,20 +233,24 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a list of your prompts. The prompts are returned sorted by creation date, with the most recent prompts appearing first"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetAllPrompts(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
@@ -242,6 +265,8 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -252,20 +277,24 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns a list of your prompt versions. The prompt versions are returned sorted by creation date, with the most recent prompt versions appearing first"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListPromptVersions(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
@@ -280,6 +309,8 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -290,20 +321,24 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a prompt object"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetOnePrompt(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -314,11 +349,13 @@ func registerpromptsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := promptsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + promptsCmd.CommandPath() + " update id --example\n"
+		examples += "  " + parent.CommandPath() + " update id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update id",
@@ -326,9 +363,11 @@ func registerpromptsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Update a prompt by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `created` (string)\n- `created_by_id` (string | null)\n- `description` (string | null)\n- `display_name` (string)\n- `domain_id` (string)\n- `metadata` (object)\n- `owner` (string)\n- `path` (string)\n- ... and 3 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"metadata\": {\n    \"language\": \"English\"\n  },\n  \"path\": \"Default Project\",\n  \"prompt\": {\n    \"messages\": [\n      {\n        \"content\": \"You are a helpful assistant\",\n        \"role\": \"system\"\n      },\n      {\n        \"content\": \"Hello!\",\n        \"role\": \"user\"\n      }\n    ],\n    \"model\": \"anthropic/claude-3-5-sonnet-20241022\",\n    \"temperature\": 0.5\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -401,21 +440,23 @@ func registerpromptsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdatePrompt(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		promptsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

@@ -210,11 +210,13 @@ orq doctor --fix           # chmod the credential paths the permissions check fl
 ## Output formats
 
 ```sh
-orq agents list                             # TOON (default, human-readable)
+orq agents list                             # table at a terminal, TOON when piped
+orq agents list --output-format toon        # TOON
 orq agents list --output-format json        # JSON
 orq agents list --output-format yaml        # YAML
 orq agents list --json                      # shortcut for JSON
-orq agents list -q 'data[].display_name'    # JMESPath query
+orq agents list --columns id,display_name   # pick table columns
+orq agents list -j 'data[].display_name'    # JMESPath query
 ```
 
 Persist a new default:
@@ -226,8 +228,8 @@ orq default-format json
 ### Stability: what scripts may depend on
 
 `--json` on stdout is the only stability-guaranteed machine contract; its
-shape follows the orq API response behind the command. TOON, the default
-terminal format, is presentation-only and may change rendering between
+shape follows the orq API response behind the command. The table a terminal
+gets, and TOON, are presentation-only and may change rendering between
 releases. Exit codes are `0` success, `1` failure, `130`/`143` on
 SIGINT/SIGTERM, and errors go to stderr. The full contract, including how
 command/flag removals are announced, lives in
@@ -249,6 +251,7 @@ surface changes are always a reviewed diff.
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
 | `orq auth add-profile apikey <name> <key>` | Save an API-key profile |
 | `orq auth list-profiles` | List configured credential profiles |
+| `orq auth profile list\|current\|use\|add\|clear` | Inspect and switch the active credentials profile |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
 | `orq doctor` | Diagnose config, auth, reachability (`--fix` repairs loose credential permissions) |
@@ -257,7 +260,7 @@ surface changes are always a reviewed diff.
 | `orq request <method> <path>` | Raw API escape hatch (uses configured auth) |
 | `orq server list` | List OpenAPI-registered servers |
 | `orq completion bash\|zsh\|fish\|powershell` | Generate shell completions |
-| `orq default-format <json\|yaml\|toon>` | Persist a default output format |
+| `orq default-format <json\|yaml\|toon\|table>` | Persist a default output format |
 | `orq launch <agent>` | Launch a coding agent routed through the AI Router (see [Launch](#launch)) |
 | `orq orqi` | Run orqi, the orq.ai assistant, installing it on first use (see [orqi](#orqi)) |
 

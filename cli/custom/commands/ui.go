@@ -57,6 +57,10 @@ var humanOutput = func() bool {
 	return isatty.IsTerminal(os.Stdout.Fd())
 }
 
+// StdoutIsTerminal exposes the shared terminal decision to the root package,
+// which rebuilds bartolo's formatter after applying NO_COLOR.
+func StdoutIsTerminal() bool { return humanOutput() }
+
 // wantsHumanView reports whether a command should render its friendly view
 // instead of the structured payload: a person at a terminal who did not ask
 // for a machine format. Scripts (non-TTY) and explicit --json/-o always get

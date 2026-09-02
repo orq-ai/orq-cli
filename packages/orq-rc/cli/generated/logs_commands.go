@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerlogsCommands(root *cobra.Command) {
 	root.AddCommand(logsCmd)
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + logsCmd.CommandPath() + " aggregate --example\n"
+		examples += "  " + parent.CommandPath() + " aggregate --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "aggregate",
@@ -31,9 +33,11 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Return severity counts grouped by time buckets at a configurable grain (auto, minute, hour, day).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `from` (string)\n- `grain` (string)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"grain\": \"grain\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -64,21 +68,23 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiAggregateLogs(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -119,6 +125,8 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -129,20 +137,24 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieve a log record by its ULID. Returns 404 if the record does not exist or belongs to another workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetLog(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -153,11 +165,13 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + logsCmd.CommandPath() + " get-context id --example\n"
+		examples += "  " + parent.CommandPath() + " get-context id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "get-context id",
@@ -165,9 +179,11 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieve the matching log records immediately before and after an anchor log. Neighbors use the same free-text and structured filter dialect as SearchLogs and are returned in chronological order.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `after` (integer)\n- `before` (integer)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `oql` (string)\n- `query` (string)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -222,21 +238,23 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiGetLogContext(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -301,11 +319,13 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + logsCmd.CommandPath() + " get-patterns --example\n"
+		examples += "  " + parent.CommandPath() + " get-patterns --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "get-patterns",
@@ -313,9 +333,11 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Find stable templates in a bounded sample of matching log bodies. The response reports sampling and truncation metadata and never returns an unbounded list of raw bodies.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `limit` (integer)\n- `query` (string)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -358,21 +380,23 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiFindLogPatterns(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -425,6 +449,8 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -435,20 +461,24 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Return distinct values with occurrence counts for a given facet field."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListLogFacetValues(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("from", "", "")
@@ -464,6 +494,8 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -474,20 +506,24 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Return the facet hierarchy: attribute families (native, attribute, resource, scope) with their keys, counts, and top values for the requested time range."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListLogFacets(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().String("from", "", "")
 		cmd.Flags().String("to", "", "")
@@ -503,6 +539,8 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -513,20 +551,24 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Return all queryable fields: static columns and dynamic attribute families (attribute.*, resource.*)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListLogFields(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -537,6 +579,8 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -547,20 +591,24 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Return all log records correlated with a given trace_id. Results are scoped to the authenticated workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListTraceLogs(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("page-token", "", "")
@@ -574,11 +622,13 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + logsCmd.CommandPath() + " query --example\n"
+		examples += "  " + parent.CommandPath() + " query --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "query",
@@ -586,9 +636,11 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Run an OQL log query using the pipeline grammar `fetch logs | filter <expr> | sort timestamp desc | limit N`. The query is compiled onto the same engine as SearchLogs; timestamp desc is the only supported sort.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `limit` (integer)\n- `oql` (string, required)\n- `page_token` (string)\n- `to` (string, required)\n\nRequired fields: `from`, `oql`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"oql\": \"oql\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -625,21 +677,23 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiQueryLogs(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -686,11 +740,13 @@ func registerlogsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := logsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + logsCmd.CommandPath() + " search --example\n"
+		examples += "  " + parent.CommandPath() + " search --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "search",
@@ -698,9 +754,11 @@ func registerlogsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Query log records with filters, free-text search, and keyset pagination. Results are ordered timestamp desc (the only supported sort, mirroring traces).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `limit` (integer)\n- `page_token` (string)\n- `query` (string)\n- `sort` (array)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"limit\": 0,\n  \"page_token\": \"page_token\",\n  \"query\": \"query\",\n  \"sort\": [\n    {\n      \"field\": \"field\",\n      \"order\": \"order\"\n    }\n  ],\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -755,21 +813,23 @@ func registerlogsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiSearchLogs(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		logsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

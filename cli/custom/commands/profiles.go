@@ -5,9 +5,10 @@ import (
 	"sort"
 	"strings"
 
+	"orq/cli/custom/auth"
+
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // NewListProfilesCommand lists saved credentials. The generated Bartolo
@@ -43,21 +44,41 @@ func NewListProfilesCommand() *cobra.Command {
 
 func listAuthProfiles() []map[string]any {
 	profiles := bartolocli.Creds.GetStringMap("profiles")
-	if len(profiles) == 0 {
-		return nil
-	}
 
+	// A session login has no bartolo profile at all — its gateway key and
+	// workspace live in our own state (see auth.MigrateProfileState) — so the
+	// listing is the union, or logging in would leave `auth list-profiles`
+	// reporting nothing configured.
+	seen := map[string]bool{}
 	names := make([]string, 0, len(profiles))
 	for name := range profiles {
 		names = append(names, name)
+		seen[name] = true
+	}
+	for _, name := range auth.StateProfiles() {
+		if !seen[name] {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
 	}
 	sort.Strings(names)
 
 	rows := make([]map[string]any, 0, len(names))
 	for _, name := range names {
-		profile, ok := profiles[name].(map[string]interface{})
-		if !ok {
-			continue
+		stored, _ := profiles[name].(map[string]interface{})
+		// Copy before decorating: profiles is bartolo's live in-memory
+		// credentials map, and merging state into it would mutate what every
+		// later reader in this process sees.
+		profile := make(map[string]interface{}, len(stored)+len(auth.StateFields))
+		for field, value := range stored {
+			profile[field] = value
+		}
+		for field, value := range auth.StateOf(name) {
+			if value != "" {
+				profile[field] = value
+			}
 		}
 
 		typeName, _ := profile["type"].(string)
@@ -104,13 +125,14 @@ func profileTableColumns(rows []map[string]any) []string {
 }
 
 func renderProfileTable(payload map[string]any, columns []string) error {
-	// Bartolo's table renderer is intentionally tied to JSON as its interactive
-	// mode. The CLI's normal default is TOON, so temporarily select the table
-	// mode for this one human-only render. Machine-format paths never enter
-	// here, and the viper value is restored before the command returns.
-	previous := viper.GetString("output-format")
-	viper.Set("output-format", "json")
-	defer viper.Set("output-format", previous)
+	// Tables render only when the format is `table`, and this CLI serializes to
+	// TOON, so ask for one explicitly for this human-only render. Machine-format
+	// paths never enter here, and restore puts the command's own format back.
+	restore, err := bartolocli.SetOutputFormat("table")
+	if err != nil {
+		return err
+	}
+	defer restore()
 	return bartolocli.FormatList(payload, columns...)
 }
 

@@ -257,12 +257,12 @@ func SavedAgentKey() (key, workspace string) {
 	if bartolocli.Creds == nil {
 		return "", ""
 	}
-	profile := bartolocli.GetProfile()
-	workspace = strings.TrimSpace(profile["workspace"])
-	if key = strings.TrimSpace(profile["gateway_key"]); key != "" {
+	profile := ActiveProfile()
+	workspace = StateValueOf(profile, "workspace")
+	if key = StateValueOf(profile, "gateway_key"); key != "" {
 		return key, workspace
 	}
-	return strings.TrimSpace(profile["api_key"]), workspace
+	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + profile + ".api_key")), workspace
 }
 
 // EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts

@@ -801,7 +801,7 @@ func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 	origStdout, origFormatter := bartolocli.Stdout, bartolocli.Formatter
 	t.Cleanup(func() { bartolocli.Stdout, bartolocli.Formatter = origStdout, origFormatter })
 	bartolocli.Stdout = &out
-	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 	viper.Set("output-format", "json")
 	t.Cleanup(func() { viper.Set("output-format", "") })
 

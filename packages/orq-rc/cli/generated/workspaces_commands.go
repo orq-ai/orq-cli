@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,6 +19,8 @@ func registerworkspacesCommands(root *cobra.Command) {
 	root.AddCommand(workspacesCmd)
 
 	func() {
+		parent := workspacesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -29,20 +31,24 @@ func registerworkspacesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a workspace by its key. A user session must be a member and does not need a workspace-scoped token. A management key may only retrieve the workspace bound to the key."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspacesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -53,6 +59,8 @@ func registerworkspacesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspacesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -63,20 +71,24 @@ func registerworkspacesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns workspaces the caller can access. A user session lists every membership. A management key lists only the workspace bound to the key. Project keys are rejected."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiWorkspaceList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspacesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "")
@@ -91,11 +103,13 @@ func registerworkspacesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := workspacesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + workspacesCmd.CommandPath() + " update key --example\n"
+		examples += "  " + parent.CommandPath() + " update key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update key",
@@ -103,9 +117,11 @@ func registerworkspacesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"archived\": false,\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"logo_url\": \"logo_url\",\n  \"metadata\": {},\n  \"settings\": {\n    \"model_garden_settings\": {},\n    \"plugins\": {},\n    \"same_project_entities_enabled\": false\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -148,21 +164,23 @@ func registerworkspacesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiWorkspaceUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		workspacesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

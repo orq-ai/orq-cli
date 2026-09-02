@@ -2,12 +2,36 @@ package commands
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
+
+	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
 )
+
+func TestListAuthProfilesUnionsStateWithoutMutatingCredentials(t *testing.T) {
+	credsHarness(t)
+	bartolocli.Creds.Set("profiles.api.type", "apikey")
+	bartolocli.Creds.Set("profiles.api.api_key", "sk-orq-API-abcdefghijkl")
+	auth.SetStateValue("session", "gateway_key", "sk-orq-GATEWAY-abcdefghijkl")
+	auth.SetStateValue("session", "workspace", "acme")
+
+	before := bartolocli.Creds.GetStringMap("profiles")
+	rows := listAuthProfiles()
+	if got := []string{rows[0]["name"].(string), rows[1]["name"].(string)}; !reflect.DeepEqual(got, []string{"api", "session"}) {
+		t.Fatalf("profile names = %v, want api and session", got)
+	}
+	if rows[1]["workspace"] != "acme" || rows[1]["gateway_key"] == nil {
+		t.Errorf("session-only state missing from row: %v", rows[1])
+	}
+	after := bartolocli.Creds.GetStringMap("profiles")
+	if !reflect.DeepEqual(after, before) {
+		t.Errorf("credentials profiles mutated: before %v, after %v", before, after)
+	}
+}
 
 func TestProfileTableColumnsUseStableHumanOrder(t *testing.T) {
 	rows := []map[string]any{
@@ -41,7 +65,7 @@ func TestRenderProfileTableUsesBartoloTableFormatter(t *testing.T) {
 
 	viper.Set("output-format", "toon")
 	bartolocli.Root = nil
-	bartolocli.Formatter = bartolocli.NewDefaultFormatter(true)
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(true, true)
 	var out bytes.Buffer
 	bartolocli.Stdout = &out
 

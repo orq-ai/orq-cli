@@ -33,7 +33,10 @@ both schemas. Only the generated tree and `cmd/orq` differ between them.
 `openapi.yaml` and is never edited by hand — `bartolo generate` wipes it, and it
 also **rewrites `.bartolo.json` from its own struct**, so a field added to that
 file is silently dropped on the next regen (this is why the CLI's own version
-lives in `VERSION`). `cli/custom/` is ours and bartolo leaves it alone.
+lives in `VERSION`). `bartolo_version` in `.bartolo.json` records the last
+regeneration, not a pin: `go.mod` is the source of truth, CI fails when the two
+modules disagree, and the release workflow installs the version resolved from
+`go.mod`. `cli/custom/` is ours and bartolo leaves it alone.
 
 **How a binary is assembled.** `cmd/orq/main.go` (and its rc twin) pass a version,
 an API version and a `registerGenerated` callback into `custom.Run`
@@ -64,6 +67,23 @@ device login, the `~/.orq/sessions` profile store, self-hosted URL resolution),
 `cli/custom/launch` (runs coding agents — one file per agent — with orq wired in
 as their gateway), `cli/custom/skills` (agent skills embedded with `go:embed`,
 installed into each agent's config dir).
+
+**Who owns what in `~/.orq/credentials.json`.** `profiles.<name>` is bartolo's:
+a profile that exists but holds no `api_key` fails every request rather than
+falling back to `ORQ_API_KEY`, so this CLI writes one only for a real API key.
+Everything else it tracks per profile — the minted gateway key, its id and
+expiry, the workspace it was minted for, and a session-bound server — lives
+under the `state` key of the same file, read and written through
+`cli/custom/auth/state.go`. `auth.MigrateProfileState` moves any older layout
+across on the next command, so never add a field of ours to a profile: the
+closed list this CLI may write there is `api_key`, `type`, and `server`. An
+API-key profile keeps its own `server`, because bartolo resolves that one
+itself — state only carries the server of a profile that has no key.
+`state.go` relies on bartolo's unexported `profile-selected` field in
+`config.json` when repairing a dangling selection. That repair rewrites
+`config.json` wholesale and must preserve `profile-decided`, or bartolo
+re-adopts a default profile on the next run; check both names when bumping the
+generator.
 
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,

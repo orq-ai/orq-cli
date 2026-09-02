@@ -2,9 +2,9 @@
   "app_name": "orq",
   "app_version": "4.15.0-rc.15",
   "module_path": "orq-rc",
-  "bartolo_version": "0.6.0",
+  "bartolo_version": "0.9.0",
   "env_prefix": "ORQ",
-  "default_output_format": "toon",
+  "serialization_format": "toon",
   "api_key_env_var": "ORQ_API_KEY",
   "last_spec_path": "openapi.yaml"
 }

@@ -79,7 +79,12 @@ jobs:
 
       - name: Install bartolo
         run: |
-          go install "github.com/orq-ai/bartolo@v0.6.0"
+          set -euo pipefail
+          # go.mod is the single pin: the generator that runs here is the one
+          # the module being generated compiles against, by construction.
+          version="$(cd "${MODULE_DIR:-.}" && go list -m -f '{{.Version}}' github.com/orq-ai/bartolo)"
+          echo "generating with bartolo $version"
+          go install "github.com/orq-ai/bartolo@$version"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Verify version

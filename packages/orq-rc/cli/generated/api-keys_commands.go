@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registerapiKeysCommands(root *cobra.Command) {
 	root.AddCommand(apiKeysCmd)
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + apiKeysCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `labels` (object)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"PERMISSION_MODE_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -94,21 +98,23 @@ func registerapiKeysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiApiKeyCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -179,6 +185,8 @@ func registerapiKeysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -190,23 +198,26 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiApiKeyDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -218,6 +229,8 @@ func registerapiKeysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -228,22 +241,26 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves the metadata for an existing API key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, `project_scope`, and lifecycle fields."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiApiKeyGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
-		cmd.Flags().String("include-budget", "", "When true, embed the api-key-scoped budget (config and limits only,\n no live usage) on the returned record.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed the api-key-scoped budget (config and limits only,\n no live usage) on the returned record.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -254,6 +271,8 @@ func registerapiKeysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -264,30 +283,37 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns API keys visible to the current workspace as a JSON array. Raw tokens are never included; the `token` field contains a masked display value."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiApiKeyList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `api_key_id` of the last\n item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `api_key_id` of the\n first item from the previous page.")
 		cmd.Flags().String("project-id", "", "Optional filter: only return keys belonging to this project. When\n omitted, returns workspace-scoped and any single-project keys.")
-		cmd.Flags().String("status", "", "Optional filter: only return keys with this status.")
+		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: API_KEY_STATUS_UNSPECIFIED, API_KEY_STATUS_ACTIVE, API_KEY_STATUS_DISABLED, API_KEY_STATUS_REVOKED)")
+		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
+		})
 		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the api-key\n name. Empty means no name filter.")
 		cmd.Flags().String("owner-type", "", "Optional filter: only return keys whose `owner.kind` matches\n one of the requested types. Combines the user / service-account\n oneof cases into a single repeated enum so the wire stays flat\n and multi-select filters travel as a single field. Empty means\n no owner-type filter.")
 		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one\n of the listed presets. Empty means no permission-mode filter.")
-		cmd.Flags().String("include-budget", "", "When true, embed each key's api-key-scoped budget (config and limits\n only, no live usage) on the returned records. Adds one budget lookup\n for the page; omit to skip it.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed each key's api-key-scoped budget (config and limits\n only, no live usage) on the returned records. Adds one budget lookup\n for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -298,6 +324,8 @@ func registerapiKeysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
@@ -308,20 +336,24 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the capability catalog: the set of permission domains that can be granted to an API key. Each entry includes the domain id, display name, group, allowed project scopes, and the read / write verb sets resolved at authorize() time. Drives the permissions UI in the dashboard."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiApiKeyListCapabilities(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -332,11 +364,13 @@ func registerapiKeysCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := apiKeysCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + apiKeysCmd.CommandPath() + " update api-key-id --example\n"
+		examples += "  " + parent.CommandPath() + " update api-key-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update api-key-id",
@@ -344,9 +378,11 @@ func registerapiKeysCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"PERMISSION_MODE_UNSPECIFIED\",\n  \"status\": \"API_KEY_STATUS_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -413,21 +449,23 @@ func registerapiKeysCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiApiKeyUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		apiKeysCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

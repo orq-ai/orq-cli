@@ -22,6 +22,11 @@ import (
 // `Authorization` bearer flow (see apikey.InitBearer in the generated client).
 var apiKeyEnvVars = []string{"ORQ_API_KEY", "ORQ_TOKEN", "ORQ_AUTHORIZATION"}
 
+var (
+	setOutputFormat  = bartolocli.SetOutputFormat
+	stdoutIsTerminal = commands.StdoutIsTerminal
+)
+
 // helpFooter is appended to the root help output (clig.dev: help should say
 // where the docs live and where to report problems).
 const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-ai/orq-cli/issues"
@@ -30,18 +35,23 @@ const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-
 // session yet (creating one, or diagnosing why it is missing), so the
 // unknown-profile guard skips them.
 var profileExemptCommands = map[string]bool{
-	"login":         true,
-	"logout":        true,
-	"setup":         true,
-	"add-profile":   true,
-	"list-profiles": true, // listing profiles is how you diagnose an unknown one
-	"doctor":        true,
-	"update":        true, // updating must work without a session; it touches no orq API
-	"orqi":          true, // installs and launches orqi; touches no orq API
-	"version":       true, // reports build info only; never calls the API
-	"help":          true,
-	"completion":    true,
-	"man-pages":     true,
+	"auth login":           true,
+	"auth logout":          true,
+	"setup":                true,
+	"auth add-profile":     true,
+	"auth list-profiles":   true, // listing profiles is how you diagnose an unknown one
+	"auth profile add":     true,
+	"auth profile list":    true,
+	"auth profile current": true,
+	"auth profile use":     true,
+	"auth profile clear":   true,
+	"doctor":               true,
+	"update":               true, // updating must work without a session; it touches no orq API
+	"orqi":                 true, // installs and launches orqi; touches no orq API
+	"version":              true, // reports build info only; never calls the API
+	"help":                 true,
+	"completion":           true,
+	"man-pages":            true,
 }
 
 // interactiveWizardCommands are bartolo-owned commands whose prompts run
@@ -91,6 +101,27 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-input", "", "Never prompt; fail instead of asking questions", false)
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
+	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
+	// as an alias because it is the machine contract this CLI shipped and
+	// documented; applyJSONAlias below turns it into --output-format json.
+	bartolocli.AddGlobalFlag("json", "", "Alias for --output-format json", false)
+}
+
+// applyJSONAlias makes --json mean `-o json` unless the user also passed an
+// explicit --output-format, which wins as the more specific request. It goes
+// into both stores: bartolo resolves its process-local format in its own
+// PersistentPreRunE before this hook, while this repo's custom renderers read
+// viper directly.
+func applyJSONAlias(cmd *cobra.Command) error {
+	if !viper.GetBool("json") {
+		return nil
+	}
+	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
+		return nil
+	}
+	viper.Set("output-format", "json")
+	_, err := setOutputFormat("json")
+	return err
 }
 
 // annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
@@ -128,8 +159,16 @@ func installSessionPreRun() {
 				return err
 			}
 		}
+		// Migration reloads the credentials handle, so it must finish before
+		// repairAuthProfileType layers an in-memory compatibility fix onto it.
+		if err := auth.MigrateProfileState(viper.GetString("config-directory")); err != nil {
+			return fmt.Errorf("could not migrate credentials.json: %w", err)
+		}
 		repairAuthProfileType()
 		applyNoColor()
+		if err := applyJSONAlias(cmd); err != nil {
+			return err
+		}
 		// Snapshot whether the USER configured an API key before this PreRun
 		// injects the session token into ORQ_API_KEY below - commands that
 		// read the env afterwards would see our own injection and cry wolf
@@ -159,10 +198,10 @@ func installSessionPreRun() {
 			return nil
 		}
 		// The session's host is the last resort, below every explicit source.
-		// TODO(ENG-2902, orq-ai/bartolo#22): once a profile can carry its own server and
-		// the regenerated clients read it (a per-profile resolver, proposed in
-		// that PR and absent from the pinned bartolo), this bridge and
-		// mirrorServerToViper both go away — the profile becomes the one store.
+		// A profile carries its own server since bartolo 0.8, but a session
+		// login has no profile to carry one (auth.MigrateProfileState), so this
+		// bridge and mirrorServerToViper stay until the session store and the
+		// profile store are one thing.
 		if auth.Server() == "" && session.APIBaseURL != "" {
 			auth.SetServer(session.APIBaseURL, "session")
 			mirrorServerToViper()
@@ -244,8 +283,10 @@ func persistedServer() string {
 // stray ORQ_API_KEY in the shell otherwise sends the wrong credentials to the
 // host the named profile resolved — with no message at all. Promoting the
 // profile's own key into the env var that handler reads is what makes the flag
-// win; the structural fix is for bartolo to rank an explicit flag above the
-// environment, which would delete this (TODO(ENG-2902, orq-ai/bartolo#22)).
+// win. bartolo ranks the profile above the environment itself since 0.8, so
+// this is now belt and braces for that — and the part that is still ours: it
+// warns about the shadowed key, and it exports the winning one for the child
+// processes `orq launch` starts.
 //
 // Only the explicit flag counts. ORQ_PROFILE against ORQ_API_KEY is env versus
 // env, with no statement of intent to break the tie.
@@ -288,15 +329,18 @@ func mirrorServerToViper() {
 // convention (https://no-color.org). Bartolo decides color support in Init(),
 // before flags are parsed, so a flag cannot influence that decision upstream;
 // here we swap the writers for ANSI-stripping ones and rebuild the formatter
-// without a TTY. The root-cause fix (honoring NO_COLOR/TERM in bartolo's
-// color gate) is tracked in the sibling bartolo ticket.
+// without colour while preserving whether stdout is a terminal. The root-cause
+// fix (honoring NO_COLOR/TERM in bartolo's color gate) is tracked in the sibling
+// bartolo ticket.
 func applyNoColor() {
 	if !viper.GetBool("no-color") && os.Getenv("NO_COLOR") == "" {
 		return
 	}
 	bartolocli.Stdout = colorable.NewNonColorable(os.Stdout)
 	bartolocli.Stderr = colorable.NewNonColorable(os.Stderr)
-	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false)
+	// The first argument controls colour; the second controls terminal-only
+	// table rendering. NO_COLOR must change only the former.
+	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, stdoutIsTerminal())
 }
 
 // rejectUnknownProfile errors when the user explicitly selected a profile that
@@ -305,7 +349,7 @@ func applyNoColor() {
 // context — the worst kind of success. Commands that create or diagnose
 // profiles are exempt.
 func rejectUnknownProfile(cmd *cobra.Command) error {
-	if profileExemptCommands[cmd.Name()] {
+	if profileExemptCommands[commandPath(cmd)] {
 		return nil
 	}
 	explicit := os.Getenv("ORQ_PROFILE") != ""

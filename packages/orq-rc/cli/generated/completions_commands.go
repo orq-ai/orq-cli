@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registercompletionsCommands(root *cobra.Command) {
 	root.AddCommand(completionsCmd)
 
 	func() {
+		parent := completionsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + completionsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registercompletionsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("For sending requests to legacy completion models\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cache` (object)\n- `echo` (boolean | null)\n- `fallbacks` (array)\n- `frequency_penalty` (number | null)\n- `load_balancer` (oneOf)\n- `max_tokens` (integer | null)\n- `model` (string, required)\n- `n` (integer | null)\n- ... and 14 more fields\n\nRequired fields: `model`, `prompt`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"echo\": false,\n  \"frequency_penalty\": 0,\n  \"max_tokens\": 16,\n  \"model\": \"model\",\n  \"n\": 1,\n  \"orq\": {\n    \"cache\": {\n      \"ttl\": 3600,\n      \"type\": \"exact_match\"\n    },\n    \"fallbacks\": [\n      {\n        \"model\": \"openai/gpt-5\"\n      },\n      {\n        \"model\": \"anthropic/claude-4-opus\"\n      }\n    ],\n    \"identity\": {\n      \"display_name\": \"Jane Doe\",\n      \"email\": \"jane.doe@example.com\",\n      \"id\": \"identity_01ARZ3NDEKTSV4RRFFQ69G5FAV\"\n    },\n    \"inputs\": {\n      \"customer_name\": \"John Smith\",\n      \"issue_type\": \"billing\"\n    },\n    \"knowledge_bases\": [\n      {\n        \"knowledge_id\": \"knowledge_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n        \"top_k\": 5\n      }\n    ],\n    \"retry\": {\n      \"count\": 3,\n      \"on_codes\": [\n        429,\n        500,\n        502\n      ]\n    },\n    \"security\": {\n      \"mask\": [\n        \"input\",\n        \"system\"\n      ]\n    },\n    \"thread\": {\n      \"id\": \"thread_01ARZ3NDEKTSV4RRFFQ69G5FAV\",\n      \"tags\": [\n        \"customer-support\"\n      ]\n    },\n    \"timeout\": {\n      \"call_timeout\": 30000\n    }\n  },\n  \"presence_penalty\": 0,\n  \"prompt\": \"prompt\",\n  \"stream\": false,\n  \"temperature\": 1,\n  \"top_p\": 1\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -172,21 +176,23 @@ func registercompletionsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateCompletion(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		completionsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

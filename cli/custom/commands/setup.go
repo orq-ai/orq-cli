@@ -736,7 +736,7 @@ func saveAPIKeyProfile(key, workspace string) error {
 
 func clearGatewayKeyFields(profile string) {
 	for _, field := range []string{"gateway_key", "gateway_key_id", "gateway_key_expires_at"} {
-		bartolocli.Creds.Set("profiles."+profile+"."+field, "")
+		auth.SetStateValue(profile, field, "")
 	}
 }
 
@@ -752,17 +752,25 @@ func clearGatewayKeyFields(profile string) {
 // stale key for the workspace the user just left.
 func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace string) error {
 	profile := auth.ActiveProfile()
+	// Clear a key written before the split: api_key is the field
+	// apiKeyConfigured accepts, so leaving it there keeps every command
+	// authenticating with a stale key for the workspace the user just left.
 	bartolocli.Creds.Set("profiles."+profile+".api_key", "")
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key_id", keyID)
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
-	return writeGatewayKeyProfile(profile, key, workspace)
+	auth.SetStateValue(profile, "gateway_key_id", keyID)
+	auth.SetStateValue(profile, "gateway_key_expires_at", expiresAt.UTC().Format(time.RFC3339))
+	if err := writeGatewayKeyProfile(profile, key, workspace); err != nil {
+		return err
+	}
+	// The profile has no API key now, which bartolo fails every request on. Its
+	// state entry proves it is ours, so migration can see and remove the husk.
+	return auth.MigrateProfileState(viper.GetString("config-directory"))
 }
 
 // gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry is
 // recorded — a key minted before expiry existed, or one the user brought — and
 // callers must treat that as "unknown", never as "expired".
 func gatewayKeyExpiry() (time.Time, bool) {
-	raw := strings.TrimSpace(bartolocli.GetProfile()["gateway_key_expires_at"])
+	raw := auth.StateValue("gateway_key_expires_at")
 	if raw == "" {
 		return time.Time{}, false
 	}
@@ -790,12 +798,18 @@ func gatewayKeyDueForRenewal(now time.Time) bool {
 func clearAPIKeyProfile() (bool, error) {
 	profile := auth.ActiveProfile()
 	held := strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" ||
-		strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".gateway_key")) != ""
+		auth.StateValueOf(profile, "gateway_key") != ""
 	if !held {
 		return false, nil
 	}
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key", "")
-	return true, writeAPIKeyProfile(profile, "", "")
+	auth.SetStateValue(profile, "gateway_key", "")
+	if err := writeAPIKeyProfile(profile, "", ""); err != nil {
+		return true, err
+	}
+	// The profile is now keyless, which bartolo treats as a hard failure for
+	// every later command. Its state entry proves it is ours, so migration can
+	// see and remove the husk now.
+	return true, auth.MigrateProfileState(viper.GetString("config-directory"))
 }
 
 func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
@@ -805,7 +819,7 @@ func savedGatewayKeyID() string {
 	if bartolocli.Creds == nil {
 		return ""
 	}
-	return strings.TrimSpace(bartolocli.GetProfile()["gateway_key_id"])
+	return auth.StateValue("gateway_key_id")
 }
 
 // recordAgentWiring notes which workspace an agent was wired against. Stored at
@@ -888,14 +902,21 @@ func writeAPIKeyProfile(profile, key, workspace string) error {
 	return writeCredsProfile(profile, workspace)
 }
 
+// The minted key never becomes a bartolo profile: it is gateway-scoped, and a
+// profile entry that cannot authenticate the platform API is exactly what
+// bartolo now refuses to fall back from (see auth.MigrateProfileState).
 func writeGatewayKeyProfile(profile, key, workspace string) error {
-	bartolocli.Creds.Set("profiles."+profile+".gateway_key", key)
-	return writeCredsProfile(profile, workspace)
+	auth.SetStateValue(profile, "gateway_key", key)
+	auth.SetStateValue(profile, "workspace", workspace)
+	if server := auth.Server(); server != "" {
+		auth.SetStateValue(profile, "server", server)
+	}
+	return saveCreds()
 }
 
 func writeCredsProfile(profile, workspace string) error {
 	bartolocli.Creds.Set("profiles."+profile+".type", BartoloAuthType())
-	bartolocli.Creds.Set("profiles."+profile+".workspace", workspace)
+	auth.SetStateValue(profile, "workspace", workspace)
 	// An explicit host travels with the credentials it was used against, so a
 	// later `orq --profile <name> ...` needs no flag.
 	if server := auth.Server(); server != "" {
@@ -911,17 +932,20 @@ func writeCredsProfile(profile, workspace string) error {
 // and forgotten in the other.
 var shellEnvFileNames = []string{"env", "env.fish"}
 
+var writeSecretFile = auth.WriteSecretFile
+
 // clearShellEnvFile removes the exported key from the file `orq setup` wrote,
 // leaving the file itself in place: a shell profile may carry `. ~/.orq/env`,
 // and deleting the target would make every new shell report a missing file.
 // Both spellings are cleared — a user who changed shells since setup has the
 // other one still sitting there.
-func clearShellEnvFile() []string {
+func clearShellEnvFile() ([]string, error) {
 	dir := viper.GetString("config-directory")
 	if dir == "" {
-		return nil
+		return nil, nil
 	}
 	var cleared []string
+	var clearErrors []error
 	for _, name := range shellEnvFileNames {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
@@ -929,28 +953,13 @@ func clearShellEnvFile() []string {
 			continue
 		}
 		body := "# Cleared by 'orq auth logout'. Run 'orq setup' to create a new key.\n"
-		if writeSecretFile(path, []byte(body)) == nil {
-			cleared = append(cleared, path)
+		if err := writeSecretFile(path, []byte(body)); err != nil {
+			clearErrors = append(clearErrors, fmt.Errorf("clear %s: %w", path, err))
+			continue
 		}
+		cleared = append(cleared, path)
 	}
-	return cleared
-}
-
-// writeSecretFile replaces the contents of a secret-bearing file only after
-// tightening its held descriptor. The permission argument to os.WriteFile is
-// ignored for an existing file, which would otherwise expose newly written
-// secret data until a later chmod.
-func writeSecretFile(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := f.Chmod(0o600); err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	return err
+	return cleared, errors.Join(clearErrors...)
 }
 
 // storedAPIKeyProfile reports whether the active profile holds a key that
@@ -1955,7 +1964,7 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	// Only the workspace field. writeCredsProfile also persists `server`, and a
 	// profile server outranks `orq server set`, so backfilling through it would
 	// pin the profile to this run's host without anyone asking for it.
-	bartolocli.Creds.Set("profiles."+auth.ActiveProfile()+".workspace", keyWS)
+	auth.SetStateValue(auth.ActiveProfile(), "workspace", keyWS)
 	if err := saveCreds(); err != nil {
 		// Not fatal: the key itself is fine, this only re-arms the local guard.
 		rep.warn("could not record the key's workspace: %v", err)

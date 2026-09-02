@@ -6,6 +6,10 @@
       "use": "orq",
       "flags": [
         {
+          "name": "columns",
+          "type": "string"
+        },
+        {
           "name": "jmespath",
           "shorthand": "j",
           "type": "string"
@@ -1105,7 +1109,7 @@
       "flags": [
         {
           "name": "include-budget",
-          "type": "string"
+          "type": "bool"
         }
       ]
     },
@@ -1119,7 +1123,7 @@
         },
         {
           "name": "include-budget",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "limit",
@@ -1215,6 +1219,7 @@
       "aliases": [
         "add"
       ],
+      "hidden": true,
       "flags": [
         {
           "name": "api-key-file",
@@ -1271,6 +1276,45 @@
           "name": "yes",
           "type": "bool"
         }
+      ]
+    },
+    {
+      "path": "orq auth profile",
+      "use": "profile",
+      "aliases": [
+        "profiles"
+      ]
+    },
+    {
+      "path": "orq auth profile add",
+      "use": "add [flags] \u003cname\u003e [\u003capi-key\u003e]",
+      "flags": [
+        {
+          "name": "api-key-file",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "orq auth profile clear",
+      "use": "clear"
+    },
+    {
+      "path": "orq auth profile current",
+      "use": "current"
+    },
+    {
+      "path": "orq auth profile list",
+      "use": "list",
+      "aliases": [
+        "ls"
+      ]
+    },
+    {
+      "path": "orq auth profile use",
+      "use": "use \u003cname\u003e",
+      "aliases": [
+        "switch"
       ]
     },
     {
@@ -1371,7 +1415,7 @@
         },
         {
           "name": "is-active",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "limit",
@@ -2096,7 +2140,7 @@
     },
     {
       "path": "orq default-format",
-      "use": "default-format [json|yaml|toon]"
+      "use": "default-format [json|yaml|toon|table]"
     },
     {
       "path": "orq deployments",
@@ -3135,7 +3179,7 @@
       "flags": [
         {
           "name": "enabled",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "ending-before",
@@ -3429,11 +3473,11 @@
         },
         {
           "name": "include-budget",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "include-metrics",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "limit",
@@ -3459,11 +3503,11 @@
       "flags": [
         {
           "name": "include-budget",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "include-metrics",
-          "type": "string"
+          "type": "bool"
         }
       ]
     },
@@ -7493,7 +7537,7 @@
       "flags": [
         {
           "name": "enabled",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "ending-before",
@@ -7920,7 +7964,7 @@
       "flags": [
         {
           "name": "enabled",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "ending-before",
@@ -9094,7 +9138,7 @@
         },
         {
           "name": "enabled",
-          "type": "string"
+          "type": "bool"
         },
         {
           "name": "event",

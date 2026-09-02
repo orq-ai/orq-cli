@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	root.AddCommand(smartRoutersCmd)
 
 	func() {
+		parent := smartRoutersCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + smartRoutersCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a Smart Router in the current workspace from 2 to 50 distinct eligible models. The key must be unique in the workspace and becomes part of the model reference used in AI Gateway requests.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `key` (string, required)\n- `models` (array, required)\n- `profile` (string, required)\n\nRequired fields: `key`, `models`, `profile`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"key\": \"key\",\n  \"models\": [\n    \"models\"\n  ],\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -64,21 +68,23 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiSmartRouterCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		smartRoutersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -119,6 +125,8 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := smartRoutersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -130,23 +138,26 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiSmartRouterDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		smartRoutersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -158,6 +169,8 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := smartRoutersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -168,20 +181,24 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a Smart Router by ID from the current workspace, including its model reference, model pool, routing profile, and enabled state."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiSmartRouterGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		smartRoutersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -192,6 +209,8 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := smartRoutersCmd
+
 		params := viper.New()
 
 		var examples string
@@ -202,27 +221,31 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Lists Smart Routers in the current workspace, ordered newest first. Use cursor pagination and optional key, profile, or enabled-state filters to narrow the results.\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--param-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiSmartRouterList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		smartRoutersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "")
 		cmd.Flags().String("ending-before", "", "")
 		cmd.Flags().String("search", "", "")
 		cmd.Flags().String("param-profile", "", " (parameter \"profile\", renamed to keep the reserved --profile flag available)")
-		cmd.Flags().String("enabled", "", "")
+		cmd.Flags().Bool("enabled", false, "")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -233,11 +256,13 @@ func registersmartRoutersCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := smartRoutersCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + smartRoutersCmd.CommandPath() + " update smart-router-id --example\n"
+		examples += "  " + parent.CommandPath() + " update smart-router-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update smart-router-id",
@@ -245,9 +270,11 @@ func registersmartRoutersCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates the model pool, routing profile, or both. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"profile\": \"SMART_ROUTER_PROFILE_UNSPECIFIED\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -272,21 +299,23 @@ func registersmartRoutersCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiSmartRouterUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		smartRoutersCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

@@ -123,7 +123,10 @@ func NewLogoutCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				envCleared := clearShellEnvFile()
+				envCleared, err := clearShellEnvFile()
+				if err != nil {
+					return err
+				}
 				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
@@ -205,7 +208,10 @@ func NewLogoutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			envCleared := clearShellEnvFile()
+			envCleared, err := clearShellEnvFile()
+			if err != nil {
+				return err
+			}
 			removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
 

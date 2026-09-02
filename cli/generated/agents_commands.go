@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registeragentsCommands(root *cobra.Command) {
 	root.AddCommand(agentsCmd)
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Create a new agent with the specified model, instructions, tools, and knowledge bases. Supports fallback models and configurable execution settings.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string, required)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 9 more fields\n\nRequired fields: `description`, `instructions`, `key`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"respect_tool\",\n    \"tools\": []\n  },\n  \"source\": \"internal\",\n  \"team_of_agents\": []\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -152,21 +156,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateAgentRequest(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -295,6 +301,8 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -306,23 +314,26 @@ func registeragentsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeleteAgent(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -334,6 +345,8 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -344,20 +357,24 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieve an agent response by task ID, including output, model info, token usage, and execution status."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiGetAgentResponse(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -368,11 +385,13 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " invoke key --example\n"
+		examples += "  " + parent.CommandPath() + " invoke key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "invoke key",
@@ -380,9 +399,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Invoke an agent to perform a task with input messages. Supports tool execution, knowledge retrieval, memory context, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `task_id` (string)\n- ... and 2 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -454,21 +475,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiInvokeAgent(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -550,6 +573,8 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -560,25 +585,32 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("List all agents in the workspace with full configuration details. Supports pagination and sorts agents newest first."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListAgents(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Float64("limit", 0.0, "A limit on the number of objects to be returned. Limit can range between 1 and 200. When not provided, returns all agents without pagination.")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
-		cmd.Flags().String("type", "", "Filter agents by type")
+		cmd.Flags().String("type", "", "Filter agents by type (one of: internal)")
+		_ = cmd.RegisterFlagCompletionFunc("type", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"internal"}, cobra.ShellCompDirectiveNoFileComp
+		})
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -589,6 +621,8 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -599,20 +633,24 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieve the complete agent manifest by key, including model assignments, tools, knowledge bases, memory stores, and execution parameters."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRetrieveAgentRequest(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -623,11 +661,13 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " run --example\n"
+		examples += "  " + parent.CommandPath() + " run --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "run",
@@ -635,9 +675,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Run an agent with inline configuration or existing agent reference. Supports A2A messages, memory context, tool execution, and model fallback.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 13 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -775,21 +817,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiRunAgent(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -937,11 +981,13 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " stream key --example\n"
+		examples += "  " + parent.CommandPath() + " stream key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "stream key",
@@ -949,9 +995,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Stream an existing agent execution in real-time via SSE, providing live message chunks, tool calls, and status updates until completion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `configuration` (object)\n- `contact` (object)\n- `engine` (string)\n- `identity` (object)\n- `memory` (object)\n- `message` (object, required)\n- `metadata` (object)\n- `stream_timeout_seconds` (number)\n- ... and 3 more fields\n\nRequired fields: `message`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -1029,21 +1077,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiStreamAgent(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1131,11 +1181,13 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " stream-run --example\n"
+		examples += "  " + parent.CommandPath() + " stream-run --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "stream-run",
@@ -1143,9 +1195,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Run an agent with streaming via SSE, combining inline configuration with real-time updates including messages, tool executions, and status.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `contact` (object)\n- `description` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `identity` (object)\n- `instructions` (string, required)\n- `key` (string, required)\n- `knowledge_bases` (array)\n- ... and 14 more fields\n\nRequired fields: `instructions`, `key`, `message`, `model`, `path`, `role`, `settings`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"instructions\": \"instructions\",\n  \"key\": \"key\",\n  \"knowledge_bases\": [],\n  \"memory_stores\": [],\n  \"message\": {\n    \"parts\": [\n      {\n        \"kind\": \"text\",\n        \"text\": \"text\"\n      }\n    ],\n    \"role\": \"user\"\n  },\n  \"model\": \"model\",\n  \"path\": \"Default Project\",\n  \"role\": \"role\",\n  \"settings\": {\n    \"max_cost\": 0,\n    \"max_execution_time\": 600,\n    \"max_iterations\": 100,\n    \"tool_approval_required\": \"none\",\n    \"tools\": []\n  },\n  \"team_of_agents\": []\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -1289,21 +1343,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiStreamRunAgent(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -1457,11 +1513,13 @@ func registeragentsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := agentsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + agentsCmd.CommandPath() + " update agent-key --example\n"
+		examples += "  " + parent.CommandPath() + " update agent-key --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
@@ -1469,9 +1527,11 @@ func registeragentsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"engine\": \"text\",\n  \"path\": \"Default Project\",\n  \"versionIncrement\": \"major\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -1602,21 +1662,23 @@ func registeragentsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateAgent(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		agentsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

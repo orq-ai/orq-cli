@@ -111,6 +111,43 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `-o table` renders a list command as a table, and it is the default
+  for a list at a terminal. Piped, redirected and explicitly formatted runs are
+  unchanged — they still serialize to TOON, so no script's output moves. Pin a
+  serialization with `orq default-format toon` to opt out; `orq default-format
+  table` restores tables.
+- **Added:** `--columns id,name` picks and orders the columns of a table.
+- **Added:** an `orq auth profile` command group — `add`, `list`, `current`,
+  `use`, `clear`. `auth add-profile` and `auth list-profiles` keep working.
+- **Changed:** `orq auth add-profile` is still supported and works when invoked
+  by name, but it is hidden from help output; use `orq auth profile add` to
+  discover the current spelling.
+- **Changed:** a credentials profile now outranks `ORQ_API_KEY` and `ORQ_SERVER`
+  rather than losing to them, and a profile named with `--profile` that has no
+  key is an error instead of a silent fall-through to whatever key is exported.
+  If you saved an API-key profile once and now export `ORQ_API_KEY` for a
+  different workspace, the saved profile wins and the exported key is ignored —
+  the calls go to the profile's workspace, silently. `--profile ""` turns
+  profiles off for a single call.
+- **Changed:** the gateway key `orq setup` mints, its id and expiry, and the
+  workspace it was minted for moved out of `profiles.<name>` in
+  `credentials.json` into a `state` section of the same file. Existing files are
+  migrated in place on the next command: the fields move, and a profile this
+  CLI wrote that is left holding no API key is deleted. A keyless profile with
+  none of those fields is someone else's and is left alone. If that profile was the selected one,
+  `profile-selected` is also removed from `~/.orq/config.json`. A profile now
+  exists only when it holds an API key, so a login that authenticates with a
+  session no longer writes one that authenticates nothing.
+  `orq auth list-profiles` output is unchanged. For now, trust that command
+  when listing profiles: `orq auth profile list` reads Bartolo's `profiles` map
+  alone and can omit a session-only login. A follow-up will make `--profile`
+  mean an API key and key sessions by server.
+- **Changed:** boolean query parameters are typed flags — `--include-budget`
+  instead of `--include-budget=true`. Passing `true`/`false` explicitly still
+  works (`--include-budget=false`).
+- **Fixed:** `--verbose` redacts secrets at every depth of the config dump, not
+  only at the top level.
+
 ## [5.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v5.3.0) — 2026-09-02
 
 - **Added:** `orq connect skills --local` installs the skill set into the current

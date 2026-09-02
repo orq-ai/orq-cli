@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registeralertsCommands(root *cobra.Command) {
 	root.AddCommand(alertsCmd)
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + alertsCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a threshold alert in a project. The alert's query is validated against the Reporting API metric catalogue and the evaluation schedule starts immediately when `enabled` is true. Plan limits apply to the number of alerts and the minimum evaluation interval.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf, required)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string, required)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `project_id` (string, required)\n- `query` (allOf, required)\n- ... and 1 more fields\n\nRequired fields: `condition`, `display_name`, `project_id`, `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"display_name\": \"display_name\",\n  \"project_id\": \"project_id\",\n  \"query\": {\n    \"metric\": \"metric\"\n  }\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -94,21 +98,23 @@ func registeralertsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiAlertCreate(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -179,6 +185,8 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -190,23 +198,26 @@ func registeralertsCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiAlertDelete(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -218,6 +229,8 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -228,20 +241,24 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves an alert by ID."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiAlertGet(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -252,6 +269,8 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -262,20 +281,24 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the alerts visible to the caller, newest first. Use `starting_after` or `ending_before` to page."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiAlertList(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `alert_id` of the last\n item from the previous page.")
@@ -291,6 +314,8 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -301,20 +326,24 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the evaluation events recorded while a trigger was open, newest first. Each event carries the observed value and, when available, exemplar traces that contributed to the breach."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiAlertListTriggerEvents(args[0], args[1], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `event_id` of the last\n item from the previous page.")
@@ -329,6 +358,8 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
@@ -339,20 +370,24 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Returns the trigger history of an alert, newest first. A trigger is one breach incident: it opens when the threshold is first crossed and resolves when the value recovers."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiAlertListTriggers(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (25).")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `trigger_id` of the last\n item from the previous page.")
@@ -367,11 +402,13 @@ func registeralertsCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := alertsCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + alertsCmd.CommandPath() + " update alert-id --example\n"
+		examples += "  " + parent.CommandPath() + " update alert-id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update alert-id",
@@ -379,9 +416,11 @@ func registeralertsCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates alert metadata, query, condition, notifiers, or enabled state. Query and condition changes restart the evaluation schedule; disabling stops it. `project_id` is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `condition` (allOf)\n- `description` (string)\n- `display` (allOf)\n- `display_name` (string)\n- `enabled` (boolean)\n- `notifier_ids` (array)\n- `query` (allOf)\n- `signal` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"condition\": {\n    \"comparator\": \"gt\",\n    \"delay\": \"30s\",\n    \"interval\": \"5m\",\n    \"threshold\": 0,\n    \"window\": \"5m\"\n  },\n  \"description\": \"description\",\n  \"display\": {\n    \"preview_range\": \"1h\",\n    \"visualization\": \"lines\"\n  },\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"notifier_ids\": [\n    \"notifier_ids\"\n  ],\n  \"query\": {\n    \"metric\": \"metric\"\n  },\n  \"signal\": \"signal\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -436,21 +475,23 @@ func registeralertsCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiAlertUpdate(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		alertsCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,

@@ -5,7 +5,7 @@ package generated
 
 import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/rs/zerolog/log"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,11 +19,13 @@ func registeridentitiesCommands(root *cobra.Command) {
 	root.AddCommand(identitiesCmd)
 
 	func() {
+		parent := identitiesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + identitiesCmd.CommandPath() + " create --example\n"
+		examples += "  " + parent.CommandPath() + " create --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "create",
@@ -31,9 +33,11 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Creates a new identity with a unique external_id. If an identity with the same external_id already exists, the operation will fail.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `external_id` (string, required)\n- `metadata` (object)\n- `tags` (array)\n\nRequired fields: `external_id`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"external_id\": \"external_id\"\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
@@ -76,21 +80,23 @@ func registeridentitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiCreateIdentity(params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		identitiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
@@ -143,6 +149,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := identitiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -154,23 +162,26 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if err := bartolocli.ConfirmDestructive(cmd, args); err != nil {
 					return err
 				}
 
 				_, decoded, err := OpenapiDeleteIdentity(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
 
 				return nil
+
 			},
 		}
-		identitiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddForceFlag(cmd)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -182,6 +193,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := identitiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -192,29 +205,36 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves a paginated list of identities in your workspace. Use pagination parameters to navigate through large identity lists efficiently."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiListIdentities(params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.FormatList(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		identitiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from\n the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from\n the previous page.")
 		cmd.Flags().String("search", "", "Case-insensitive search text matched against identity profile fields.")
 		cmd.Flags().String("filter-by-tags", "", "Return only identities that have at least one of these tags.")
-		cmd.Flags().String("include-metrics", "", "Include aggregate usage metrics on each returned identity.")
-		cmd.Flags().String("sort-by", "", "Field used to order the list.")
-		cmd.Flags().String("include-budget", "", "When true, embed each identity's identity-scoped budget (config and\n limits only, no live usage) on the returned records. Adds one budget\n lookup for the page; omit to skip it.")
+		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on each returned identity.")
+		cmd.Flags().String("sort-by", "", "Field used to order the list. (one of: IDENTITY_SORT_FIELD_UNSPECIFIED, IDENTITY_SORT_FIELD_DISPLAY_NAME, IDENTITY_SORT_FIELD_UPDATED)")
+		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"}, cobra.ShellCompDirectiveNoFileComp
+		})
+		cmd.Flags().Bool("include-budget", false, "When true, embed each identity's identity-scoped budget (config and\n limits only, no live usage) on the returned records. Adds one budget\n lookup for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -225,6 +245,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := identitiesCmd
+
 		params := viper.New()
 
 		var examples string
@@ -235,23 +257,27 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Retrieves detailed information about a specific identity using their identity ID or external ID from your system."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 
 				_, decoded, err := OpenapiRetrieveIdentity(args[0], params)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		identitiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 
-		cmd.Flags().String("include-metrics", "", "Include aggregate usage metrics on the returned identity.")
-		cmd.Flags().String("include-budget", "", "When true, embed the identity-scoped budget (config and limits only,\n no live usage) on the returned record.")
+		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on the returned identity.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed the identity-scoped budget (config and limits only,\n no live usage) on the returned record.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -262,11 +288,13 @@ func registeridentitiesCommands(root *cobra.Command) {
 	}()
 
 	func() {
+		parent := identitiesCmd
+
 		params := viper.New()
 
 		var examples string
 
-		examples += "  " + identitiesCmd.CommandPath() + " update id --example\n"
+		examples += "  " + parent.CommandPath() + " update id --example\n"
 
 		cmd := &cobra.Command{
 			Use:     "update id",
@@ -274,9 +302,11 @@ func registeridentitiesCommands(root *cobra.Command) {
 			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
-			Run: func(cmd *cobra.Command, args []string) {
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
 				if bartolocli.PrintBodyExample(params, "{\n  \"avatar_url\": \"avatar_url\",\n  \"display_name\": \"display_name\",\n  \"email\": \"email\",\n  \"metadata\": {},\n  \"tags\": [\n    \"tags\"\n  ]\n}") {
-					return
+					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
@@ -313,21 +343,23 @@ func registeridentitiesCommands(root *cobra.Command) {
 					},
 				)
 				if err != nil {
-					log.Fatal().Err(err).Msg("unable to get body")
+					return errors.Wrap(err, "unable to get body")
 				}
 
 				_, decoded, err := OpenapiUpdateIdentity(args[0], params, body)
 				if err != nil {
-					log.Fatal().Err(err).Msg("error calling operation")
+					return bartolocli.OperationError(err)
 				}
 
 				if err := bartolocli.Formatter.Format(decoded); err != nil {
-					log.Fatal().Err(err).Msg("formatting failed")
+					return errors.Wrap(err, "formatting failed")
 				}
+
+				return nil
 
 			},
 		}
-		identitiesCmd.AddCommand(cmd)
+		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
