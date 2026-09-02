@@ -97,21 +97,21 @@ func agentRegistry() []agentSpec {
 			// not profile-scoped in codex, and writeCodexProviderTOML owns the
 			// profile file outright and rewrites it wholesale, so an entry placed
 			// there would be destroyed on the next 'orq connect gateway'.
-			mcpConfig:  codexPath("config.toml"),
+			mcpConfig:  codexMCPPath(),
 			writeMCP:   writeCodexMCPTOML,
 			mcpPresent: tomlTablePresent("mcp_servers." + launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeTOMLTables(p, codexOwnedMCPTable) },
 		},
 		{
-			ID:    "opencode",
-			Label: "opencode",
-			// Global only: opencode and kilo reject {env:...} references in a project config.
-			detect:          detectAny(".config/opencode"),
+			ID:     "opencode",
+			Label:  "opencode",
+			detect: detectAny(".config/opencode"),
+			// Provider is global only: opencode and kilo reject {env:...} references in a project config.
 			providerConfig:  alwaysGlobalPath(".config/opencode/opencode.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			mcpConfig:       alwaysGlobalPath(".config/opencode/opencode.json"),
+			mcpConfig:       projectOrGlobalPath("opencode.json", ".config/opencode/opencode.json"),
 			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
 			mcpPresent:      jsonProviderPresentAt("mcp", launch.MCPServerName),
 			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcp", launch.MCPServerName) },
@@ -134,15 +134,15 @@ func agentRegistry() []agentSpec {
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 		},
 		{
-			ID:    "kilo",
-			Label: "Kilo Code",
-			// Global only — same env-reference restriction as opencode above.
-			detect:          detectAny(".config/kilo"),
+			ID:     "kilo",
+			Label:  "Kilo Code",
+			detect: detectAny(".config/kilo"),
+			// Provider is global only — same env-reference restriction as opencode above.
 			providerConfig:  alwaysGlobalPath(".config/kilo/kilo.json"),
 			writeProvider:   writeOpenCodeProviderJSON,
 			removeProvider:  removeOpenCodeProviders,
 			providerPresent: jsonProviderPresentAt("provider", launch.OpenCodeChatProvider),
-			mcpConfig:       alwaysGlobalPath(".config/kilo/kilo.json"),
+			mcpConfig:       projectOrGlobalPath("kilo.json", ".config/kilo/kilo.json"),
 			writeMCP:        writeMCPJSON("mcp", remoteMCPEntry),
 			// The shipped kilo binary reads kilo.jsonc as well as kilo.json; writes still go to .json.
 			// The remover has to follow the reader: an entry only kiloMCPPresent can see would
@@ -191,7 +191,8 @@ func alwaysGlobalPath(rel string) func(bool) (string, error) {
 }
 
 // projectOrGlobalPath resolves the project copy for global=false and the home copy for
-// global=true. Only claude and kimi have two scopes; everything else keeps alwaysGlobalPath.
+// global=true. claude, kimi, opencode and kilo have two MCP scopes; codex has its own
+// resolver (codexMCPPath) because its global side honours $CODEX_HOME.
 func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error) {
 	return func(global bool) (string, error) {
 		if !global {
@@ -246,6 +247,25 @@ func codexPath(rel string) func(bool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(home, ".codex", rel), nil
+	}
+}
+
+// codexMCPPath is codex's MCP config in either scope: the project
+// .codex/config.toml at cwd, or config.toml under $CODEX_HOME (~/.codex).
+// projectOrGlobalPath cannot express the env fallback and codexPath cannot
+// express the project side. Codex loads the project file only for a
+// repository its global config marks trusted; connect prints that line.
+func codexMCPPath() func(bool) (string, error) {
+	global := codexPath("config.toml")
+	return func(isGlobal bool) (string, error) {
+		if isGlobal {
+			return global(true)
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(cwd, ".codex", "config.toml"), nil
 	}
 }
 
@@ -1176,27 +1196,48 @@ func skillsCheck() (doctorCheck, bool) {
 	recorded := len(status.Links)
 	missing := status.Count(skills.LinkMissing)
 	foreign := status.Count(skills.LinkForeign)
+	// Three buckets, three remedies: a global link is put back by a bare
+	// connect, a local one by connect --local from this directory, and a
+	// local install elsewhere is only counted — the fix is to run doctor
+	// from there.
+	var missingGlobal, missingLocal, elsewhere int
+	for _, l := range status.Links {
+		switch {
+		case l.Place == skills.PlaceElsewhere:
+			elsewhere++
+		case l.State != skills.LinkMissing:
+		case l.Place == skills.PlaceGlobal:
+			missingGlobal++
+		default:
+			missingLocal++
+		}
+	}
 	check := doctorCheck{
 		ID: "skills",
 		Details: map[string]any{
-			"recorded": recorded,
-			"missing":  missing,
-			"foreign":  foreign,
-			"stale":    status.Stale,
+			"recorded":  recorded,
+			"missing":   missing,
+			"foreign":   foreign,
+			"elsewhere": elsewhere,
+			"stale":     status.Stale,
 		},
 	}
 	switch {
-	case missing == 0 && foreign == 0 && !status.Stale:
+	case missingGlobal == 0 && missingLocal == 0 && foreign == 0 && !status.Stale:
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("%d orq skills installed", recorded)
-	case missing > 0:
+	case missingGlobal > 0:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills' to install them",
-			missing, recorded, strings.Join(skillDirsIn(status, skills.LinkMissing), ", "))
+			missingGlobal, recorded, strings.Join(skillDirsIn(status, skills.LinkMissing, skills.PlaceGlobal), ", "))
+	case missingLocal > 0:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("%d of %d recorded orq skills are not installed in %s — run 'orq connect skills --local' from that directory",
+			missingLocal, recorded, strings.Join(skillDirsIn(status, skills.LinkMissing, skills.PlaceLocal), ", "))
 	case foreign > 0:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d of %d recorded orq skills are no longer ours — %s holds something orq did not put there, and orq will not update or delete it. Run 'orq disconnect skills' to stop tracking it",
-			foreign, recorded, strings.Join(skillDirsIn(status, skills.LinkForeign), ", "))
+			foreign, recorded, strings.Join(skillDirsIn(status, skills.LinkForeign, ""), ", "))
 	default:
 		check.Status = "warn"
 		check.Message = fmt.Sprintf("%d orq skills are from an older CLI version — run 'orq connect skills' to update them", recorded)
@@ -1205,13 +1246,13 @@ func skillsCheck() (doctorCheck, bool) {
 }
 
 // skillDirsIn names the directories holding links in the given state, sorted
-// and home-abbreviated for display.
-func skillDirsIn(status *skills.Status, state skills.LinkState) []string {
+// and home-abbreviated for display. An empty place means any place.
+func skillDirsIn(status *skills.Status, state skills.LinkState, place skills.Place) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, l := range status.Links {
 		dir := filepath.Dir(l.Path)
-		if l.State != state || seen[dir] {
+		if l.State != state || seen[dir] || (place != "" && l.Place != place) {
 			continue
 		}
 		seen[dir] = true

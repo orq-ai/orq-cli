@@ -89,14 +89,14 @@ func TestPrintTableGoldens(t *testing.T) {
 		},
 		{
 			name:    "columns grow past their headers",
-			headers: []string{"AGENT", "CAPABILITY", "LOCATION"},
+			headers: []string{"AGENT", "CAPABILITY", "SCOPE", "LOCATION"},
 			rows: []tableRow{
-				{marker: "✓", cells: []string{"opencode", "gateway", "~/.config/opencode/opencode.json"}},
-				{cells: []string{"", "skills", "~/.agents/skills"}},
+				{marker: "✓", cells: []string{"opencode", "gateway", "", "~/.config/opencode/opencode.json"}},
+				{cells: []string{"", "skills", "global", "~/.agents/skills"}},
 			},
-			want: "     AGENT     CAPABILITY  LOCATION\n" +
-				"  ✓  opencode  gateway     ~/.config/opencode/opencode.json\n" +
-				"     " + "        " + "  skills      ~/.agents/skills\n",
+			want: "     AGENT     CAPABILITY  SCOPE   LOCATION\n" +
+				"  ✓  opencode  gateway             ~/.config/opencode/opencode.json\n" +
+				"     " + "        " + "  skills      global  ~/.agents/skills\n",
 		},
 		{
 			// A row that is short of its headers must leave a blank column,

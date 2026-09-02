@@ -252,6 +252,33 @@ func TestSkillsCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("a missing local install points at connect --local, elsewhere is counted", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		project := t.TempDir()
+		other := t.TempDir()
+		t.Chdir(project)
+		newManifest(t, filepath.Join(project, ".claude", "skills"), 0, 2, 0)
+		m, err := skills.LoadManifest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.AddLink(skills.Link{Path: filepath.Join(other, ".claude", "skills", "orq-far"), Agent: "claude", Skill: "orq-far", Mode: skills.ModeSymlink})
+		if err := skills.SaveManifest(m); err != nil {
+			t.Fatal(err)
+		}
+		check, ok := skillsCheck()
+		if !ok || check.Status != "warn" {
+			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
+		}
+		if !strings.Contains(check.Message, "--local") {
+			t.Errorf("a missing local install must point at connect --local: %s", check.Message)
+		}
+		if check.Details["elsewhere"] != 1 {
+			t.Errorf("elsewhere = %v, want 1", check.Details["elsewhere"])
+		}
+	})
+
 	t.Run("an install from an older CLI is stale", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
