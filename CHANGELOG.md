@@ -114,6 +114,11 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `orq doctor` and `orq connect --status` now report the version of
+  the installed orq agent-skills bundle. Human output shows the abbreviated
+  source commit, while `doctor --json` exposes the full value as
+  `checks[id=skills].details.version`.
+
 ## [7.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.2.0) — 2026-09-07
 
 - **Added: `orq traces thread` renders a conversational trace span as readable text.**
