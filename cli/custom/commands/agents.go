@@ -1162,6 +1162,13 @@ func dropDanglingKimiDefault(content string) string {
 	return out.String()
 }
 
+func shortSkillsVersion(version string) string {
+	if len(version) > 7 {
+		return version[:7]
+	}
+	return version
+}
+
 // skillsCheck reports the states nothing else converges on its own: a
 // recorded link whose path is gone, one whose path something else has taken
 // over, an install left behind by a CLI update, and a manifest that cannot be
@@ -1220,6 +1227,7 @@ func skillsCheck() (doctorCheck, bool) {
 			"foreign":   foreign,
 			"elsewhere": elsewhere,
 			"stale":     status.Stale,
+			"version":   status.Version,
 		},
 	}
 	switch {
@@ -1248,6 +1256,9 @@ func skillsCheck() (doctorCheck, bool) {
 	}
 	if elsewhere > 0 {
 		check.Message += fmt.Sprintf(" (%d links in other directories are not checked from here)", elsewhere)
+	}
+	if status.Version != "" {
+		check.Message += fmt.Sprintf(" (version %s)", shortSkillsVersion(status.Version))
 	}
 	return check, true
 }

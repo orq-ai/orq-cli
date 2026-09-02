@@ -176,6 +176,7 @@ func TestMCPCheckWarnsUnwiredAgentAndOmitsPi(t *testing.T) {
 // hand stays deleted, because silently recreating it on the next `orq --help`
 // would fight the user. doctor is where that state gets named.
 func TestSkillsCheck(t *testing.T) {
+	const testSkillsVersion = "0123456789abcdef0123456789abcdef01234567"
 	// A present link is a real symlink into a real snapshot, because that is
 	// what ownership means. A bare directory at the path is what a user who
 	// took the path over leaves behind, and doctor has to tell the two apart.
@@ -186,10 +187,16 @@ func TestSkillsCheck(t *testing.T) {
 			t.Fatal(err)
 		}
 		gen := filepath.Join(orq, "snapshot", "gen-test")
+		if err := os.MkdirAll(gen, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(gen, "SOURCE.json"), []byte("{\"commit\":\""+testSkillsVersion+"\"}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint()}
+		m := &skills.Manifest{Version: 1, Fingerprint: skills.Fingerprint(), Generation: gen}
 		for i := 0; i < present; i++ {
 			name := fmt.Sprintf("orq-present-%d", i)
 			src := filepath.Join(gen, name)
@@ -233,6 +240,12 @@ func TestSkillsCheck(t *testing.T) {
 		check, ok := skillsCheck()
 		if !ok || check.Status != "pass" {
 			t.Fatalf("got ok=%v status=%q, want a pass", ok, check.Status)
+		}
+		if check.Details["version"] != testSkillsVersion {
+			t.Errorf("version = %v, want %s", check.Details["version"], testSkillsVersion)
+		}
+		if !strings.Contains(check.Message, "version "+testSkillsVersion[:7]) {
+			t.Errorf("human message does not include the short version: %q", check.Message)
 		}
 	})
 
@@ -299,6 +312,9 @@ func TestSkillsCheck(t *testing.T) {
 		}
 		if !strings.Contains(check.Message, "older CLI version") {
 			t.Errorf("message does not say the install is stale: %q", check.Message)
+		}
+		if !strings.Contains(check.Message, "version "+testSkillsVersion[:7]) {
+			t.Errorf("stale message does not include the installed version: %q", check.Message)
 		}
 	})
 
