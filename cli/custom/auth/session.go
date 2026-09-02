@@ -310,18 +310,22 @@ func ClearSession() error {
 }
 
 // SavedAgentKey returns the credential agent configs are wired with, and the
-// workspace it was minted for: the gateway key on the login session, else the
-// API key of the bartolo profile in force (a key the user brought, whose
-// workspace is unknowable). It lives here because launch needs it too and
-// launch cannot import commands.
+// workspace it was minted for. A bartolo profile in force is authoritative: its
+// key is returned with an unknowable workspace and the login session is ignored
+// completely. With no profile in force, the gateway key belongs to the login
+// session. It lives here because launch needs it too and launch cannot import
+// commands.
 func SavedAgentKey() (key, workspace string) {
-	if session, err := ReadSession(); err == nil && session != nil && session.GatewayKey != "" {
+	if bartolocli.ActiveProfileName() != "" {
+		if bartolocli.Creds == nil {
+			return "", ""
+		}
+		return strings.TrimSpace(bartolocli.GetProfile()["api_key"]), ""
+	}
+	if session, err := ReadSession(); err == nil && session != nil {
 		return session.GatewayKey, session.GatewayWorkspace
 	}
-	if bartolocli.Creds == nil {
-		return "", ""
-	}
-	return strings.TrimSpace(bartolocli.GetProfile()["api_key"]), ""
+	return "", ""
 }
 
 // EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts

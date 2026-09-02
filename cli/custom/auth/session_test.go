@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // validSession returns a minimal session that passes validateSession, with the
@@ -230,9 +233,8 @@ func TestSessionFilePathFollowsTheResolvedServer(t *testing.T) {
 	}
 }
 
-// The credential agents are wired with is the minted gateway key, recorded on
-// the login it was minted from. A bartolo profile in force is the fallback: its
-// key is what the agents got, and its workspace is unknowable.
+// With no profile in force, agents are wired with the minted gateway key
+// recorded on the login it was minted from.
 func TestSavedAgentKeyReadsTheSession(t *testing.T) {
 	isolateHome(t)
 	t.Cleanup(func() { SetServer("", "default") })
@@ -243,5 +245,33 @@ func TestSavedAgentKeyReadsTheSession(t *testing.T) {
 	}
 	if key, ws := SavedAgentKey(); key != "sk-orq-GW" || ws != "acme" {
 		t.Errorf("SavedAgentKey = (%q, %q), want the session's gateway key", key, ws)
+	}
+}
+
+func TestSavedAgentKeyIgnoresSessionWhenProfileIsInForce(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+
+	s := validSession("session-workspace")
+	s.GatewayKey, s.GatewayWorkspace = "sk-orq-SESSION", "session-workspace"
+	if err := SaveSession(s); err != nil {
+		t.Fatal(err)
+	}
+
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = creds
+	bartolocli.Creds.Set("profiles.chosen.api_key", "sk-orq-PROFILE")
+	viper.Set("profile", "chosen")
+	t.Cleanup(func() {
+		bartolocli.Creds = previousCreds
+		viper.Set("profile", "")
+	})
+
+	if key, ws := SavedAgentKey(); key != "sk-orq-PROFILE" || ws != "" {
+		t.Errorf("SavedAgentKey = (%q, %q), want the profile key and no session workspace", key, ws)
 	}
 }

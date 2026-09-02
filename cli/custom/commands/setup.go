@@ -211,11 +211,11 @@ or fully flagged with ` + "`--no-input`" + ` for CI.
 
 Supported agents: ` + strings.Join(agentIDs(), ", ") + `.
 
-Credential order is ` + "`--api-key`" + ` → login session → ` + "`ORQ_API_KEY`" + `. Note this is
-deliberately not the order ` + "`orq launch`" + ` uses: launch prefers an explicit
-` + "`ORQ_API_KEY`" + ` over the session, because it configures one throwaway process. Setup
-writes persistent configuration, so the workspace you picked in ` + "`orq auth login`" + `
-wins over a key left exported in your shell.`),
+Credential order is ` + "`--api-key`" + ` → profile in force → login session →
+` + "`ORQ_API_KEY`" + `. A profile selected by ` + "`--profile`" + `, ` + "`ORQ_PROFILE`" + ` or
+` + "`orq auth profile use`" + ` is authoritative, so setup does not consult the login session.
+With no profile in force, the workspace picked in ` + "`orq auth login`" + ` wins over a key
+left exported in your shell because setup writes persistent configuration.`),
 		// A failure here is a runtime problem, not a usage problem.
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -439,6 +439,15 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			rep.ok("api key from --api-key (not saved)")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
+	}
+	if profileInForce() {
+		key, _ := savedAPIKey()
+		if key == "" {
+			name := bartoloProfileName()
+			return nil, fmt.Errorf("profile %q has no API key; run `orq auth setup --profile %s`", name, name)
+		}
+		rep.ok("using the API key from profile %s", bartoloProfileName())
+		return &authState{apiBase: apiBaseFromEnv(), bearer: key}, nil
 	}
 
 	session, err := auth.ReadSession()
@@ -767,6 +776,9 @@ func saveAPIKeyProfile(key string) error {
 // that cannot authenticate the platform API is exactly what bartolo refuses to
 // fall back from.
 func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, projectID string) error {
+	if profileInForce() {
+		return errors.New("cannot record a gateway key while an API-key profile is in force")
+	}
 	session, err := auth.ReadSession()
 	if err != nil {
 		return err
@@ -785,6 +797,9 @@ func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, pr
 // gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry
 // is recorded, and callers must treat that as "unknown", never as "expired".
 func gatewayKeyExpiry() (time.Time, bool) {
+	if profileInForce() {
+		return time.Time{}, false
+	}
 	session, err := auth.ReadSession()
 	if err != nil || session == nil || session.GatewayKeyExpiresAt == "" {
 		return time.Time{}, false
@@ -808,6 +823,9 @@ func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 // savedGatewayKeyID is the handle for revoking the minted key; logout prints
 // it because logout cannot revoke the key itself.
 func savedGatewayKeyID() string {
+	if profileInForce() {
+		return ""
+	}
 	session, err := auth.ReadSession()
 	if err != nil || session == nil {
 		return ""
@@ -2005,7 +2023,7 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	// Creds nil is not an error here: bartolo's GetProfile dereferences the
 	// global without a guard, and this is a best-effort backfill, not the
 	// credential itself. ProfileServer guards the same way.
-	if keyWS == "" || probed == "" || bartolocli.Creds == nil {
+	if keyWS == "" || probed == "" || bartolocli.Creds == nil || profileInForce() {
 		return
 	}
 	saved, recorded := savedAPIKey()
