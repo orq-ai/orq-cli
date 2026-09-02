@@ -30,7 +30,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "add-ip-range workspace-key",
 			Short:   "Add an IP range",
-			Long:    bartolocli.Markdown("Adds an IPv4 or IPv6 CIDR range to the workspace allowlist.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cidr` (string)\n- `description` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Adds an IPv4 or IPv6 CIDR range to the workspace allowlist.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `cidr` (string)\n- `description` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `workspace-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -112,7 +112,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-domain workspace-key",
 			Short:   "Add a domain",
-			Long:    bartolocli.Markdown("Creates a domain-verification challenge and returns the TXT record to add to DNS.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `domain` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a domain-verification challenge and returns the TXT record to add to DNS.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `domain` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `workspace-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -180,7 +180,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-domain workspace-key domain-id",
 			Short:   "Delete a domain",
-			Long:    bartolocli.Markdown("Permanently removes a domain-verification record."),
+			Long:    bartolocli.Markdown("Permanently removes a domain-verification record.\n\n## Arguments\n\n- `workspace-key`\n- `domain-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -224,7 +224,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-ip-range workspace-key range-id",
 			Short:   "Delete an IP range",
-			Long:    bartolocli.Markdown("Permanently removes a CIDR range from the workspace allowlist."),
+			Long:    bartolocli.Markdown("Permanently removes a CIDR range from the workspace allowlist.\n\n## Arguments\n\n- `workspace-key`\n- `range-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -268,7 +268,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-ip-allowlist workspace-key",
 			Short:   "Retrieve the IP allowlist",
-			Long:    bartolocli.Markdown("Returns the workspace IP allowlist and the current caller IP when available."),
+			Long:    bartolocli.Markdown("Returns the workspace IP allowlist and the current caller IP when available.\n\n## Arguments\n\n- `workspace-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -308,7 +308,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-domains workspace-key",
 			Short:   "List verified domains",
-			Long:    bartolocli.Markdown("Lists domain-verification records for the workspace."),
+			Long:    bartolocli.Markdown("Lists domain-verification records for the workspace.\n\n## Arguments\n\n- `workspace-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -350,7 +350,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-ip-allowlist workspace-key",
 			Short:   "Enable or disable the IP allowlist",
-			Long:    bartolocli.Markdown("Updates the workspace-level allowlist switch. Every listed range applies while the allowlist is enabled.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates the workspace-level allowlist switch. Every listed range applies while the allowlist is enabled.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `workspace-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -418,7 +418,7 @@ func registerworkspaceSecurityCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "verify-domain workspace-key domain-id",
 			Short:   "Verify a domain",
-			Long:    bartolocli.Markdown("Checks DNS for the expected TXT record and marks the domain as verified when it matches."),
+			Long:    bartolocli.Markdown("Checks DNS for the expected TXT record and marks the domain as verified when it matches.\n\n## Arguments\n\n- `workspace-key`\n- `domain-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

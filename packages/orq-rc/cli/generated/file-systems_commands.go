@@ -170,7 +170,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-folder file-system-key",
 			Short:   "Create folder",
-			Long:    bartolocli.Markdown("Creates a folder and every missing parent. Succeeds on a folder that already exists.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `path` (string, required)\n\nRequired fields: `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a folder and every missing parent. Succeeds on a folder that already exists.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `path` (string, required)\n\nRequired fields: `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,7 +238,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete file-system-key",
 			Short:   "Delete file system",
-			Long:    bartolocli.Markdown("Permanently deletes a file system and every file stored in it. This cannot be undone."),
+			Long:    bartolocli.Markdown("Permanently deletes a file system and every file stored in it. This cannot be undone.\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -282,7 +282,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-file file-system-key",
 			Short:   "Delete file",
-			Long:    bartolocli.Markdown("Deletes one file or folder. A folder that still has content is refused unless recursive is set."),
+			Long:    bartolocli.Markdown("Deletes one file or folder. A folder that still has content is refused unless recursive is set.\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -375,7 +375,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-files file-system-key",
 			Short:   "List files",
-			Long:    bartolocli.Markdown("Lists the files and folders stored in a file system. An empty path lists the file system root."),
+			Long:    bartolocli.Markdown("Lists the files and folders stored in a file system. An empty path lists the file system root.\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -421,7 +421,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "move-file file-system-key",
 			Short:   "Move file",
-			Long:    bartolocli.Markdown("Moves or renames one file or folder within the same file system. Missing destination folders are created.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Moves or renames one file or folder within the same file system. Missing destination folders are created.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -501,7 +501,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve file-system-key",
 			Short:   "Retrieve file system",
-			Long:    bartolocli.Markdown("Retrieves detailed information about a specific file system, including its quota and external access configuration."),
+			Long:    bartolocli.Markdown("Retrieves detailed information about a specific file system, including its quota and external access configuration.\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -541,7 +541,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "stat-file file-system-key",
 			Short:   "Stat file",
-			Long:    bartolocli.Markdown("Retrieves the metadata of one file or folder without transferring its content."),
+			Long:    bartolocli.Markdown("Retrieves the metadata of one file or folder without transferring its content.\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -585,7 +585,7 @@ func registerfileSystemsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update file-system-key",
 			Short:   "Update file system",
-			Long:    bartolocli.Markdown("Updates the mutable file system configuration. The key is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `external_access` (string)\n- `path` (string)\n- `sharing` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates the mutable file system configuration. The key is immutable.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `external_access` (string)\n- `path` (string)\n- `sharing` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `file-system-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

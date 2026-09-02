@@ -119,12 +119,11 @@ func OpenapiGetAgentResponse(paramAgentKey string, paramTaskId string, params *v
 	if paramAgentKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	if paramTaskId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter task_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	url = strings.Replace(url, "{task_id}", neturl.PathEscape(paramTaskId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -220,8 +219,12 @@ func OpenapiListAgents(params *viper.Viper) (*gentleman.Response, map[string]int
 	}
 	paramType := params.GetString("type")
 	if bartolocli.FlagPassed(params, "type") || paramType != "" {
-		if err := bartolocli.CheckParam("--type", paramType, "", []string{"internal"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--type", paramType, "", []string{"internal"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramType = normalized
 		}
 		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
 	}
@@ -671,12 +674,11 @@ func OpenapiAlertListTriggerEvents(paramAlertId string, paramTriggerId string, p
 	if paramAlertId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter alert_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 	if paramTriggerId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter trigger_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{alert_id}", neturl.PathEscape(paramAlertId), 1)
 	url = strings.Replace(url, "{trigger_id}", neturl.PathEscape(paramTriggerId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -1021,12 +1023,11 @@ func OpenapiRetrieveAnnotationQueueItem(paramAnnotationQueueId string, paramItem
 	if paramAnnotationQueueId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter annotation_queue_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 	if paramItemId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter item_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{annotation_queue_id}", neturl.PathEscape(paramAnnotationQueueId), 1)
 	url = strings.Replace(url, "{item_id}", neturl.PathEscape(paramItemId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -1397,8 +1398,12 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, e
 	}
 	paramStatus := params.GetString("status")
 	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
-		if err := bartolocli.CheckParam("--status", paramStatus, "", []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStatus = normalized
 		}
 		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
 	}
@@ -1680,8 +1685,12 @@ func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]int
 	}
 	paramSortBy := params.GetString("sort-by")
 	if bartolocli.FlagPassed(params, "sort-by") || paramSortBy != "" {
-		if err := bartolocli.CheckParam("--sort-by", paramSortBy, "", []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramSortBy = normalized
 		}
 		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
 	}
@@ -2003,12 +2012,11 @@ func OpenapiDeleteDatapoint(paramDatasetId string, paramDatapointId string, para
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	if paramDatapointId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datapoint_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -2193,12 +2201,11 @@ func OpenapiRetrieveDatapoint(paramDatasetId string, paramDatapointId string, pa
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	if paramDatapointId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datapoint_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -2280,12 +2287,11 @@ func OpenapiUpdateDatapoint(paramDatasetId string, paramDatapointId string, para
 	if paramDatasetId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter dataset_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	if paramDatapointId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datapoint_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{dataset_id}", neturl.PathEscape(paramDatasetId), 1)
 	url = strings.Replace(url, "{datapoint_id}", neturl.PathEscape(paramDatapointId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -2545,8 +2551,12 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 	}
 	paramSort := params.GetString("sort")
 	if bartolocli.FlagPassed(params, "sort") || paramSort != "" {
-		if err := bartolocli.CheckParam("--sort", paramSort, "", []string{"asc", "desc"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--sort", paramSort, "", []string{"asc", "desc"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramSort = normalized
 		}
 		req = req.AddQuery("sort", fmt.Sprintf("%v", paramSort))
 	}
@@ -3887,8 +3897,12 @@ func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string
 	}
 	paramSortBy := params.GetString("sort-by")
 	if bartolocli.FlagPassed(params, "sort-by") || paramSortBy != "" {
-		if err := bartolocli.CheckParam("--sort-by", paramSortBy, "", []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--sort-by", paramSortBy, "", []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramSortBy = normalized
 		}
 		req = req.AddQuery("sort_by", fmt.Sprintf("%v", paramSortBy))
 	}
@@ -4060,12 +4074,11 @@ func OpenapiCreateChunk(paramKnowledgeId string, paramDatasourceId string, param
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -4190,17 +4203,15 @@ func OpenapiDeleteChunk(paramKnowledgeId string, paramDatasourceId string, param
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	if paramChunkId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter chunk_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -4239,12 +4250,11 @@ func OpenapiDeleteChunks(paramKnowledgeId string, paramDatasourceId string, para
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -4287,12 +4297,11 @@ func OpenapiDeleteDatasource(paramKnowledgeId string, paramDatasourceId string, 
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -4331,12 +4340,11 @@ func OpenapiGetChunksCount(paramKnowledgeId string, paramDatasourceId string, pa
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -4401,8 +4409,12 @@ func OpenapiListKnowledgeBases(params *viper.Viper) (*gentleman.Response, map[st
 	}
 	paramType := params.GetString("type")
 	if bartolocli.FlagPassed(params, "type") || paramType != "" {
-		if err := bartolocli.CheckParam("--type", paramType, "", []string{"internal", "external"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--type", paramType, "", []string{"internal", "external"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramType = normalized
 		}
 		req = req.AddQuery("type", fmt.Sprintf("%v", paramType))
 	}
@@ -4445,12 +4457,11 @@ func OpenapiListChunks(paramKnowledgeId string, paramDatasourceId string, params
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -4510,12 +4521,11 @@ func OpenapiListChunksPaginated(paramKnowledgeId string, paramDatasourceId strin
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -4657,17 +4667,15 @@ func OpenapiGetOneChunk(paramKnowledgeId string, paramDatasourceId string, param
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	if paramChunkId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter chunk_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -4706,12 +4714,11 @@ func OpenapiRetrieveDatasource(paramKnowledgeId string, paramDatasourceId string
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -4795,12 +4802,11 @@ func OpenapiGetOneDatasourceProcessingStatus(paramKnowledgeId string, paramDatas
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -4882,17 +4888,15 @@ func OpenapiUpdateChunkEnabled(paramKnowledgeId string, paramDatasourceId string
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	if paramChunkId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter chunk_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -4978,17 +4982,15 @@ func OpenapiUpdateChunk(paramKnowledgeId string, paramDatasourceId string, param
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	if paramChunkId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter chunk_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
+	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 	url = strings.Replace(url, "{chunk_id}", neturl.PathEscape(paramChunkId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -5031,12 +5033,11 @@ func OpenapiUpdateDatasource(paramKnowledgeId string, paramDatasourceId string, 
 	if paramKnowledgeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter knowledge_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	if paramDatasourceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter datasource_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{knowledge_id}", neturl.PathEscape(paramKnowledgeId), 1)
 	url = strings.Replace(url, "{datasource_id}", neturl.PathEscape(paramDatasourceId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -5209,8 +5210,12 @@ func OpenapiManagementKeyList(params *viper.Viper) (*gentleman.Response, map[str
 	}
 	paramStatus := params.GetString("status")
 	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
-		if err := bartolocli.CheckParam("--status", paramStatus, "", []string{"MANAGEMENT_KEY_STATUS_UNSPECIFIED", "MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MANAGEMENT_KEY_STATUS_UNSPECIFIED", "MANAGEMENT_KEY_STATUS_ACTIVE", "MANAGEMENT_KEY_STATUS_DISABLED", "MANAGEMENT_KEY_STATUS_REVOKED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStatus = normalized
 		}
 		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
 	}
@@ -5429,8 +5434,12 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 	}
 	paramStatus := params.GetString("status")
 	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
-		if err := bartolocli.CheckParam("--status", paramStatus, "", []string{"MCP_GATEWAY_STATUS_UNSPECIFIED", "MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"MCP_GATEWAY_STATUS_UNSPECIFIED", "MCP_GATEWAY_STATUS_ACTIVE", "MCP_GATEWAY_STATUS_DISABLED"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramStatus = normalized
 		}
 		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
 	}
@@ -5941,12 +5950,11 @@ func OpenapiCreateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -6071,17 +6079,15 @@ func OpenapiDeleteMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	if paramDocumentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter document_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -6120,12 +6126,11 @@ func OpenapiDeleteMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -6223,12 +6228,11 @@ func OpenapiGetAllMemoryDocuments(paramMemoryStoreKey string, paramMemoryEntityI
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -6247,15 +6251,23 @@ func OpenapiGetAllMemoryDocuments(paramMemoryStoreKey string, paramMemoryEntityI
 	}
 	paramUpdatedAfter := params.GetString("updated-after")
 	if bartolocli.FlagPassed(params, "updated-after") || paramUpdatedAfter != "" {
-		if err := bartolocli.CheckParam("--updated-after", paramUpdatedAfter, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--updated-after", paramUpdatedAfter, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramUpdatedAfter = normalized
 		}
 		req = req.AddQuery("updated_after", fmt.Sprintf("%v", paramUpdatedAfter))
 	}
 	paramUpdatedBefore := params.GetString("updated-before")
 	if bartolocli.FlagPassed(params, "updated-before") || paramUpdatedBefore != "" {
-		if err := bartolocli.CheckParam("--updated-before", paramUpdatedBefore, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--updated-before", paramUpdatedBefore, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramUpdatedBefore = normalized
 		}
 		req = req.AddQuery("updated_before", fmt.Sprintf("%v", paramUpdatedBefore))
 	}
@@ -6389,17 +6401,15 @@ func OpenapiRetrieveMemoryDocument(paramMemoryStoreKey string, paramMemoryEntity
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	if paramDocumentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter document_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -6438,12 +6448,11 @@ func OpenapiRetrieveMemory(paramMemoryStoreKey string, paramMemoryEntityId strin
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -6525,17 +6534,15 @@ func OpenapiUpdateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	if paramDocumentId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter document_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
+	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 	url = strings.Replace(url, "{document_id}", neturl.PathEscape(paramDocumentId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -6578,12 +6585,11 @@ func OpenapiUpdateMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 	if paramMemoryStoreKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_store_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	if paramMemoryEntityId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter memory_entity_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{memory_store_key}", neturl.PathEscape(paramMemoryStoreKey), 1)
 	url = strings.Replace(url, "{memory_entity_id}", neturl.PathEscape(paramMemoryEntityId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -8375,12 +8381,11 @@ func OpenapiGetPromptVersion(paramPromptId string, paramVersionId string, params
 	if paramPromptId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter prompt_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{prompt_id}", neturl.PathEscape(paramPromptId), 1)
 	if paramVersionId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter version_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{prompt_id}", neturl.PathEscape(paramPromptId), 1)
 	url = strings.Replace(url, "{version_id}", neturl.PathEscape(paramVersionId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -9856,12 +9861,11 @@ func OpenapiGetV2ToolsToolIdVersionsVersionId(paramToolId string, paramVersionId
 	if paramToolId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter tool_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 	if paramVersionId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter version_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{tool_id}", neturl.PathEscape(paramToolId), 1)
 	url = strings.Replace(url, "{version_id}", neturl.PathEscape(paramVersionId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10119,12 +10123,11 @@ func OpenapiCreateAnnotation(paramTraceId string, paramSpanId string, params *vi
 	if paramTraceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter trace_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	if paramSpanId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter span_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -10167,12 +10170,11 @@ func OpenapiDeleteAnnotation(paramTraceId string, paramSpanId string, params *vi
 	if paramTraceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter trace_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	if paramSpanId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter span_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -10254,12 +10256,11 @@ func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper
 	if paramTraceId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter trace_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	if paramSpanId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter span_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
 	url = strings.Replace(url, "{span_id}", neturl.PathEscape(paramSpanId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10298,12 +10299,11 @@ func OpenapiInsightsServiceCancelRun(paramInsightId string, paramRunId string, p
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -10384,12 +10384,11 @@ func OpenapiInsightsServiceDeleteRun(paramInsightId string, paramRunId string, p
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -10428,17 +10427,15 @@ func OpenapiInsightsServiceGetCluster(paramInsightId string, paramRunId string, 
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 	if paramClusterId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter cluster_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 	url = strings.Replace(url, "{cluster_id}", neturl.PathEscape(paramClusterId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10516,12 +10513,11 @@ func OpenapiInsightsServiceGetRun(paramInsightId string, paramRunId string, para
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10560,12 +10556,11 @@ func OpenapiInsightsServiceGetRunArtifacts(paramInsightId string, paramRunId str
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10604,17 +10599,15 @@ func OpenapiInsightsServiceListClusterConversations(paramInsightId string, param
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 	if paramClusterId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter cluster_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
+	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 	url = strings.Replace(url, "{cluster_id}", neturl.PathEscape(paramClusterId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10666,12 +10659,11 @@ func OpenapiInsightsServiceListClusters(paramInsightId string, paramRunId string
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -10872,12 +10864,11 @@ func OpenapiInsightsServiceReEvaluateRun(paramInsightId string, paramRunId strin
 	if paramInsightId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter insight_id cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	if paramRunId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter run_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{insight_id}", neturl.PathEscape(paramInsightId), 1)
 	url = strings.Replace(url, "{run_id}", neturl.PathEscape(paramRunId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -10970,8 +10961,12 @@ func OpenapiInsightsServiceUpdateInsight(paramInsightId string, params *viper.Vi
 
 	paramUpdateMask := params.GetString("update-mask")
 	if bartolocli.FlagPassed(params, "update-mask") || paramUpdateMask != "" {
-		if err := bartolocli.CheckParam("--update-mask", paramUpdateMask, "field-mask", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--update-mask", paramUpdateMask, "field-mask", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramUpdateMask = normalized
 		}
 		req = req.AddQuery("update_mask", fmt.Sprintf("%v", paramUpdateMask))
 	}
@@ -11021,15 +11016,23 @@ func OpenapiTracesListFacetValues(paramField string, params *viper.Viper) (*gent
 
 	paramFrom := params.GetString("from")
 	if bartolocli.FlagPassed(params, "from") || paramFrom != "" {
-		if err := bartolocli.CheckParam("--from", paramFrom, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--from", paramFrom, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramFrom = normalized
 		}
 		req = req.AddQuery("from", fmt.Sprintf("%v", paramFrom))
 	}
 	paramTo := params.GetString("to")
 	if bartolocli.FlagPassed(params, "to") || paramTo != "" {
-		if err := bartolocli.CheckParam("--to", paramTo, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--to", paramTo, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramTo = normalized
 		}
 		req = req.AddQuery("to", fmt.Sprintf("%v", paramTo))
 	}
@@ -11758,12 +11761,11 @@ func OpenapiWorkspaceSecurityDeleteDomain(paramWorkspaceKey string, paramDomainI
 	if paramWorkspaceKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter workspace_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	if paramDomainId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter domain_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	url = strings.Replace(url, "{domain_id}", neturl.PathEscape(paramDomainId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -11802,12 +11804,11 @@ func OpenapiWorkspaceSecurityDeleteIPRange(paramWorkspaceKey string, paramRangeI
 	if paramWorkspaceKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter workspace_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	if paramRangeId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter range_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	url = strings.Replace(url, "{range_id}", neturl.PathEscape(paramRangeId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -11967,12 +11968,11 @@ func OpenapiWorkspaceSecurityVerifyDomain(paramWorkspaceKey string, paramDomainI
 	if paramWorkspaceKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter workspace_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	if paramDomainId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter domain_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{workspace_key}", neturl.PathEscape(paramWorkspaceKey), 1)
 	url = strings.Replace(url, "{domain_id}", neturl.PathEscape(paramDomainId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -12054,12 +12054,11 @@ func OpenapiDeleteAgentSchedule(paramAgentKey string, paramScheduleId string, pa
 	if paramAgentKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	if paramScheduleId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter schedule_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Delete().URL(url)
@@ -12137,12 +12136,11 @@ func OpenapiRetrieveAgentSchedule(paramAgentKey string, paramScheduleId string, 
 	if paramAgentKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	if paramScheduleId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter schedule_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Get().URL(url)
@@ -12181,12 +12179,11 @@ func OpenapiTriggerAgentSchedule(paramAgentKey string, paramScheduleId string, p
 	if paramAgentKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	if paramScheduleId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter schedule_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Post().URL(url)
@@ -12225,12 +12222,11 @@ func OpenapiUpdateAgentSchedule(paramAgentKey string, paramScheduleId string, pa
 	if paramAgentKey == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter agent_key cannot be empty"))
 	}
-
-	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	if paramScheduleId == "" {
 		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter schedule_id cannot be empty"))
 	}
 
+	url = strings.Replace(url, "{agent_key}", neturl.PathEscape(paramAgentKey), 1)
 	url = strings.Replace(url, "{schedule_id}", neturl.PathEscape(paramScheduleId), 1)
 
 	req := bartolocli.Client.Patch().URL(url)
@@ -12442,15 +12438,23 @@ func OpenapiListLogFacetValues(paramField string, params *viper.Viper) (*gentlem
 	}
 	paramFrom := params.GetString("from")
 	if bartolocli.FlagPassed(params, "from") || paramFrom != "" {
-		if err := bartolocli.CheckParam("--from", paramFrom, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--from", paramFrom, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramFrom = normalized
 		}
 		req = req.AddQuery("from", fmt.Sprintf("%v", paramFrom))
 	}
 	paramTo := params.GetString("to")
 	if bartolocli.FlagPassed(params, "to") || paramTo != "" {
-		if err := bartolocli.CheckParam("--to", paramTo, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--to", paramTo, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramTo = normalized
 		}
 		req = req.AddQuery("to", fmt.Sprintf("%v", paramTo))
 	}
@@ -12495,15 +12499,23 @@ func OpenapiListLogFacets(params *viper.Viper) (*gentleman.Response, map[string]
 
 	paramFrom := params.GetString("from")
 	if bartolocli.FlagPassed(params, "from") || paramFrom != "" {
-		if err := bartolocli.CheckParam("--from", paramFrom, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--from", paramFrom, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramFrom = normalized
 		}
 		req = req.AddQuery("from", fmt.Sprintf("%v", paramFrom))
 	}
 	paramTo := params.GetString("to")
 	if bartolocli.FlagPassed(params, "to") || paramTo != "" {
-		if err := bartolocli.CheckParam("--to", paramTo, "date-time", []string{}); err != nil {
-			return nil, nil, err
+		{
+			normalized, err := bartolocli.NormalizeParam("--to", paramTo, "date-time", []string{})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramTo = normalized
 		}
 		req = req.AddQuery("to", fmt.Sprintf("%v", paramTo))
 	}

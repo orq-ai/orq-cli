@@ -640,7 +640,7 @@ func registerresponsesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get response-id",
 			Short:   "Retrieve response",
-			Long:    bartolocli.Markdown("Retrieves a previously created response by its ID."),
+			Long:    bartolocli.Markdown("Retrieves a previously created response by its ID.\n\n## Arguments\n\n- `response-id` — The ID of the response to retrieve"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

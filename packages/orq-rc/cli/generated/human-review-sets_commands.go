@@ -179,7 +179,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete a human review set",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Delete a human review set\n\n## Arguments\n\n- `id` — The ID of the human review set to retrieve"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -224,7 +224,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Get a human review set by ID",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Get a human review set by ID\n\n## Arguments\n\n- `id` — The ID of the human review set to retrieve"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -310,7 +310,7 @@ func registerhumanReviewSetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a human review set",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `filter_type` (string, required)\n- `filter_value` (string)\n- `filter_values` (array)\n- `human_eval_ids` (array, required)\n- `project_id` (anyOf)\n\nRequired fields: `display_name`, `filter_type`, `human_eval_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string, required)\n- `filter_type` (string, required)\n- `filter_value` (string)\n- `filter_values` (array)\n- `human_eval_ids` (array, required)\n- `project_id` (anyOf)\n\nRequired fields: `display_name`, `filter_type`, `human_eval_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the human review set to retrieve"),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),

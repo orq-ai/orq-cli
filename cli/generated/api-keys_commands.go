@@ -30,7 +30,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
 						},
 						{
@@ -122,7 +122,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
 				},
 				{
@@ -182,7 +182,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete api-key-id",
 			Short:   "Delete an API key",
-			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success."),
+			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success.\n\n## Arguments\n\n- `api-key-id` — API key id to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -226,7 +226,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get api-key-id",
 			Short:   "Retrieve an API key",
-			Long:    bartolocli.Markdown("Retrieves the metadata for an existing API key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, `project_scope`, and lifecycle fields."),
+			Long:    bartolocli.Markdown("Retrieves the metadata for an existing API key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, `project_scope`, and lifecycle fields.\n\n## Arguments\n\n- `api-key-id` — API key id to retrieve (e.g. `01H...`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -248,7 +248,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Bool("include-budget", false, "When true, embed the api-key-scoped budget (config and limits only,\n no live usage) on the returned record.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed the api-key-scoped budget (config and limits only, no live usage) on the returned record.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -291,17 +291,17 @@ func registerapiKeysCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `api_key_id` of the last\n item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `api_key_id` of the\n first item from the previous page.")
-		cmd.Flags().String("project-id", "", "Optional filter: only return keys belonging to this project. When\n omitted, returns workspace-scoped and any single-project keys.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `api_key_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `api_key_id` of the first item from the previous page.")
+		cmd.Flags().String("project-id", "", "Optional filter: only return keys belonging to this project. When omitted, returns workspace-scoped and any single-project keys.")
 		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: API_KEY_STATUS_UNSPECIFIED, API_KEY_STATUS_ACTIVE, API_KEY_STATUS_DISABLED, API_KEY_STATUS_REVOKED)")
 		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the api-key\n name. Empty means no name filter.")
-		cmd.Flags().String("owner-type", "", "Optional filter: only return keys whose `owner.kind` matches\n one of the requested types. Combines the user / service-account\n oneof cases into a single repeated enum so the wire stays flat\n and multi-select filters travel as a single field. Empty means\n no owner-type filter.")
-		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one\n of the listed presets. Empty means no permission-mode filter.")
-		cmd.Flags().Bool("include-budget", false, "When true, embed each key's api-key-scoped budget (config and limits\n only, no live usage) on the returned records. Adds one budget lookup\n for the page; omit to skip it.")
+		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the api-key name. Empty means no name filter.")
+		cmd.Flags().String("owner-type", "", "Optional filter: only return keys whose `owner.kind` matches one of the requested types. Combines the user / service-account oneof cases into a single repeated enum so the wire stays flat and multi-select filters travel as a single field. Empty means no owner-type filter.")
+		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one of the listed presets. Empty means no permission-mode filter.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed each key's api-key-scoped budget (config and limits only, no live usage) on the returned records. Adds one budget lookup for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -363,7 +363,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update api-key-id",
 			Short:   "Update an API key",
-			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\n## Arguments\n\n- `api-key-id` — API key id to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -389,7 +389,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 						{
 							Name:        "expires_at",
 							FlagName:    "expires-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
 						},
 						{
@@ -473,7 +473,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 				{
 					Name:        "expires_at",
 					FlagName:    "expires-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
 				},
 				{

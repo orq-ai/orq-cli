@@ -318,7 +318,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "evaluation",
 			Short:   "Evaluation",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluation_type` (string, required)\n- `explanation` (string)\n- `human_review_id` (string)\n- `id` (string, required)\n- `reviewed_at` (string)\n- `source` (string)\n- `trace_id` (string, required)\n- `type` (string, required)\n- ... and 2 more fields\n\nRequired fields: `evaluation_type`, `id`, `trace_id`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `evaluation_type` (string, required)\n- `explanation` (string)\n- `human_review_id` (string)\n- `id` (string, required)\n- `reviewed_at` (string)\n- `source` (string)\n- `trace_id` (string, required)\n- `type` (string, required)\n- ... and 2 more fields\n\nRequired fields: `evaluation_type`, `id`, `trace_id`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -359,7 +359,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 						{
 							Name:        "reviewed_at",
 							FlagName:    "reviewed-at",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Deprecated. The date and time the item was reviewed",
 						},
 						{
@@ -456,7 +456,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 				{
 					Name:        "reviewed_at",
 					FlagName:    "reviewed-at",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Deprecated. The date and time the item was reviewed",
 				},
 				{

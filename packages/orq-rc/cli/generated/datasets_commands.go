@@ -28,7 +28,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "clear dataset-id",
 			Short:   "Delete all datapoints",
-			Long:    bartolocli.Markdown("Delete all datapoints from a dataset. This action is irreversible."),
+			Long:    bartolocli.Markdown("Delete all datapoints from a dataset. This action is irreversible.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -156,7 +156,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-datapoint dataset-id",
 			Short:   "Create a datapoint",
-			Long:    bartolocli.Markdown("Creates a new datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`"),
+			Long:    bartolocli.Markdown("Creates a new datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -210,7 +210,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete dataset-id",
 			Short:   "Delete a dataset",
-			Long:    bartolocli.Markdown("Permanently deletes a dataset and all its datapoints. This action is irreversible."),
+			Long:    bartolocli.Markdown("Permanently deletes a dataset and all its datapoints. This action is irreversible.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,7 +254,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-datapoint dataset-id datapoint-id",
 			Short:   "Delete a datapoint",
-			Long:    bartolocli.Markdown("Permanently deletes a specific datapoint from a dataset."),
+			Long:    bartolocli.Markdown("Permanently deletes a specific datapoint from a dataset.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -344,7 +344,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-datapoints dataset-id",
 			Short:   "List datapoints",
-			Long:    bartolocli.Markdown("Retrieves a paginated list of datapoints from a specific dataset."),
+			Long:    bartolocli.Markdown("Retrieves a paginated list of datapoints from a specific dataset.\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -388,7 +388,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve dataset-id",
 			Short:   "Retrieve a dataset",
-			Long:    bartolocli.Markdown("Retrieves a specific dataset by its unique identifier"),
+			Long:    bartolocli.Markdown("Retrieves a specific dataset by its unique identifier\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -428,7 +428,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-datapoint dataset-id datapoint-id",
 			Short:   "Retrieve a datapoint",
-			Long:    bartolocli.Markdown("Retrieves a datapoint object"),
+			Long:    bartolocli.Markdown("Retrieves a datapoint object\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -470,7 +470,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update dataset-id",
 			Short:   "Update a dataset",
-			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Update a dataset\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string)\n- `path` (string)\n- `project_id` (anyOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -564,7 +564,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-datapoint dataset-id datapoint-id",
 			Short:   "Update a datapoint",
-			Long:    bartolocli.Markdown("Update a datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Update a datapoint in the specified dataset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `expected_output` (string)\n- `inputs` (object)\n- `messages` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `dataset-id` — The unique identifier of the dataset\n- `datapoint-id` — The unique identifier of the datapoint"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -30,7 +30,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "add-items annotation-queue-id",
 			Short:   "Add items to an annotation queue",
-			Long:    bartolocli.Markdown("Adds items to the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Adds items to the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `items` (array, required)\n\nRequired fields: `items`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -98,7 +98,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "clear annotation-queue-id",
 			Short:   "Delete all items",
-			Long:    bartolocli.Markdown("Delete all items from an annotation queue. This action is irreversible."),
+			Long:    bartolocli.Markdown("Delete all items from an annotation queue. This action is irreversible.\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -236,7 +236,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete annotation-queue-id",
 			Short:   "Delete an annotation queue",
-			Long:    bartolocli.Markdown("Delete an annotation queue and its items by ID."),
+			Long:    bartolocli.Markdown("Delete an annotation queue and its items by ID.\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -280,7 +280,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get annotation-queue-id",
 			Short:   "Retrieve an annotation queue",
-			Long:    bartolocli.Markdown("Retrieves a specific annotation queue by its unique identifier"),
+			Long:    bartolocli.Markdown("Retrieves a specific annotation queue by its unique identifier\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -320,7 +320,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-item annotation-queue-id item-id",
 			Short:   "Retrieve an annotation queue item",
-			Long:    bartolocli.Markdown("Retrieve an annotation queue item. Each item is a pointer to a span with fully resolved span data."),
+			Long:    bartolocli.Markdown("Retrieve an annotation queue item. Each item is a pointer to a span with fully resolved span data.\n\n## Arguments\n\n- `annotation-queue-id`\n- `item-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -406,7 +406,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query-items annotation-queue-id",
 			Short:   "Query items from an annotation queue",
-			Long:    bartolocli.Markdown("Queries items from the specified annotation queue."),
+			Long:    bartolocli.Markdown("Queries items from the specified annotation queue.\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -452,7 +452,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "remove-items annotation-queue-id",
 			Short:   "Remove annotation queue items",
-			Long:    bartolocli.Markdown("Removes items from the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `span_ids` (array, required)\n\nRequired fields: `span_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Removes items from the specified annotation queue.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `span_ids` (array, required)\n\nRequired fields: `span_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -522,7 +522,7 @@ func registerannotationQueuesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update annotation-queue-id",
 			Short:   "Edit an annotation queue",
-			Long:    bartolocli.Markdown("Update an annotation queue by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `human_review_ids` (array)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Update an annotation queue by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `human_review_ids` (array)\n- `project_id` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `annotation-queue-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -218,7 +218,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete a webhook",
-			Long:    bartolocli.Markdown("Deletes a webhook in the current workspace and returns the deleted webhook ID."),
+			Long:    bartolocli.Markdown("Deletes a webhook in the current workspace and returns the deleted webhook ID.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -302,7 +302,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve a webhook",
-			Long:    bartolocli.Markdown("Retrieves a webhook in the current workspace by ID. The response includes its signing secret; treat it as sensitive."),
+			Long:    bartolocli.Markdown("Retrieves a webhook in the current workspace by ID. The response includes its signing secret; treat it as sensitive.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -365,13 +365,13 @@ func registerwebhooksCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("page", 0, "One-based page number. Defaults to 1 and must be between 1 and 1,000,000.")
-		cmd.Flags().Int64("limit", 0, "Number of webhooks to return per page. Defaults to 20 and must be between\n 1 and 200.")
-		cmd.Flags().String("search", "", "Optional case-insensitive substring matched against display name, content\n type, and URL. Maximum length is 200 characters.")
-		cmd.Flags().String("event", "", "Optional event slug that must be present in the webhook's event\n subscriptions, for example `llm.response`. Maximum length is 200\n characters.")
-		cmd.Flags().String("sort", "", "Field used to order results. Allowed values are `created`, `updated`, and\n `display_name`. Defaults to `created`.")
+		cmd.Flags().Int64("limit", 0, "Number of webhooks to return per page. Defaults to 20 and must be between 1 and 200.")
+		cmd.Flags().String("search", "", "Optional case-insensitive substring matched against display name, content type, and URL. Maximum length is 200 characters.")
+		cmd.Flags().String("event", "", "Optional event slug that must be present in the webhook's event subscriptions, for example `llm.response`. Maximum length is 200 characters.")
+		cmd.Flags().String("sort", "", "Field used to order results. Allowed values are `created`, `updated`, and `display_name`. Defaults to `created`.")
 		cmd.Flags().String("direction", "", "Sort direction. Allowed values are `asc` and `desc`. Defaults to `desc`.")
-		cmd.Flags().String("content-type", "", "Optional comma-separated content types to match, for example\n `application/json,application/x-www-form-urlencoded`. A webhook matches\n when its content type equals any supplied value.")
-		cmd.Flags().Bool("enabled", false, "Optional delivery status filter. When omitted, enabled and disabled\n webhooks are returned.")
+		cmd.Flags().String("content-type", "", "Optional comma-separated content types to match, for example `application/json,application/x-www-form-urlencoded`. A webhook matches when its content type equals any supplied value.")
+		cmd.Flags().Bool("enabled", false, "Optional delivery status filter. When omitted, enabled and disabled webhooks are returned.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -509,7 +509,7 @@ func registerwebhooksCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update a webhook",
-			Long:    bartolocli.Markdown("Updates the supplied fields on a webhook in the current workspace. Omitted fields are unchanged. The response contains the applied fields rather than the complete webhook.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Long:    bartolocli.Markdown("Updates the supplied fields on a webhook in the current workspace. Omitted fields are unchanged. The response contains the applied fields rather than the complete webhook.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

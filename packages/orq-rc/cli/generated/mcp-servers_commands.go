@@ -170,7 +170,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete an MCP server",
-			Long:    bartolocli.Markdown("Deletes an MCP server from the workspace. The response body is empty when the delete succeeds."),
+			Long:    bartolocli.Markdown("Deletes an MCP server from the workspace. The response body is empty when the delete succeeds.\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -259,7 +259,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve id",
 			Short:   "Retrieve an MCP server",
-			Long:    bartolocli.Markdown("Retrieves the details of an existing MCP server by its unique ID."),
+			Long:    bartolocli.Markdown("Retrieves the details of an existing MCP server by its unique ID.\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -301,7 +301,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "sync id",
 			Short:   "Sync an MCP server",
-			Long:    bartolocli.Markdown("Connects to an upstream MCP server, discovers tools, and persists the tool list and sync state on the server record.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `discovery_variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Connects to an upstream MCP server, discovers tools, and persists the tool list and sync state on the server record.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `discovery_variables` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -371,7 +371,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "test-tool id",
 			Short:   "Test an MCP server tool",
-			Long:    bartolocli.Markdown("Executes a single tool on an upstream MCP server for testing. Connects to the server, invokes the tool with the provided arguments, and returns the result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `arguments` (object)\n- `discovery_variables` (object)\n- `tool_name` (string, required)\n\nRequired fields: `tool_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Executes a single tool on an upstream MCP server for testing. Connects to the server, invokes the tool with the provided arguments, and returns the result.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `arguments` (object)\n- `discovery_variables` (object)\n- `tool_name` (string, required)\n\nRequired fields: `tool_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -465,7 +465,7 @@ func registermcpServersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an MCP server",
-			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP server. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf)\n- `connection` (allOf)\n- `default_tool_exposure` (allOf)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `sharing` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an existing MCP server. Omitted optional fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `auth` (allOf)\n- `connection` (allOf)\n- `default_tool_exposure` (allOf)\n- `description` (string)\n- `display_name` (string)\n- `key` (string)\n- `sharing` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Unique identifier of the MCP server."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

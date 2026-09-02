@@ -30,7 +30,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create entity-id",
 			Short:   "Create a new activity",
-			Long:    bartolocli.Markdown("Appends an activity to the timeline of an entity. Comment activities require `content` and may mention users or reply to another comment. Version activities require `checksum`, `version`, and `data`, and snapshot the entity configuration at that point in time. The target entity must exist and be accessible to the API key; the activity is attached to the project of that entity, with workspace and project scope inferred from the key.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `checksum` (string)\n- `content` (string)\n- `data` (object)\n- `description` (string)\n- `entity_type` (string, required)\n- `mentions` (array)\n- `parent_activity_id` (string)\n- `project_id` (string)\n- ... and 2 more fields\n\nRequired fields: `entity_type`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Appends an activity to the timeline of an entity. Comment activities require `content` and may mention users or reply to another comment. Version activities require `checksum`, `version`, and `data`, and snapshot the entity configuration at that point in time. The target entity must exist and be accessible to the API key; the activity is attached to the project of that entity, with workspace and project scope inferred from the key.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `checksum` (string)\n- `content` (string)\n- `data` (object)\n- `description` (string)\n- `entity_type` (string, required)\n- `mentions` (array)\n- `parent_activity_id` (string)\n- `project_id` (string)\n- ... and 2 more fields\n\nRequired fields: `entity_type`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `entity-id` — ID of the entity to append the activity to. The entity must exist in the workspace."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -216,7 +216,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list entity-id",
 			Short:   "List activities for an entity",
-			Long:    bartolocli.Markdown("Returns the activity timeline of an entity, ordered by creation time with the newest entry first. The timeline mixes `comment` and `version` activities. Use `starting_after` or `ending_before` to page through large collections; the two cursors are mutually exclusive."),
+			Long:    bartolocli.Markdown("Returns the activity timeline of an entity, ordered by creation time with the newest entry first. The timeline mixes `comment` and `version` activities. Use `starting_after` or `ending_before` to page through large collections; the two cursors are mutually exclusive.\n\n## Arguments\n\n- `entity-id` — ID of the entity to list activities for."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,9 +238,9 @@ func registeractivitiesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25); explicit 0\n (or anything outside the range) is rejected by buf.validate.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `activity_id` of the\n last item from the previous page. Mutually exclusive with\n `ending_before`.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `activity_id` of the\n first item from the previous page. Mutually exclusive with\n `starting_after`.")
+		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25); explicit 0 (or anything outside the range) is rejected by buf.validate.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `activity_id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `activity_id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -262,7 +262,7 @@ func registeractivitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update entity-id activity-id",
 			Short:   "Update an activity",
-			Long:    bartolocli.Markdown("Updates an existing activity. Set `content` to edit a comment; the comment is marked as edited and the edit time is recorded. Set `environments` to retag a version activity: the listed environments are removed from every other version of the same entity because an environment always points at a single version. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string)\n- `environments` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates an existing activity. Set `content` to edit a comment; the comment is marked as edited and the edit time is recorded. Set `environments` to retag a version activity: the listed environments are removed from every other version of the same entity because an environment always points at a single version. Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `content` (string)\n- `environments` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `entity-id` — ID of the entity the activity belongs to.\n- `activity-id` — ID of the activity to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

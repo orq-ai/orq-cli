@@ -134,7 +134,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete smart-router-id",
 			Short:   "Delete a Smart Router",
-			Long:    bartolocli.Markdown("Permanently deletes a Smart Router and removes its AI Gateway model configuration. A Smart Router referenced by an experiment cannot be deleted."),
+			Long:    bartolocli.Markdown("Permanently deletes a Smart Router and removes its AI Gateway model configuration. A Smart Router referenced by an experiment cannot be deleted.\n\n## Arguments\n\n- `smart-router-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -178,7 +178,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get smart-router-id",
 			Short:   "Retrieve a Smart Router",
-			Long:    bartolocli.Markdown("Retrieves a Smart Router by ID from the current workspace, including its model reference, model pool, routing profile, and enabled state."),
+			Long:    bartolocli.Markdown("Retrieves a Smart Router by ID from the current workspace, including its model reference, model pool, routing profile, and enabled state.\n\n## Arguments\n\n- `smart-router-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -267,7 +267,7 @@ func registersmartRoutersCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update smart-router-id",
 			Short:   "Update a Smart Router",
-			Long:    bartolocli.Markdown("Updates the model pool, routing profile, or both. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("Updates the model pool, routing profile, or both. Omitted fields retain their current values. The router key and model reference cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `models` (array)\n- `profile` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n\n\n## Arguments\n\n- `smart-router-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

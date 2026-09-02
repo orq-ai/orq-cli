@@ -180,7 +180,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-chunks knowledge-id datasource-id",
 			Short:   "Create chunks for a datasource",
-			Long:    bartolocli.Markdown("Creates between 1 and 100 chunks. Chunks with supplied embeddings are indexed immediately; chunks without embeddings are queued for embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`"),
+			Long:    bartolocli.Markdown("Creates between 1 and 100 chunks. Chunks with supplied embeddings are indexed immediately; chunks without embeddings are queued for embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `array`\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -236,7 +236,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-datasource knowledge-id",
 			Short:   "Create a new datasource",
-			Long:    bartolocli.Markdown("Creates a datasource shell when only a display name is provided. When file_id is provided, the uploaded file is queued for chunking and ingestion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `attachment` (object)\n- `chunking_options` (object)\n- `description` (string | null)\n- `display_name` (string)\n- `file_id` (string)\n- `id` (string)\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a datasource shell when only a display name is provided. When file_id is provided, the uploaded file is queued for chunking and ingestion.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `attachment` (object)\n- `chunking_options` (object)\n- `description` (string | null)\n- `display_name` (string)\n- `file_id` (string)\n- `id` (string)\n- `metadata` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -376,7 +376,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete knowledge-id",
 			Short:   "Deletes a knowledge",
-			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it."),
+			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -420,7 +420,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-chunk knowledge-id datasource-id chunk-id",
 			Short:   "Delete a chunk",
-			Long:    bartolocli.Markdown("Deletes a chunk from the datasource and its vector index."),
+			Long:    bartolocli.Markdown("Deletes a chunk from the datasource and its vector index.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`\n- `chunk-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -466,7 +466,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-chunks knowledge-id datasource-id",
 			Short:   "Delete multiple chunks",
-			Long:    bartolocli.Markdown("Deletes up to 100 chunks and reports IDs that were not found or could not be deleted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunk_ids` (array, required)\n\nRequired fields: `chunk_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Deletes up to 100 chunks and reports IDs that were not found or could not be deleted.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `chunk_ids` (array, required)\n\nRequired fields: `chunk_ids`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -538,7 +538,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete-datasource knowledge-id datasource-id",
 			Short:   "Deletes a datasource",
-			Long:    bartolocli.Markdown("Deletes a datasource from a knowledge base. Deleting a datasource will remove it from the knowledge base and all associated chunks. This action is irreversible and cannot be undone."),
+			Long:    bartolocli.Markdown("Deletes a datasource from a knowledge base. Deleting a datasource will remove it from the knowledge base and all associated chunks. This action is irreversible and cannot be undone.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -584,7 +584,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-chunks-count knowledge-id datasource-id",
 			Short:   "Get chunks total count",
-			Long:    bartolocli.Markdown("Returns the total count of chunks in a datasource. When `q` is provided, the count reflects indexed chunks only — recently created chunks may not be counted until embedding completes.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Returns the total count of chunks in a datasource. When `q` is provided, the count reflects indexed chunks only — recently created chunks may not be counted until embedding completes.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -741,7 +741,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-chunks knowledge-id datasource-id",
 			Short:   "List all chunks for a datasource",
-			Long:    bartolocli.Markdown("Returns chunks using cursor pagination, with optional text and processing-status filters."),
+			Long:    bartolocli.Markdown("Returns chunks using cursor pagination, with optional text and processing-status filters.\n\n## Arguments\n\n- `knowledge-id` — The unique identifier of the knowledge base\n- `datasource-id` — The unique identifier of the datasource."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -789,7 +789,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-chunks-paginated knowledge-id datasource-id",
 			Short:   "List chunks with offset-based pagination",
-			Long:    bartolocli.Markdown("Returns a page of chunks, with optional text, enabled-state, and processing-status filters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `limit` (integer)\n- `page` (integer)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Returns a page of chunks, with optional text, enabled-state, and processing-status filters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean)\n- `limit` (integer)\n- `page` (integer)\n- `q` (string)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -919,7 +919,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-datasources knowledge-id",
 			Short:   "List all datasources",
-			Long:    bartolocli.Markdown("Returns the datasources in a knowledge base. Use cursors to page through results and optional query or status filters to narrow the list."),
+			Long:    bartolocli.Markdown("Returns the datasources in a knowledge base. Use cursors to page through results and optional query or status filters to narrow the list.\n\n## Arguments\n\n- `knowledge-id` — Unique identifier of the knowledge base"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -965,7 +965,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve knowledge-id",
 			Short:   "Retrieves a knowledge base",
-			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings."),
+			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1005,7 +1005,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-chunk knowledge-id datasource-id chunk-id",
 			Short:   "Retrieve a chunk",
-			Long:    bartolocli.Markdown("Retrieves a chunk by its chunk identifier."),
+			Long:    bartolocli.Markdown("Retrieves a chunk by its chunk identifier.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`\n- `chunk-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1045,7 +1045,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-datasource knowledge-id datasource-id",
 			Short:   "Retrieve a datasource",
-			Long:    bartolocli.Markdown("Retrieves a datasource and its current processing status and chunk count."),
+			Long:    bartolocli.Markdown("Retrieves a datasource and its current processing status and chunk count.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1085,7 +1085,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-file-url knowledge-id file-name content-type datasource-id",
 			Short:   "Retrieve a file upload URL",
-			Long:    bartolocli.Markdown("Creates a presigned upload policy for a file that will be attached to a knowledge-base datasource. Submit the returned form fields and file directly to the returned URL."),
+			Long:    bartolocli.Markdown("Creates a presigned upload policy for a file that will be attached to a knowledge-base datasource. Submit the returned form fields and file directly to the returned URL.\n\n## Arguments\n\n- `knowledge-id`\n- `file-name` — The name of the file to upload.\n- `content-type` — The media type of the file to upload.\n- `datasource-id` — The datasource identifier that will own the uploaded file."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(4),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1125,7 +1125,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve-processing-status knowledge-id datasource-id",
 			Short:   "Retrieve datasource processing status",
-			Long:    bartolocli.Markdown("Returns aggregate queued, completed, passed, and failed chunk counts together with the datasource and chunk processing attempts."),
+			Long:    bartolocli.Markdown("Returns aggregate queued, completed, passed, and failed chunk counts together with the datasource and chunk processing attempts.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1167,7 +1167,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search knowledge-id",
 			Short:   "Search knowledge base",
-			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (anyOf)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (allOf)\n- `retrieval_config` (allOf)\n- `search_options` (allOf)\n- `search_type` (string)\n- `threshold` (number)\n- ... and 1 more fields\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Search a Knowledge Base and return the most similar chunks, along with their search and rerank scores. Note that all configuration changes made in the API will override the settings in the UI.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agentic_rag_config` (anyOf)\n- `filter_by` (anyOf)\n- `query` (string, required)\n- `rerank_config` (allOf)\n- `retrieval_config` (allOf)\n- `search_options` (allOf)\n- `search_type` (string)\n- `threshold` (number)\n- ... and 1 more fields\n\nRequired fields: `query`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id` — The unique identifier or key of the knowledge base."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1343,7 +1343,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "toggle-chunk knowledge-id datasource-id chunk-id",
 			Short:   "Set a chunk's enabled status",
-			Long:    bartolocli.Markdown("Enables or disables a chunk for retrieval. If the vector-index document is missing, enabling the chunk queues it for embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean, required)\n\nRequired fields: `enabled`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Enables or disables a chunk for retrieval. If the vector-index document is missing, enabling the chunk queues it for embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `enabled` (boolean, required)\n\nRequired fields: `enabled`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`\n- `chunk-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1413,7 +1413,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update knowledge-id",
 			Short:   "Updates a knowledge",
-			Long:    bartolocli.Markdown("Updates a knowledge base. Omitted optional fields retain their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `domain_id` (string)\n- `embedding_model` (string)\n- `external_config` (object)\n- `path` (string)\n- `retrieval_settings` (object)\n- `settings` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates a knowledge base. Omitted optional fields retain their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `domain_id` (string)\n- `embedding_model` (string)\n- `external_config` (object)\n- `path` (string)\n- `retrieval_settings` (object)\n- `settings` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1575,7 +1575,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-chunk knowledge-id datasource-id chunk-id",
 			Short:   "Update a chunk",
-			Long:    bartolocli.Markdown("Updates chunk text, metadata, or a supplied embedding. Changing text without an embedding queues the chunk for re-embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `embedding` (array)\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates chunk text, metadata, or a supplied embedding. Changing text without an embedding queues the chunk for re-embedding.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `embedding` (array)\n- `metadata` (object)\n- `text` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`\n- `chunk-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1669,7 +1669,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-datasource knowledge-id datasource-id",
 			Short:   "Update a datasource",
-			Long:    bartolocli.Markdown("Updates the display name of a datasource.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `display_name` (string, required)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates the display name of a datasource.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `display_name` (string, required)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {

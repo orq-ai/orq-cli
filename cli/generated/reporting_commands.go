@@ -30,7 +30,7 @@ func registerreportingCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query",
 			Short:   "Query reporting metrics",
-			Long:    bartolocli.Markdown("Returns time-series, scalar, and top-list analytics for AI usage, cost, latency, evaluator results, and guardrail outcomes. This API remains supported while the neutral telemetry envelope is proven against every reporting request shape.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `from` (string, required)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `limit` (integer)\n- `metric` (string, required)\n- `mode` (string)\n- ... and 3 more fields\n\nRequired fields: `from`, `metric`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Returns time-series, scalar, and top-list analytics for AI usage, cost, latency, evaluator results, and guardrail outcomes. This API remains supported while the neutral telemetry envelope is proven against every reporting request shape.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filters` (array)\n- `from` (string, required)\n- `grain` (string)\n- `group_by` (array)\n- `include_totals` (boolean)\n- `limit` (integer)\n- `metric` (string, required)\n- `mode` (string)\n- ... and 3 more fields\n\nRequired fields: `from`, `metric`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ func registerreportingCommands(root *cobra.Command) {
 						{
 							Name:        "from",
 							FlagName:    "from",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Inclusive lower bound for the report window (RFC 3339, UTC).",
 						},
 						{
@@ -138,7 +138,7 @@ func registerreportingCommands(root *cobra.Command) {
 						{
 							Name:        "to",
 							FlagName:    "to",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "Exclusive upper bound for the report window (RFC 3339, UTC).",
 						},
 					},
@@ -174,7 +174,7 @@ func registerreportingCommands(root *cobra.Command) {
 				{
 					Name:        "from",
 					FlagName:    "from",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Inclusive lower bound for the report window (RFC 3339, UTC).",
 				},
 				{
@@ -262,7 +262,7 @@ func registerreportingCommands(root *cobra.Command) {
 				{
 					Name:        "to",
 					FlagName:    "to",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "Exclusive upper bound for the report window (RFC 3339, UTC).",
 				},
 			},

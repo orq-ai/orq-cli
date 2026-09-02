@@ -30,7 +30,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "aggregate",
 			Short:   "Aggregate traces",
-			Long:    bartolocli.Markdown("Aggregate trace metrics using the structured trace filter contract. This API remains supported; POST /v3/telemetry/query offers the same aggregate shape in a neutral multi-signal envelope.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Aggregate trace metrics using the structured trace filter contract. This API remains supported; POST /v3/telemetry/query offers the same aggregate shape in a neutral multi-signal envelope.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -62,7 +62,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "from",
 							FlagName:    "from",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 						{
@@ -80,7 +80,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "to",
 							FlagName:    "to",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 					},
@@ -128,7 +128,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "from",
 					FlagName:    "from",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 				{
@@ -146,7 +146,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "to",
 					FlagName:    "to",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 			},
@@ -172,7 +172,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create trace-id span-id",
 			Short:   "Annotate a span",
-			Long:    bartolocli.Markdown("Attach one or more annotations to a specific span. A standard annotation references a human review by key and supplies a value. A correction references an existing evaluator output by parent_annotation_id and supplies the corrected value, validated against that evaluator's output schema.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `annotations` (array, required)\n- `metadata` (object)\n\nRequired fields: `annotations`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Attach one or more annotations to a specific span. A standard annotation references a human review by key and supplies a value. A correction references an existing evaluator output by parent_annotation_id and supplies the corrected value, validated against that evaluator's output schema.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `annotations` (array, required)\n- `metadata` (object)\n\nRequired fields: `annotations`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `trace-id` — Unique identifier of the trace\n- `span-id` — Unique identifier of the span"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,7 +254,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete trace-id span-id",
 			Short:   "Remove an annotation from a span",
-			Long:    bartolocli.Markdown("Remove one or more annotations from a specific span by their evaluator keys, or remove corrections by the eval ids of their parent annotations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `keys` (array)\n- `metadata` (object)\n- `parent_annotation_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Remove one or more annotations from a specific span by their evaluator keys, or remove corrections by the eval ids of their parent annotations.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `keys` (array)\n- `metadata` (object)\n- `parent_annotation_ids` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `trace-id` — Unique identifier of the trace\n- `span-id` — Unique identifier of the span"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -350,7 +350,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get trace-id",
 			Short:   "Get trace",
-			Long:    bartolocli.Markdown("Retrieve one trace summary by trace id."),
+			Long:    bartolocli.Markdown("Retrieve one trace summary by trace id.\n\n## Arguments\n\n- `trace-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -390,7 +390,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get-span trace-id span-id",
 			Short:   "Get trace span",
-			Long:    bartolocli.Markdown("Retrieve one hydrated span."),
+			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id`\n- `span-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -430,7 +430,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-cancel-run insight-id run-id",
 			Short:   "Insights Service Cancel Run",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -694,7 +694,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-delete-run insight-id run-id",
 			Short:   "Insights Service Delete Run",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service Delete Run\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -738,7 +738,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-get-cluster insight-id run-id cluster-id",
 			Short:   "Insights Service Get Cluster",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service Get Cluster\n\n## Arguments\n\n- `insight-id`\n- `run-id`\n- `cluster-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -778,7 +778,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-get-insight insight-id",
 			Short:   "Insights Service Get Insight",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service Get Insight\n\n## Arguments\n\n- `insight-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -818,7 +818,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-get-run insight-id run-id",
 			Short:   "Insights Service Get Run",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service Get Run\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -858,7 +858,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-get-run-artifacts insight-id run-id",
 			Short:   "Insights Service Get Run Artifacts",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service Get Run Artifacts\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -898,7 +898,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-list-cluster-conversations insight-id run-id cluster-id",
 			Short:   "Insights Service List Cluster Conversations",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service List Cluster Conversations\n\n## Arguments\n\n- `insight-id`\n- `run-id`\n- `cluster-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(3),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -942,7 +942,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-list-clusters insight-id run-id",
 			Short:   "Insights Service List Clusters",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service List Clusters\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1011,8 +1011,8 @@ func registertracesCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the id of the last item from the\n previous page. Cannot be combined with ending_before.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the id of the first item from the\n previous page. Cannot be combined with starting_after.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the id of the last item from the previous page. Cannot be combined with ending_before.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the id of the first item from the previous page. Cannot be combined with starting_after.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -1032,7 +1032,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-list-runs insight-id",
 			Short:   "Insights Service List Runs",
-			Long:    bartolocli.Markdown(""),
+			Long:    bartolocli.Markdown("Insights Service List Runs\n\n## Arguments\n\n- `insight-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1185,7 +1185,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-re-evaluate-run insight-id run-id",
 			Short:   "Insights Service Re Evaluate Run",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `dimension` (integer)\n- `judge_model` (string)\n- `judge_version` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `dimension` (integer)\n- `judge_model` (string)\n- `judge_version` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `insight-id`\n- `run-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1279,7 +1279,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-run-analysis insight-id",
 			Short:   "Insights Service Run Analysis",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `time_range` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `time_range` (allOf)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `insight-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1349,7 +1349,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "insights-service-update-insight insight-id",
 			Short:   "Insights Service Update Insight",
-			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `conversation_pass_mode` (integer)\n- `display_name` (string)\n- `enabled` (boolean)\n- `filter_operator` (string)\n- `filters` (array)\n- `first_pass_method` (integer)\n- `max_cost_per_run` (number)\n- `max_traces` (integer)\n- ... and 5 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n"),
+			Long:    bartolocli.Markdown("\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `conversation_pass_mode` (integer)\n- `display_name` (string)\n- `enabled` (boolean)\n- `filter_operator` (string)\n- `filters` (array)\n- `first_pass_method` (integer)\n- `max_cost_per_run` (number)\n- `max_traces` (integer)\n- ... and 5 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\nRenamed flags (the original names belong to global flags):\n- `profile` is `--body-profile` (not `--profile`)\n\n\n## Arguments\n\n- `insight-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1563,7 +1563,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-facet-values field",
 			Short:   "List trace facet values",
-			Long:    bartolocli.Markdown("List values and counts for one trace facet field."),
+			Long:    bartolocli.Markdown("List values and counts for one trace facet field.\n\n## Arguments\n\n- `field`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1585,8 +1585,8 @@ func registertracesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().String("from", "", "")
-		cmd.Flags().String("to", "", "")
+		cmd.Flags().String("from", "", bartolocli.WithDateTimeHelp(""))
+		cmd.Flags().String("to", "", bartolocli.WithDateTimeHelp(""))
 		cmd.Flags().Int64("limit", 0, "")
 		cmd.Flags().String("filter-operator", "", "")
 
@@ -1688,7 +1688,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-spans trace-id",
 			Short:   "List trace spans",
-			Long:    bartolocli.Markdown("List canonical span summaries for a trace."),
+			Long:    bartolocli.Markdown("List canonical span summaries for a trace.\n\n## Arguments\n\n- `trace-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1733,7 +1733,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "query-oql",
 			Short:   "Query traces with OQL",
-			Long:    bartolocli.Markdown("Run an OQL trace query. OQL is validated against the trace field registry and compiled through the trace planner.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `limit` (integer)\n- `oql` (string, required)\n- `page_token` (string)\n- `to` (string, required)\n\nRequired fields: `from`, `oql`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Run an OQL trace query. OQL is validated against the trace field registry and compiled through the trace planner.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `from` (string, required)\n- `limit` (integer)\n- `oql` (string, required)\n- `page_token` (string)\n- `to` (string, required)\n\nRequired fields: `from`, `oql`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1747,7 +1747,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "from",
 							FlagName:    "from",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 						{
@@ -1771,7 +1771,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "to",
 							FlagName:    "to",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 					},
@@ -1801,7 +1801,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "from",
 					FlagName:    "from",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 				{
@@ -1825,7 +1825,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "to",
 					FlagName:    "to",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 			},
@@ -1851,7 +1851,7 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "search",
 			Short:   "Search traces",
-			Long:    bartolocli.Markdown("Search trace summaries using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `limit` (integer)\n- `page_token` (string)\n- `query` (string)\n- `sort` (array)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Search trace summaries using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string, required)\n- `limit` (integer)\n- `page_token` (string)\n- `query` (string)\n- `sort` (array)\n- `to` (string, required)\n\nRequired fields: `from`, `to`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1877,7 +1877,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "from",
 							FlagName:    "from",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 						{
@@ -1907,7 +1907,7 @@ func registertracesCommands(root *cobra.Command) {
 						{
 							Name:        "to",
 							FlagName:    "to",
-							Type:        "string",
+							Type:        "datetime",
 							Description: "",
 						},
 					},
@@ -1949,7 +1949,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "from",
 					FlagName:    "from",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 				{
@@ -1979,7 +1979,7 @@ func registertracesCommands(root *cobra.Command) {
 				{
 					Name:        "to",
 					FlagName:    "to",
-					Type:        "string",
+					Type:        "datetime",
 					Description: "",
 				},
 			},

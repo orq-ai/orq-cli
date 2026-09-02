@@ -158,7 +158,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete id",
 			Short:   "Delete an identity",
-			Long:    bartolocli.Markdown("Permanently deletes an identity from your workspace and cleans up associated budget configurations."),
+			Long:    bartolocli.Markdown("Permanently deletes an identity from your workspace and cleans up associated budget configurations.\n\n## Arguments\n\n- `id` — Identity ID to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -225,8 +225,8 @@ func registeridentitiesCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from\n the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from\n the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from the previous page.")
 		cmd.Flags().String("search", "", "Case-insensitive search text matched against identity profile fields.")
 		cmd.Flags().String("filter-by-tags", "", "Return only identities that have at least one of these tags.")
 		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on each returned identity.")
@@ -234,7 +234,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"IDENTITY_SORT_FIELD_UNSPECIFIED", "IDENTITY_SORT_FIELD_DISPLAY_NAME", "IDENTITY_SORT_FIELD_UPDATED"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		cmd.Flags().Bool("include-budget", false, "When true, embed each identity's identity-scoped budget (config and\n limits only, no live usage) on the returned records. Adds one budget\n lookup for the page; omit to skip it.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed each identity's identity-scoped budget (config and limits only, no live usage) on the returned records. Adds one budget lookup for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -254,7 +254,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve id",
 			Short:   "Retrieve an identity",
-			Long:    bartolocli.Markdown("Retrieves detailed information about a specific identity using their identity ID or external ID from your system."),
+			Long:    bartolocli.Markdown("Retrieves detailed information about a specific identity using their identity ID or external ID from your system.\n\n## Arguments\n\n- `id` — Identity ID to retrieve."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -277,7 +277,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on the returned identity.")
-		cmd.Flags().Bool("include-budget", false, "When true, embed the identity-scoped budget (config and limits only,\n no live usage) on the returned record.")
+		cmd.Flags().Bool("include-budget", false, "When true, embed the identity-scoped budget (config and limits only, no live usage) on the returned record.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -299,7 +299,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an identity",
-			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Updates specific fields of an existing identity. Only the fields provided in the request body will be updated.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `avatar_url` (string)\n- `display_name` (string)\n- `email` (string)\n- `metadata` (object)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — Identity ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {

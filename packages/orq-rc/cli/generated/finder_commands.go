@@ -28,7 +28,7 @@ func registerfinderCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve a finder entity",
-			Long:    bartolocli.Markdown("Returns a single finder entity by id, scoped to the caller's workspace membership."),
+			Long:    bartolocli.Markdown("Returns a single finder entity by id, scoped to the caller's workspace membership.\n\n## Arguments\n\n- `id` — Identifier of the finder entity to retrieve. Matches the `_id` field."),
 			Hidden:  true,
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),

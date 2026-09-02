@@ -32,7 +32,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create agent-key",
 			Short:   "Create schedule",
-			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a cron cadence. Only `cron` is accepted, as a 6-field expression firing at most once per hour: hourly `0 0 * * * *`, daily `0 0 9 * * *`, or weekly `0 0 9 * * 1`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string, required)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `display_name`, `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a schedule that runs the agent on a cron cadence. Only `cron` is accepted, as a 6-field expression firing at most once per hour: hourly `0 0 * * * *`, daily `0 0 9 * * *`, or weekly `0 0 9 * * 1`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string, required)\n- `expression` (string, required)\n- `payload` (object, required)\n- `type` (string, required)\n\nRequired fields: `display_name`, `expression`, `payload`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -154,7 +154,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete agent-key schedule-id",
 			Short:   "Delete schedule",
-			Long:    bartolocli.Markdown("Permanently removes the schedule. It will not run again."),
+			Long:    bartolocli.Markdown("Permanently removes the schedule. It will not run again.\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to.\n- `schedule-id` — The schedule's ULID, as returned from create."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -198,7 +198,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list agent-key",
 			Short:   "List schedules",
-			Long:    bartolocli.Markdown("Lists all schedules attached to the specified agent, most recent first."),
+			Long:    bartolocli.Markdown("Lists all schedules attached to the specified agent, most recent first.\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,7 +238,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "retrieve agent-key schedule-id",
 			Short:   "Retrieve schedule",
-			Long:    bartolocli.Markdown("Retrieves a single schedule by ID."),
+			Long:    bartolocli.Markdown("Retrieves a single schedule by ID.\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to.\n- `schedule-id` — The schedule's ULID, as returned from create."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -278,7 +278,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "trigger agent-key schedule-id",
 			Short:   "Trigger schedule execution",
-			Long:    bartolocli.Markdown("Runs the schedule's payload immediately (approximately 10 seconds after the request). The schedule's regular cadence is unaffected. Inactive schedules return 400."),
+			Long:    bartolocli.Markdown("Runs the schedule's payload immediately (approximately 10 seconds after the request). The schedule's regular cadence is unaffected. Inactive schedules return 400.\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to.\n- `schedule-id` — The schedule's ULID, as returned from create."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -322,7 +322,7 @@ func registerschedulesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key schedule-id",
 			Short:   "Update schedule",
-			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) reschedules the next run and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Partially updates a schedule. Any omitted field is left unchanged. Changing `expression` or `type` (or reactivating from inactive) reschedules the next run and bumps `generation`; payload-only and `agent_tag`-only changes leave the firing cadence in place.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_tag` (string)\n- `display_name` (string)\n- `expression` (string)\n- `is_active` (boolean)\n- `payload` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique routing key of the agent the schedule belongs to.\n- `schedule-id` — The schedule's ULID, as returned from create."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
