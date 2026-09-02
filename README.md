@@ -516,9 +516,11 @@ orq --server https://orq.acme.internal setup
 orq launch --server https://orq.acme.internal kimi
 ```
 
-Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no session and no override.
+Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no server override.
 
-Without a session — CI, or an API key alone — set `ORQ_SERVER` (or pass `--server`) instead, which resolves the same three URLs.
+For an exported API key in CI, set `ORQ_SERVER` (or pass `--server`) to target a
+different host; a saved API-key profile carries its own server. Either source
+resolves the same three URLs.
 
 If a deployment serves the AI gateway from a different hostname than the platform API, override just that one with `ORQ_GATEWAY_URL` (all agents) or `--base-url` (one command) — see [per-agent environment overrides](#per-agent-environment-overrides). Both take precedence over the derived value.
 
