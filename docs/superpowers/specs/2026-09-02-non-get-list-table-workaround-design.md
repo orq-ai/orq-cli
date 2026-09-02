@@ -1,7 +1,7 @@
 # orq CLI: non-GET list table workaround
 
 Date: 2026-09-02
-Status: approved design; written spec awaiting review
+Status: reviewed; ready for implementation planning
 Upstream: ENG-2942
 Related: ENG-2855
 
@@ -20,8 +20,10 @@ This design is the removable `cli/custom` workaround until an updated Bartolo is
 
 ## Scope
 
-The workaround covers non-mutating POST operations whose response contains exactly one
-top-level row collection that Bartolo's existing `FormatList` understands.
+The workaround covers the explicit read/query/search/aggregate/preview POST operations below.
+Each has one intended top-level row collection. It does not infer list semantics from response
+shape: transformation, mutation, bulk-write, and invocation commands remain excluded even when
+their responses happen to contain arrays.
 
 | Command | Row field | Default columns |
 | --- | --- | --- |
@@ -39,12 +41,15 @@ top-level row collection that Bartolo's existing `FormatList` understands.
 | `audit-logs query` (RC only) | `audit_logs` | `audit_log_id`, `created_at`, `action`, `actor_display` |
 | `knowledge-bases preview-chunks` (RC only) | `chunks` | `page_number`, `text` |
 
-The columns are schema fields rather than runtime guesses. They keep empty responses headed,
-make nested aggregate maps visible instead of leaving a table with no inferable columns, and
-pin a useful order until the same values move into `x-cli-list-fields` upstream.
+The columns are schema fields rather than runtime guesses. Together with the configured row
+field, they keep empty responses headed, make nested aggregate maps visible instead of leaving
+a table with no inferable columns, and pin a useful order until the same values move into
+`x-cli-list-fields` upstream.
 
-The shared custom package runs against both generated trees. A configured command absent from
-one tree is skipped, which is how the two RC-only entries coexist with the stable binary.
+The shared custom package runs against both generated trees. Every stable entry is required and
+registration fails loudly if its path or generated `RunE` is missing; silent skipping would hide
+schema or command-name drift. Only the two entries explicitly marked RC-only are optional in the
+stable tree. The RC module build and tests prove those paths resolve in the staging tree.
 
 ## Why OQL query commands are separate
 
@@ -60,9 +65,10 @@ search:
 
 Bartolo's row detector examines only the top-level object for an array. Redirecting these
 commands to `FormatList` would still fall back to serialized output because `search` is an
-object, not the row array. Extracting `search` in the CLI only for table output would require
-knowing whether stdout is a real terminal; that state is private to Bartolo. Extracting it
-unconditionally would break the stability contract by changing piped and explicit JSON output.
+object, not the row array. The CLI could build a terminal-only table view, as it does for the
+nonconventional top-level keys below, but nested row selection is a separate contract with more
+edge cases around JMESPath and envelope metadata. Extracting `search.data` unconditionally would
+break the stability contract by changing piped and explicit JSON output.
 
 ENG-2942 therefore records these commands as needing a row-path facility such as
 `x-cli-list-path: search.data`, or a flatter API response. They are not part of this workaround.
@@ -78,31 +84,55 @@ not response-shape inference.
 ## Design
 
 Add `cli/custom/generated_list_workaround.go` with a declarative slice containing each command
-path and its columns. `Register`, which already runs after generated registration, calls one
-installer that resolves each path in the completed Cobra tree.
+path as Cobra path segments, its exact row field, its columns, and whether it is required in the
+stable tree. `Register` calls the installer immediately after `registerCommands`, because those
+custom registrations replace some generated commands. The installer resolves paths with
+`root.Find(pathSegments)`; it does not derive paths from `Use` strings, which may contain argument
+placeholders. It rejects a missing stable command or missing generated `RunE`, while an absent
+RC-only command is allowed in the production-schema tree.
 
 For every present command, the installer wraps its generated `RunE`. The wrapper snapshots the
-current `bartolocli.Formatter`, replaces it for that command invocation with a small adapter,
-defers restoration, and calls the original `RunE`. The swap happens after persistent pre-run
-hooks, so it delegates to the final formatter selected by `--no-color` and terminal detection.
-The CLI runs one command per process, so no concurrent command can observe the temporary value.
+current `bartolocli.Formatter`, rejects a nil snapshot as an initialization error, replaces it
+for that command invocation with a small adapter, defers restoration, and calls the original
+`RunE`. The swap happens after persistent pre-run hooks, so it delegates to the final formatter
+selected by `--no-color` and terminal detection.
+
+This package, Bartolo, Cobra, and Viper all use process-global command state and do not expose a
+concurrent `Execute` contract. The workaround preserves that existing one-command-per-process
+invariant; it does not make concurrent root execution safe. Tests that execute command roots or
+change `bartolocli.Formatter` must not use `t.Parallel`. A mutex around only the allowlisted
+commands would imply safety it cannot provide, because an unwrapped command could still read the
+same global formatter concurrently.
 
 The adapter implements `ResponseFormatter.Format`, because that is the method the generated
-non-list command calls. Its implementation asks the captured delegate for the same optional
-`FormatList(data, columns...)` capability used by Bartolo's public `FormatList` helper. A
-delegate with that capability receives the complete response envelope and the configured
-columns. A custom delegate without it falls back to its ordinary `Format` method, preserving
-Bartolo's compatibility behavior.
+non-list command calls. Its implementation type-asserts the captured delegate directly for the
+same optional `FormatList(data, columns...)` capability used by Bartolo's public helper. It must
+never call the package-level `bartolocli.FormatList`: while the adapter is installed that helper
+would dispatch through the global adapter and recurse. A custom delegate without `FormatList`
+falls back to its ordinary `Format` method with the original envelope, preserving Bartolo's
+compatibility behavior.
 
-Passing the complete envelope is load-bearing. Bartolo's list formatter renders a table only
-for a human at a terminal. For a pipe, `--json`, `--raw`, YAML, or explicit TOON, it serializes
-the same complete API response it received. The workaround therefore changes presentation
-only and leaves the machine contract untouched.
+Bartolo recognizes empty envelopes only when their array is under one of six conventional keys.
+Five allowlisted operations use `matches`, `deployments`, `buckets`, `audit_logs`, or `chunks`,
+so merely selecting `FormatList` would still serialize an empty response. When, and only when,
+the captured delegate is Bartolo's default formatter and the invocation is eligible for terminal
+table output (`stdoutIsTerminal()`, no `--raw`, and resolved output format `table`), the adapter
+builds a shallow table-view copy of the envelope and aliases the configured row array under
+`data`. The original row field remains present, so JMESPath expressions referring to the wire
+shape continue to work; Bartolo gives the conventional `data` alias precedence and ignores both
+arrays in its metadata footer. This also makes the configured row field operational rather than
+relying on Bartolo to guess among future peer arrays. If a terminal-table response lacks its
+configured row field, formatting fails clearly instead of guessing another array and displaying
+the wrong resource.
+
+Passing the untouched envelope outside that narrow table branch is load-bearing. For a pipe,
+`--json`, `--raw`, YAML, explicit TOON, or a custom formatter, the delegate receives the exact
+object returned by the API: no extracted rows and no added `data` alias. The workaround therefore
+changes presentation only and leaves the machine contract untouched.
 
 The wrapper is marked in the Cobra command's annotations so installing custom registration a
-second time cannot stack adapters. Missing commands and commands without `RunE` are skipped;
-tests prove every expected stable command resolves, while RC-only entries are exercised with a
-minimal synthetic command tree and compiled again by the RC module checks.
+second time cannot stack adapters. Tests prove every expected stable command resolves; RC-only
+absence is tested separately from RC-tree resolution so optional handling cannot mask drift.
 
 Each function and configuration comment names ENG-2942 and the removal condition: delete the
 workaround after both generated modules use a Bartolo release that emits `FormatList` for these
@@ -122,18 +152,26 @@ The public seam is Cobra execution of the real registered `traces search` comman
 `httptest` server. This drives the generated HTTP client, the custom wrapper, and Bartolo's real
 formatter together.
 
-One vertical slice starts red with an empty trace response and expects table headers rather
-than `data[0]:`. The implementation then makes it green. Follow-up slices cover a populated
-row and `--json`, whose bytes must still decode to the full response envelope including paging
-and metadata.
+The vertical slice explicitly installs a terminal-enabled Bartolo default formatter and captures
+`bartolocli.Stdout`; an ordinary `go test` stdout is not a TTY and would otherwise exercise only
+serialization. It starts red with an empty trace response and expects table headers rather than
+`data[0]:`. Follow-up slices cover a populated row and `--json`, whose bytes must still decode to
+the full response envelope including paging and metadata.
+
+A second empty-response case uses a nonconventional key such as `matches` and proves both sides
+of the table-view boundary: terminal table output has configured headers, while piped or explicit
+JSON receives the original `matches` envelope with no synthetic `data` field. A multi-array
+fixture proves the configured row field, rather than map iteration, selects the table rows.
 
 Focused wiring tests then cover:
 
 - every stable allowlisted command resolves to a wrapped generated `RunE`;
-- absent RC-only commands are harmless on the stable tree;
-- synthetic RC-only command paths receive the same adapter;
+- a missing stable path or `RunE` fails registration loudly;
+- absent RC-only commands are harmless on the stable tree, while both resolve in the RC tree;
 - the original formatter is restored after success and after an error;
-- a delegate without `FormatList` retains generic formatting.
+- a delegate without `FormatList` retains generic formatting;
+- a list-capable delegate is called directly without recursion;
+- a nil formatter produces a clear initialization error rather than a nil dereference.
 
 No test edits generated files or contacts the live API.
 
@@ -145,7 +183,9 @@ remain unchanged.
 
 Removing the workaround after ENG-2942 ships consists of deleting its source and tests,
 removing the `Register` call, and regenerating both modules with the Bartolo version carrying
-explicit non-GET list classification and the corresponding `x-cli-list-fields` metadata.
+explicit non-GET list classification, row-path metadata where needed, and the corresponding
+`x-cli-list-fields` values. The local columns are intentional compatibility duplicates and are
+deleted in the same change; they must not become a second long-lived source of truth.
 
 ## Out of scope
 
