@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -252,67 +253,372 @@ func TestConcurrentSaveManifestSucceeds(t *testing.T) {
 func TestTargets(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
+	project := t.TempDir()
+	t.Chdir(project)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("KIMI_CODE_HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 
-	dirs := func(agents ...string) []string {
-		got, err := Targets(agents)
+	dirs := func(scope Scope, agents ...string) string {
+		got, err := Targets(agents, scope)
 		if err != nil {
-			t.Fatalf("Targets(%v): %v", agents, err)
+			t.Fatalf("Targets(%v, %v): %v", agents, scope, err)
 		}
 		var out []string
 		for _, tg := range got {
+			d := strings.TrimPrefix(tg.Dir, home)
+			d = strings.TrimPrefix(d, project)
 			// Slash form so the expectations below read the same on Windows.
-			out = append(out, filepath.ToSlash(strings.TrimPrefix(tg.Dir, home)))
+			out = append(out, filepath.ToSlash(d))
 		}
 		sort.Strings(out)
-		return out
+		return strings.Join(out, ",")
 	}
 
-	if got := dirs("claude"); strings.Join(got, ",") != "/.claude/skills" {
-		t.Errorf("claude alone = %v, want only its own directory", got)
+	if got := dirs(ScopeGlobal, "claude"); got != "/.claude/skills" {
+		t.Errorf("claude global = %q", got)
 	}
-	if got := dirs("pi"); strings.Join(got, ",") != "/.agents/skills" {
-		t.Errorf("pi alone = %v, want only the shared directory", got)
+	if got := dirs(ScopeLocal, "claude"); got != "/.claude/skills" {
+		t.Errorf("claude local = %q", got)
+	}
+	// Every non-claude agent maps to the shared directory and nothing else:
+	// codex and kimi read ~/.agents/skills too, and codex does not dedupe, so
+	// writing ~/.codex/skills as well listed every skill twice.
+	for _, agent := range []string{"codex", "kimi", "opencode", "pi", "kilo"} {
+		if got := dirs(ScopeGlobal, agent); got != "/.agents/skills" {
+			t.Errorf("%s global = %q, want only the shared directory", agent, got)
+		}
+		if got := dirs(ScopeLocal, agent); got != "/.agents/skills" {
+			t.Errorf("%s local = %q, want only the shared directory", agent, got)
+		}
+	}
+	if got := dirs(ScopeGlobal, "claude", "codex", "kimi", "opencode", "pi", "kilo"); got != "/.agents/skills,/.claude/skills" {
+		t.Errorf("everyone global = %q", got)
+	}
+	if got := dirs(ScopeBoth, "claude", "pi"); got != "/.agents/skills,/.agents/skills,/.claude/skills,/.claude/skills" {
+		t.Errorf("both scopes = %q", got)
 	}
 
-	// kilo also reads an XDG-relative directory, but only on Linux; assert the
-	// shape that is actually correct for the platform running this test so it
-	// passes on Linux and macOS alike instead of being right on only one.
-	wantShared := []string{"/.agents/skills"}
-	if runtime.GOOS == "linux" {
-		wantShared = append(wantShared, "/.config/agents/skills")
-		sort.Strings(wantShared)
-	}
-	if got := dirs("opencode", "pi", "kilo"); strings.Join(got, ",") != strings.Join(wantShared, ",") {
-		t.Errorf("three shared readers = %v, want %v", got, wantShared)
-	}
-
-	if got := dirs("claude", "codex", "kimi"); strings.Join(got, ",") != "/.claude/skills,/.codex/skills,/.kimi-code/skills" {
-		t.Errorf("three own-directory agents = %v", got)
-	}
-}
-
-func TestTargetsHonorAgentHomeEnvironmentVariables(t *testing.T) {
-	setHome(t, t.TempDir())
-	kimiHome := t.TempDir()
-	codexHome := t.TempDir()
-	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("CODEX_HOME", codexHome)
-
-	got, err := Targets([]string{"kimi", "codex"})
+	got, err := Targets([]string{"claude", "pi"}, ScopeLocal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{
-		"kimi":  filepath.Join(kimiHome, "skills"),
-		"codex": filepath.Join(codexHome, "skills"),
-	}
 	for _, tg := range got {
-		if want[tg.Agent] != tg.Dir {
-			t.Errorf("%s target = %q, want %q", tg.Agent, tg.Dir, want[tg.Agent])
+		if tg.Global {
+			t.Errorf("local target %s flagged global", tg.Dir)
 		}
+		if !strings.HasPrefix(tg.Dir, project) {
+			t.Errorf("local target %s is not under cwd %s", tg.Dir, project)
+		}
+	}
+}
+
+func TestTargetsIgnoreAgentHomeEnvironmentVariables(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	t.Setenv("KIMI_CODE_HOME", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	got, err := Targets([]string{"kimi", "codex", "kilo"}, ScopeGlobal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Dir != filepath.Join(home, ".agents", "skills") {
+		t.Errorf("targets = %+v, want only ~/.agents/skills", got)
+	}
+}
+
+func TestScopeFor(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	if ScopeFor(home) != ScopeGlobal {
+		t.Error("$HOME must resolve to the global scope")
+	}
+	if ScopeFor(t.TempDir()) != ScopeLocal {
+		t.Error("a directory that is not $HOME must resolve to the local scope")
+	}
+	link := filepath.Join(t.TempDir(), "home-link")
+	if err := os.Symlink(home, link); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	if ScopeFor(link) != ScopeGlobal {
+		t.Error("a symlink to $HOME must resolve to the global scope")
+	}
+}
+
+func TestRepoRoot(t *testing.T) {
+	base := t.TempDir()
+	// RepoRoot resolves symlinks, and macOS puts temp dirs behind one
+	// (/var -> /private/var); compare against the resolved form.
+	if resolved, err := filepath.EvalSymlinks(base); err == nil {
+		base = resolved
+	}
+	mk := func(parts ...string) string {
+		p := filepath.Join(append([]string{base}, parts...)...)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	repo := mk("repo")
+	mk("repo", ".git")
+	sub := mk("repo", "a", "b")
+	if root, ok := RepoRoot(sub); !ok || root != repo {
+		t.Errorf("RepoRoot(sub) = %q, %v; want %q", root, ok, repo)
+	}
+	if root, ok := RepoRoot(repo); !ok || root != repo {
+		t.Errorf("RepoRoot(root) = %q, %v", root, ok)
+	}
+	// A linked worktree has a .git file, not a directory.
+	wt := mk("wt")
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: /elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if root, ok := RepoRoot(mk("wt", "x")); !ok || root != wt {
+		t.Errorf("worktree: RepoRoot = %q, %v", root, ok)
+	}
+	// Nested repo: nearest wins.
+	inner := mk("repo", "vendor", "inner")
+	mk("repo", "vendor", "inner", ".git")
+	if root, ok := RepoRoot(mk("repo", "vendor", "inner", "pkg")); !ok || root != inner {
+		t.Errorf("nested: RepoRoot = %q, %v; want %q", root, ok, inner)
+	}
+	if _, ok := RepoRoot(mk("plain")); ok {
+		t.Error("a directory with no .git ancestor reported a root")
+	}
+	link := filepath.Join(base, "sub-link")
+	if err := os.Symlink(sub, link); err == nil {
+		if root, ok := RepoRoot(link); !ok || root != repo {
+			t.Errorf("symlinked cwd: RepoRoot = %q, %v", root, ok)
+		}
+	}
+}
+
+func TestInstallLocalLinksIntoCwd(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	project := t.TempDir()
+	t.Chdir(project)
+
+	res, err := Install([]string{"claude", "codex"}, ScopeLocal)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	names, _ := Names()
+	if len(res.Added) != 2*len(names) {
+		t.Fatalf("added %d links, want %d", len(res.Added), 2*len(names))
+	}
+	for _, dir := range []string{filepath.Join(project, ".claude", "skills"), filepath.Join(project, ".agents", "skills")} {
+		if _, err := os.Stat(filepath.Join(dir, names[0])); err != nil {
+			t.Errorf("%s not projected into %s: %v", names[0], dir, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude")); !os.IsNotExist(err) {
+		t.Error("a local install touched $HOME")
+	}
+}
+
+func TestInstallRejectsBothScopes(t *testing.T) {
+	setHome(t, t.TempDir())
+	if _, err := Install([]string{"claude"}, ScopeBoth); err == nil {
+		t.Fatal("Install accepted ScopeBoth")
+	}
+}
+
+// A manifest written by an earlier CLI records links under ~/.codex/skills
+// and ~/.kimi-code/skills. Nothing prunes by directory: refresh prunes by
+// skill name only. Install removes what is still ours there.
+func TestInstallRemovesLinksInRetiredDirectories(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("KIMI_CODE_HOME", "")
+	gen, err := EnsureGeneration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, _ := Names()
+	old := []string{
+		filepath.Join(codexHome, "skills", names[0]),
+		filepath.Join(home, ".kimi-code", "skills", names[0]),
+	}
+	m := &Manifest{Version: manifestVersion, Fingerprint: Fingerprint(), Generation: gen}
+	for _, p := range old {
+		if err := project(filepath.Join(gen, names[0]), p); err != nil {
+			t.Fatal(err)
+		}
+		m.AddLink(Link{Path: p, Agent: "codex", Skill: names[0], Mode: linkMode()})
+	}
+	// A foreign directory at a retired path is left alone and reported.
+	foreign := filepath.Join(home, ".kimi-code", "skills", names[1])
+	if err := os.MkdirAll(foreign, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.AddLink(Link{Path: foreign, Agent: "kimi", Skill: names[1], Mode: linkMode()})
+	if err := SaveManifest(m); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install([]string{"codex", "kimi"}, ScopeGlobal)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	for _, p := range old {
+		if exists(p) {
+			t.Errorf("retired link %s survived the install", p)
+		}
+	}
+	if !exists(foreign) {
+		t.Error("a foreign directory at a retired path was deleted")
+	}
+	if !slices.Contains(res.Skipped, foreign) {
+		t.Errorf("foreign retired path not reported as skipped: %+v", res)
+	}
+	m, _ = LoadManifest()
+	for _, l := range m.Links {
+		if slices.Contains(old, l.Path) || l.Path == foreign {
+			t.Errorf("manifest still records %s", l.Path)
+		}
+	}
+	if !exists(filepath.Join(home, ".agents", "skills", names[0])) {
+		t.Error("the shared directory was not written")
+	}
+}
+
+func TestRemoveHonoursScopeAndCountsOtherDirectories(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+	names, _ := Names()
+
+	t.Chdir(repoA)
+	for _, scope := range []Scope{ScopeGlobal, ScopeLocal} {
+		if _, err := Install([]string{"claude"}, scope); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(repoB)
+	if _, err := Install([]string{"claude"}, ScopeLocal); err != nil {
+		t.Fatal(err)
+	}
+	globalLink := filepath.Join(home, ".claude", "skills", names[0])
+	aLink := filepath.Join(repoA, ".claude", "skills", names[0])
+	bLink := filepath.Join(repoB, ".claude", "skills", names[0])
+
+	res, err := Remove([]string{"claude"}, ScopeLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists(bLink) || !exists(aLink) || !exists(globalLink) {
+		t.Errorf("--local removed the wrong links: b=%v a=%v global=%v", exists(bLink), exists(aLink), exists(globalLink))
+	}
+	if len(res.Elsewhere) != len(names) {
+		t.Errorf("elsewhere = %d, want %d (repoA's links)", len(res.Elsewhere), len(names))
+	}
+
+	res, err = Remove([]string{"claude"}, ScopeBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists(globalLink) || !exists(aLink) {
+		t.Errorf("bare removal: global=%v a=%v", exists(globalLink), exists(aLink))
+	}
+	if len(res.Elsewhere) != len(names) {
+		t.Errorf("elsewhere = %d, want %d", len(res.Elsewhere), len(names))
+	}
+
+	res, err = Remove([]string{"claude"}, ScopeGlobal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Removed) != 0 || len(res.Elsewhere) != len(names) {
+		t.Errorf("--global: removed=%d elsewhere=%d", len(res.Removed), len(res.Elsewhere))
+	}
+
+	t.Chdir(repoA)
+	if _, err := Remove([]string{"claude"}, ScopeLocal); err != nil {
+		t.Fatal(err)
+	}
+	if exists(aLink) {
+		t.Error("repoA's local install survived a --local removal run from repoA")
+	}
+	m, _ := LoadManifest()
+	if m != nil && len(m.Links) != 0 {
+		t.Errorf("manifest still records %d links", len(m.Links))
+	}
+}
+
+func TestReadStatusPlacesLinksAgainstCwd(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+	t.Chdir(repoA)
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install([]string{"claude"}, ScopeLocal); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repoB)
+	if _, err := Install([]string{"claude"}, ScopeLocal); err != nil {
+		t.Fatal(err)
+	}
+	status, err := ReadStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[Place]int{}
+	for _, l := range status.Links {
+		got[l.Place]++
+	}
+	names, _ := Names()
+	want := map[Place]int{PlaceGlobal: len(names), PlaceLocal: len(names), PlaceElsewhere: len(names)}
+	for p, n := range want {
+		if got[p] != n {
+			t.Errorf("%s: got %d links, want %d", p, got[p], n)
+		}
+	}
+}
+
+func TestInstallSessionLinksLocallyOutsideHome(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	project := t.TempDir()
+	t.Chdir(project)
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, _ := Names()
+	local := filepath.Join(project, ".claude", "skills", names[0])
+	if !exists(local) {
+		t.Fatalf("session link not created at %s", local)
+	}
+	if exists(filepath.Join(home, ".claude", "skills", names[0])) {
+		t.Error("a session launched from a project wrote into $HOME")
+	}
+	release()
+	if exists(local) {
+		t.Error("session link survived release")
+	}
+}
+
+func TestInstallSessionLinksGloballyFromHome(t *testing.T) {
+	home := t.TempDir()
+	setHome(t, home)
+	t.Chdir(home)
+	release, err := InstallSession("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	names, _ := Names()
+	if !exists(filepath.Join(home, ".claude", "skills", names[0])) {
+		t.Error("a session launched from $HOME did not link globally")
 	}
 }
 
@@ -320,7 +626,7 @@ func TestInstallCreatesOneLinkPerSkillPerTarget(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	res, err := Install([]string{"claude"})
+	res, err := Install([]string{"claude"}, ScopeGlobal)
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -347,7 +653,7 @@ func TestInstallLeavesForeignEntriesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "my-own-skill", "SKILL.md"))
@@ -355,7 +661,7 @@ func TestInstallLeavesForeignEntriesAlone(t *testing.T) {
 		t.Errorf("install disturbed a skill it does not own: %v %q", err, data)
 	}
 
-	if _, err := Remove([]string{"claude"}); err != nil {
+	if _, err := Remove([]string{"claude"}, ScopeBoth); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "my-own-skill", "SKILL.md")); err != nil {
@@ -367,7 +673,7 @@ func TestRefreshPrunesSkillsThatLeftTheSet(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	dir := filepath.Join(home, ".claude", "skills")
@@ -418,7 +724,7 @@ func TestInstallSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	names, _ := Names()
@@ -439,7 +745,7 @@ func TestInstallSkipsAPathTakenOverByTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Install([]string{"claude"})
+	res, err := Install([]string{"claude"}, ScopeGlobal)
 	if err != nil {
 		t.Fatalf("second install: %v", err)
 	}
@@ -462,7 +768,7 @@ func TestRemoveSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	names, _ := Names()
@@ -479,7 +785,7 @@ func TestRemoveSkipsAPathTakenOverByTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Remove([]string{"claude"})
+	res, err := Remove([]string{"claude"}, ScopeBoth)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -501,7 +807,7 @@ func TestRefreshSkipsAPathTakenOverByTheUser(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	names, _ := Names()
@@ -541,7 +847,7 @@ func TestRefreshSkipsALinkReplacedWithAForeignSymlink(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	names, _ := Names()
@@ -592,7 +898,7 @@ func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"opencode"}); err != nil {
+	if _, err := Install([]string{"opencode"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	sharedDir := filepath.Join(home, ".agents", "skills")
@@ -606,7 +912,7 @@ func TestRemoveClearsTheSharedDirectoryForASharedReader(t *testing.T) {
 		}
 	}
 
-	res, err := Remove([]string{"opencode"})
+	res, err := Remove([]string{"opencode"}, ScopeBoth)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -680,7 +986,7 @@ func TestSessionLinksSurviveAPermanentInstall(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	release, err := InstallSession("claude")
@@ -729,7 +1035,7 @@ func TestSweepLeavesLiveSessionsAndPermanentLinks(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"codex"}); err != nil {
+	if _, err := Install([]string{"codex"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	release, err := InstallSession("claude")
@@ -746,7 +1052,7 @@ func TestSweepLeavesLiveSessionsAndPermanentLinks(t *testing.T) {
 		if _, statErr := os.Lstat(filepath.Join(home, ".claude", "skills", n)); statErr != nil {
 			t.Errorf("sweep removed live session link %q: %v", n, statErr)
 		}
-		if _, statErr := os.Lstat(filepath.Join(home, ".codex", "skills", n)); statErr != nil {
+		if _, statErr := os.Lstat(filepath.Join(home, ".agents", "skills", n)); statErr != nil {
 			t.Errorf("sweep removed permanent link %q: %v", n, statErr)
 		}
 	}
@@ -868,10 +1174,10 @@ func TestManifestLockTimeoutIsAnErrorNotAnUnlockedWrite(t *testing.T) {
 	// The other manifest writers must refuse for the same reason, and must
 	// still hand back a Result: their callers report the error and then read
 	// the result anyway, so a nil here is a crash rather than a refusal.
-	if res, err := Install([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+	if res, err := Install([]string{"claude"}, ScopeGlobal); !errors.Is(err, ErrManifestLocked) || res == nil {
 		t.Errorf("Install under a held lock: res=%v err=%v", res, err)
 	}
-	if res, err := Remove([]string{"claude"}); !errors.Is(err, ErrManifestLocked) || res == nil {
+	if res, err := Remove([]string{"claude"}, ScopeBoth); !errors.Is(err, ErrManifestLocked) || res == nil {
 		t.Errorf("Remove under a held lock: res=%v err=%v", res, err)
 	}
 }
@@ -953,7 +1259,7 @@ func TestDisconnectDropsTheRecordForAPathWeNoLongerOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Remove([]string{"claude"})
+	res, err := Remove([]string{"claude"}, ScopeBoth)
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -1023,7 +1329,7 @@ func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
 	setHome(t, home)
 	dir := filepath.Join(home, ".claude", "skills")
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	// Crash equivalent: the links are in place, the manifest never landed.
@@ -1043,7 +1349,7 @@ func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
 		t.Fatalf("SweepDeadSessions: %v", err)
 	}
 
-	res, err := Install([]string{"claude"})
+	res, err := Install([]string{"claude"}, ScopeGlobal)
 	if err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
@@ -1062,7 +1368,7 @@ func TestInstallAdoptsOrphansLeftByAnInterruptedRun(t *testing.T) {
 		t.Fatalf("%d links on disk but %d recorded: the difference can never be removed", len(entries), len(m.Links))
 	}
 	// And the whole lot is now reclaimable.
-	if _, err := Remove([]string{"claude"}); err != nil {
+	if _, err := Remove([]string{"claude"}, ScopeBoth); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if entries, readErr := os.ReadDir(dir); readErr == nil && len(entries) != 0 {
@@ -1078,7 +1384,7 @@ func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 	dir := filepath.Join(home, ".claude", "skills")
 
 	SetFingerprintForTest(t, "aaaaaaaaaaaaaaaa")
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	path, _ := manifestPath()
@@ -1087,7 +1393,7 @@ func TestInstallRepointsAnOrphanFromAnOldGeneration(t *testing.T) {
 	}
 
 	SetFingerprintForTest(t, "bbbbbbbbbbbbbbbb")
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("second Install: %v", err)
 	}
 	names, _ := Names()
@@ -1140,7 +1446,7 @@ func TestRefreshRecreatesADeletedSkillsDirectory(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	dir := filepath.Join(home, ".claude", "skills")
@@ -1178,7 +1484,7 @@ func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 	home := t.TempDir()
 	setHome(t, home)
 
-	if _, err := Install([]string{"claude", "codex"}); err != nil {
+	if _, err := Install([]string{"claude", "codex"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	names, _ := Names()
@@ -1187,7 +1493,7 @@ func TestRefreshKeepsGoingWhenOneLinkCannotBeProjected(t *testing.T) {
 	}
 	// codex's skills directory replaced by a regular file: nothing can be
 	// created under it, and no amount of MkdirAll will fix it.
-	codexDir := filepath.Join(home, ".codex", "skills")
+	codexDir := filepath.Join(home, ".agents", "skills")
 	if err := os.RemoveAll(codexDir); err != nil {
 		t.Fatal(err)
 	}
@@ -1336,7 +1642,7 @@ func TestALaunchDoesNotInheritAPermanentInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Install([]string{"claude"}); err != nil {
+	if _, err := Install([]string{"claude"}, ScopeGlobal); err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	before, err := LoadManifest()
@@ -1641,6 +1947,10 @@ func setHome(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
+	// cwd too: a session links into cwd unless cwd is $HOME, and a test that
+	// does not say otherwise wants the global layout, not links in the
+	// package source directory.
+	t.Chdir(dir)
 }
 
 // assertProjectedFrom checks a projected skill came from the named

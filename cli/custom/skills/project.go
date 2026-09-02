@@ -1,6 +1,7 @@
 package skills
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,11 @@ type Result struct {
 	// the failure and carries on; the caller summarises it once rather than
 	// repeating a raw Go error on every command forever.
 	Failed []string
+	// Elsewhere holds links that belong to the requested agents but sit in a
+	// directory the scope does not reach from this cwd — local installs made
+	// in other directories. They are never touched; the caller reports the
+	// count and where to run from.
+	Elsewhere []string
 }
 
 // symlinkSupported is false where an unprivileged symlink cannot be relied on.
@@ -41,26 +47,29 @@ func linkMode() string {
 }
 
 // Install materializes the current generation and projects it into every
-// directory the given agents read. It is the one entry point that may create
-// directories that did not exist.
+// directory the given agents read in the given scope. It is the one entry
+// point that may create directories that did not exist.
 // The lock is what keeps a concurrent `orq launch` from losing this install's
 // records (see lock.go); the work itself is in install.
-func Install(agents []string) (*Result, error) {
+func Install(agents []string, scope Scope) (*Result, error) {
+	if scope == ScopeBoth {
+		return &Result{}, errors.New("an install writes one scope; pick global or local")
+	}
 	res := &Result{}
 	err := withManifestLock(func() error {
 		var err error
-		res, err = install(agents)
+		res, err = install(agents, scope)
 		return err
 	})
 	return res, err
 }
 
-func install(agents []string) (*Result, error) {
+func install(agents []string, scope Scope) (*Result, error) {
 	gen, err := EnsureGeneration()
 	if err != nil {
 		return nil, err
 	}
-	targets, err := Targets(agents)
+	targets, err := Targets(agents, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +85,9 @@ func install(agents []string) (*Result, error) {
 		m = &Manifest{Version: manifestVersion}
 	}
 	res := &Result{}
+	if err := reconcileRetired(m, res); err != nil {
+		return nil, err
+	}
 	for _, target := range targets {
 		if err := os.MkdirAll(target.Dir, 0o755); err != nil {
 			return nil, err
@@ -132,36 +144,97 @@ func install(agents []string) (*Result, error) {
 	return res, nil
 }
 
-// Remove deletes only what the manifest records for the given agents. An empty
-// agent list removes everything non-session we own.
+// reconcileRetired drops links in directories this CLI no longer writes (see
+// retiredDirs). Refresh never does this — it prunes by skill name, not by
+// directory — so without it an upgraded machine keeps codex double-indexed
+// forever. isOurs gates every deletion, as everywhere else; a foreign path is
+// disowned and reported, never touched.
+func reconcileRetired(m *Manifest, res *Result) error {
+	retired, err := retiredDirs()
+	if err != nil {
+		return err
+	}
+	isRetired := map[string]bool{}
+	for _, d := range retired {
+		isRetired[filepath.Clean(d)] = true
+	}
+	var gone []string
+	for _, l := range m.Links {
+		if l.Session || !isRetired[filepath.Dir(filepath.Clean(l.Path))] {
+			continue
+		}
+		if exists(l.Path) && !isOurs(l) {
+			res.Skipped = append(res.Skipped, l.Path)
+			res.Disowned = append(res.Disowned, l.Path)
+			gone = append(gone, l.Path)
+			continue
+		}
+		if err := removePath(l.Path); err != nil {
+			return err
+		}
+		res.Removed = append(res.Removed, l.Path)
+		gone = append(gone, l.Path)
+	}
+	m.RemoveLinks(gone)
+	return nil
+}
+
+// Remove deletes only what the manifest records for the given agents in the
+// given scope. An empty agent list means every agent.
 //
-// A link with an empty Agent is the shared agents-spec directory (see
-// Targets): it belongs to the request whenever any named agent is one of the
-// shared readers, the same membership Targets uses to decide whether to
-// write there in the first place.
+// Two rules select a link. Membership: a link with an empty Agent is the
+// shared agents-spec directory (see Targets) and belongs to the request
+// whenever any named agent is a shared reader. Place: the link's directory
+// is one the scope means at this cwd — ScopeBoth is the global set plus the
+// local set here. A local install in another directory matches the first
+// rule and not the second; it is counted in Elsewhere and left alone, and
+// the caller says where to run from to remove it.
 //
 // The Result is never nil, including when the lock could not be taken and the
 // closure never ran: callers report the error and then still range over the
 // result, and a nil here crashed `orq disconnect skills` against a live
 // `orq launch`.
-func Remove(agents []string) (*Result, error) {
+func Remove(agents []string, scope Scope) (*Result, error) {
 	res := &Result{}
 	err := withManifestLock(func() error {
 		var err error
-		res, err = remove(agents)
+		res, err = remove(agents, scope)
 		return err
 	})
 	return res, err
 }
 
-func remove(agents []string) (*Result, error) {
+func remove(agents []string, scope Scope) (*Result, error) {
 	m, err := LoadManifest()
 	if err != nil || m == nil {
 		return &Result{}, err
 	}
+	all := agents
+	if len(all) == 0 {
+		all = allAgents()
+	}
+	targets, err := Targets(all, scope)
+	if err != nil {
+		return &Result{}, err
+	}
+	inScope := map[string]bool{}
+	for _, tg := range targets {
+		inScope[filepath.Clean(tg.Dir)] = true
+	}
+	// The other scope's directories are neither removed nor counted: a
+	// --local run leaving the global install alone is the point of the flag,
+	// not something to report. Elsewhere is only what no scope reaches here.
+	reachable, err := Targets(all, ScopeBoth)
+	if err != nil {
+		return &Result{}, err
+	}
+	inReach := map[string]bool{}
+	for _, tg := range reachable {
+		inReach[filepath.Clean(tg.Dir)] = true
+	}
 	wanted := map[string]bool{}
 	sharedWanted := false
-	for _, a := range agents {
+	for _, a := range all {
 		wanted[a] = true
 		sharedWanted = sharedWanted || sharedReaders[a]
 	}
@@ -171,7 +244,13 @@ func remove(agents []string) (*Result, error) {
 		if l.Session {
 			continue
 		}
-		if len(agents) > 0 && !wanted[l.Agent] && !(l.Agent == "" && sharedWanted) {
+		if !wanted[l.Agent] && !(l.Agent == "" && sharedWanted) {
+			continue
+		}
+		if dir := filepath.Dir(filepath.Clean(l.Path)); !inScope[dir] {
+			if !inReach[dir] {
+				res.Elsewhere = append(res.Elsewhere, l.Path)
+			}
 			continue
 		}
 		if exists(l.Path) && !isOurs(l) {

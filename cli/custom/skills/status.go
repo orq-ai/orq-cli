@@ -1,5 +1,7 @@
 package skills
 
+import "path/filepath"
+
 // LinkState is what is actually at a recorded link's path, as opposed to what
 // the manifest claims. Deriving it anywhere but here is how `orq doctor` came
 // to call a path healthy that refresh had already stopped touching: existence
@@ -18,11 +20,45 @@ const (
 	LinkForeign LinkState = "foreign"
 )
 
+// Place is where a recorded link sits relative to the current directory:
+// in the global set, in this directory's local set, or in some other
+// directory's local set. It is computed at read time, not stored: the
+// manifest holds absolute paths, and the same path is "local" from one cwd
+// and "elsewhere" from the next.
+type Place string
+
+const (
+	PlaceGlobal    Place = "global"
+	PlaceLocal     Place = "local"
+	PlaceElsewhere Place = "elsewhere"
+)
+
+// PlaceOf classifies a directory. It asks Targets for every agent in both
+// scopes, so it cannot disagree with what Install would write here.
+func PlaceOf(dir string) Place {
+	targets, err := Targets(allAgents(), ScopeBoth)
+	if err != nil {
+		return PlaceElsewhere
+	}
+	dir = filepath.Clean(dir)
+	for _, tg := range targets {
+		if filepath.Clean(tg.Dir) != dir {
+			continue
+		}
+		if tg.Global {
+			return PlaceGlobal
+		}
+		return PlaceLocal
+	}
+	return PlaceElsewhere
+}
+
 // LinkStatus is one recorded permanent link and the state of its path.
 type LinkStatus struct {
 	Path  string
 	Agent string
 	State LinkState
+	Place Place
 }
 
 // Status is the state of everything the manifest records, for any caller that
@@ -53,7 +89,7 @@ func ReadStatus() (*Status, error) {
 		if l.Session {
 			continue
 		}
-		s.Links = append(s.Links, LinkStatus{Path: l.Path, Agent: l.Agent, State: linkState(l)})
+		s.Links = append(s.Links, LinkStatus{Path: l.Path, Agent: l.Agent, State: linkState(l), Place: PlaceOf(filepath.Dir(l.Path))})
 	}
 	return s, nil
 }
