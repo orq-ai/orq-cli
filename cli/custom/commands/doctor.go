@@ -66,6 +66,11 @@ func NewDoctorCommand() *cobra.Command {
 				return errors.New("--fix repairs Unix permission bits, which Windows ACLs do not use — there is nothing here for it to change")
 			}
 			inspect := auth.InspectSession()
+			if profileInForce() {
+				// The session is not consulted while a profile is in force;
+				// reporting it would describe a login this call never uses.
+				inspect = auth.SessionInspectResult{Status: auth.StatusMissing, Path: auth.SessionFilePath()}
+			}
 
 			// Provenance comes from where the value was decided, not from
 			// comparing it afterwards: ORQ_SERVER usually holds exactly the
@@ -150,7 +155,7 @@ func NewDoctorCommand() *cobra.Command {
 				// does not exist.
 				authStatus, authSource = "authenticated", "env:ORQ_API_KEY"
 			} else if storedAPIKeyProfile() {
-				authStatus, authSource = "authenticated", "credentials.json"
+				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
 			}
 
 			authMap := map[string]any{
@@ -180,12 +185,13 @@ func NewDoctorCommand() *cobra.Command {
 					"arch":     runtime.GOARCH,
 				},
 				Output: map[string]any{
-					"default_format":    "toon",
-					"supported_formats": []string{"json", "yaml", "toon"},
+					"default_format":    "table",
+					"supported_formats": []string{"json", "yaml", "toon", "table"},
 				},
 				Config: map[string]any{
-					"profile":          auth.ActiveProfile(),
+					"profile":          bartolocli.ActiveProfileName(),
 					"session_file":     auth.SessionFilePath(),
+					"session_host":     auth.SessionHost(client.URLs.APIBaseURL),
 					"api_base_url":     resolvedValue{Value: client.URLs.APIBaseURL, Source: apiBaseSource},
 					"v1_base_url":      resolvedValue{Value: client.URLs.V1BaseURL, Source: v1Source},
 					"auth_base_url":    resolvedValue{Value: client.URLs.AuthBaseURL, Source: "derived"},
@@ -232,7 +238,7 @@ func emitBugReport(cmd *cobra.Command) error {
 			"- profile: %s\n\n"+
 			"### What happened\n\n<!-- steps to reproduce, actual output -->\n\n"+
 			"### What you expected\n",
-		cmd.Root().Version, apiVersion, runtime.GOOS, runtime.GOARCH, runtime.Version(), auth.ActiveProfile(),
+		cmd.Root().Version, apiVersion, runtime.GOOS, runtime.GOARCH, runtime.Version(), bartolocli.ActiveProfileName(),
 	)
 	// Leave the title empty so GitHub shows its placeholder and the user writes
 	// a real one; a literal "bug: " prefill just becomes the issue title verbatim.
@@ -486,7 +492,7 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	if bartolocli.Creds == nil {
 		return doctorCheck{}, false
 	}
-	gatewayKey := auth.StateValueOf(auth.ActiveProfile(), "gateway_key")
+	gatewayKey := inspect.Session.GatewayKey
 	exported := strings.TrimSpace(UserEnvAPIKey())
 	if gatewayKey == "" || exported != gatewayKey {
 		return doctorCheck{}, false

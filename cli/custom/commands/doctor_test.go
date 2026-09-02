@@ -464,7 +464,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.MkdirAll(sessionsDir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		sessionPath := filepath.Join(sessionsDir, auth.ActiveProfile()+".json")
+		sessionPath := auth.SessionFilePath()
 		if err := os.WriteFile(sessionPath, []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
