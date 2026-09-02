@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1298,25 +1299,30 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 	skillDirs := map[string]string{}
 
 	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
-		res, err := skills.Install(selected)
+		scope := skillsWriteScope(opts)
+		res, err := skills.Install(selected, scope)
 		if err != nil {
 			// Connect's only job for this capability is the thing that just
 			// failed, so it is fatal here. launch degrades instead.
 			return nil, fmt.Errorf("installing skills: %w", err)
 		}
+		targets := skillTargetsFor(selected, scope)
 		if !opts.finalScreen {
-			for _, target := range skillTargetsFor(selected) {
+			for _, target := range targets {
 				rep.ok("%-8s %-9s %s", target.Agent, capSkills, tilde(target.Dir))
 			}
 		}
 		for _, path := range res.Skipped {
 			rep.warn("%-8s %-9s %s already exists and is not ours — left alone", "", capSkills, tilde(path))
 		}
+		if scope == skills.ScopeLocal {
+			reportLocalSkillsNotes(rep, selected, targets)
+		}
 		// Resolved one agent at a time on purpose: a shared-directory reader
 		// has no Target.Agent of its own, so the combined list cannot say
 		// which agent a shared directory belongs to.
 		for _, id := range selected {
-			for _, t := range skillTargetsFor([]string{id}) {
+			for _, t := range skillTargetsFor([]string{id}, scope) {
 				skillDirs[id] = t.Dir
 			}
 		}
@@ -1371,12 +1377,45 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 // skillTargetsFor is the reporting view of skills.Targets: resolution failures
 // are already fatal in Install, so a second failure here is not worth a second
 // error path.
-func skillTargetsFor(agents []string) []skills.Target {
-	targets, err := skills.Targets(agents)
+func skillTargetsFor(agents []string, scope skills.Scope) []skills.Target {
+	targets, err := skills.Targets(agents, scope)
 	if err != nil {
 		return nil
 	}
 	return targets
+}
+
+// reportLocalSkillsNotes is what a local install has to say and the global
+// one does not: the directories are untracked files in the repo, kimi reads
+// project skills from the repository root only, and pi loads them only for a
+// trusted project. Each line prints only when it applies.
+func reportLocalSkillsNotes(rep *reporter, agents []string, targets []skills.Target) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	root, inRepo := skills.RepoRoot(cwd)
+	if inRepo && !skills.SameDir(root, cwd) && slices.Contains(agents, "kimi") {
+		rep.warn("--local writes into %s, but the repository root is %s; kimi reads project skills from the root only", tilde(cwd), tilde(root))
+	}
+	if inRepo {
+		var rels []string
+		for _, t := range targets {
+			if rel, err := filepath.Rel(cwd, t.Dir); err == nil {
+				rels = append(rels, filepath.ToSlash(rel)+"/")
+			}
+		}
+		if runtime.GOOS == "windows" {
+			// Copy mode: real directories, and a committed one pins a
+			// generation the CLI later expects to own.
+			rep.info("add %s to .gitignore — orq manages these copies and replaces them on update", strings.Join(rels, " and "))
+		} else {
+			rep.info("add %s to .gitignore — the links point into ~/.orq and mean nothing to anyone else", strings.Join(rels, " and "))
+		}
+	}
+	if slices.Contains(agents, "pi") {
+		rep.info("%-8s %-9s pi loads project skills only for a trusted project — approve it in pi once", "pi", capSkills)
+	}
 }
 
 // writeAgentProvider registers orq as a model provider for one agent, recording
@@ -1645,7 +1684,7 @@ func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
 	if !scopeMatters(caps) {
 		return nil
 	}
-	global, err := promptForScope()
+	global, err := promptForScope(caps)
 	if err != nil {
 		return err
 	}
@@ -1659,34 +1698,48 @@ func resolveScope(rep *reporter, opts *setupOptions, caps []string) error {
 	return checkScopeFlags(rep, opts, caps)
 }
 
-// scopeMatters answers "would either answer change what this run writes?". Only
-// mcp reads the scope today — skills joins it in RES-1437 through these same
-// flags — and only an agent with two MCP config paths has anywhere else to put
-// the entry, so anyone else is asked a question whose answer nothing consults.
+// scopeMatters answers "would either answer change what this run writes?".
+// Skills: any detected agent that receives them has two places to put them.
+// MCP: only an agent with two config paths does. Anyone else is asked a
+// question whose answer nothing consults.
 func scopeMatters(caps []string) bool {
-	if !hasCap(caps, capMCP) {
-		return false
-	}
 	for _, spec := range agentRegistry() {
-		if spec.detect() && spec.writeMCP != nil && mcpScopeAware(spec) {
+		if !spec.detect() {
+			continue
+		}
+		if hasCap(caps, capSkills) && skills.Receives(spec.ID) {
+			return true
+		}
+		if hasCap(caps, capMCP) && spec.writeMCP != nil && mcpScopeAware(spec) {
 			return true
 		}
 	}
 	return false
 }
 
+// scopePrompt names only the capabilities this run writes: a skills-only run
+// asked about "the MCP entry" is told something it did not ask for.
+func scopePrompt(caps []string) string {
+	var what []string
+	if hasCap(caps, capMCP) {
+		what = append(what, "the MCP entry")
+	}
+	if hasCap(caps, capSkills) {
+		what = append(what, "skills")
+	}
+	return fmt.Sprintf("Where should %s go?", strings.Join(what, " and "))
+}
+
 // promptForScope is one question for every scope-capable capability rather than
 // one each: the answer is the same kind of answer, and asking twice in a
 // four-question wizard buys nothing. Global leads because it is the default.
-// Only mcp has a project scope today, so the question names only mcp — naming
-// skills here would promise a scoping that RES-1437 has not shipped yet.
-func promptForScope() (bool, error) {
+func promptForScope(caps []string) (bool, error) {
 	globalOption := fmt.Sprintf("%-9s every project on this machine", "global")
 	localOption := fmt.Sprintf("%-9s this project only", "local")
 
 	var chosen string
 	if err := survey.AskOne(&survey.Select{
-		Message: "Where should the MCP entry go?",
+		Message: scopePrompt(caps),
 		Options: []string{globalOption, localOption},
 		Default: globalOption,
 	}, &chosen, promptStdio()); err != nil {

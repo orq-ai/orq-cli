@@ -90,7 +90,7 @@ func TestSkillsRefreshHookFixesAStaleManifestBeforeTheCommandRuns(t *testing.T) 
 	// give it something real to reproject onto so the pre-run hook's refresh
 	// has recorded links to bring current, matching what `orq connect` would
 	// have left behind.
-	if _, err := skills.Install([]string{"claude"}); err != nil {
+	if _, err := skills.Install([]string{"claude"}, skills.ScopeGlobal); err != nil {
 		t.Fatalf("seed install: %v", err)
 	}
 	seeded, err := skills.LoadManifest()
@@ -170,7 +170,7 @@ func TestAGeneratedCommandDoesNotRefreshSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	if _, err := skills.Install([]string{"claude"}); err != nil {
+	if _, err := skills.Install([]string{"claude"}, skills.ScopeGlobal); err != nil {
 		t.Fatalf("seed skills install: %v", err)
 	}
 

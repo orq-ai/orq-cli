@@ -14,6 +14,7 @@ import (
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"orq/cli/custom/skills"
 )
 
 // The npm registry is the source of truth for "latest": every release is
@@ -143,7 +144,7 @@ var detectInstallMethod = func() (installMethod, string) {
 	if strings.Contains(path, sep+"node_modules"+sep) {
 		return methodNPM, path
 	}
-	if dir := installerDir(); dir != "" && sameDir(filepath.Dir(path), dir) {
+	if dir := installerDir(); dir != "" && skills.SameDir(filepath.Dir(path), dir) {
 		return methodInstaller, path
 	}
 	return methodUnknown, path
@@ -160,24 +161,6 @@ func installerDir() string {
 		return ""
 	}
 	return filepath.Join(home, ".orq", "bin")
-}
-
-// sameDir compares two directories through symlinks, so ~/.orq/bin still
-// matches when part of the path is a link (a symlinked $HOME is the common one
-// on macOS and in containers).
-func sameDir(a, b string) bool {
-	if a == b {
-		return true
-	}
-	ra, err := filepath.EvalSymlinks(a)
-	if err != nil {
-		return false
-	}
-	rb, err := filepath.EvalSymlinks(b)
-	if err != nil {
-		return false
-	}
-	return ra == rb
 }
 
 func currentVersion(cmd *cobra.Command) string {

@@ -1569,10 +1569,11 @@ func TestConnectStatusMissingLinkWarningsAreScoped(t *testing.T) {
 	resetSetupMemos(t)
 
 	claudePath := filepath.Join(home, ".claude", "skills", "gone-claude-skill")
-	kimiPath := filepath.Join(home, ".kimi-code", "skills", "gone-kimi-skill")
+	// kimi reads the shared directory, so its link has no agent of its own.
+	kimiPath := filepath.Join(home, ".agents", "skills", "gone-kimi-skill")
 	m := &skills.Manifest{Fingerprint: "test", Generation: "test"}
 	m.AddLink(skills.Link{Path: claudePath, Agent: "claude", Skill: "a", Mode: skills.ModeSymlink})
-	m.AddLink(skills.Link{Path: kimiPath, Agent: "kimi", Skill: "b", Mode: skills.ModeSymlink})
+	m.AddLink(skills.Link{Path: kimiPath, Skill: "b", Mode: skills.ModeSymlink})
 	if err := skills.SaveManifest(m); err != nil {
 		t.Fatal(err)
 	}
@@ -1778,7 +1779,7 @@ func TestBareDisconnectReachesSkillsForAnUndetectedAgent(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("connect codex skills: %v", err)
 	}
-	installed := filepath.Join(home, ".codex", "skills")
+	installed := filepath.Join(home, ".agents", "skills")
 	if entries, err := os.ReadDir(installed); err != nil || len(entries) == 0 {
 		t.Fatalf("no skills installed: %v", err)
 	}
@@ -2351,12 +2352,8 @@ func TestMCPEntryFollowsTheAPIBase(t *testing.T) {
 	}
 }
 
-// codex, opencode and kilo read MCP config from one place. --local against one
-// of them is a warning and a machine-wide write, not a failure: the entry the
-// user asked for still lands, in the only file that agent reads.
-func TestLocalScopeAgainstAGlobalOnlyAgentWarnsAndWritesGlobal(t *testing.T) {
+func TestLocalMCPWritesCodexProjectConfigAndPrintsTheTrustLine(t *testing.T) {
 	home, project := mcpMachine(t, ".codex")
-
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
 		c.SetArgs([]string{"codex", "mcp", "--local"})
@@ -2364,75 +2361,48 @@ func TestLocalScopeAgainstAGlobalOnlyAgentWarnsAndWritesGlobal(t *testing.T) {
 			t.Fatalf("connect: %v", err)
 		}
 	})
-	if !strings.Contains(out, "one place only") {
-		t.Errorf("the scope was silently ignored:\n%s", out)
+	local := filepath.Join(project, ".codex", "config.toml")
+	if !strings.Contains(string(mustRead(t, local)), launch.MCPServerName) {
+		t.Error("the entry did not land in the project config")
 	}
-	if !strings.Contains(string(mustRead(t, filepath.Join(home, ".codex", "config.toml"))), launch.MCPServerName) {
-		t.Error("the entry did not land in codex's machine-wide config")
+	if _, err := os.Stat(filepath.Join(home, ".codex", "config.toml")); !os.IsNotExist(err) {
+		t.Error("--local also wrote the global config")
 	}
-	if _, err := os.Stat(filepath.Join(project, ".codex")); !os.IsNotExist(err) {
-		t.Error("--local created a project config codex would never read")
+	if !strings.Contains(out, "trust_level") {
+		t.Errorf("no trust line for a local codex write:\n%s", out)
 	}
+	assertNoCredential(t, local)
 }
 
 // The preview is a promise: wiredTargets says it "never lists a file it will
-// not touch", and on the destructive verb a scoped removal that listed both
-// scopes asked for consent to something it was not going to do.
-func TestScopedDisconnectPreviewsOnlyThatScope(t *testing.T) {
-	home, project := mcpMachine(t, ".claude")
-	for _, scope := range []string{"--local", "--global"} {
+// not touch", so a scoped removal must leave the other scope's entry alone.
+func TestScopedDisconnectLeavesTheOtherScope(t *testing.T) {
+	home, project := mcpMachine(t, ".codex")
+	for _, args := range [][]string{{"codex", "mcp"}, {"codex", "mcp", "--local"}} {
 		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "mcp", scope})
+		c.SetArgs(args)
 		if err := c.Execute(); err != nil {
-			t.Fatalf("connect %s: %v", scope, err)
+			t.Fatalf("connect %v: %v", args, err)
 		}
 	}
-
-	out := captureOutput(t, func() {
-		d := NewDisconnectCommand()
-		d.SetArgs([]string{"claude", "mcp", "--global", "--dry-run"})
-		if err := d.Execute(); err != nil {
-			t.Fatalf("disconnect: %v", err)
-		}
-	})
-	if !strings.Contains(out, ".claude.json") {
-		t.Errorf("the global entry was not previewed:\n%s", out)
+	d := NewDisconnectCommand()
+	d.SetArgs([]string{"codex", "mcp", "--local", "--yes"})
+	if err := d.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
 	}
-	if strings.Contains(out, filepath.Join(project, ".mcp.json")) {
-		t.Errorf("--global previewed the project entry it will not remove:\n%s", out)
+	// The project file held only our table, so the remover deletes it outright.
+	if data, err := os.ReadFile(filepath.Join(project, ".codex", "config.toml")); err == nil && strings.Contains(string(data), launch.MCPServerName) {
+		t.Error("the project entry survived --local removal")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude.json")); err != nil {
-		t.Errorf("the dry run removed something: %v", err)
+	if !strings.Contains(string(mustRead(t, filepath.Join(home, ".codex", "config.toml"))), launch.MCPServerName) {
+		t.Error("--local removed the global entry too")
 	}
 }
 
-// The removal side says the same thing the write side does: a --local removal
-// that quietly took the machine-wide file is the same surprise as a write that
-// did, and only the write side used to say so.
-func TestScopedDisconnectWarnsForAGlobalOnlyAgent(t *testing.T) {
-	mcpMachine(t, ".codex")
-	c := NewConnectCommand()
-	c.SetArgs([]string{"codex", "mcp"})
-	if err := c.Execute(); err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-
-	out := captureOutput(t, func() {
-		d := NewDisconnectCommand()
-		d.SetArgs([]string{"codex", "mcp", "--local"})
-		if err := d.Execute(); err != nil {
-			t.Fatalf("disconnect: %v", err)
-		}
-	})
-	if !strings.Contains(out, "one place only") {
-		t.Errorf("the removal scope was silently ignored:\n%s", out)
-	}
-}
-
-// skills has no project scope until RES-1437, so --local on a run that asks for
-// nothing scope-capable must say the flag did nothing rather than imply it did.
-func TestLocalWarnsWhenNothingInTheRunHasAScope(t *testing.T) {
-	mcpMachine(t, ".claude")
+// --local on a skills run installs into the current directory and touches
+// nothing under $HOME.
+func TestLocalSkillsInstallIntoTheCurrentDirectory(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
 
 	out := captureOutput(t, func() {
@@ -2442,8 +2412,146 @@ func TestLocalWarnsWhenNothingInTheRunHasAScope(t *testing.T) {
 			t.Fatalf("connect: %v", err)
 		}
 	})
-	if !strings.Contains(out, "only the mcp capability has a project scope") {
-		t.Errorf("--local was silently ignored for a skills-only run:\n%s", out)
+	if strings.Contains(out, "nothing to scope") {
+		t.Errorf("--local was reported as a no-op for skills:\n%s", out)
+	}
+	names, _ := skills.Names()
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", names[0])); err != nil {
+		t.Errorf("no local link: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills")); !os.IsNotExist(err) {
+		t.Error("--local wrote into $HOME")
+	}
+	// Not a repository: nothing to gitignore.
+	if strings.Contains(out, ".gitignore") {
+		t.Errorf("gitignore hint outside a repository:\n%s", out)
+	}
+}
+
+// gateway is the one capability without a project scope; the warning names it
+// and does not pretend mcp is the only scoped capability.
+func TestLocalWithGatewayAndSkillsWarnsAboutGatewayOnly(t *testing.T) {
+	mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "gateway", "skills", "--local"})
+		_ = c.Execute()
+	})
+	if strings.Contains(out, "only the mcp capability") || strings.Contains(out, "scopes mcp only") {
+		t.Errorf("stale mcp-only wording:\n%s", out)
+	}
+	if !strings.Contains(out, "gateway is machine-wide") {
+		t.Errorf("gateway was not named as the unscoped capability:\n%s", out)
+	}
+}
+
+func TestBareDisconnectRemovesSkillsFromBothScopesAndCountsOthers(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	other := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Chdir(dir)
+		c := NewConnectCommand()
+		c.SetArgs(args)
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %v: %v", args, err)
+		}
+	}
+	run(project, "claude", "skills")
+	run(project, "claude", "skills", "--local")
+	run(other, "claude", "skills", "--local")
+
+	t.Chdir(project)
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--yes"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	names, _ := skills.Names()
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", names[0])); !os.IsNotExist(err) {
+		t.Error("global link survived a bare disconnect")
+	}
+	if _, err := os.Stat(filepath.Join(project, ".claude", "skills", names[0])); !os.IsNotExist(err) {
+		t.Error("local link survived a bare disconnect")
+	}
+	if _, err := os.Stat(filepath.Join(other, ".claude", "skills", names[0])); err != nil {
+		t.Error("a local install in another directory was removed")
+	}
+	if !strings.Contains(out, "other director") {
+		t.Errorf("links elsewhere were not counted:\n%s", out)
+	}
+}
+
+func TestStatusShowsSkillsScopeAndHidesOtherDirectories(t *testing.T) {
+	_, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	other := t.TempDir()
+	connect := func(dir string, args ...string) {
+		t.Chdir(dir)
+		c := NewConnectCommand()
+		c.SetArgs(args)
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %v: %v", args, err)
+		}
+	}
+	connect(project, "claude", "skills")
+	connect(project, "claude", "skills", "--local")
+	connect(other, "claude", "skills", "--local")
+
+	t.Chdir(project)
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "skills", "--status"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if !strings.Contains(out, "global") || !strings.Contains(out, "local") {
+		t.Errorf("status rows carry no scope:\n%s", out)
+	}
+	if strings.Contains(out, other) || strings.Contains(out, tilde(other)) {
+		t.Errorf("status listed a local install from another directory:\n%s", out)
+	}
+	if !strings.Contains(out, "other director") {
+		t.Errorf("status did not count the install elsewhere:\n%s", out)
+	}
+}
+
+// The whole local-install summary in one place, so the warning, the
+// gitignore line and the pi line are reviewed in a diff rather than by hand.
+func TestLocalSkillsSummaryGolden(t *testing.T) {
+	_, project := mcpMachine(t, ".claude", ".pi/agent", ".kimi-code")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	if err := os.MkdirAll(filepath.Join(project, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(project, "packages", "api")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "pi", "kimi", "skills", "--local"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	for _, want := range []string{
+		"repository root is",
+		"kimi reads project skills from the root only",
+		"add .agents/skills/ and .claude/skills/ to .gitignore",
+		"pi loads project skills only for a trusted project",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "trust_level") {
+		t.Errorf("a skills run printed codex's MCP trust line:\n%s", out)
 	}
 }
 
@@ -2519,5 +2627,79 @@ func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
 	// A skipped entry — pi has no MCP support — is neither, and adds no row.
 	if got := applyMCPResults(nil, []mcpResult{{Agent: "pi", Skipped: "no MCP support in this agent"}}); len(got) != 0 {
 		t.Errorf("an unsupported agent got a row: %v", got)
+	}
+}
+
+func TestScopedDisconnectPreviewListsOnlyThatScope(t *testing.T) {
+	home, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	run := func(args ...string) {
+		c := NewConnectCommand()
+		c.SetArgs(args)
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect %v: %v", args, err)
+		}
+	}
+	t.Chdir(project)
+	run("claude", "skills")
+	run("claude", "skills", "--local")
+
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--local", "--dry-run"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, tilde(filepath.Join(project, ".claude", "skills"))) {
+		t.Errorf("local directory not previewed:\n%s", out)
+	}
+	if strings.Contains(out, tilde(filepath.Join(home, ".claude", "skills"))) {
+		t.Errorf("--local preview listed the global directory it will not remove:\n%s", out)
+	}
+}
+
+func TestDisconnectCountsInstallsElsewhereWhenNothingIsWiredHere(t *testing.T) {
+	_, project := mcpMachine(t, ".claude")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	other := t.TempDir()
+	t.Chdir(other)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills", "--local"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	t.Chdir(project)
+	out := captureOutput(t, func() {
+		d := NewDisconnectCommand()
+		d.SetArgs([]string{"claude", "skills", "--yes"})
+		if err := d.Execute(); err != nil {
+			t.Fatalf("disconnect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "other director") {
+		t.Errorf("an install elsewhere was not counted:\n%s", out)
+	}
+}
+
+func TestStatusCountsSharedSkillsAsWiredForEveryReader(t *testing.T) {
+	_, project := mcpMachine(t, ".codex")
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(project)
+	c := NewConnectCommand()
+	c.SetArgs([]string{"codex", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"codex", "skills", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "not wired") {
+		t.Errorf("codex reads the shared directory and is wired:\n%s", out)
 	}
 }

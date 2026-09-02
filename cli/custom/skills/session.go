@@ -20,13 +20,20 @@ import (
 // second one to arrive joins the first one's claim rather than creating
 // anything, and the path survives until the last holder releases it.
 //
+// Links land in the current directory's local set, or the global set when
+// launched from $HOME (ScopeFor).
+//
 // The returned release is safe to call more than once.
 func InstallSession(agent string) (func(), error) {
 	gen, err := EnsureGeneration()
 	if err != nil {
 		return nil, err
 	}
-	targets, err := Targets([]string{agent})
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	targets, err := Targets([]string{agent}, ScopeFor(cwd))
 	if err != nil {
 		return nil, err
 	}

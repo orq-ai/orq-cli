@@ -81,7 +81,7 @@ orq setup                          # sign in, create the key, then offers to con
 orq connect                        # wire every detected agent through the gateway
 orq connect codex kimi             # specific agents
 orq connect codex gateway          # one capability: gateway, tracing, skills or mcp
-orq connect claude mcp --local     # this project only (mcp is the only scoped capability)
+orq connect claude mcp skills --local   # this project only (mcp and skills have a project scope)
 orq connect --dry-run              # show the files that would change
 orq disconnect codex               # remove exactly what connect wrote
 ```
@@ -90,7 +90,7 @@ An interactive `orq setup` ends by offering to connect the agents it detects, so
 
 Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route its model calls. It does receive `skills` and `mcp`.
 
-Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `--global` (the default) writes machine-wide, `--local` writes to this project — only `mcp` has a project scope, and `--local` is refused from your home directory, where the `~/.mcp.json` it would produce would follow you into every session started from home.
+Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `--global` (the default) writes machine-wide, `--local` writes to this project: `mcp` goes into the agent's project config file (`.mcp.json`, `.codex/config.toml`, `opencode.json`, `kilo.json`, `.kimi-code/mcp.json`), and `skills` into `./.claude/skills` for Claude Code and `./.agents/skills` for every other agent — the two directories `npx skills` uses, anchored at the directory you run from. Add the directories it writes to `.gitignore`; connect names them, and the links point into `~/.orq`. `gateway` and `tracing` are machine-wide whatever the flag says. `--local` is refused from your home directory, where the config it would produce would follow you into every session started from home. A bare `orq disconnect` removes both scopes; a local install made from another directory is counted and left for a `--local` run from there. Codex loads its project config only for a repository marked trusted in `~/.codex/config.toml`; connect prints the line to add.
 
 **Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
@@ -122,7 +122,7 @@ Connect and disconnect take agents and capabilities as arguments, plus:
 
 Re-running the wiring after installing a new agent is just `orq connect <agent>`; it reuses the key setup saved rather than creating another. Not to be confused with `orq agents`, which manages Orq Agents in your workspace; connect wires the coding-agent CLIs on this machine.
 
-Every provider config resolves to one absolute path, so there is no project-versus-home scope to choose: `--global` and `--local` were removed once MCP left, because no config was project-scoped any more.
+Every provider config resolves to one absolute path, so the gateway has no project-versus-home scope to choose; `--global` and `--local` act on `mcp` and `skills` only.
 
 ---
 
@@ -312,7 +312,7 @@ Agents stay pinned to whatever `orq connect` wired them against. `orq connect --
 
 The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
-orq's skills are linked into the agent's own skills directory **for the session only**; nothing is installed into your `~/.claude` config. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
+orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
 ### Shared flags
 

@@ -1602,7 +1602,7 @@ func TestFinalScreenHasTwoStates(t *testing.T) {
 			wantAbsent: []string{"Nothing is wired"},
 		},
 		"skills only": {
-			agents:     []agentResult{{Agent: "codex", Skills: "/home/u/.codex/skills"}},
+			agents:     []agentResult{{Agent: "codex", Skills: "/home/u/.agents/skills"}},
 			want:       []string{"codex\n✓ skills    "},
 			wantAbsent: []string{"Nothing is wired", "gateway"},
 		},
@@ -2872,17 +2872,18 @@ func TestSetupScopeFlagPreAnswersThePrompt(t *testing.T) {
 	}
 }
 
-// Nothing in a gateway-only run reads a scope, so asking would be asking a
-// question whose answer nothing consults.
+// gateway is the only capability that never reads a scope.
 func TestSetupScopeIsNotAskedWhenNothingScopes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	if scopeMatters([]string{capGateway, capSkills}) {
-		t.Error("a run without mcp asked about scope")
+	if scopeMatters([]string{capGateway}) {
+		t.Error("a gateway-only run asked about scope")
+	}
+	if !scopeMatters([]string{capGateway, capSkills}) {
+		t.Error("skills have a project scope and were not asked about")
 	}
 	opts := &setupOptions{}
 	if err := resolveScope(newReporter(true), opts, []string{capGateway}); err != nil {
@@ -2893,11 +2894,12 @@ func TestSetupScopeIsNotAskedWhenNothingScopes(t *testing.T) {
 	}
 }
 
-// Only an agent with two MCP config paths has anywhere else to put the entry.
-func TestSetupScopeMattersOnlyForATwoScopeAgent(t *testing.T) {
+// mcp asks only when a detected agent has two config paths; skills ask when a
+// detected agent receives them at all.
+func TestSetupScopeMattersPerCapability(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if scopeMatters([]string{capMCP}) {
+	if scopeMatters([]string{capMCP}) || scopeMatters([]string{capSkills}) {
 		t.Error("scope mattered on a machine with no agent at all")
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
@@ -2905,6 +2907,9 @@ func TestSetupScopeMattersOnlyForATwoScopeAgent(t *testing.T) {
 	}
 	if !scopeMatters([]string{capMCP}) {
 		t.Error("claude has two MCP scopes and was not asked about")
+	}
+	if !scopeMatters([]string{capSkills}) {
+		t.Error("claude receives skills and was not asked about")
 	}
 }
 
@@ -3401,4 +3406,17 @@ func TestWriteShellEnvFileWarnsOnPreexistingLooseFile(t *testing.T) {
 			t.Errorf("warned about a file that did not exist:\n%s", out)
 		}
 	})
+}
+
+func TestScopePromptNamesOnlyTheCapabilitiesInTheRun(t *testing.T) {
+	cases := map[string][]string{
+		"Where should skills go?":                   {capSkills},
+		"Where should the MCP entry go?":            {capMCP},
+		"Where should the MCP entry and skills go?": {capMCP, capSkills},
+	}
+	for want, caps := range cases {
+		if got := scopePrompt(caps); got != want {
+			t.Errorf("scopePrompt(%v) = %q, want %q", caps, got, want)
+		}
+	}
 }

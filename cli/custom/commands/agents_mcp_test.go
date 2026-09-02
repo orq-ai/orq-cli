@@ -750,3 +750,54 @@ func TestCodexMCPLandsInBaseConfigNotProfile(t *testing.T) {
 		t.Fatalf("provider write leaked into the base config.toml:\n%s", data)
 	}
 }
+
+func TestProjectScopeForCodexOpencodeAndKilo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+	project := t.TempDir()
+	t.Chdir(project)
+	want := map[string][2]string{
+		"codex":    {filepath.Join(project, ".codex", "config.toml"), filepath.Join(home, ".codex", "config.toml")},
+		"opencode": {filepath.Join(project, "opencode.json"), filepath.Join(home, ".config", "opencode", "opencode.json")},
+		"kilo":     {filepath.Join(project, "kilo.json"), filepath.Join(home, ".config", "kilo", "kilo.json")},
+	}
+	for id, paths := range want {
+		spec, _ := lookupAgent(id)
+		local, _ := spec.mcpConfig(false)
+		global, _ := spec.mcpConfig(true)
+		if local != paths[0] || global != paths[1] {
+			t.Errorf("%s: local=%q global=%q; want %q, %q", id, local, global, paths[0], paths[1])
+		}
+		if !mcpScopeAware(spec) {
+			t.Errorf("%s is not scope-aware", id)
+		}
+		if err := spec.writeMCP(local, "https://example.test/mcp"); err != nil {
+			t.Fatalf("%s: write: %v", id, err)
+		}
+		if !spec.mcpPresent(local) {
+			t.Errorf("%s: entry not present after write", id)
+		}
+		if _, err := os.Stat(global); !os.IsNotExist(err) {
+			t.Errorf("%s: project write touched the global file", id)
+		}
+		assertNoCredential(t, local)
+	}
+}
+
+func TestCodexProjectScopeHonoursCodexHomeForGlobalOnly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	project := t.TempDir()
+	t.Chdir(project)
+	spec, _ := lookupAgent("codex")
+	global, _ := spec.mcpConfig(true)
+	local, _ := spec.mcpConfig(false)
+	if global != filepath.Join(codexHome, "config.toml") {
+		t.Errorf("global = %q", global)
+	}
+	if local != filepath.Join(project, ".codex", "config.toml") {
+		t.Errorf("local = %q", local)
+	}
+}

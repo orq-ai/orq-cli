@@ -111,6 +111,27 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `orq connect skills --local` installs the skill set into the current
+  directory (`./.claude/skills` for Claude Code, `./.agents/skills` for every
+  other agent) instead of `$HOME`; `--global` stays the default. A bare
+  `orq disconnect skills` removes both scopes and counts local installs made
+  from other directories. `orq connect --status`, `--json` and `orq doctor`
+  label each skills directory `global` or `local` for the directory you run
+  them from. `orq setup` asks the scope question when skills are selected.
+- **Changed:** `orq launch` links session skills into the current directory, or
+  into `$HOME` when launched from there. Kimi (launcher-owned home) and Windows
+  (no session links) are unchanged.
+- **Changed:** skills for codex and kimi are written to `~/.agents/skills` only,
+  no longer to `~/.codex/skills` and `~/.kimi-code/skills` as well. Both agents
+  read the shared directory, and codex listed every orq skill twice. The next
+  `orq connect skills` removes the old links. The Linux-only
+  `~/.config/agents/skills` directory, which no agent reads, is no longer written.
+- **Added:** `orq connect <agent> mcp --local` writes a project config for codex
+  (`.codex/config.toml`), opencode (`opencode.json`) and kilo (`kilo.json`)
+  instead of warning and writing the machine-wide file. Codex loads its project
+  config only for a repository marked trusted in `~/.codex/config.toml`;
+  connect prints the line to add.
+
 ## [5.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v5.2.1) — 2026-09-01
 
 - **Changed:** `rc` releases are numbered as the stable release they preview.

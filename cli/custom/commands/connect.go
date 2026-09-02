@@ -308,7 +308,7 @@ Capabilities:
   tracing   Parses, but is not available yet.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
-instead, for the agents that read a project config (Claude Code and Kimi Code).
+instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
 
 ` + "`orq skills`" + ` is a different command and a different noun: it manages skill entities on the
 orq platform. The ` + "`skills`" + ` capability here installs files into your agents' own skills
@@ -414,7 +414,16 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
-		isWired[w.agent] = true
+		if w.agent != "" {
+			isWired[w.agent] = true
+			continue
+		}
+		// The shared skills row wires every shared reader that was asked about.
+		for _, id := range agents {
+			if skills.SharedReader(id) {
+				isWired[id] = true
+			}
+		}
 	}
 	// Scoped to what was asked about: `--status codex` reporting on kimi is an
 	// answer to a question nobody asked.
@@ -438,7 +447,7 @@ func printWiredTable(rep *reporter, order []string, byAgent map[string][]wiredTa
 	if len(order) == 0 {
 		return
 	}
-	// Only mcp carries a scope, and only gateway carries a workspace, so a
+	// gateway carries no scope, and only gateway carries a workspace, so a
 	// machine wired for one alone gets no empty column for the other.
 	scoped, workspaced := false, false
 	for _, agent := range order {
@@ -599,7 +608,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		// `coding_agents: null` and had no way to observe the capability at
 		// all.
 		if hasCap(caps, capSkills) {
-			payload[capSkills] = skillsPayload(agents)
+			payload[capSkills] = skillsPayload(agents, skillsWriteScope(opts))
 		}
 		// Same reason: rep.ok is invisible to a script, so without this the MCP
 		// entries this run wrote cannot be observed at all.
@@ -657,11 +666,6 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			continue
 		}
 		scopeAware := mcpScopeAware(spec)
-		if !global && !scopeAware {
-			// A warning, not a refusal: the entry the user asked for still
-			// lands, it just lands in the only file this agent reads.
-			warnGlobalOnlyMCPScope(rep, id, "writing")
-		}
 		path, err := spec.mcpConfig(global)
 		switch {
 		case err != nil:
@@ -688,17 +692,16 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			if line := mcpLoginLine(id); line != "" {
 				rep.info("%-8s %-9s %s", id, capMCP, line)
 			}
+			if id == "codex" && !global {
+				// Not written by orq: elevating a repository's trust is the
+				// user's decision, and codex ignores the project file until
+				// they make it.
+				rep.info("%-8s %-9s codex loads a project config only when %s marks this repository trusted: [projects.\"<repo root>\"] trust_level = \"trusted\"", id, capMCP, tilde(codexBaseConfigPath()))
+			}
 			results = append(results, mcpResult{Agent: id, Path: path, Scope: scopeLabel(global || !scopeAware)})
 		}
 	}
 	return results, failed
-}
-
-// warnGlobalOnlyMCPScope says --local could not be honoured and what happened
-// instead. Both verbs say it: a removal that quietly took the machine-wide file
-// after being asked for the project one is the same surprise as a write that did.
-func warnGlobalOnlyMCPScope(rep *reporter, id, action string) {
-	rep.warn("%-8s %-9s reads MCP config from one place only — %s the machine-wide file", id, capMCP, action)
 }
 
 // mcpEntryPresent answers launch's "is this agent already wired?" from the
@@ -753,12 +756,12 @@ func mcpLoginLine(id string) string {
 }
 
 // skillsPayload is the machine-readable view of an install: the directories
-// that received the set, and how many skills the set holds.
-func skillsPayload(agents []string) map[string]any {
-	targets := skillTargetsFor(agents)
+// that received the set, their scope, and how many skills the set holds.
+func skillsPayload(agents []string, scope skills.Scope) map[string]any {
+	targets := skillTargetsFor(agents, scope)
 	dirs := make([]map[string]any, 0, len(targets))
 	for _, t := range targets {
-		entry := map[string]any{"path": t.Dir}
+		entry := map[string]any{"path": t.Dir, "scope": scopeLabel(t.Global)}
 		if t.Agent != "" {
 			entry["agent"] = t.Agent
 		}
@@ -840,7 +843,7 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 		}
 	}
 	if hasCap(caps, capSkills) {
-		for _, target := range skillTargetsFor(agents) {
+		for _, target := range skillTargetsFor(agents, skillsWriteScope(opts)) {
 			rep.info("%-8s skills    %s", target.Agent, tilde(target.Dir))
 		}
 	}
@@ -984,6 +987,11 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	wired := wiredTargets(agents, caps, opts)
 	if len(wired) == 0 {
 		rep.info(nothingWired(namedAgents, agents))
+		if hasCap(caps, capSkills) {
+			if status, err := skills.ReadStatus(); err == nil && status != nil {
+				reportSkillsElsewhere(rep, status, agents)
+			}
+		}
 		return nil
 	}
 	if dryRun {
@@ -1100,24 +1108,22 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 	if hasCap(caps, capSkills) {
 		// A skills row carries the same ✓ the disk-probed rows do, so it rests
 		// on the same kind of evidence: ReadStatus probes each recorded link
-		// rather than trusting the manifest that records it.
+		// rather than trusting the manifest that records it. Rows are the
+		// global set and this directory's local set, narrowed to the scope
+		// the flags name so the preview never lists a directory disconnect
+		// will not touch; a local install made elsewhere is counted by
+		// reportBrokenSkillLinks, not listed.
 		status, err := skills.ReadStatus()
 		if err == nil && status != nil {
 			idx := map[string]int{}
-			wanted := map[string]bool{}
-			for _, id := range agents {
-				wanted[id] = true
-			}
 			for _, l := range status.Links {
-				// An empty agent is the shared directory, which serves any
-				// selected agent that reads it.
-				if l.Agent != "" && !wanted[l.Agent] {
+				if !skills.Belongs(l.Agent, agents) || !placeInScope(l.Place, skillsRemoveScope(opts)) {
 					continue
 				}
 				dir := filepath.Dir(l.Path)
 				i, seen := idx[dir]
 				if !seen {
-					out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir, status: "pass"})
+					out = append(out, wiredTarget{agent: l.Agent, capability: capSkills, path: dir, scope: string(l.Place), status: "pass"})
 					i = len(out) - 1
 					idx[dir] = i
 				}
@@ -1128,6 +1134,25 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 	}
 	return out
+}
+
+func placeInScope(p skills.Place, scope skills.Scope) bool {
+	switch scope {
+	case skills.ScopeGlobal:
+		return p == skills.PlaceGlobal
+	case skills.ScopeLocal:
+		return p == skills.PlaceLocal
+	}
+	return p != skills.PlaceElsewhere
+}
+
+// countDirs is (links, directories) for a set of link paths.
+func countDirs(paths []string) (int, int) {
+	dirs := map[string]bool{}
+	for _, p := range paths {
+		dirs[filepath.Dir(p)] = true
+	}
+	return len(paths), len(dirs)
 }
 
 // reportBrokenSkillLinks warns about every recorded link the table renders a
@@ -1147,17 +1172,8 @@ func reportBrokenSkillLinks(rep *reporter, agents []string) {
 	if err != nil || status == nil {
 		return
 	}
-	wanted := map[string]bool{}
-	sharedWanted := false
-	for _, id := range agents {
-		wanted[id] = true
-		sharedWanted = sharedWanted || skills.SharedReader(id)
-	}
 	inScope := func(l skills.LinkStatus) bool {
-		if l.Agent == "" {
-			return sharedWanted
-		}
-		return wanted[l.Agent]
+		return skills.Belongs(l.Agent, agents) && l.Place != skills.PlaceElsewhere
 	}
 	// Entries are collapsed per directory rather than printed one per file:
 	// deleting a whole skills directory recorded a dozen links, and a dozen
@@ -1183,13 +1199,17 @@ func reportBrokenSkillLinks(rep *reporter, agents []string) {
 
 	missingOrder, missingByDir := fold(skills.LinkMissing)
 	for _, dir := range missingOrder {
+		remedy := "orq connect skills"
+		if skills.PlaceOf(dir) == skills.PlaceLocal {
+			remedy += " --local"
+		}
 		if paths := missingByDir[dir]; len(paths) == 1 {
 			// Not "restore": refresh does not respect a deletion, it
 			// reprojects every recorded link on the next fingerprint change.
 			// Saying restore promises the file stays gone until asked for.
-			rep.warn("skills   %s is recorded but not installed — run 'orq connect skills' to install it", tilde(paths[0]))
+			rep.warn("skills   %s is recorded but not installed — run '%s' to install it", tilde(paths[0]), remedy)
 		} else {
-			rep.warn("skills   %s: %d recorded skills are not installed — run 'orq connect skills' to install them", tilde(dir), len(paths))
+			rep.warn("skills   %s: %d recorded skills are not installed — run '%s' to install them", tilde(dir), len(paths), remedy)
 		}
 	}
 
@@ -1214,6 +1234,24 @@ func reportBrokenSkillLinks(rep *reporter, agents []string) {
 				break
 			}
 		}
+	}
+
+	reportSkillsElsewhere(rep, status, agents)
+}
+
+// reportSkillsElsewhere counts local installs in other directories: one
+// line, not rows. They are real, and the agents reading them from here
+// (codex, opencode, pi, kilo walk up to the git root) may well load them,
+// but the table describes what a disconnect run here can undo.
+func reportSkillsElsewhere(rep *reporter, status *skills.Status, agents []string) {
+	var paths []string
+	for _, l := range status.Links {
+		if l.Place == skills.PlaceElsewhere && skills.Belongs(l.Agent, agents) {
+			paths = append(paths, l.Path)
+		}
+	}
+	if total, n := countDirs(paths); n > 0 {
+		rep.info("skills   %d links in %d other director%s are not shown — run from there to see or remove them", total, n, plural(n, "y", "ies"))
 	}
 }
 
@@ -1276,9 +1314,6 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 			}
 		}
 		if hasCap(caps, capMCP) {
-			if opts.scope == scopeLocal && spec.mcpConfig != nil && !mcpScopeAware(spec) {
-				warnGlobalOnlyMCPScope(rep, id, "removing from")
-			}
 			remove(capMCP, spec.mcpConfig, spec.removeMCP)
 		}
 		r.Removed = removedFrom
@@ -1287,7 +1322,7 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 	if hasCap(caps, capSkills) {
 		// skills.Remove always returns a non-nil *Result, even on error, so
 		// res.Skipped below is safe to range over unconditionally.
-		res, err := skills.Remove(agents)
+		res, err := skills.Remove(agents, skillsRemoveScope(opts))
 		switch {
 		case err != nil:
 			rep.fail("%-8s %-9s %v", "", capSkills, err)
@@ -1300,6 +1335,9 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		// is the last time any orq command names the path.
 		for _, path := range res.Skipped {
 			rep.warn("%s is no longer ours — left in place, and orq has stopped tracking it", tilde(path))
+		}
+		if n, dirs := countDirs(res.Elsewhere); n > 0 {
+			rep.info("%-8s %-9s left %d links in %d other director%s — run 'orq disconnect skills --local' from there", "", capSkills, n, dirs, plural(dirs, "y", "ies"))
 		}
 	}
 	return rows, skillsRemoved, failed
@@ -1383,8 +1421,8 @@ func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
 		return nil
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		if cwd, cerr := os.Getwd(); cerr == nil && sameDir(cwd, home) {
-			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — the ~/.mcp.json that would produce applies to every session you start from home rather than to one project. Use --global", tilde(home))
+		if cwd, cerr := os.Getwd(); cerr == nil && skills.SameDir(cwd, home) {
+			return fmt.Errorf("--local writes project config into the current directory, and %s is your home directory, not a project — config written there applies to every session you start from home rather than to one project. Use --global", tilde(home))
 		}
 	}
 	// Named per capability, not once for the run: everything unscoped in this
@@ -1393,18 +1431,18 @@ func checkScopeFlags(rep *reporter, opts *setupOptions, caps []string) error {
 	unscoped := unscopedCaps(caps)
 	switch {
 	case len(unscoped) == len(caps):
-		rep.warn("--local has nothing to scope here: only the mcp capability has a project scope")
+		rep.warn("--local has nothing to scope here: %s %s machine-wide", strings.Join(unscoped, " and "), plural(len(unscoped), "is", "are"))
 	case len(unscoped) > 0:
-		rep.warn("--local scopes mcp only: %s %s machine-wide either way", strings.Join(unscoped, " and "), plural(len(unscoped), "is", "are"))
+		rep.warn("--local scopes mcp and skills only: %s %s machine-wide either way", strings.Join(unscoped, " and "), plural(len(unscoped), "is", "are"))
 	}
 	return nil
 }
 
-// capScoped reports whether a capability has a project scope at all. Only mcp
-// does today; RES-1437 adds skills. Scope is a property of the capability, not
-// of the run, so `orq disconnect codex --local` cannot narrow to a project and
-// then delete the machine-wide gateway anyway.
-func capScoped(cap string) bool { return cap == capMCP }
+// capScoped reports whether a capability has a project scope at all. Scope is
+// a property of the capability, not of the run, so `orq disconnect codex
+// --local` cannot narrow to a project and then delete the machine-wide
+// gateway anyway.
+func capScoped(cap string) bool { return cap == capMCP || cap == capSkills }
 
 // unscopedCaps is the requested capabilities a named scope cannot reach.
 func unscopedCaps(caps []string) []string {
@@ -1428,6 +1466,27 @@ func plural(n int, one, many string) string {
 // global otherwise. A write has to pick one, so scopeUnset resolves to global
 // here — unlike a removal, which takes both.
 func mcpWriteScope(opts *setupOptions) bool { return opts.scope != scopeLocal }
+
+// skillsWriteScope mirrors mcpWriteScope for the skills package: a write picks
+// one scope, and scopeUnset means global.
+func skillsWriteScope(opts *setupOptions) skills.Scope {
+	if opts.scope == scopeLocal {
+		return skills.ScopeLocal
+	}
+	return skills.ScopeGlobal
+}
+
+// skillsRemoveScope mirrors scopedPaths: a named scope removes from that one,
+// none removes from both.
+func skillsRemoveScope(opts *setupOptions) skills.Scope {
+	switch opts.scope {
+	case scopeLocal:
+		return skills.ScopeLocal
+	case scopeGlobal:
+		return skills.ScopeGlobal
+	}
+	return skills.ScopeBoth
+}
 
 // scopeLabel names a scope for the reader. "local" rather than "project"
 // because that is the flag the user types to reach it.
