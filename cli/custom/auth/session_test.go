@@ -197,3 +197,35 @@ func TestSaveSessionKeepsUnparseableExpiryAndDoesNotMutateTheCaller(t *testing.T
 		t.Errorf("a provably expired entry survived the prune: %+v", got.WorkspaceTokens)
 	}
 }
+
+func TestSessionHostRule(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://api.orq.ai":        "my.orq.ai",
+		"https://my.orq.ai/":        "my.orq.ai",
+		"https://My.Staging.ORQ.ai": "my.staging.orq.ai",
+		"http://localhost:8080":     "localhost_8080",
+		"http://127.0.0.1:3000/v2":  "127.0.0.1_3000",
+		"https://orq.acme.internal": "orq.acme.internal",
+		"https://[::1]:4200":        "__1_4200",
+	} {
+		if got := SessionHost(in); got != want {
+			t.Errorf("SessionHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The session in play is the one for the server this invocation resolved:
+// --server, ORQ_SERVER, `orq server set`, else the hosted default.
+func TestSessionFilePathFollowsTheResolvedServer(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+
+	SetServer("", "default")
+	if got := filepath.Base(SessionFilePath()); got != "my.orq.ai.json" {
+		t.Errorf("default session file = %q, want my.orq.ai.json", got)
+	}
+	SetServer("https://my.staging.orq.ai", "flag")
+	if got := filepath.Base(SessionFilePath()); got != "my.staging.orq.ai.json" {
+		t.Errorf("staging session file = %q, want my.staging.orq.ai.json", got)
+	}
+}

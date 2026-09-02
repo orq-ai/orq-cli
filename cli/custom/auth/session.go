@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,6 @@ const (
 	sessionDirName     = ".orq"
 	sessionsSubdirName = "sessions"
 	legacyFileName     = "session.json"
-	defaultProfile     = "default"
 )
 
 type StoredAccessToken struct {
@@ -65,14 +65,37 @@ type SessionInspectResult struct {
 	Message string
 }
 
-// ActiveProfile returns the profile name the user passed via --profile (or the
-// ORQ_PROFILE env var bartolo wires up via viper). Defaults to "default".
-func ActiveProfile() string {
-	name := viper.GetString("profile")
-	if name == "" {
-		return defaultProfile
+// SessionHost names the session file for a server: the host, lowercased, with
+// `_<port>` when one is present and anything outside [a-z0-9.-] replaced by
+// `_`. No scheme — http and https to one host are one login. The hosted
+// service answers under two names, and those are one login too.
+func SessionHost(apiBase string) string {
+	apiBase = strings.TrimSpace(apiBase)
+	if IsHostedAPIBase(apiBase) {
+		apiBase = DefaultAPIBaseURL
 	}
-	return name
+	u, err := url.Parse(apiBase)
+	if err != nil || u.Hostname() == "" {
+		return sanitizeHost(apiBase)
+	}
+	name := u.Hostname()
+	if p := u.Port(); p != "" {
+		name += "_" + p
+	}
+	return sanitizeHost(name)
+}
+
+func sanitizeHost(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
 }
 
 func sessionsDir() string {
@@ -83,11 +106,21 @@ func sessionsDir() string {
 	return filepath.Join(home, sessionDirName, sessionsSubdirName)
 }
 
-// SessionFilePath returns the per-profile session file path. Each profile
-// stores its own credentials at ~/.orq/sessions/<profile>.json so that
-// `orq --profile acme` and `orq --profile default` don't share state.
+func sessionPathFor(host string) string {
+	return filepath.Join(sessionsDir(), host+".json")
+}
+
+// SessionFilePath is the session for the server this invocation resolved
+// (custom.resolveServer → SetServer), so `--server https://my.staging.orq.ai`
+// reads the staging login and a bare `orq` reads the hosted one.
 func SessionFilePath() string {
-	return filepath.Join(sessionsDir(), ActiveProfile()+".json")
+	return sessionPathFor(SessionHost(ResolveURLs("").APIBaseURL))
+}
+
+// sessionFilesDir is an unexported alias of sessionsDir for callers within
+// this package that want the directory without going through SessionFilePath.
+func sessionFilesDir() string {
+	return sessionsDir()
 }
 
 func legacySessionFilePath() string {
@@ -111,24 +144,6 @@ func SessionsDir() string {
 // credentials on disk should not have to assume that migration already ran.
 func LegacySessionFilePath() string {
 	return legacySessionFilePath()
-}
-
-// migrateLegacySession moves a pre-multi-profile ~/.orq/session.json into the
-// per-profile layout under ~/.orq/sessions/default.json the first time we see
-// one, so existing logged-in users aren't logged out by the upgrade.
-func migrateLegacySession() {
-	legacy := legacySessionFilePath()
-	if _, err := os.Stat(legacy); err != nil {
-		return
-	}
-	target := filepath.Join(sessionsDir(), defaultProfile+".json")
-	if _, err := os.Stat(target); err == nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return
-	}
-	_ = os.Rename(legacy, target)
 }
 
 func ensureSessionDir() error {
@@ -155,7 +170,6 @@ func validateSession(s *Session) error {
 }
 
 func InspectSession() SessionInspectResult {
-	migrateLegacySession()
 	path := SessionFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -319,4 +333,15 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 		return true
 	}
 	return savedWS != "" && savedWS != activeWS
+}
+
+// TODO(Task 3): remove. Temporary stub kept only so this package and its
+// remaining callers (state.go, SavedAgentKey) still compile between Task 1
+// and Task 3, which deletes state.go and every ActiveProfile reference.
+func ActiveProfile() string {
+	name := viper.GetString("profile")
+	if name == "" {
+		return "default"
+	}
+	return name
 }
