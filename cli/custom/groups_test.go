@@ -3,6 +3,7 @@ package custom
 import (
 	"testing"
 
+	"orq/cli/custom/commands"
 	generated "orq/cli/generated"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -30,6 +31,12 @@ func buildRoot(t *testing.T) *cobra.Command {
 	prevPreRun := bartolocli.PreRun
 	bartolocli.PreRun = nil
 	t.Cleanup(func() { bartolocli.PreRun = prevPreRun })
+	// A test that Executes runs that PreRun, which snapshots the user's
+	// exported key into a package global in commands. Left set, it is what
+	// every later test in this binary resolves as the configured credential —
+	// and an empty snapshot reads as "the user exported nothing" even where
+	// the environment says otherwise.
+	t.Cleanup(commands.ResetUserEnvAPIKey)
 
 	root := bartolocli.Root
 	generated.Register(root)
