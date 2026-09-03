@@ -11,23 +11,42 @@ import (
 func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	var sections []string
 	if len(thread.Instructions) > 0 {
-		instructionSections := []string{"# INSTRUCTIONS"}
+		instructionSections := []string{}
 		for _, instruction := range thread.Instructions {
 			body := renderThreadParts(instruction.Content)
 			if body != "" {
 				instructionSections = append(instructionSections, "## "+strings.ToUpper(instruction.Role), body)
 			}
 		}
-		sections = append(sections, strings.Join(instructionSections, "\n\n"))
+		if len(instructionSections) > 0 {
+			sections = append(sections, "# INSTRUCTIONS\n\n"+strings.Join(instructionSections, "\n\n"))
+		}
 	}
 	for _, message := range thread.Messages {
 		heading := "## " + strings.ToUpper(message.Role) + fmt.Sprintf(" [%d]", message.Index)
 		if message.Role == "tool" && message.Name != "" {
 			heading += " — " + message.Name
 		}
-		body := renderThreadParts(message.Content)
+		var ordinary, errors, exceptions []ThreadPart
+		for _, part := range message.Content {
+			switch part.Type {
+			case "error":
+				errors = append(errors, part)
+			case "exception":
+				exceptions = append(exceptions, part)
+			default:
+				ordinary = append(ordinary, part)
+			}
+		}
+		body := renderThreadParts(ordinary)
 		if message.Role == "tool" && body != "" {
 			body = "### TOOL RESULT\n\n" + body
+		}
+		if rendered := renderThreadParts(errors); rendered != "" {
+			body = appendMarkdownSection(body, "### ERROR\n\n"+rendered)
+		}
+		if rendered := renderThreadParts(exceptions); rendered != "" {
+			body = appendMarkdownSection(body, "### EXCEPTION\n\n"+rendered)
 		}
 		if len(message.Reasoning) > 0 {
 			var ordinary, summaries []ThreadPart
@@ -78,7 +97,7 @@ func renderThreadParts(parts []ThreadPart) string {
 	for _, part := range parts {
 		var rendered string
 		switch part.Type {
-		case "text", "summary":
+		case "text", "summary", "error", "exception":
 			rendered = part.Text
 		case "json":
 			rendered = renderThreadValue(part.Value)

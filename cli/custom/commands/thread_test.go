@@ -291,6 +291,140 @@ func TestRenderThreadMarkdownUsesSummaryAndToolResultIndicators(t *testing.T) {
 	}
 }
 
+func TestNormalizeThreadReReviewRegressions(t *testing.T) {
+	tests := []struct {
+		name  string
+		span  map[string]any
+		check func(*testing.T, Thread)
+	}{
+		{
+			name: "instructions only is a Responses thread",
+			span: map[string]any{"attributes": map[string]any{"openresponses.instructions": "Only these instructions."}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if thread.Source.Representation != "responses" || len(thread.Instructions) != 1 || len(thread.Messages) != 0 {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "trailing Responses input reasoning is retained",
+			span: map[string]any{"attributes": map[string]any{"openresponses.input": []any{map[string]any{"type": "reasoning", "content": "keep me"}}}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 1 || thread.Messages[0].Role != "assistant" || thread.Messages[0].Reasoning[0].Text != "keep me" {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "Responses input reasoning survives a Chat output hybrid",
+			span: map[string]any{"attributes": map[string]any{
+				"openresponses.input": []any{map[string]any{"type": "reasoning", "content": "keep hybrid"}},
+				"gen_ai.output":       `{"role":"assistant","content":"chat answer"}`,
+			}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 2 || thread.Messages[0].Content[0].Text != "chat answer" || thread.Messages[1].Role != "assistant" || thread.Messages[1].Reasoning[0].Text != "keep hybrid" {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "nameless Chat tool result inherits the called tool name",
+			span: map[string]any{"input": []any{
+				map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"id": "call-lookup", "function": map[string]any{"name": "lookup", "arguments": "{}"}}}},
+				map[string]any{"role": "tool", "tool_call_id": "call-lookup", "content": "found"},
+			}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 2 || thread.Messages[1].Name != "lookup" {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "Responses errors and exceptions keep valid message roles",
+			span: map[string]any{"attributes": map[string]any{"openresponses.output": []any{
+				map[string]any{"type": "error", "error": map[string]any{"message": "rate limited"}},
+				map[string]any{"type": "exception", "content": "upstream unavailable"},
+			}}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 2 || thread.Messages[0].Role != "assistant" || thread.Messages[0].Content[0] != (ThreadPart{Type: "error", Text: "rate limited"}) || thread.Messages[1].Content[0] != (ThreadPart{Type: "exception", Text: "upstream unavailable"}) {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			thread, err := NormalizeThread(tt.span, ThreadSource{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, thread)
+		})
+	}
+}
+
+func TestNormalizeThreadSanitizesNestedSecretReasoning(t *testing.T) {
+	for _, field := range []string{"signature", "encrypted_content", "redacted_content"} {
+		t.Run(field, func(t *testing.T) {
+			secret := "nested-secret-" + field
+			span := map[string]any{"input": []any{map[string]any{"role": "assistant", "reasoning": []any{map[string]any{"content": map[string]any{field: secret}}}}}}
+			thread, err := NormalizeThread(span, ThreadSource{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(thread)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var markdown bytes.Buffer
+			if err := RenderThreadMarkdown(&markdown, thread); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(encoded), secret) || strings.Contains(markdown.String(), secret) {
+				t.Fatalf("secret leaked: canonical=%s markdown=%s", encoded, markdown.String())
+			}
+		})
+	}
+}
+
+func TestRenderThreadMarkdownReReviewIndicators(t *testing.T) {
+	thread := Thread{Instructions: []ThreadInstruction{{Role: "system", Content: nil}}, Messages: []ThreadMessage{
+		{Index: 0, Role: "assistant", Reasoning: []ThreadPart{{Type: "summary", Text: "chat summary"}}},
+		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "error", Text: "rate limited"}, {Type: "exception", Text: "upstream unavailable"}}},
+	}}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
+		t.Fatal(err)
+	}
+	want := "## ASSISTANT [0]\n\n### REASONING SUMMARY\n\nchat summary\n\n## ASSISTANT [1]\n\n### ERROR\n\nrate limited\n\n### EXCEPTION\n\nupstream unavailable\n"
+	if out.String() != want {
+		t.Errorf("Markdown =\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
+func TestNormalizeThreadRendersChatReasoningSummary(t *testing.T) {
+	thread, err := NormalizeThread(map[string]any{"input": []any{map[string]any{"role": "assistant", "summary": "a short summary"}}}, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := thread.Messages[0].Reasoning; !reflect.DeepEqual(got, []ThreadPart{{Type: "summary", Text: "a short summary"}}) {
+		t.Fatalf("reasoning = %#v", got)
+	}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
+		t.Fatal(err)
+	}
+	want := "## ASSISTANT [0]\n\n### REASONING SUMMARY\n\na short summary\n"
+	if out.String() != want {
+		t.Errorf("Markdown = %q, want %q", out.String(), want)
+	}
+}
+
 func loadThreadFixture(t *testing.T, name string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", "thread", name))
