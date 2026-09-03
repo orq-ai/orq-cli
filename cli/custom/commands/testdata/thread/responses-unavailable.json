@@ -1,0 +1,7 @@
+{
+  "trace_id": "trace-unavailable",
+  "span_id": "span-unavailable",
+  "attributes": {
+    "openresponses.input": {"items": {"count": 2}}
+  }
+}
