@@ -37,6 +37,13 @@ func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, op
 		return nil, nil
 	}
 
+	// Inherit what the session already claims before anything can fail. Every
+	// branch below that returns without choosing — list failure, no selectable
+	// projects, no default — used to leave this empty, so the next step minted a
+	// workspace-wide key for a session that still named a project: the session
+	// promised a scope the key did not have.
+	state.projectID = state.session.ActiveProjectID
+
 	projects, err := client.ListProjects(state.bearer)
 	if err != nil {
 		// A workspace we cannot list is not a reason to abandon a setup that
@@ -60,8 +67,10 @@ func resolveProjectStep(rep *reporter, client *auth.Client, state *authState, op
 		}
 	case len(projects) == 1:
 		chosen = &projects[0]
-	case opts.interactive:
-		chosen, err = pickProject(projects)
+	// noInput, not interactive: applyGlobalFlags folds both --no-input and "no
+	// TTY" into noInput, so a run reaching here has a terminal to prompt on.
+	case !opts.noInput:
+		chosen, err = opts.pickProject(projects)
 		if err != nil {
 			return nil, err
 		}

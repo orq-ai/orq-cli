@@ -22,11 +22,18 @@ func promptStdio() survey.AskOpt {
 // hasInteractiveTTY gates every prompt in the CLI. --no-input/ORQ_NO_INPUT
 // forces the non-interactive path even on a real TTY, so scripts can rely on
 // "fail instead of hang" regardless of how they are invoked.
+//
+// It tests the two streams promptStdio actually uses, stdin and stderr, not
+// stdout. Testing stdout got both cases wrong: `orq setup > out.json` was
+// treated as unattended even though the question would have been perfectly
+// visible on the terminal, and `orq setup 2>setup.log` was treated as
+// interactive and drew the prompt into the log file, leaving a terminal that
+// looked hung with no way to see what it was waiting for.
 func hasInteractiveTTY() bool {
 	if viper.GetBool("no-input") {
 		return false
 	}
-	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
+	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stderr.Fd())
 }
 
 // explicitAPIKey records whether the USER configured an API key (env var or

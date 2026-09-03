@@ -111,6 +111,28 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `orq setup` now shows the project picker during ordinary terminal
+  setup.** With multiple projects it previously prompted only when the optional
+  `-i` flag was present, so the default interactive flow selected the
+  workspace's default project without asking. Non-interactive and `--no-input`
+  runs still use that default without prompting, and a sole project is still
+  selected automatically. `--yes` answers confirmations and does not pre-answer
+  the picker: an unattended run at a terminal wants `--project` or `--no-input`.
+
+- **Fixed: prompts are gated on the streams they are drawn on.** The check that
+  decides whether `orq` may ask a question read stdin and stdout, but every
+  prompt is written to stderr. `orq setup 2>setup.log` therefore drew its
+  question into the log file and waited on a terminal that looked hung, while
+  `orq setup > out.json` refused to ask a question that would have been
+  perfectly visible. It now reads stdin and stderr.
+
+- **Fixed: a setup that cannot list projects no longer mints a workspace-wide
+  key.** When the project step made no new selection — the listing failed, the
+  workspace had no selectable projects, or it had no default — the key created
+  next was scoped to nothing, even though the session still named an active
+  project. The step now carries that project forward, so the key matches what
+  the session claims.
+
 ## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
 
 - **Added: time flags accept relative values.** `--from`, `--to`, and any other
