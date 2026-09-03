@@ -45,11 +45,14 @@ func TestNormalizeThread(t *testing.T) {
 			},
 		},
 		{
-			name:    "responses count only content is explicitly unavailable",
+			name:    "responses count only output collection is explicitly unavailable",
 			fixture: "responses-unavailable.json",
 			want: Thread{
-				Source:   ThreadSource{Representation: "responses", TraceID: "trace-unavailable", SpanID: "span-unavailable"},
-				Messages: []ThreadMessage{{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: 2}}}},
+				Source: ThreadSource{Representation: "responses", TraceID: "trace-unavailable", SpanID: "span-unavailable"},
+				Messages: []ThreadMessage{
+					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses request with unavailable output."}}},
+					{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: 2}}},
+				},
 			},
 		},
 		{
@@ -126,7 +129,7 @@ func TestRenderThreadMarkdown(t *testing.T) {
 	tests := []struct{ name, fixture, want string }{
 		{"chat", "chat.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
 		{"responses", "responses.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [0]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [1]\n\nSynthetic Responses acknowledgement.\n"},
-		{"responses", "responses-unavailable.json", "## USER [0]\n\n[content unavailable: 2 items]\n"},
+		{"responses unavailable output", "responses-unavailable.json", "## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -182,22 +185,49 @@ func TestResponsesFixturesPreserveAvailableContentWithoutInventingUnavailableDat
 		}
 	})
 
-	t.Run("count-only input has only an unavailable marker", func(t *testing.T) {
+	t.Run("count-only output represents raw response items without inventing messages", func(t *testing.T) {
 		span := loadThreadFixture(t, "responses-unavailable.json")
+		attributes := span["attributes"].(map[string]any)
+		input := attributes["openresponses.input"].(map[string]any)
+		if got := input["items"].(map[string]any)["count"]; got != float64(1) {
+			t.Fatalf("input items.count = %#v, want 1", got)
+		}
+		output := attributes["openresponses.output"].(map[string]any)
+		if _, ok := output["_value"]; ok {
+			t.Fatalf("output unexpectedly exposes _value: %#v", output)
+		}
+		if got := output["items"].(map[string]any)["count"]; got != float64(2) {
+			t.Fatalf("output items.count = %#v, want 2 raw Responses output items", got)
+		}
 		thread, err := NormalizeThread(span, ThreadSource{TraceID: spanString(span, "trace_id"), SpanID: spanString(span, "span_id")})
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []ThreadMessage{{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: 2}}}}
+		want := []ThreadMessage{
+			{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses request with unavailable output."}}},
+			{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: 2}}},
+		}
 		if !reflect.DeepEqual(thread.Messages, want) {
 			t.Fatalf("messages = %#v, want %#v", thread.Messages, want)
+		}
+		if len(thread.Messages) != 2 {
+			t.Fatalf("message count = %d, want 2; output items.count must not be treated as a message count", len(thread.Messages))
 		}
 		var markdown bytes.Buffer
 		if err := RenderThreadMarkdown(&markdown, thread); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := markdown.String(), "## USER [0]\n\n[content unavailable: 2 items]\n"; got != want {
+		if got, want := markdown.String(), "## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"; got != want {
 			t.Fatalf("Markdown = %q, want %q", got, want)
+		}
+		encoded, err := json.Marshal(thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, invented := range []string{"reasoning", "tool", "arguments", "call", "Synthetic unavailable response text"} {
+			if strings.Contains(strings.ToLower(string(encoded)), strings.ToLower(invented)) || strings.Contains(strings.ToLower(markdown.String()), strings.ToLower(invented)) {
+				t.Fatalf("count-only output invented unavailable data %q", invented)
+			}
 		}
 	})
 }
