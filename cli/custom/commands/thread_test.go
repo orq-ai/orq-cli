@@ -17,19 +17,18 @@ func TestNormalizeThread(t *testing.T) {
 		want    Thread
 	}{
 		{
-			name:    "chat completions from dotted JSON attributes",
+			name:    "chat completions real shaped dotted JSON attributes",
 			fixture: "chat.json",
 			want: Thread{
 				Source: ThreadSource{Representation: "chat_completions", TraceID: "trace-chat", SpanID: "span-chat"},
 				Instructions: []ThreadInstruction{
-					{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Be concise."}}},
-					{Role: "developer", Content: []ThreadPart{{Type: "text", Text: "Use metric units."}}},
+					{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with one short synthetic acknowledgement."}}},
 				},
 				Messages: []ThreadMessage{
-					{Index: 2, Role: "user", Content: []ThreadPart{{Type: "text", Text: "What is the weather?"}, {Type: "text", Text: "Amsterdam"}}},
-					{Index: 3, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "I will check."}}, Reasoning: []ThreadPart{{Type: "text", Text: "Need a weather lookup."}}, ToolCalls: []ThreadToolCall{{ID: "call-weather", Name: "weather", Arguments: map[string]any{"city": "Amsterdam"}}}},
-					{Index: 4, Role: "tool", Name: "weather", ToolCallID: "call-weather", Content: []ThreadPart{{Type: "text", Text: "18 C and sunny"}}},
-					{Index: 5, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "It is 18 C and sunny."}}},
+					{Index: 1, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic fixture request: alpha."}}},
+					{Index: 2, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "call-synthetic-weather", Name: "synthetic_weather", Arguments: map[string]any{"city": "Exampleville"}}}},
+					{Index: 3, Role: "tool", Name: "synthetic_weather", ToolCallID: "call-synthetic-weather", Content: []ThreadPart{{Type: "text", Text: "Synthetic result: clear and 20 C."}}},
+					{Index: 4, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Acknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C."}}},
 				},
 			},
 		},
@@ -127,7 +126,7 @@ func TestSliceThread(t *testing.T) {
 
 func TestRenderThreadMarkdown(t *testing.T) {
 	tests := []struct{ name, fixture, want string }{
-		{"chat", "chat.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nBe concise.\n\n## DEVELOPER\n\nUse metric units.\n\n## USER [2]\n\nWhat is the weather?\n\nAmsterdam\n\n## ASSISTANT [3]\n\nI will check.\n\n### REASONING\n\nNeed a weather lookup.\n\n### TOOL CALL — weather [call-weather]\n\n```json\n{\n  \"city\": \"Amsterdam\"\n}\n```\n\n## TOOL [4] — weather\n\n### TOOL RESULT\n\n18 C and sunny\n\n## ASSISTANT [5]\n\nIt is 18 C and sunny.\n"},
+		{"chat", "chat.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
 		{"responses", "responses.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nAnswer in haiku.\n\n## USER [0]\n\nDescribe rain.\n\n## ASSISTANT [2]\n\n### REASONING\n\n[encrypted]\n\n[redacted]\n\n### REASONING SUMMARY\n\nA short poem is needed.\n\n### TOOL CALL — compose [call-poem]\n\n```json\n{\n  \"form\": \"haiku\"\n}\n```\n\n## TOOL [3] — compose\n\n### TOOL RESULT\n\nSoft rain taps the glass\n\n## ASSISTANT [4]\n\nSoft rain taps the glass\n"},
 		{"responses", "responses-unavailable.json", "## USER [0]\n\n[content unavailable: 2 items]\n"},
 	}
@@ -147,6 +146,53 @@ func TestRenderThreadMarkdown(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResponsesFixturesPreserveAvailableContentWithoutInventingUnavailableData(t *testing.T) {
+	t.Run("available wrapped content is preserved but secret blobs are not", func(t *testing.T) {
+		span := loadThreadFixture(t, "responses.json")
+		thread, err := NormalizeThread(span, ThreadSource{TraceID: spanString(span, "trace_id"), SpanID: spanString(span, "span_id")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var markdown bytes.Buffer
+		if err := RenderThreadMarkdown(&markdown, thread); err != nil {
+			t.Fatal(err)
+		}
+		for _, output := range []string{string(encoded), markdown.String()} {
+			if strings.Contains(output, "do-not-render") {
+				t.Fatalf("output leaked encrypted or redacted blob: %s", output)
+			}
+			for _, known := range []string{"Describe rain.", "A short poem is needed.", "compose", "Soft rain taps the glass"} {
+				if !strings.Contains(output, known) {
+					t.Fatalf("output omitted known available content %q: %s", known, output)
+				}
+			}
+		}
+	})
+
+	t.Run("count-only input has only an unavailable marker", func(t *testing.T) {
+		span := loadThreadFixture(t, "responses-unavailable.json")
+		thread, err := NormalizeThread(span, ThreadSource{TraceID: spanString(span, "trace_id"), SpanID: spanString(span, "span_id")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []ThreadMessage{{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: 2}}}}
+		if !reflect.DeepEqual(thread.Messages, want) {
+			t.Fatalf("messages = %#v, want %#v", thread.Messages, want)
+		}
+		var markdown bytes.Buffer
+		if err := RenderThreadMarkdown(&markdown, thread); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := markdown.String(), "## USER [0]\n\n[content unavailable: 2 items]\n"; got != want {
+			t.Fatalf("Markdown = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestNormalizeThreadRegressions(t *testing.T) {
