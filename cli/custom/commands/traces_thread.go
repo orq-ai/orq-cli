@@ -85,9 +85,6 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		if err == nil {
 			return thread, nil
 		}
-		if !isUnsupportedConversation(err) {
-			return Thread{}, err
-		}
 	}
 
 	candidates, err := listThreadCandidates(api, traceID, params)

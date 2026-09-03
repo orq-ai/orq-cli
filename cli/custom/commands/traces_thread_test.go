@@ -120,6 +120,30 @@ func TestTracesThreadUsesLeadingSpan(t *testing.T) {
 	}
 }
 
+func TestTracesThreadFallsBackWhenAutomaticLeadingSpanHydrationFails(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace:   map[string]any{"trace": map[string]any{"leading_span_id": "missing"}},
+		spanErr: map[string]error{"missing": errors.New("not found")},
+		spans:   map[string]map[string]any{"candidate": conversationalSpan("fallback")},
+		pages: map[string]map[string]any{
+			"": {"data": []any{map[string]any{"span_id": "candidate", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"}}},
+		},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:missing", "span:trace-1:candidate"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if got, want := fake.listCalls, []string{"trace-1:"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("list calls = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "fallback") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
 func TestTracesThreadFallsBackToNewestNonEvaluatorDetailedSpanAcrossPages(t *testing.T) {
 	fake := &fakeTraceAPI{
 		trace: map[string]any{"trace": map[string]any{"leading_span_id": "missing"}},
@@ -158,7 +182,11 @@ func TestTracesThreadFallsBackToNewestNonEvaluatorDetailedSpanAcrossPages(t *tes
 
 func TestTracesThreadReturnsClearErrors(t *testing.T) {
 	t.Run("no supported payload", func(t *testing.T) {
-		fake := &fakeTraceAPI{trace: map[string]any{"trace": map[string]any{}}, pages: map[string]map[string]any{"": {"data": []any{}}}}
+		fake := &fakeTraceAPI{
+			trace:   map[string]any{"trace": map[string]any{"leading_span_id": "missing"}},
+			spanErr: map[string]error{"missing": errors.New("not found")},
+			pages:   map[string]map[string]any{"": {"data": []any{}}},
+		}
 		_, err := runTracesThread(t, traceAPI(fake), "trace-1")
 		if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
 			t.Fatalf("error = %v", err)
@@ -169,6 +197,16 @@ func TestTracesThreadReturnsClearErrors(t *testing.T) {
 		_, err := runTracesThread(t, traceAPI(fake), "trace-1")
 		if err == nil || !strings.Contains(err.Error(), "get trace") || !strings.Contains(err.Error(), "offline") {
 			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("explicit span API errors are returned", func(t *testing.T) {
+		fake := &fakeTraceAPI{spanErr: map[string]error{"chosen": errors.New("offline")}}
+		_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+		if err == nil || !strings.Contains(err.Error(), "get span") || !strings.Contains(err.Error(), "offline") {
+			t.Fatalf("error = %v", err)
+		}
+		if got, want := fake.getCalls, []string{"span:trace-1:chosen"}; fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Fatalf("calls = %v, want %v", got, want)
 		}
 	})
 }
