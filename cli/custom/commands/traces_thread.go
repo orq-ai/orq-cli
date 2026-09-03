@@ -80,7 +80,11 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err != nil {
 		return Thread{}, fmt.Errorf("get trace %q: %w", traceID, err)
 	}
-	leadingID := threadString(traceEnvelope(traceResponse)["leading_span_id"])
+	trace := traceEnvelope(traceResponse)
+	fallbackIDs := uniqueThreadIDs(
+		threadString(trace["leading_span_id"]),
+		threadString(trace["root_span_id"]),
+	)
 
 	candidates, listErr := listThreadCandidates(api, traceID, params)
 	tried := make(map[string]bool, len(candidates))
@@ -96,16 +100,36 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 			}
 		}
 	}
-	if leadingID != "" && !tried[leadingID] {
-		thread, err := hydrateThread(api, traceID, leadingID, params)
+	for _, fallbackID := range fallbackIDs {
+		if tried[fallbackID] {
+			continue
+		}
+		tried[fallbackID] = true
+		thread, err := hydrateThread(api, traceID, fallbackID, params)
 		if err == nil {
 			return thread, nil
+		}
+		if !isUnsupportedConversation(err) {
+			return Thread{}, err
 		}
 	}
 	if listErr != nil {
 		return Thread{}, listErr
 	}
 	return Thread{}, fmt.Errorf("no supported conversation found in trace %q", traceID)
+}
+
+func uniqueThreadIDs(ids ...string) []string {
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	return unique
 }
 
 func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, error) {

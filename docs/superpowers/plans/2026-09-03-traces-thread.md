@@ -91,7 +91,7 @@
 
 - [ ] **Step 1: Write failing command and selection tests**
 
-  Build a fake `TraceAPI` that records calls and returns fixture maps. Cover exact-span selection, newest conversational span selection by descending `started_at`, `leading_span_id` fallback when listing is unavailable or yields no supported span, pagination using `next_page_token`, excluding evaluator spans and every descendant of an evaluator span, skipping spans with `has_detail:false`, avoiding duplicate hydration, no-supported-payload errors, API error wrapping, default Markdown, explicit JSON/YAML/TOON through the canonical formatter, and `--slice` behavior.
+  Build a fake `TraceAPI` that records calls and returns fixture maps. Cover exact-span selection, newest conversational span selection by descending `started_at`, deterministic `leading_span_id` then `root_span_id` fallback when listing is unavailable or yields no supported span, pagination using `next_page_token`, excluding evaluator spans and every descendant of an evaluator span, skipping spans with `has_detail:false`, avoiding duplicate hydration, no-supported-payload errors, API error wrapping, default Markdown, explicit JSON/YAML/TOON through the canonical formatter, and `--slice` behavior.
 
 - [ ] **Step 2: Run the focused command tests and confirm they fail**
 
@@ -99,7 +99,7 @@
 
 - [ ] **Step 3: Implement span resolution**
 
-  With an explicit span ID, hydrate only that span. Otherwise call get-trace, page through list-spans, build evaluator-descendant exclusions from `span_id`/`parent_span_id`, sort remaining detailed spans by `started_at` descending with stable tie-breaking, hydrate candidates, and return the first normalizable conversation. Use `trace.leading_span_id` only as a resilience fallback when listing is unavailable, empty, or has no supported span, and never hydrate it twice when it was already a listed candidate. Treat type/name/operation values containing `evaluator` or the standalone token `eval` case-insensitively as evaluator spans. Return a clear error if no supported conversation exists.
+  With an explicit span ID, hydrate only that span. Otherwise call get-trace, page through list-spans, build evaluator-descendant exclusions from `span_id`/`parent_span_id`, sort remaining detailed spans by `started_at` descending with stable tie-breaking, hydrate candidates, and return the first normalizable conversation. Use `trace.leading_span_id` followed by `trace.root_span_id` as resilience fallbacks when listing is unavailable, empty, or has no supported span, and never hydrate an ID twice when it was already a listed candidate or repeated as both fallback fields. Preserve contextual fallback hydration/API errors; only unsupported payloads fall through to the generic no-supported-conversation error. Treat type/name/operation values containing `evaluator` or the standalone token `eval` case-insensitively as evaluator spans. Return a clear error if no supported conversation exists.
 
 - [ ] **Step 4: Implement the Cobra command and output behavior**
 

@@ -113,11 +113,11 @@ controls on surface changes, whichever side they originate from.
 
 - **Added: `orq traces thread` renders a conversational trace span as Markdown.**
   It normalizes Chat Completions and Responses payloads, uses the newest
-  detailed non-evaluator conversational span (with the trace's leading span as
-  a resilience fallback), and supports `--slice` for selecting messages.
-  Explicit `--json`, `-o yaml`, and `-o toon` return the canonical structured
-  thread; content retained only as a count is shown explicitly as unavailable
-  rather than invented.
+  detailed non-evaluator conversational span (with the trace's leading/root
+  spans as resilience fallbacks), and supports `--slice` for selecting
+  messages. Explicit `--json`, `-o yaml`, and `-o toon` return the canonical
+  structured thread; content retained only as a count is shown explicitly as
+  unavailable rather than invented.
 
 ## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
 
