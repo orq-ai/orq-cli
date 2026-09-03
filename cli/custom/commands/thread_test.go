@@ -325,7 +325,7 @@ func TestNormalizeThreadReReviewRegressions(t *testing.T) {
 			}},
 			check: func(t *testing.T, thread Thread) {
 				t.Helper()
-				if len(thread.Messages) != 2 || thread.Messages[0].Content[0].Text != "chat answer" || thread.Messages[1].Role != "assistant" || thread.Messages[1].Reasoning[0].Text != "keep hybrid" {
+				if len(thread.Messages) != 1 || thread.Messages[0].Content[0].Text != "chat answer" || thread.Messages[0].Reasoning[0].Text != "keep hybrid" {
 					t.Fatalf("thread = %#v", thread)
 				}
 			},
@@ -422,6 +422,62 @@ func TestNormalizeThreadRendersChatReasoningSummary(t *testing.T) {
 	want := "## ASSISTANT [0]\n\n### REASONING SUMMARY\n\na short summary\n"
 	if out.String() != want {
 		t.Errorf("Markdown = %q, want %q", out.String(), want)
+	}
+}
+
+func TestNormalizeThreadThirdReviewHybridRegressions(t *testing.T) {
+	tests := []struct {
+		name  string
+		span  map[string]any
+		check func(*testing.T, Thread)
+	}{
+		{
+			name: "Responses reasoning attaches to following Chat assistant tool call",
+			span: map[string]any{"attributes": map[string]any{
+				"openresponses.input": []any{map[string]any{"type": "reasoning", "content": "plan before call"}},
+				"gen_ai.output":       `{"role":"assistant","tool_calls":[{"id":"chat-call","function":{"name":"lookup","arguments":"{}"}}]}`,
+			}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 1 || len(thread.Messages[0].Reasoning) != 1 || thread.Messages[0].Reasoning[0].Text != "plan before call" || len(thread.Messages[0].ToolCalls) != 1 {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "Chat input call names a Responses output result",
+			span: map[string]any{"attributes": map[string]any{"openresponses.output": []any{map[string]any{"type": "function_call_output", "call_id": "cross-call", "output": "result"}}}, "input": []any{
+				map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"id": "cross-call", "function": map[string]any{"name": "cross lookup", "arguments": "{}"}}}},
+			}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 2 || thread.Messages[1].Role != "tool" || thread.Messages[1].Name != "cross lookup" {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+		{
+			name: "Responses input call names a Chat output result",
+			span: map[string]any{"attributes": map[string]any{
+				"openresponses.input": []any{map[string]any{"type": "function_call", "call_id": "reverse-call", "name": "reverse lookup", "arguments": "{}"}},
+				"gen_ai.output":       `{"role":"tool","tool_call_id":"reverse-call","content":"result"}`,
+			}},
+			check: func(t *testing.T, thread Thread) {
+				t.Helper()
+				if len(thread.Messages) != 2 || thread.Messages[1].Role != "tool" || thread.Messages[1].Name != "reverse lookup" {
+					t.Fatalf("thread = %#v", thread)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			thread, err := NormalizeThread(tt.span, ThreadSource{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.check(t, thread)
+		})
 	}
 }
 

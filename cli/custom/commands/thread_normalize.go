@@ -31,7 +31,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 			thread.Instructions = append(thread.Instructions, ThreadInstruction{Role: "system", Content: []ThreadPart{instruction}})
 		}
 	}
-	inputCount, pending, toolNames, chatToolNames := 0, []ThreadPart(nil), map[string]string{}, map[string]string{}
+	inputCount, pending, toolNames := 0, []ThreadPart(nil), map[string]string{}
 	if responsesInputOK {
 		inputItems := responseItems(responsesInput)
 		if count, unavailable := unavailableThreadCount(responsesInput); unavailable && len(inputItems) == 0 {
@@ -44,7 +44,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 			}
 		}
 	} else if chatInputOK {
-		inputCount = appendChatInput(&thread, chatInput, len(thread.Instructions) == 0, chatToolNames)
+		inputCount = appendChatInput(&thread, chatInput, len(thread.Instructions) == 0, toolNames)
 	}
 	if responsesOutputOK {
 		outputItems := responseItems(responsesOutput)
@@ -56,7 +56,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 			pending = nil
 		}
 	} else if chatOutputOK {
-		appendChatOutput(&thread, chatOutput, inputCount, chatToolNames)
+		pending = appendChatOutput(&thread, chatOutput, inputCount, toolNames, pending)
 	}
 	if len(pending) > 0 {
 		outputCount := 0
@@ -91,7 +91,7 @@ func appendChatInput(thread *Thread, input any, appendInstructions bool, toolNam
 	return len(inputMessages)
 }
 
-func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[string]string) {
+func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[string]string, pending []ThreadPart) []ThreadPart {
 	outputMessages := chatOutputMessages(output)
 	for offset, raw := range outputMessages {
 		message, instruction, ok := normalizeChatMessage(raw, inputCount+offset)
@@ -106,8 +106,13 @@ func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[
 		if offset == 0 && len(thread.Messages) > 0 && thread.Messages[len(thread.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
 			continue
 		}
+		if message.Role == "assistant" && len(pending) > 0 {
+			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+			pending = nil
+		}
 		thread.Messages = append(thread.Messages, message)
 	}
+	return pending
 }
 
 func rememberChatToolNames(message ThreadMessage, toolNames map[string]string) {
