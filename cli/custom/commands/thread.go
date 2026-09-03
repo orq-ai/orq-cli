@@ -1,6 +1,9 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Thread is the canonical, portable representation of a traced conversation.
 type Thread struct {
@@ -52,7 +55,7 @@ type ThreadToolCall struct {
 
 // SliceThread applies a zero-based Python-style slice to thread messages.
 func SliceThread(thread Thread, expression string) (Thread, error) {
-	expression = trimSpace(expression)
+	expression = strings.TrimSpace(expression)
 	if expression == "" {
 		return Thread{}, fmt.Errorf("invalid slice expression: empty expression")
 	}

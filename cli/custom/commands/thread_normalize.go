@@ -36,7 +36,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 		inputItems := responseItems(responsesInput)
 		if count, unavailable := unavailableThreadCount(responsesInput); unavailable && len(inputItems) == 0 {
 			thread.Messages = append(thread.Messages, ThreadMessage{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: count}}})
-			inputCount = 1
+			inputCount = count
 		} else {
 			inputCount = len(inputItems)
 			for index, item := range inputItems {
@@ -48,8 +48,17 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	}
 	if responsesOutputOK {
 		outputItems := responseItems(responsesOutput)
+		boundaryChecked := false
 		for offset, item := range outputItems {
+			before := len(thread.Messages)
 			pending = thread.appendResponseItem(item, inputCount+offset, pending, toolNames)
+			if !boundaryChecked && len(thread.Messages) > before {
+				boundaryChecked = true
+				last := len(thread.Messages) - 1
+				if last > 0 && thread.Messages[last-1].Role == "assistant" && thread.Messages[last].Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[last-1]), withoutIndex(thread.Messages[last])) {
+					thread.Messages = thread.Messages[:last]
+				}
+			}
 		}
 		if count, unavailable := unavailableThreadCount(responsesOutput); unavailable && len(outputItems) == 0 {
 			thread.Messages = append(thread.Messages, ThreadMessage{Index: inputCount, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: count}}, Reasoning: pending})
@@ -322,6 +331,9 @@ func chatToolCalls(value any) []ThreadToolCall {
 }
 
 func responseReasoning(item map[string]any) []ThreadPart {
+	if states := stateThreadParts(item); len(states) > 0 {
+		return states
+	}
 	var parts []ThreadPart
 	for _, key := range []string{"content", "summary", "summaries", "reasoning", "thinking"} {
 		if value := item[key]; value != nil {
@@ -340,6 +352,9 @@ func responseReasoning(item map[string]any) []ThreadPart {
 }
 
 func recordedReasoning(message map[string]any) []ThreadPart {
+	if states := stateThreadParts(message); len(states) > 0 {
+		return states
+	}
 	var parts []ThreadPart
 	for _, key := range []string{"reasoning_content", "reasoning", "thinking", "summary", "summaries", "reasoning_summary"} {
 		if value := message[key]; value != nil {
@@ -354,6 +369,11 @@ func recordedReasoning(message map[string]any) []ThreadPart {
 }
 
 func reasoningThreadParts(value any) []ThreadPart {
+	if object, ok := threadMap(value); ok {
+		if states := stateThreadParts(object); len(states) > 0 {
+			return states
+		}
+	}
 	switch typed := decodeThreadValue(value).(type) {
 	case string:
 		return []ThreadPart{{Type: "text", Text: typed}}
@@ -411,12 +431,19 @@ func threadErrorParts(value any, kind string) []ThreadPart {
 }
 
 func stateThreadParts(object map[string]any) []ThreadPart {
-	states := []struct{ key, state string }{{"encrypted", "encrypted"}, {"redacted", "redacted"}, {"masked", "masked"}, {"truncated", "truncated"}}
+	states := []struct{ key, state string }{{"encrypted", "encrypted"}, {"redacted", "redacted"}, {"masked", "masked"}, {"truncated", "truncated"}, {"signature", "redacted"}}
 	var parts []ThreadPart
+	seen := map[string]bool{}
 	for _, candidate := range states {
 		for key, value := range object {
-			if strings.Contains(strings.ToLower(key), candidate.key) && value != nil {
-				parts = append(parts, ThreadPart{Type: "state", State: candidate.state})
+			lowerKey := strings.ToLower(key)
+			byKey := strings.Contains(lowerKey, candidate.key) && threadStateValuePresent(value)
+			byDiscriminator := (lowerKey == "type" || lowerKey == "state" || lowerKey == "status") && strings.Contains(strings.ToLower(threadString(value)), candidate.key)
+			if byKey || byDiscriminator {
+				if !seen[candidate.state] {
+					parts = append(parts, ThreadPart{Type: "state", State: candidate.state})
+					seen[candidate.state] = true
+				}
 				break
 			}
 		}
@@ -424,7 +451,25 @@ func stateThreadParts(object map[string]any) []ThreadPart {
 	return parts
 }
 
+func threadStateValuePresent(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return false
+	case bool:
+		return typed
+	case string:
+		return strings.TrimSpace(typed) != ""
+	default:
+		return true
+	}
+}
+
 func threadParts(value any) []ThreadPart {
+	if object, ok := threadMap(value); ok {
+		if states := stateThreadParts(object); len(states) > 0 {
+			return states
+		}
+	}
 	if count, unavailable := unavailableThreadCount(value); unavailable {
 		return []ThreadPart{{Type: "unavailable", Count: count}}
 	}
@@ -517,6 +562,9 @@ func decodeThreadValue(value any) any {
 		}
 		return result
 	case map[string]any:
+		if len(stateThreadParts(typed)) > 0 {
+			return typed
+		}
 		if wrapped, ok := typed["_value"]; ok {
 			return decodeThreadValue(wrapped)
 		}
@@ -545,6 +593,13 @@ func decodeJSONOrString(text string) any {
 }
 
 func unavailableThreadCount(value any) (int, bool) {
+	if text, ok := value.(string); ok {
+		decoded := decodeJSONOrString(text)
+		if decodedText, unchanged := decoded.(string); unchanged && decodedText == text {
+			return 0, false
+		}
+		return unavailableThreadCount(decoded)
+	}
 	object, ok := threadMap(value)
 	if !ok {
 		return 0, false
@@ -574,8 +629,6 @@ func unavailableThreadCount(value any) (int, bool) {
 	}
 	return 0, false
 }
-
-func trimSpace(value string) string { return strings.TrimSpace(value) }
 func splitSlice(value string) [2]string {
 	parts := strings.SplitN(value, ":", 2)
 	return [2]string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])}

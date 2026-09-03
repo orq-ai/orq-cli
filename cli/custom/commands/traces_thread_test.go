@@ -405,6 +405,88 @@ func TestTracesThreadFallsBackToNewestNonEvaluatorDetailedSpanAcrossPages(t *tes
 	}
 }
 
+func TestTracesThreadNeverUsesExcludedEvaluatorFallback(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "evalkid", "root_span_id": "eval"}},
+		spans: map[string]map[string]any{
+			"eval":    conversationalSpan("must not render evaluator"),
+			"evalkid": conversationalSpan("must not render evaluator child"),
+		},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "eval", "type": "evaluator", "has_detail": true},
+			map[string]any{"span_id": "evalkid", "parent_span_id": "eval", "has_detail": true},
+		}}},
+	}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
+		t.Fatalf("error = %v", err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
+func TestTracesThreadRecoversAfterListedCandidateAPIError(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace:   map[string]any{"trace": map[string]any{}},
+		spanErr: map[string]error{"new": errors.New("temporary hydration failure")},
+		spans:   map[string]map[string]any{"old": conversationalSpan("older recovery")},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "old", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"},
+			map[string]any{"span_id": "new", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:new", "span:trace-1:old"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "older recovery") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadRecoversFromCandidateAPIErrorWithFallback(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace:   map[string]any{"trace": map[string]any{"root_span_id": "root"}},
+		spanErr: map[string]error{"candidate": errors.New("temporary hydration failure")},
+		spans:   map[string]map[string]any{"root": conversationalSpan("root recovery")},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "candidate", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:candidate", "span:trace-1:root"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "root recovery") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadHydratesDuplicateListedSpanOnce(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{}},
+		spans: map[string]map[string]any{"duplicate": {"span": map[string]any{"attributes": map[string]any{"unrelated": true}}}},
+		pages: map[string]map[string]any{
+			"":     {"data": []any{map[string]any{"span_id": "duplicate", "has_detail": true}}, "next_page_token": "next"},
+			"next": {"data": []any{map[string]any{"span_id": "duplicate", "has_detail": true}}},
+		},
+	}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
+		t.Fatalf("error = %v", err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:duplicate"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
 func TestTracesThreadReturnsClearErrors(t *testing.T) {
 	t.Run("no supported payload", func(t *testing.T) {
 		fake := &fakeTraceAPI{

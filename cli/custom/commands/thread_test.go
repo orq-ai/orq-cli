@@ -359,6 +359,86 @@ func TestNormalizeThreadNeverLeaksSecretOnlyReasoning(t *testing.T) {
 	}
 }
 
+func TestNormalizeThreadNeverLeaksProtectedReasoningWrappers(t *testing.T) {
+	tests := []struct {
+		name  string
+		value map[string]any
+		state string
+	}{
+		{name: "encrypted type", value: map[string]any{"type": "encrypted", "text": "secret-encrypted-type"}, state: "encrypted"},
+		{name: "encrypted value wrapper", value: map[string]any{"_value": "secret-encrypted-value", "encrypted": true}, state: "encrypted"},
+		{name: "redacted string wrapper", value: map[string]any{"string": "secret-redacted-string", "redacted": true}, state: "redacted"},
+		{name: "signature sibling", value: map[string]any{"text": "secret-signed-text", "signature": "secret-signature"}, state: "redacted"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			span := map[string]any{"input": []any{map[string]any{"role": "assistant", "content": "answer", "reasoning": tt.value}}}
+			thread, err := NormalizeThread(span, ThreadSource{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(thread)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var markdown bytes.Buffer
+			if err := RenderThreadMarkdown(&markdown, thread); err != nil {
+				t.Fatal(err)
+			}
+			for _, secret := range []string{"secret-encrypted-type", "secret-encrypted-value", "secret-redacted-string", "secret-signed-text", "secret-signature"} {
+				if strings.Contains(string(encoded), secret) || strings.Contains(markdown.String(), secret) {
+					t.Fatalf("protected reasoning leaked %q: canonical=%s markdown=%s", secret, encoded, markdown.String())
+				}
+			}
+			if got := thread.Messages[0].Reasoning; !reflect.DeepEqual(got, []ThreadPart{{Type: "state", State: tt.state}}) {
+				t.Fatalf("reasoning = %#v, want state %q", got, tt.state)
+			}
+		})
+	}
+}
+
+func TestNormalizeThreadResponsesBoundaryAndCountRegressions(t *testing.T) {
+	t.Run("deduplicates identical assistant at input output boundary", func(t *testing.T) {
+		span := map[string]any{"attributes": map[string]any{
+			"openresponses.input":  []any{map[string]any{"type": "message", "role": "assistant", "content": "same"}},
+			"openresponses.output": []any{map[string]any{"type": "message", "role": "assistant", "content": "same"}},
+		}}
+		thread, err := NormalizeThread(span, ThreadSource{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(thread.Messages) != 1 || thread.Messages[0].Index != 0 {
+			t.Fatalf("messages = %#v", thread.Messages)
+		}
+	})
+
+	for _, test := range []struct {
+		name  string
+		input any
+		count int
+	}{
+		{name: "direct JSON count", input: `{"items":{"count":3}}`, count: 3},
+		{name: "string wrapped JSON count", input: map[string]any{"string": `{"items":{"count":2}}`}, count: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			span := map[string]any{"attributes": map[string]any{
+				"openresponses.input":  test.input,
+				"openresponses.output": []any{map[string]any{"type": "message", "role": "assistant", "content": "known output"}},
+			}}
+			thread, err := NormalizeThread(span, ThreadSource{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(thread.Messages) != 2 || thread.Messages[0].Content[0] != (ThreadPart{Type: "unavailable", Count: test.count}) {
+				t.Fatalf("messages = %#v", thread.Messages)
+			}
+			if got := thread.Messages[1].Index; got != test.count {
+				t.Fatalf("output index = %d, want raw input item offset %d", got, test.count)
+			}
+		})
+	}
+}
+
 func TestRenderThreadMarkdownUsesSummaryAndToolResultIndicators(t *testing.T) {
 	thread := Thread{Messages: []ThreadMessage{
 		{Index: 0, Role: "assistant", Content: []ThreadPart{}, Reasoning: []ThreadPart{{Type: "summary", Text: "short rationale"}}},
@@ -371,6 +451,17 @@ func TestRenderThreadMarkdownUsesSummaryAndToolResultIndicators(t *testing.T) {
 	want := "## ASSISTANT [0]\n\n### REASONING SUMMARY\n\nshort rationale\n\n## TOOL [1] — lookup\n\n### TOOL RESULT\n\nresult\n"
 	if out.String() != want {
 		t.Errorf("Markdown =\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
+func TestRenderThreadMarkdownDoesNotInventUnnamedTool(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{{Index: 0, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "call-1", Arguments: map[string]any{"ok": true}}}}}}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "unknown") || !strings.Contains(out.String(), "### TOOL CALL [call-1]") {
+		t.Fatalf("Markdown = %q", out.String())
 	}
 }
 

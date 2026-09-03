@@ -66,11 +66,10 @@ func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 			}
 		}
 		for _, call := range message.ToolCalls {
-			name := call.Name
-			if name == "" {
-				name = "unknown"
+			callHeading := "### TOOL CALL"
+			if call.Name != "" {
+				callHeading += " — " + call.Name
 			}
-			callHeading := "### TOOL CALL — " + name
 			if call.ID != "" {
 				callHeading += " [" + call.ID + "]"
 			}

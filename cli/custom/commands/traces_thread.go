@@ -80,29 +80,30 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err != nil {
 		return Thread{}, fmt.Errorf("get trace %q: %w", traceID, err)
 	}
-	trace := traceEnvelope(traceResponse)
+	trace := unwrapThreadEnvelope(traceResponse, "trace")
 	fallbackIDs := uniqueThreadIDs(
 		threadString(trace["leading_span_id"]),
 		threadString(trace["root_span_id"]),
 	)
 
-	candidates, listErr := listThreadCandidates(api, traceID, params)
+	candidates, excluded, listErr := listThreadCandidates(api, traceID, params)
 	tried := make(map[string]bool, len(candidates))
-	if listErr == nil {
-		for _, candidate := range candidates {
-			tried[candidate.id] = true
-			thread, err := hydrateThread(api, traceID, candidate.id, params)
-			if err == nil {
-				return thread, nil
-			}
-			if !isUnsupportedConversation(err) {
-				return Thread{}, err
-			}
+	var operationalErr error
+	for _, candidate := range candidates {
+		if tried[candidate.id] {
+			continue
+		}
+		tried[candidate.id] = true
+		thread, err := hydrateThread(api, traceID, candidate.id, params)
+		if err == nil {
+			return thread, nil
+		}
+		if !isUnsupportedConversation(err) && operationalErr == nil {
+			operationalErr = err
 		}
 	}
-	var fallbackErr error
 	for _, fallbackID := range fallbackIDs {
-		if tried[fallbackID] {
+		if tried[fallbackID] || excluded[fallbackID] {
 			continue
 		}
 		tried[fallbackID] = true
@@ -110,12 +111,12 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		if err == nil {
 			return thread, nil
 		}
-		if !isUnsupportedConversation(err) && fallbackErr == nil {
-			fallbackErr = err
+		if !isUnsupportedConversation(err) && operationalErr == nil {
+			operationalErr = err
 		}
 	}
-	if fallbackErr != nil {
-		return Thread{}, fallbackErr
+	if operationalErr != nil {
+		return Thread{}, operationalErr
 	}
 	if listErr != nil {
 		return Thread{}, listErr
@@ -141,7 +142,7 @@ func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (T
 	if err != nil {
 		return Thread{}, fmt.Errorf("get span %q for trace %q: %w", spanID, traceID, err)
 	}
-	thread, err := NormalizeThread(spanEnvelope(spanResponse), ThreadSource{TraceID: traceID, SpanID: spanID})
+	thread, err := NormalizeThread(unwrapThreadEnvelope(spanResponse, "span"), ThreadSource{TraceID: traceID, SpanID: spanID})
 	if err != nil {
 		return Thread{}, err
 	}
@@ -158,13 +159,15 @@ type threadCandidate struct {
 	order     int
 }
 
-func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, error) {
+func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
 	var spans []map[string]any
 	seenTokens := map[string]bool{}
+	var listErr error
 	for {
 		response, err := api.ListSpans(traceID, params)
 		if err != nil {
-			return nil, fmt.Errorf("list spans for trace %q: %w", traceID, err)
+			listErr = fmt.Errorf("list spans for trace %q: %w", traceID, err)
+			break
 		}
 		spans = append(spans, listSpanData(response)...)
 		next := threadString(response["next_page_token"])
@@ -177,11 +180,13 @@ func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]
 
 	excluded := evaluatorExclusions(spans)
 	candidates := make([]threadCandidate, 0, len(spans))
+	seenIDs := make(map[string]bool, len(spans))
 	for index, span := range spans {
 		id := threadString(span["span_id"])
-		if id == "" || excluded[id] || span["has_detail"] == false {
+		if id == "" || seenIDs[id] || excluded[id] || span["has_detail"] == false {
 			continue
 		}
+		seenIDs[id] = true
 		startedAt, _ := time.Parse(time.RFC3339Nano, threadString(span["started_at"]))
 		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, order: index})
 	}
@@ -191,7 +196,7 @@ func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]
 		}
 		return candidates[i].startedAt.After(candidates[j].startedAt)
 	})
-	return candidates, nil
+	return candidates, excluded, listErr
 }
 
 func listSpanData(response map[string]any) []map[string]any {
@@ -261,16 +266,9 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
-func traceEnvelope(response map[string]any) map[string]any {
-	if trace, ok := threadMap(response["trace"]); ok {
-		return trace
-	}
-	return response
-}
-
-func spanEnvelope(response map[string]any) map[string]any {
-	if span, ok := threadMap(response["span"]); ok {
-		return span
+func unwrapThreadEnvelope(response map[string]any, key string) map[string]any {
+	if value, ok := threadMap(response[key]); ok {
+		return value
 	}
 	return response
 }
