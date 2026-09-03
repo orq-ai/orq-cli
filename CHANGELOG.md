@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
+
 - **Fixed: `orq setup` now shows the project picker during ordinary terminal
   setup.** With multiple projects it previously prompted only when the optional
   `-i` flag was present, so the default interactive flow selected the
