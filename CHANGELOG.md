@@ -111,6 +111,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq traces thread` renders a conversational trace span as Markdown.**
+  It uses a trace's leading conversational span when available, otherwise finds
+  the newest detailed non-evaluator span, and supports `--slice` for selecting
+  messages. Explicit `--json`, `-o yaml`, and `-o toon` return the canonical
+  structured thread instead.
+
 ## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
 
 - **Added: time flags accept relative values.** `--from`, `--to`, and any other

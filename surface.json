@@ -8902,6 +8902,16 @@
       ]
     },
     {
+      "path": "orq traces thread",
+      "use": "thread trace-id [span-id]",
+      "flags": [
+        {
+          "name": "slice",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "path": "orq transcriptions",
       "use": "transcriptions"
     },

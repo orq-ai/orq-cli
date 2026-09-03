@@ -77,7 +77,7 @@ func commandPath(cmd *cobra.Command) string {
 // Register wires custom commands and session-aware auth onto the provided root
 // command. Must be called after generated.Register so that the
 // bartolo `auth` parent command exists for our subcommands to attach onto.
-func Register(root *cobra.Command) {
+func Register(root *cobra.Command, traceAPIs ...commands.TraceAPI) {
 	if root == nil {
 		root = bartolocli.Root
 	}
@@ -89,7 +89,11 @@ func Register(root *cobra.Command) {
 	root.SilenceUsage = true
 	registerGlobalFlags()
 	installSessionPreRun()
-	registerCommands(root)
+	var traceAPI commands.TraceAPI
+	if len(traceAPIs) > 0 {
+		traceAPI = traceAPIs[0]
+	}
+	registerCommands(root, traceAPI)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)
 	annotateGlobalFlagEnvVars(root)
@@ -575,7 +579,7 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 	return cmd.Flags().Set("project-id", id)
 }
 
-func registerCommands(root *cobra.Command) {
+func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
@@ -583,6 +587,7 @@ func registerCommands(root *cobra.Command) {
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
+	attachTracesThread(root, traceAPI)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewOrqiCommand())
@@ -720,6 +725,19 @@ func attachProjectsUse(root *cobra.Command) {
 	for _, c := range root.Commands() {
 		if c.Name() == "projects" {
 			c.AddCommand(commands.NewProjectsUseCommand())
+			return
+		}
+	}
+}
+
+// attachTracesThread extends the generated parent rather than creating a
+// parallel top-level command. Register accepts a zero TraceAPI in unit tests,
+// so help and command-surface checks always see the command even without an
+// executable generated client behind it.
+func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
+	for _, c := range root.Commands() {
+		if c.Name() == "traces" {
+			c.AddCommand(commands.NewTracesThreadCommand(api))
 			return
 		}
 	}
