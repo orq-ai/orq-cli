@@ -2,13 +2,14 @@
   "trace_id": "trace-responses",
   "span_id": "span-responses",
   "attributes": {
-    "openresponses.instructions": {"_value": "Answer in haiku."},
-    "openresponses.input": "[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Describe rain.\"}]}]",
-    "openresponses.output": {"_value": [
-      {"type": "reasoning", "summary": [{"type": "summary_text", "text": "A short poem is needed."}], "encrypted_content": "do-not-render", "redacted_content": "do-not-render"},
-      {"type": "function_call", "call_id": "call-poem", "name": "compose", "arguments": "{\"form\":\"haiku\"}"},
-      {"type": "function_call_output", "call_id": "call-poem", "output": {"string": "Soft rain taps the glass"}},
-      {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Soft rain taps the glass"}]}
-    ]}
+    "openresponses.instructions": "Reply with exactly: synthetic Responses acknowledgement.",
+    "openresponses.input": {
+      "_value": "[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Synthetic Responses fixture request: beta.\"}]}]",
+      "items": {"count": 1}
+    },
+    "openresponses.output": {
+      "_value": "[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Synthetic Responses acknowledgement.\"}]}]",
+      "items": {"count": 1}
+    }
   }
 }

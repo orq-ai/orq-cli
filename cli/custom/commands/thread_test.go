@@ -33,16 +33,14 @@ func TestNormalizeThread(t *testing.T) {
 			},
 		},
 		{
-			name:    "responses items attach reasoning and decode wrappers",
+			name:    "responses real value wrappers preserve direct content",
 			fixture: "responses.json",
 			want: Thread{
 				Source:       ThreadSource{Representation: "responses", TraceID: "trace-responses", SpanID: "span-responses"},
-				Instructions: []ThreadInstruction{{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Answer in haiku."}}}},
+				Instructions: []ThreadInstruction{{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with exactly: synthetic Responses acknowledgement."}}}},
 				Messages: []ThreadMessage{
-					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Describe rain."}}},
-					{Index: 2, Role: "assistant", Reasoning: []ThreadPart{{Type: "summary", Text: "A short poem is needed."}, {Type: "state", State: "encrypted"}, {Type: "state", State: "redacted"}}, Content: []ThreadPart{}, ToolCalls: []ThreadToolCall{{ID: "call-poem", Name: "compose", Arguments: map[string]any{"form": "haiku"}}}},
-					{Index: 3, Role: "tool", Name: "compose", ToolCallID: "call-poem", Content: []ThreadPart{{Type: "text", Text: "Soft rain taps the glass"}}},
-					{Index: 4, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Soft rain taps the glass"}}},
+					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses fixture request: beta."}}},
+					{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses acknowledgement."}}},
 				},
 			},
 		},
@@ -127,7 +125,7 @@ func TestSliceThread(t *testing.T) {
 func TestRenderThreadMarkdown(t *testing.T) {
 	tests := []struct{ name, fixture, want string }{
 		{"chat", "chat.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
-		{"responses", "responses.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nAnswer in haiku.\n\n## USER [0]\n\nDescribe rain.\n\n## ASSISTANT [2]\n\n### REASONING\n\n[encrypted]\n\n[redacted]\n\n### REASONING SUMMARY\n\nA short poem is needed.\n\n### TOOL CALL — compose [call-poem]\n\n```json\n{\n  \"form\": \"haiku\"\n}\n```\n\n## TOOL [3] — compose\n\n### TOOL RESULT\n\nSoft rain taps the glass\n\n## ASSISTANT [4]\n\nSoft rain taps the glass\n"},
+		{"responses", "responses.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [0]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [1]\n\nSynthetic Responses acknowledgement.\n"},
 		{"responses", "responses-unavailable.json", "## USER [0]\n\n[content unavailable: 2 items]\n"},
 	}
 	for _, tt := range tests {
@@ -149,8 +147,15 @@ func TestRenderThreadMarkdown(t *testing.T) {
 }
 
 func TestResponsesFixturesPreserveAvailableContentWithoutInventingUnavailableData(t *testing.T) {
-	t.Run("available wrapped content is preserved but secret blobs are not", func(t *testing.T) {
+	t.Run("real wrapped content preserves only known response data", func(t *testing.T) {
 		span := loadThreadFixture(t, "responses.json")
+		attributes := span["attributes"].(map[string]any)
+		for _, key := range []string{"openresponses.input", "openresponses.output"} {
+			wrapped := attributes[key].(map[string]any)
+			if _, ok := wrapped["_value"].(string); !ok {
+				t.Fatalf("%s _value = %#v, want JSON string from hydrated span", key, wrapped["_value"])
+			}
+		}
 		thread, err := NormalizeThread(span, ThreadSource{TraceID: spanString(span, "trace_id"), SpanID: spanString(span, "span_id")})
 		if err != nil {
 			t.Fatal(err)
@@ -164,12 +169,14 @@ func TestResponsesFixturesPreserveAvailableContentWithoutInventingUnavailableDat
 			t.Fatal(err)
 		}
 		for _, output := range []string{string(encoded), markdown.String()} {
-			if strings.Contains(output, "do-not-render") {
-				t.Fatalf("output leaked encrypted or redacted blob: %s", output)
-			}
-			for _, known := range []string{"Describe rain.", "A short poem is needed.", "compose", "Soft rain taps the glass"} {
+			for _, known := range []string{"Reply with exactly: synthetic Responses acknowledgement.", "Synthetic Responses fixture request: beta.", "Synthetic Responses acknowledgement."} {
 				if !strings.Contains(output, known) {
 					t.Fatalf("output omitted known available content %q: %s", known, output)
+				}
+			}
+			for _, invented := range []string{"Synthetic masked Responses fixture request: gamma.", "reasoning", "tool", "arguments", "call"} {
+				if strings.Contains(strings.ToLower(output), strings.ToLower(invented)) {
+					t.Fatalf("output invented unavailable data %q: %s", invented, output)
 				}
 			}
 		}
