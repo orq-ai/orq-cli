@@ -26,10 +26,24 @@ func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 			heading += " — " + message.Name
 		}
 		body := renderThreadParts(message.Content)
+		if message.Role == "tool" && body != "" {
+			body = "### TOOL RESULT\n\n" + body
+		}
 		if len(message.Reasoning) > 0 {
-			reasoning := renderThreadParts(message.Reasoning)
+			var ordinary, summaries []ThreadPart
+			for _, part := range message.Reasoning {
+				if part.Type == "summary" {
+					summaries = append(summaries, part)
+				} else {
+					ordinary = append(ordinary, part)
+				}
+			}
+			reasoning := renderThreadParts(ordinary)
 			if reasoning != "" {
 				body = appendMarkdownSection(body, "### REASONING\n\n"+reasoning)
+			}
+			if summary := renderThreadParts(summaries); summary != "" {
+				body = appendMarkdownSection(body, "### REASONING SUMMARY\n\n"+summary)
 			}
 		}
 		for _, call := range message.ToolCalls {
@@ -64,7 +78,7 @@ func renderThreadParts(parts []ThreadPart) string {
 	for _, part := range parts {
 		var rendered string
 		switch part.Type {
-		case "text":
+		case "text", "summary":
 			rendered = part.Text
 		case "json":
 			rendered = renderThreadValue(part.Value)

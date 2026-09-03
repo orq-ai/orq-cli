@@ -11,55 +11,92 @@ import (
 // NormalizeThread converts supported Chat Completions and Responses span payloads
 // into a single loss-conscious representation.
 func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
-	if hasThreadValue(span, "openresponses.instructions") || hasThreadValue(span, "openresponses.input") || hasThreadValue(span, "openresponses.output") {
-		thread := normalizeResponses(span, source)
+	responsesInstructions, _ := threadLookup(span, "openresponses.instructions")
+	responsesInput, _ := threadLookup(span, "openresponses.input")
+	responsesOutput, _ := threadLookup(span, "openresponses.output")
+	responsesInputOK := usableResponsesValue(responsesInput)
+	responsesOutputOK := usableResponsesValue(responsesOutput)
+
+	chatInput := firstUsableChatValue(span, "gen_ai.input", "input", chatMessages)
+	chatOutput := firstUsableChatValue(span, "gen_ai.output", "output", chatOutputMessages)
+	chatInputOK, chatOutputOK := len(chatMessages(chatInput)) > 0, len(chatOutputMessages(chatOutput)) > 0
+	if !responsesInputOK && !responsesOutputOK && !chatInputOK && !chatOutputOK {
+		return Thread{}, fmt.Errorf("span does not contain a supported Chat Completions or Responses conversation")
+	}
+
+	thread := Thread{Source: source}
+	if usableThreadParts(responsesInstructions) {
+		for _, instruction := range threadParts(responsesInstructions) {
+			thread.Instructions = append(thread.Instructions, ThreadInstruction{Role: "system", Content: []ThreadPart{instruction}})
+		}
+	}
+	inputCount, pending, toolNames := 0, []ThreadPart(nil), map[string]string{}
+	if responsesInputOK {
+		inputItems := responseItems(responsesInput)
+		if count, unavailable := unavailableThreadCount(responsesInput); unavailable && len(inputItems) == 0 {
+			thread.Messages = append(thread.Messages, ThreadMessage{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: count}}})
+			inputCount = 1
+		} else {
+			inputCount = len(inputItems)
+			for index, item := range inputItems {
+				pending = thread.appendResponseItem(item, index, pending, toolNames)
+			}
+		}
+	} else if chatInputOK {
+		inputCount = appendChatInput(&thread, chatInput, len(thread.Instructions) == 0)
+	}
+	if responsesOutputOK {
+		outputItems := responseItems(responsesOutput)
+		for offset, item := range outputItems {
+			pending = thread.appendResponseItem(item, inputCount+offset, pending, toolNames)
+		}
+		if count, unavailable := unavailableThreadCount(responsesOutput); unavailable && len(outputItems) == 0 {
+			thread.Messages = append(thread.Messages, ThreadMessage{Index: inputCount, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: count}}, Reasoning: pending})
+			pending = nil
+		}
+		if len(pending) > 0 {
+			thread.Messages = append(thread.Messages, ThreadMessage{Index: inputCount + len(outputItems), Role: "assistant", Content: []ThreadPart{}, Reasoning: pending})
+		}
+	} else if chatOutputOK {
+		appendChatOutput(&thread, chatOutput, inputCount)
+	}
+	if responsesInputOK || responsesOutputOK {
 		thread.Source.Representation = "responses"
-		return thread, nil
-	}
-	if hasThreadValue(span, "gen_ai.input") || hasThreadValue(span, "gen_ai.output") || hasThreadValue(span, "input") || hasThreadValue(span, "output") {
-		thread := normalizeChat(span, source)
+	} else {
 		thread.Source.Representation = "chat_completions"
-		return thread, nil
 	}
-	return Thread{}, fmt.Errorf("span does not contain a supported Chat Completions or Responses conversation")
+	return thread, nil
 }
 
-func normalizeChat(span map[string]any, source ThreadSource) Thread {
-	thread := Thread{Source: source}
-	input, _ := threadLookup(span, "gen_ai.input")
-	if input == nil {
-		input, _ = threadLookup(span, "input")
-	}
-	output, _ := threadLookup(span, "gen_ai.output")
-	if output == nil {
-		output, _ = threadLookup(span, "output")
-	}
+func appendChatInput(thread *Thread, input any, appendInstructions bool) int {
 	inputMessages := chatMessages(input)
 	for index, raw := range inputMessages {
 		if message, instruction, ok := normalizeChatMessage(raw, index); ok {
-			if instruction != nil {
+			if instruction != nil && appendInstructions {
 				thread.Instructions = append(thread.Instructions, *instruction)
-			} else {
+			} else if instruction == nil {
 				thread.Messages = append(thread.Messages, message)
 			}
 		}
 	}
+	return len(inputMessages)
+}
+
+func appendChatOutput(thread *Thread, output any, inputCount int) {
 	outputMessages := chatOutputMessages(output)
 	for offset, raw := range outputMessages {
-		message, instruction, ok := normalizeChatMessage(raw, len(inputMessages)+offset)
+		message, instruction, ok := normalizeChatMessage(raw, inputCount+offset)
 		if !ok {
 			continue
 		}
 		if instruction != nil {
-			thread.Instructions = append(thread.Instructions, *instruction)
 			continue
 		}
-		if len(thread.Messages) > 0 && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
+		if offset == 0 && len(thread.Messages) > 0 && thread.Messages[len(thread.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
 			continue
 		}
 		thread.Messages = append(thread.Messages, message)
 	}
-	return thread
 }
 
 func withoutIndex(message ThreadMessage) ThreadMessage { message.Index = 0; return message }
@@ -123,41 +160,27 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, *ThreadInstruction
 	return message, nil, true
 }
 
-func normalizeResponses(span map[string]any, source ThreadSource) Thread {
-	thread := Thread{Source: source}
-	instructions, _ := threadLookup(span, "openresponses.instructions")
-	for _, instruction := range threadParts(instructions) {
-		thread.Instructions = append(thread.Instructions, ThreadInstruction{Role: "system", Content: []ThreadPart{instruction}})
+func firstUsableChatValue(span map[string]any, primary, fallback string, decode func(any) []any) any {
+	if value, ok := threadLookup(span, primary); ok && len(decode(value)) > 0 {
+		return value
 	}
-	input, _ := threadLookup(span, "openresponses.input")
-	output, _ := threadLookup(span, "openresponses.output")
-	inputItems := responseItems(input)
-	outputItems := responseItems(output)
-	inputUnavailable := false
-	if count, unavailable := unavailableThreadCount(input); unavailable && len(inputItems) == 0 {
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: count}}})
-		inputUnavailable = true
+	if value, ok := threadLookup(span, fallback); ok && len(decode(value)) > 0 {
+		return value
 	}
-	for index, item := range inputItems {
-		thread.appendResponseItem(item, index, nil, nil)
-	}
-	pending := []ThreadPart(nil)
-	toolNames := map[string]string{}
-	for offset, item := range outputItems {
-		pending = thread.appendResponseItem(item, len(inputItems)+offset, pending, toolNames)
-	}
-	if count, unavailable := unavailableThreadCount(output); unavailable && len(outputItems) == 0 {
-		index := len(inputItems)
-		if inputUnavailable {
-			index++
+	return nil
+}
+
+func usableResponsesValue(value any) bool {
+	return len(responseItems(value)) > 0 || hasUnavailableThreadCount(value)
+}
+func hasUnavailableThreadCount(value any) bool { _, ok := unavailableThreadCount(value); return ok }
+func usableThreadParts(value any) bool {
+	for _, part := range threadParts(value) {
+		if part.Text != "" || part.Type == "json" || part.Type == "unavailable" || part.Type == "unsupported" {
+			return true
 		}
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: count}}, Reasoning: pending})
-		pending = nil
 	}
-	if len(pending) > 0 {
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: len(inputItems) + len(outputItems), Role: "assistant", Content: []ThreadPart{}, Reasoning: pending})
-	}
-	return thread
+	return false
 }
 
 func responseItems(value any) []any {
@@ -259,7 +282,15 @@ func responseReasoning(item map[string]any) []ThreadPart {
 	var parts []ThreadPart
 	for _, key := range []string{"content", "summary", "summaries", "reasoning", "thinking"} {
 		if value := item[key]; value != nil {
-			parts = append(parts, reasoningThreadParts(value)...)
+			parsed := reasoningThreadParts(value)
+			if key == "summary" || key == "summaries" {
+				for index := range parsed {
+					if parsed[index].Type == "text" {
+						parsed[index].Type = "summary"
+					}
+				}
+			}
+			parts = append(parts, parsed...)
 		}
 	}
 	return append(parts, stateThreadParts(item)...)
@@ -281,13 +312,20 @@ func reasoningThreadParts(value any) []ThreadPart {
 		return threadParts(value)
 	}
 	var parts []ThreadPart
-	for _, key := range []string{"content", "summary", "summaries", "text"} {
+	for _, key := range []string{"content", "text"} {
 		if nested := object[key]; nested != nil {
 			parts = append(parts, threadParts(nested)...)
 		}
 	}
-	if len(parts) == 0 {
-		parts = append(parts, threadParts(value)...)
+	for _, key := range []string{"summary", "summaries"} {
+		if nested := object[key]; nested != nil {
+			for _, part := range threadParts(nested) {
+				if part.Type == "text" {
+					part.Type = "summary"
+				}
+				parts = append(parts, part)
+			}
+		}
 	}
 	return append(parts, stateThreadParts(object)...)
 }
@@ -373,10 +411,6 @@ func threadLookup(span map[string]any, key string) (any, bool) {
 	return nil, false
 }
 
-func hasThreadValue(span map[string]any, key string) bool {
-	_, ok := threadLookup(span, key)
-	return ok
-}
 func mapThreadValue(value any) map[string]any { object, _ := threadMap(value); return object }
 func threadMap(value any) (map[string]any, bool) {
 	object, ok := value.(map[string]any)
@@ -435,8 +469,11 @@ func unavailableThreadCount(value any) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	if object["_value"] != nil || object["string"] != nil {
-		return 0, false
+	if wrapped, ok := object["_value"]; ok {
+		return unavailableThreadCount(wrapped)
+	}
+	if wrapped, ok := object["string"]; ok {
+		return unavailableThreadCount(wrapped)
 	}
 	items, ok := threadMap(object["items"])
 	if !ok {
