@@ -100,7 +100,13 @@ func TestProjectStepSkipsWithoutChoosing(t *testing.T) {
 func TestProjectStepAutoSelects(t *testing.T) {
 	only := projectsServer(t, `{"project_id":"id-1","key":"only","name":"Only"}`)
 	state := projectStepState(t, only.URL)
-	got, err := resolveProjectStep(newReporter(true), auth.NewClient(only.URL), state, &setupOptions{})
+	soleProject := &setupOptions{
+		pickProjectFn: func([]auth.Project) (*auth.Project, error) {
+			t.Fatal("a sole project reached the picker")
+			return nil, nil
+		},
+	}
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(only.URL), state, soleProject)
 	if err != nil || got == nil || got.ProjectID != "id-1" {
 		t.Fatalf("single project: got %+v, err %v; want id-1 without a prompt", got, err)
 	}
@@ -167,6 +173,58 @@ func TestProjectStepReturnsPickerError(t *testing.T) {
 	}
 	if state.projectID != "" {
 		t.Errorf("state.projectID = %q after cancellation, want empty", state.projectID)
+	}
+}
+
+// -y answers confirmations; it never pre-answers a selection. An unattended run
+// pre-answers this step with --project or --no-input instead.
+func TestProjectStepStillPromptsUnderYes(t *testing.T) {
+	srv := projectsServer(t, `{"project_id":"id-1","key":"a","name":"A","is_default":true},{"project_id":"id-2","key":"b","name":"B"}`)
+	state := projectStepState(t, srv.URL)
+	pickerCalled := false
+	opts := &setupOptions{
+		yes: true,
+		pickProjectFn: func(projects []auth.Project) (*auth.Project, error) {
+			pickerCalled = true
+			return &projects[1], nil
+		},
+	}
+
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, opts)
+	if err != nil {
+		t.Fatalf("resolveProjectStep: %v", err)
+	}
+	if !pickerCalled {
+		t.Fatal("-y skipped the project picker; it answers confirmations, not selections")
+	}
+	if got == nil || got.ProjectID != "id-2" {
+		t.Fatalf("chose %+v, want picker result id-2", got)
+	}
+}
+
+// A step that chooses nothing must still hand the key step the project the
+// session already claims. Leaving it empty minted a workspace-wide key for a
+// session that named a project, so the agents reached every other project too.
+func TestProjectStepKeepsTheSessionProjectWhenListingFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	state := projectStepState(t, srv.URL)
+	state.session.ActiveProjectID = "id-9"
+	opts := &setupOptions{
+		pickProjectFn: func([]auth.Project) (*auth.Project, error) {
+			t.Fatal("a failed listing reached the picker")
+			return nil, nil
+		},
+	}
+
+	got, err := resolveProjectStep(newReporter(true), auth.NewClient(srv.URL), state, opts)
+	if err != nil || got != nil {
+		t.Fatalf("resolveProjectStep = (%+v, %v), want (nil, nil) — a listing failure is not fatal", got, err)
+	}
+	if state.projectID != "id-9" {
+		t.Errorf("state.projectID = %q, want the session's own project id-9 scoping the minted key", state.projectID)
 	}
 }
 

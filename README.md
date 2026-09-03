@@ -113,7 +113,7 @@ The exception is kimi: version 0.34 reads a provider credential only as a litera
 
 The key setup mints is scoped to the project you chose in the step above. That is what the coding agents use for model calls, so a config file another program reads — `~/.kimi-code/config.toml` included — can no longer reach the rest of the workspace. It does not scope the agents' MCP tools: those authenticate to the orq MCP server over OAuth, independent of the API key.
 
-Setup flags: `--workspace <key>` (activate a workspace), `--project <id|key|name>` (pre-answer the project step), `--no-project` (skip the project step, leave the session unscoped), `--api-key <key>` (use this key instead of logging in and creating one), `-i` (Revisit inferred workspace and API-key choices), `--no-input` (never prompt; missing values become errors).
+Setup flags: `--workspace <key>` (activate a workspace), `--project <id|key|name>` (pre-answer the project step), `--no-project` (skip the project step, leave the session unscoped), `--api-key <key>` (use this key instead of logging in and creating one), `-i` (revisit inferred workspace and API-key choices), `--no-input` (never prompt; missing values become errors).
 
 Connect and disconnect take agents and capabilities as arguments, plus:
 

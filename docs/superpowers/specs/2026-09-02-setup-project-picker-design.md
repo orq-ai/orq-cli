@@ -18,6 +18,9 @@ workspace selection.
   project without prompting.
 - `--no-project` skips selection and clears any project already active on the
   session.
+- `--yes` answers confirmations only and never pre-answers a selection, so a
+  TTY run with `-y` still shows the picker. `--project` and `--no-input` are how
+  an unattended run pre-answers this step.
 - Archived projects remain excluded from every selection path.
 - A workspace with no selectable projects continues without making a new
   project selection.
@@ -44,9 +47,9 @@ not decide the result, call the picker if `!opts.noInput`. Do not include
 `opts.interactive` in this condition. Otherwise retain the current
 default-project fallback.
 
-The entry point already turns on `noInput` when stdin or stdout is not a
-terminal, and when `--no-input` is set. It also clears `interactive` in that
-case. Using only `noInput` keeps terminal detection and flag precedence
+The entry point already turns on `noInput` when `--no-input` is set, and when
+stdin or stderr is not a terminal — the two streams prompts are drawn on. It
+also clears `interactive` in that case. Using only `noInput` keeps terminal detection and flag precedence
 centralized and avoids a second, potentially inconsistent TTY check inside the
 project step.
 
@@ -74,8 +77,10 @@ stops setup before an API key is created. Failure to list projects remains
 non-fatal: setup warns and makes no new project selection. An empty selectable
 list likewise makes no new selection. If no default exists during a
 non-interactive run, setup makes no new selection. These fallback paths retain
-the existing session state and reporting behavior; cleaning up stale project
-state is outside this change.
+the existing session state and reporting behavior, and the key scope follows it:
+the step seeds its project from the session's active project, so a path that
+makes no new selection still scopes the minted key to what the session already
+claims instead of minting it workspace-wide.
 
 ## Testing
 
@@ -91,7 +96,9 @@ the broader `-i` behavior. The tests should prove that:
   retain their current behavior;
 - explicit `--project` suppresses the picker, and picker cancellation is
   returned as an error;
-- the selected project is persisted and passed forward for API-key scoping.
+- the selected project is persisted and passed forward for API-key scoping;
+- `--yes` on a TTY still reaches the picker;
+- a failed project listing leaves the session's own project scoping the key.
 
 Update `CHANGELOG.md` under `## Unreleased` because this changes visible setup
 behavior. Describe it as a fix: the project picker is now part of default TTY

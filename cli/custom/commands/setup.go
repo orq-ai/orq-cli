@@ -43,8 +43,7 @@ type setupOptions struct {
 	// or name. noProject skips the step outright.
 	project   string
 	noProject bool
-	// pickProjectFn overrides the picker in tests. Keeping it on the options
-	// avoids a mutable package global and models a TTY deterministically.
+	// pickProjectFn overrides the picker in tests; the same seam as confirmFn.
 	pickProjectFn func([]auth.Project) (*auth.Project, error)
 	apiKey        string
 	agents        []string
