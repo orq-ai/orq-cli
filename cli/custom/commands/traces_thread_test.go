@@ -189,6 +189,57 @@ func TestTracesThreadUsesRootSpanAfterUnsupportedLeadingSpan(t *testing.T) {
 	}
 }
 
+func TestTracesThreadUsesRootSpanAfterLeadingSpanAPIError(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{
+			"leading_span_id": "stale-lead",
+			"root_span_id":    "root",
+		}},
+		spans: map[string]map[string]any{
+			"root": conversationalSpan("root fallback"),
+		},
+		spanErr: map[string]error{"stale-lead": errors.New("not found")},
+		pages:   map[string]map[string]any{"": {"data": []any{}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:stale-lead", "span:trace-1:root"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "root fallback") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadReturnsFirstFallbackAPIErrorAfterTryingAllFallbacks(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{
+			"leading_span_id": "lead",
+			"root_span_id":    "root",
+		}},
+		spanErr: map[string]error{
+			"lead": errors.New("leading unavailable"),
+			"root": errors.New("root unavailable"),
+		},
+		listErr: errors.New("listing unavailable"),
+	}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil || !strings.Contains(err.Error(), `get span "lead"`) || !strings.Contains(err.Error(), "leading unavailable") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), "root unavailable") {
+		t.Fatalf("returned later fallback error = %v", err)
+	}
+	if strings.Contains(err.Error(), "listing unavailable") {
+		t.Fatalf("returned list error instead of fallback error = %v", err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:lead", "span:trace-1:root"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
 func TestTracesThreadDoesNotHydrateListedLeadingSpanTwice(t *testing.T) {
 	fake := &fakeTraceAPI{
 		trace: map[string]any{"trace": map[string]any{"leading_span_id": "lead"}},
@@ -365,6 +416,19 @@ func TestTracesThreadReturnsClearErrors(t *testing.T) {
 		}
 		_, err := runTracesThread(t, traceAPI(fake), "trace-1")
 		if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	t.Run("list error after unsupported fallback", func(t *testing.T) {
+		fake := &fakeTraceAPI{
+			trace: map[string]any{"trace": map[string]any{"leading_span_id": "unsupported"}},
+			spans: map[string]map[string]any{
+				"unsupported": {"span": map[string]any{"attributes": map[string]any{"unrelated": true}}},
+			},
+			listErr: errors.New("listing unavailable"),
+		}
+		_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+		if err == nil || !strings.Contains(err.Error(), "list spans") || !strings.Contains(err.Error(), "listing unavailable") {
 			t.Fatalf("error = %v", err)
 		}
 	})

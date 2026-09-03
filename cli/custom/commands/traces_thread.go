@@ -100,6 +100,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 			}
 		}
 	}
+	var fallbackErr error
 	for _, fallbackID := range fallbackIDs {
 		if tried[fallbackID] {
 			continue
@@ -109,9 +110,12 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		if err == nil {
 			return thread, nil
 		}
-		if !isUnsupportedConversation(err) {
-			return Thread{}, err
+		if !isUnsupportedConversation(err) && fallbackErr == nil {
+			fallbackErr = err
 		}
+	}
+	if fallbackErr != nil {
+		return Thread{}, fallbackErr
 	}
 	if listErr != nil {
 		return Thread{}, listErr
