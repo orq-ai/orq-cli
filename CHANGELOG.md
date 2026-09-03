@@ -111,6 +111,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: POST-backed list commands now render as terminal tables.** Search,
+  query, aggregate, and preview commands such as orq traces search previously
+  printed serialized TOON because Bartolo classified only GET operations as
+  lists. Their default terminal output now uses headed tables, including for
+  empty responses, while JSON, YAML, TOON, raw, and piped output preserve the
+  complete API response envelope unchanged.
+
 ## [6.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.0) — 2026-09-02
 
 - **Added: time flags accept relative values.** `--from`, `--to`, and any other
