@@ -13297,43 +13297,16 @@ func OpenapiListLogFacetValues(paramField string, params *viper.Viper) (*gentlem
 }
 
 // OpenapiListLogFacets List log facets
-func OpenapiListLogFacets(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiListLogFacets(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "logs list-facets"
 	server := bartolocli.ResolveServer()
 
 	url := server + "/v3/logs/facets"
 
-	req := bartolocli.Client.Get().URL(url)
+	req := bartolocli.Client.Post().URL(url)
 
-	paramFrom := params.GetString("from")
-	if bartolocli.FlagPassed(params, "from") || paramFrom != "" {
-		{
-			normalized, err := bartolocli.NormalizeParam("--from", paramFrom, "date-time", []string{})
-			if err != nil {
-				return nil, nil, err
-			}
-			paramFrom = normalized
-		}
-		req = req.AddQuery("from", fmt.Sprintf("%v", paramFrom))
-	}
-	paramTo := params.GetString("to")
-	if bartolocli.FlagPassed(params, "to") || paramTo != "" {
-		{
-			normalized, err := bartolocli.NormalizeParam("--to", paramTo, "date-time", []string{})
-			if err != nil {
-				return nil, nil, err
-			}
-			paramTo = normalized
-		}
-		req = req.AddQuery("to", fmt.Sprintf("%v", paramTo))
-	}
-	paramKeyLimit := params.GetInt64("key-limit")
-	if bartolocli.FlagPassed(params, "key-limit") || paramKeyLimit != 0 {
-		req = req.AddQuery("key_limit", fmt.Sprintf("%v", paramKeyLimit))
-	}
-	paramValueLimit := params.GetInt64("value-limit")
-	if bartolocli.FlagPassed(params, "value-limit") || paramValueLimit != 0 {
-		req = req.AddQuery("value_limit", fmt.Sprintf("%v", paramValueLimit))
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
