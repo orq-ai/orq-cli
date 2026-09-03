@@ -11,9 +11,9 @@ not expose the key or alter structured stdout.
 - Before an API-backed command runs, snapshot user-provided credentials before
   the session bridge injects its own token into `ORQ_API_KEY`.
 - When `ORQ_API_KEY`, `ORQ_TOKEN`, or `ORQ_AUTHORIZATION` wins over an active
-  login session, print one informational line to stderr naming the environment
-  variable and the active profile. A selected stored API-key profile remains
-  authoritative and does not produce the notice.
+  login session, print `Using ORQ_API_KEY from environment` once to stderr. A
+  selected stored API-key profile remains authoritative and does not produce
+  the notice.
 - Show the line only when stdout is a terminal. Piped output and explicit
   machine formats remain quiet.
 - Suppress the line when `ORQ_NO_API_KEY_NOTICE` is non-empty.
@@ -38,7 +38,8 @@ not a warning, and never includes any portion of the credential.
 Focused tests will pin that the notice:
 
 - appears for a TTY request when an environment key displaces a login session;
-- identifies each supported environment variable without exposing its value;
+- uses the same fixed banner for each supported environment variable without
+  exposing its value;
 - is absent outside a TTY, when `ORQ_NO_API_KEY_NOTICE` is set, when no user
   profile is displaced, when a stored profile wins, and when the actual request
   uses a different credential;
