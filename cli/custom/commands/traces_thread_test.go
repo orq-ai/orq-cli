@@ -115,12 +115,78 @@ func TestTracesThreadUsesLeadingSpan(t *testing.T) {
 	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:lead"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
-	if len(fake.listCalls) != 0 {
-		t.Fatalf("list calls = %v, want none", fake.listCalls)
+	if got, want := fake.listCalls, []string{"trace-1:"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("list calls = %v, want %v", got, want)
 	}
 }
 
-func TestTracesThreadFallsBackWhenAutomaticLeadingSpanHydrationFails(t *testing.T) {
+func TestTracesThreadUsesLeadingSpanWhenListingFails(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace:   map[string]any{"trace": map[string]any{"leading_span_id": "lead"}},
+		spans:   map[string]map[string]any{"lead": conversationalSpan("leading fallback")},
+		listErr: errors.New("listing unavailable"),
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:lead"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "leading fallback") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadDoesNotHydrateListedLeadingSpanTwice(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "lead"}},
+		spans: map[string]map[string]any{
+			"lead": {"span": map[string]any{"attributes": map[string]any{"unrelated": true}}},
+		},
+		pages: map[string]map[string]any{
+			"": {"data": []any{map[string]any{"span_id": "lead", "has_detail": true}}},
+		},
+	}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
+		t.Fatalf("error = %v", err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:lead"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
+func TestTracesThreadPrefersNewestConversationalSpanOverLeadingSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "lead"}},
+		spans: map[string]map[string]any{
+			"lead":  conversationalSpan("incomplete leading context"),
+			"child": conversationalSpan("complete child context"),
+		},
+		pages: map[string]map[string]any{
+			"": {"data": []any{
+				map[string]any{"span_id": "lead", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"},
+				map[string]any{"span_id": "child", "parent_span_id": "lead", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			}},
+		},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:child"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if got, want := fake.listCalls, []string{"trace-1:"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("list calls = %v, want %v", got, want)
+	}
+	if strings.Contains(out, "incomplete leading context") || !strings.Contains(out, "complete child context") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadUsesListedCandidateBeforeMissingLeadingSpan(t *testing.T) {
 	fake := &fakeTraceAPI{
 		trace:   map[string]any{"trace": map[string]any{"leading_span_id": "missing"}},
 		spanErr: map[string]error{"missing": errors.New("not found")},
@@ -133,7 +199,7 @@ func TestTracesThreadFallsBackWhenAutomaticLeadingSpanHydrationFails(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:missing", "span:trace-1:candidate"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:candidate"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	if got, want := fake.listCalls, []string{"trace-1:"}; fmt.Sprint(got) != fmt.Sprint(want) {
@@ -172,7 +238,7 @@ func TestTracesThreadFallsBackToNewestNonEvaluatorDetailedSpanAcrossPages(t *tes
 	if got, want := fake.listCalls, []string{"trace-1:", "trace-1:next"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("list calls = %v, want %v", got, want)
 	}
-	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:missing", "span:trace-1:new"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:new"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	if !strings.Contains(out, "newest") {

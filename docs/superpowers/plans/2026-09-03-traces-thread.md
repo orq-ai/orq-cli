@@ -91,7 +91,7 @@
 
 - [ ] **Step 1: Write failing command and selection tests**
 
-  Build a fake `TraceAPI` that records calls and returns fixture maps. Cover exact-span selection, trace `leading_span_id` selection, fallback after a missing/non-conversational leading span, sorting fallback candidates by descending `started_at`, pagination using `next_page_token`, excluding evaluator spans and every descendant of an evaluator span, skipping spans with `has_detail:false`, no-supported-payload errors, API error wrapping, default Markdown, explicit JSON/YAML/TOON through the canonical formatter, and `--slice` behavior.
+  Build a fake `TraceAPI` that records calls and returns fixture maps. Cover exact-span selection, newest conversational span selection by descending `started_at`, `leading_span_id` fallback when listing is unavailable or yields no supported span, pagination using `next_page_token`, excluding evaluator spans and every descendant of an evaluator span, skipping spans with `has_detail:false`, avoiding duplicate hydration, no-supported-payload errors, API error wrapping, default Markdown, explicit JSON/YAML/TOON through the canonical formatter, and `--slice` behavior.
 
 - [ ] **Step 2: Run the focused command tests and confirm they fail**
 
@@ -99,7 +99,7 @@
 
 - [ ] **Step 3: Implement span resolution**
 
-  With an explicit span ID, hydrate only that span. Otherwise call get-trace, hydrate `trace.leading_span_id`, and use it if normalization yields content. If absent or unusable, page through list-spans, build evaluator-descendant exclusions from `span_id`/`parent_span_id`, sort remaining detailed spans by `started_at` descending with stable tie-breaking, hydrate candidates, and return the first normalizable conversation. Treat type/name/operation values containing `evaluator` or the standalone token `eval` case-insensitively as evaluator spans. Return a clear error if no supported conversation exists.
+  With an explicit span ID, hydrate only that span. Otherwise call get-trace, page through list-spans, build evaluator-descendant exclusions from `span_id`/`parent_span_id`, sort remaining detailed spans by `started_at` descending with stable tie-breaking, hydrate candidates, and return the first normalizable conversation. Use `trace.leading_span_id` only as a resilience fallback when listing is unavailable, empty, or has no supported span, and never hydrate it twice when it was already a listed candidate. Treat type/name/operation values containing `evaluator` or the standalone token `eval` case-insensitively as evaluator spans. Return a clear error if no supported conversation exists.
 
 - [ ] **Step 4: Implement the Cobra command and output behavior**
 
@@ -130,7 +130,7 @@
 
 - [ ] **Step 1: Retrieve and sanitize real hydrated spans**
 
-  Use the locally built `orq` CLI with the `orq-research` workspace to retrieve safe synthetic traces. Reuse the known synthetic Responses traces `5210c6be4da10f53c6ffab0c680d10d9` / span `b1c07b68ae43f800` and `f001508c572664360190c583f9b70806` / span `6a2b15abe02da6b2` where still accessible. Retrieve or make one minimal non-streaming Chat Completions call with synthetic text plus a synthetic tool call/result. Replace all trace/span/response/item/call IDs and remove unrelated metadata before updating fixtures.
+  Use the locally built `orq` CLI with the `orq-research` workspace to retrieve safe synthetic traces. Retrieve or make one minimal non-streaming Chat Completions call with synthetic text plus a synthetic tool call/result. Replace all trace/span/response/item/call IDs and remove unrelated metadata before updating fixtures; do not commit live trace or span IDs.
 
 - [ ] **Step 2: Pin real-shape canonical and Markdown behavior**
 

@@ -21,7 +21,7 @@ type TraceAPI struct {
 	ListSpans func(traceID string, params *viper.Viper) (map[string]any, error)
 }
 
-// NewTracesThreadCommand builds `orq traces thread`, rendering the first
+// NewTracesThreadCommand builds `orq traces thread`, rendering the newest
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
@@ -80,25 +80,30 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err != nil {
 		return Thread{}, fmt.Errorf("get trace %q: %w", traceID, err)
 	}
-	if leadingID := threadString(traceEnvelope(traceResponse)["leading_span_id"]); leadingID != "" {
+	leadingID := threadString(traceEnvelope(traceResponse)["leading_span_id"])
+
+	candidates, listErr := listThreadCandidates(api, traceID, params)
+	tried := make(map[string]bool, len(candidates))
+	if listErr == nil {
+		for _, candidate := range candidates {
+			tried[candidate.id] = true
+			thread, err := hydrateThread(api, traceID, candidate.id, params)
+			if err == nil {
+				return thread, nil
+			}
+			if !isUnsupportedConversation(err) {
+				return Thread{}, err
+			}
+		}
+	}
+	if leadingID != "" && !tried[leadingID] {
 		thread, err := hydrateThread(api, traceID, leadingID, params)
 		if err == nil {
 			return thread, nil
 		}
 	}
-
-	candidates, err := listThreadCandidates(api, traceID, params)
-	if err != nil {
-		return Thread{}, err
-	}
-	for _, candidate := range candidates {
-		thread, err := hydrateThread(api, traceID, candidate.id, params)
-		if err == nil {
-			return thread, nil
-		}
-		if !isUnsupportedConversation(err) {
-			return Thread{}, err
-		}
+	if listErr != nil {
+		return Thread{}, listErr
 	}
 	return Thread{}, fmt.Errorf("no supported conversation found in trace %q", traceID)
 }
