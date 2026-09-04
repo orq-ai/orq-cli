@@ -27,9 +27,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 
 	thread := Thread{Source: source}
 	if responsesInstructionsOK {
-		for _, instruction := range threadParts(responsesInstructions) {
-			thread.Instructions = append(thread.Instructions, ThreadInstruction{Role: "system", Content: []ThreadPart{instruction}})
-		}
+		thread.Messages = append(thread.Messages, ThreadMessage{Role: "system", Content: threadParts(responsesInstructions)})
 	}
 	inputCount, pending, toolNames := 0, []ThreadPart(nil), map[string]string{}
 	if responsesInputOK {
@@ -44,7 +42,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 			}
 		}
 	} else if chatInputOK {
-		inputCount = appendChatInput(&thread, chatInput, len(thread.Instructions) == 0, toolNames)
+		inputCount = appendChatInput(&thread, chatInput, !responsesInstructionsOK, toolNames)
 	}
 	if responsesOutputOK {
 		outputItems := responseItems(responsesOutput)
@@ -81,33 +79,39 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	} else {
 		thread.Source.Representation = "chat_completions"
 	}
+	for index := range thread.Messages {
+		thread.Messages[index].Index = index
+	}
 	return thread, nil
 }
 
-func appendChatInput(thread *Thread, input any, appendInstructions bool, toolNames map[string]string) int {
+func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string) int {
 	inputMessages := chatMessages(input)
 	for index, raw := range inputMessages {
-		if message, instruction, ok := normalizeChatMessage(raw, index); ok {
-			if instruction != nil && appendInstructions {
-				thread.Instructions = append(thread.Instructions, *instruction)
-			} else if instruction == nil {
-				resolveChatToolName(&message, toolNames)
-				rememberChatToolNames(message, toolNames)
+		message, ok := normalizeChatMessage(raw, index)
+		if !ok {
+			continue
+		}
+		if isInstructionRole(message.Role) {
+			if keepInstructions {
 				thread.Messages = append(thread.Messages, message)
 			}
+			continue
 		}
+		resolveChatToolName(&message, toolNames)
+		rememberChatToolNames(message, toolNames)
+		thread.Messages = append(thread.Messages, message)
 	}
 	return len(inputMessages)
 }
 
+func isInstructionRole(role string) bool { return role == "system" || role == "developer" }
+
 func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[string]string, pending []ThreadPart) []ThreadPart {
 	outputMessages := chatOutputMessages(output)
 	for offset, raw := range outputMessages {
-		message, instruction, ok := normalizeChatMessage(raw, inputCount+offset)
-		if !ok {
-			continue
-		}
-		if instruction != nil {
+		message, ok := normalizeChatMessage(raw, inputCount+offset)
+		if !ok || isInstructionRole(message.Role) {
 			continue
 		}
 		resolveChatToolName(&message, toolNames)
@@ -178,28 +182,21 @@ func chatOutputMessages(value any) []any {
 	return nil
 }
 
-func normalizeChatMessage(raw any, index int) (ThreadMessage, *ThreadInstruction, bool) {
+func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 	object, ok := threadMap(decodeThreadValue(raw))
 	if !ok {
-		return ThreadMessage{}, nil, false
+		return ThreadMessage{}, false
 	}
 	role := threadString(object["role"])
-	if role == "" {
-		return ThreadMessage{}, nil, false
+	if role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool" {
+		return ThreadMessage{}, false
 	}
-	content := threadParts(object["content"])
-	if role == "system" || role == "developer" {
-		return ThreadMessage{}, &ThreadInstruction{Role: role, Content: content}, true
-	}
-	if role != "user" && role != "assistant" && role != "tool" {
-		return ThreadMessage{}, nil, false
-	}
-	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: content, ToolCallID: threadString(object["tool_call_id"])}
+	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(object["content"]), ToolCallID: threadString(object["tool_call_id"])}
 	if role == "assistant" {
 		message.Reasoning = recordedReasoning(object)
 		message.ToolCalls = chatToolCalls(object["tool_calls"])
 	}
-	return message, nil, true
+	return message, true
 }
 
 func firstUsableChatValue(span map[string]any, primary, fallback string, decode func(any) []any) any {
@@ -250,10 +247,6 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 		role := threadString(item["role"])
 		if role == "" {
 			role = "assistant"
-		}
-		if role == "system" || role == "developer" {
-			thread.Instructions = append(thread.Instructions, ThreadInstruction{Role: role, Content: threadParts(item["content"])})
-			return pending
 		}
 		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(item["content"]), ToolCallID: threadString(item["call_id"])}
 		if role == "assistant" {

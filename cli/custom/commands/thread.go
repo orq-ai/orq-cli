@@ -7,9 +7,8 @@ import (
 
 // Thread is the canonical, portable representation of a traced conversation.
 type Thread struct {
-	Instructions []ThreadInstruction `json:"instructions"`
-	Messages     []ThreadMessage     `json:"messages"`
-	Source       ThreadSource        `json:"source"`
+	Messages []ThreadMessage `json:"messages"`
+	Source   ThreadSource    `json:"source"`
 }
 
 // ThreadSource identifies the origin of a normalized thread.
@@ -19,13 +18,8 @@ type ThreadSource struct {
 	SpanID         string `json:"span_id,omitempty"`
 }
 
-// ThreadInstruction is a system or developer instruction that precedes messages.
-type ThreadInstruction struct {
-	Role    string       `json:"role"`
-	Content []ThreadPart `json:"content"`
-}
-
-// ThreadMessage is a message in source order. Index is the source's zero-based index.
+// ThreadMessage is a message in conversation order, including system and developer
+// messages. Index is its zero-based position, which is also its --slice position.
 type ThreadMessage struct {
 	Index      int              `json:"index"`
 	Role       string           `json:"role"`

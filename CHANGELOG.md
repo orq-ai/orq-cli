@@ -118,7 +118,8 @@ controls on surface changes, whichever side they originate from.
   It normalizes Chat Completions and Responses payloads, uses the newest
   detailed non-evaluator conversational span (with the trace's leading/root
   spans as resilience fallbacks), and supports `--slice` for selecting
-  messages. Explicit `--json`, `-o yaml`, and `-o toon` return the canonical
+  messages. System and developer messages are ordinary indexed messages, and a
+  heading's index is its `--slice` position. Explicit `--json`, `-o yaml`, and `-o toon` return the canonical
   structured thread; content retained only as a count is shown explicitly as
   unavailable rather than invented.
 

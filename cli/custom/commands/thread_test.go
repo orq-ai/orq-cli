@@ -21,10 +21,8 @@ func TestNormalizeThread(t *testing.T) {
 			fixture: "chat.json",
 			want: Thread{
 				Source: ThreadSource{Representation: "chat_completions", TraceID: "trace-chat", SpanID: "span-chat"},
-				Instructions: []ThreadInstruction{
-					{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with one short synthetic acknowledgement."}}},
-				},
 				Messages: []ThreadMessage{
+					{Index: 0, Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with one short synthetic acknowledgement."}}},
 					{Index: 1, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic fixture request: alpha."}}},
 					{Index: 2, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "call-synthetic-weather", Name: "synthetic_weather", Arguments: map[string]any{"city": "Exampleville"}}}},
 					{Index: 3, Role: "tool", Name: "synthetic_weather", ToolCallID: "call-synthetic-weather", Content: []ThreadPart{{Type: "text", Text: "Synthetic result: clear and 20 C."}}},
@@ -36,11 +34,11 @@ func TestNormalizeThread(t *testing.T) {
 			name:    "responses real value wrappers preserve direct content",
 			fixture: "responses.json",
 			want: Thread{
-				Source:       ThreadSource{Representation: "responses", TraceID: "trace-responses", SpanID: "span-responses"},
-				Instructions: []ThreadInstruction{{Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with exactly: synthetic Responses acknowledgement."}}}},
+				Source: ThreadSource{Representation: "responses", TraceID: "trace-responses", SpanID: "span-responses"},
 				Messages: []ThreadMessage{
-					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses fixture request: beta."}}},
-					{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses acknowledgement."}}},
+					{Index: 0, Role: "system", Content: []ThreadPart{{Type: "text", Text: "Reply with exactly: synthetic Responses acknowledgement."}}},
+					{Index: 1, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses fixture request: beta."}}},
+					{Index: 2, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Synthetic Responses acknowledgement."}}},
 				},
 			},
 		},
@@ -84,9 +82,8 @@ func TestNormalizeThread(t *testing.T) {
 
 func TestSliceThread(t *testing.T) {
 	thread := Thread{
-		Source:       ThreadSource{Representation: "chat_completions"},
-		Instructions: []ThreadInstruction{{Role: "system", Content: []ThreadPart{{Type: "text", Text: "keep"}}}},
-		Messages:     []ThreadMessage{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}, {Index: 5}},
+		Source:   ThreadSource{Representation: "chat_completions"},
+		Messages: []ThreadMessage{{Index: 0}, {Index: 1}, {Index: 2}, {Index: 3}, {Index: 4}, {Index: 5}},
 	}
 	tests := []struct {
 		expression string
@@ -118,8 +115,8 @@ func TestSliceThread(t *testing.T) {
 			if !reflect.DeepEqual(indices, tt.indices) {
 				t.Errorf("indices = %v, want %v", indices, tt.indices)
 			}
-			if !reflect.DeepEqual(got.Instructions, thread.Instructions) || got.Source != thread.Source {
-				t.Error("SliceThread() changed instructions or source")
+			if got.Source != thread.Source {
+				t.Error("SliceThread() changed source")
 			}
 		})
 	}
@@ -127,8 +124,8 @@ func TestSliceThread(t *testing.T) {
 
 func TestRenderThreadMarkdown(t *testing.T) {
 	tests := []struct{ name, fixture, want string }{
-		{"chat", "chat.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
-		{"responses", "responses.json", "# INSTRUCTIONS\n\n## SYSTEM\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [0]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [1]\n\nSynthetic Responses acknowledgement.\n"},
+		{"chat", "chat.json", "## SYSTEM [0]\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
+		{"responses", "responses.json", "## SYSTEM [0]\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [1]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [2]\n\nSynthetic Responses acknowledgement.\n"},
 		{"responses unavailable output", "responses-unavailable.json", "## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"},
 	}
 	for _, tt := range tests {
@@ -286,7 +283,7 @@ func TestNormalizeThreadRegressions(t *testing.T) {
 			}}},
 			check: func(t *testing.T, thread Thread) {
 				t.Helper()
-				if len(thread.Messages) != 2 || thread.Messages[1].Index != 2 {
+				if len(thread.Messages) != 2 || thread.Messages[1].Index != 1 {
 					t.Fatalf("thread = %#v", thread)
 				}
 			},
@@ -432,8 +429,8 @@ func TestNormalizeThreadResponsesBoundaryAndCountRegressions(t *testing.T) {
 			if len(thread.Messages) != 2 || thread.Messages[0].Content[0] != (ThreadPart{Type: "unavailable", Count: test.count}) {
 				t.Fatalf("messages = %#v", thread.Messages)
 			}
-			if got := thread.Messages[1].Index; got != test.count {
-				t.Fatalf("output index = %d, want raw input item offset %d", got, test.count)
+			if got := thread.Messages[1].Index; got != 1 {
+				t.Fatalf("output index = %d, want dense position 1", got)
 			}
 		})
 	}
@@ -476,7 +473,7 @@ func TestNormalizeThreadReReviewRegressions(t *testing.T) {
 			span: map[string]any{"attributes": map[string]any{"openresponses.instructions": "Only these instructions."}},
 			check: func(t *testing.T, thread Thread) {
 				t.Helper()
-				if thread.Source.Representation != "responses" || len(thread.Instructions) != 1 || len(thread.Messages) != 0 {
+				if thread.Source.Representation != "responses" || len(thread.Messages) != 1 || thread.Messages[0].Role != "system" {
 					t.Fatalf("thread = %#v", thread)
 				}
 			},
@@ -567,7 +564,7 @@ func TestNormalizeThreadSanitizesNestedSecretReasoning(t *testing.T) {
 }
 
 func TestRenderThreadMarkdownReReviewIndicators(t *testing.T) {
-	thread := Thread{Instructions: []ThreadInstruction{{Role: "system", Content: nil}}, Messages: []ThreadMessage{
+	thread := Thread{Messages: []ThreadMessage{
 		{Index: 0, Role: "assistant", Reasoning: []ThreadPart{{Type: "summary", Text: "chat summary"}}},
 		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "error", Text: "rate limited"}, {Type: "exception", Text: "upstream unavailable"}}},
 	}}

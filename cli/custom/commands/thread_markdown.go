@@ -10,18 +10,6 @@ import (
 // RenderThreadMarkdown writes a readable, loss-conscious Markdown thread view.
 func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	var sections []string
-	if len(thread.Instructions) > 0 {
-		instructionSections := []string{}
-		for _, instruction := range thread.Instructions {
-			body := renderThreadParts(instruction.Content)
-			if body != "" {
-				instructionSections = append(instructionSections, "## "+strings.ToUpper(instruction.Role), body)
-			}
-		}
-		if len(instructionSections) > 0 {
-			sections = append(sections, "# INSTRUCTIONS\n\n"+strings.Join(instructionSections, "\n\n"))
-		}
-	}
 	for _, message := range thread.Messages {
 		heading := "## " + strings.ToUpper(message.Role) + fmt.Sprintf(" [%d]", message.Index)
 		if message.Role == "tool" && message.Name != "" {
