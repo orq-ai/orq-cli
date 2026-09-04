@@ -814,17 +814,7 @@ func gatewaySession() *auth.Session {
 
 // gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry
 // is recorded, and callers must treat that as "unknown", never as "expired".
-func gatewayKeyExpiry() (time.Time, bool) {
-	session := gatewaySession()
-	if session == nil || session.GatewayKeyExpiresAt == "" {
-		return time.Time{}, false
-	}
-	at, err := time.Parse(time.RFC3339, session.GatewayKeyExpiresAt)
-	if err != nil {
-		return time.Time{}, false
-	}
-	return at, true
-}
+func gatewayKeyExpiry() (time.Time, bool) { return gatewaySession().GatewayKeyExpiry() }
 
 // gatewayKeyDueForRenewal reports whether the saved key is close enough to
 // expiry to replace now, so an agent never meets the 401 itself.

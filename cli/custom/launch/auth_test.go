@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
+
 	"orq/cli/custom/auth"
 )
 
@@ -553,4 +556,137 @@ func TestInjectedSessionTokenIsRecognisedWhenAProjectIsActive(t *testing.T) {
 	if creds.ShadowsSession {
 		t.Error("our own project-scoped session token was reported as shadowing the session")
 	}
+}
+
+// TestResolveCredentialsPrefersSavedGatewayKey covers the fallback between the
+// env key and the session token: the key `orq setup` minted lives 90 days, the
+// session token about an hour, and launch bakes whichever it picks into the
+// child once. The minted key wins only for the workspace it was minted for and
+// only while it is unexpired.
+func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	// Only the session-token fallback talks to the server; the minted-key path
+	// never touches the network.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+		}})
+	}))
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		name    string
+		savedWS string
+		expires string
+		// injected mirrors a real run: installSessionPreRun has already put the
+		// session token into ORQ_API_KEY before launch resolves credentials.
+		injected bool
+		wantKey  string
+	}{
+		{name: "same workspace", savedWS: "ws1", wantKey: "minted-key"},
+		{name: "same workspace, token already injected", savedWS: "ws1", injected: true, wantKey: "minted-key"},
+		{name: "no key, token already injected", savedWS: "", injected: true, wantKey: "workspace-token"},
+		{name: "unexpired", savedWS: "ws1", expires: future, wantKey: "minted-key"},
+		{name: "expired", savedWS: "ws1", expires: past, wantKey: "workspace-token"},
+		{name: "other workspace", savedWS: "ws2", wantKey: "workspace-token"},
+		{name: "no key", savedWS: "", wantKey: "workspace-token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ORQ_API_KEY", "")
+			t.Setenv("ORQ_API_BASE_URL", "")
+			t.Setenv("ORQ_PROFILE_BASE_URL", srv.URL)
+			key := "minted-key"
+			if tc.savedWS == "" {
+				key = ""
+			}
+			writeSessionFile(t, home, map[string]any{
+				"version":             1,
+				"apiBaseUrl":          srv.URL,
+				"v1BaseUrl":           srv.URL,
+				"authBaseUrl":         srv.URL,
+				"profileBaseUrl":      srv.URL,
+				"activeWorkspaceKey":  "ws1",
+				"refreshToken":        "refresh-token",
+				"bootstrapToken":      map[string]any{"token": "bootstrap-token", "expiresAt": future},
+				"workspaceTokens":     map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
+				"gatewayKey":          key,
+				"gatewayWorkspace":    tc.savedWS,
+				"gatewayKeyExpiresAt": tc.expires,
+			})
+			if tc.injected {
+				t.Setenv("ORQ_API_KEY", "workspace-token")
+			}
+
+			creds, err := ResolveCredentials(os.Getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if creds.APIKey != tc.wantKey {
+				t.Fatalf("want %q, got %+v", tc.wantKey, creds)
+			}
+			wantKind := CredentialSessionToken
+			if tc.wantKey == "minted-key" {
+				wantKind = CredentialAPIKey
+			}
+			if creds.Kind != wantKind {
+				t.Fatalf("want kind %v, got %v", wantKind, creds.Kind)
+			}
+		})
+	}
+}
+
+// useProfile puts an API-key profile in force the way --profile does, with the
+// given key (empty for a keyless profile).
+func useProfile(t *testing.T, name, key string) {
+	t.Helper()
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	creds.Set("profiles."+name+".type", "apikey")
+	creds.Set("profiles."+name+".api_key", key)
+	prev := bartolocli.Creds
+	bartolocli.Creds = creds
+	viper.Set("profile", name)
+	t.Cleanup(func() { bartolocli.Creds = prev; viper.Set("profile", "") })
+}
+
+// TestResolveCredentialsProfileInForce: a selected API-key profile is the
+// credential. No session is read — there is none on disk here and no server
+// to reach — and a keyless profile is an error, never a fall-through to the
+// session or a browser login.
+func TestResolveCredentialsProfileInForce(t *testing.T) {
+	t.Run("profile key wins without a session", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("ORQ_API_KEY", "sk-from-shell")
+		useProfile(t, "acme", "sk-acme")
+
+		creds, err := ResolveCredentials(os.Getenv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if creds.APIKey != "sk-acme" || creds.Kind != CredentialAPIKey {
+			t.Fatalf("profile key did not win: %+v", creds)
+		}
+		if creds.ShadowsSession || creds.SupersededWorkspace != "" {
+			t.Fatalf("a profile key has no session to shadow: %+v", creds)
+		}
+	})
+
+	t.Run("keyless profile errors and never reaches the login hook", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("ORQ_API_KEY", "")
+		useProfile(t, "acme", "")
+		prev := LoginHook
+		LoginHook = func() error { t.Fatal("LoginHook must not run with a profile in force"); return nil }
+		t.Cleanup(func() { LoginHook = prev })
+
+		_, err := resolveCredentialsOrLogin(os.Getenv, true)
+		if err == nil || !strings.Contains(err.Error(), `"acme"`) {
+			t.Fatalf("want an error naming the profile, got %v", err)
+		}
+	})
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 )
@@ -303,6 +304,22 @@ func SavedAgentKey() (key, workspace string) {
 		return session.GatewayKey, session.GatewayWorkspace
 	}
 	return "", ""
+}
+
+// GatewayKeyExpiry reports when the session's gateway key expires. Not-ok means
+// no expiry is recorded — a key minted before expiry existed — and callers must
+// treat that as "unknown", never as "expired". Nil-safe, so a caller that has
+// no session to read gets "unknown" too. One definition for setup, doctor and
+// launch; launch cannot import commands.
+func (s *Session) GatewayKeyExpiry() (time.Time, bool) {
+	if s == nil {
+		return time.Time{}, false
+	}
+	at, err := parseISO(s.GatewayKeyExpiresAt)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
 }
 
 // EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts
