@@ -180,9 +180,13 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
-		// A sourced gateway key written by this CLI defers to its session; every
-		// user-supplied env key or bartolo profile remains authoritative.
-		explicitKey := apiKeyConfigured() && !ownExportedKey()
+		applyProfileAPIKey()
+		// A profile in force is a complete credential on its own, so the
+		// session is never consulted for it — including when its key is
+		// missing, which bartolo refuses to reach past rather than falling
+		// back. Otherwise: a sourced gateway key written by this CLI defers to
+		// its session; every user-supplied env key remains authoritative.
+		explicitKey := profileInForce() || (apiKeyConfigured() && !ownExportedKey())
 		commands.SetExplicitAPIKey(explicitKey)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
@@ -298,6 +302,51 @@ func applyNoColor() {
 	// The first argument controls colour; the second controls terminal-only
 	// table rendering. NO_COLOR must change only the former.
 	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, stdoutIsTerminal())
+}
+
+// profileInForce reports whether bartolo will authenticate this call with a
+// saved API key: a profile is selected AND credentials.json has that entry.
+func profileInForce() bool {
+	name := bartolocli.ActiveProfileName()
+	return name != "" && bartolocli.ProfileExists(name)
+}
+
+// applyProfileAPIKey exports the in-force profile's key as ORQ_API_KEY, so the
+// programs this CLI starts — a coding agent under `orq launch`, orqi, a nested
+// orq — authenticate as the same credential the parent did. bartolo resolves
+// the profile itself for its own requests; a child process cannot, and reading
+// the session instead would wire an agent with a credential the user did not
+// select. Unlike the pre-#70 version this fires for any in-force profile, not
+// only the flag: ORQ_PROFILE and `orq auth profile use` select just as much.
+//
+// The other key variables are cleared, not left beside it: bartolo ranks them
+// itself, and leaving a losing key in the environment lets a child pick a
+// credential the parent already decided against.
+func applyProfileAPIKey() {
+	if !profileInForce() {
+		return
+	}
+	key := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+	if key == "" {
+		// Nothing to export, and nothing to clear either: bartolo will fail
+		// this call on the keyless profile, and doctor reports it. Unsetting
+		// here would only hide what the user actually has set.
+		return
+	}
+	var shadowed []string
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key {
+			shadowed = append(shadowed, envVar)
+		}
+		os.Unsetenv(envVar)
+	}
+	if len(shadowed) > 0 {
+		// Say it once, and say which key won: silently swapping credentials is
+		// the failure this whole ordering exists to prevent.
+		name, source, _ := commands.ProfileSelection()
+		commands.Warn("using the API key from profile %q (selected by %s); %s set but the profile takes precedence", name, source, strings.Join(shadowed, " and "))
+	}
+	os.Setenv(apiKeyEnvVars[0], key)
 }
 
 // rejectUnknownProfile errors when a profile is selected but credentials.json

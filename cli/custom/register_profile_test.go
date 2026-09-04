@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,5 +120,62 @@ func TestNoProfileSelectedPassesTheGuard(t *testing.T) {
 
 	if err := rejectUnknownProfile(findCommand(t, root, "models", "list")); err != nil {
 		t.Fatalf("no profile in force was rejected: %v", err)
+	}
+}
+
+// `orq --profile x launch <agent>` has to reach the agent with the profile's
+// key. bartolo resolves the profile for its own requests; the child process
+// cannot, so the PreRun exports it. Without this, launch falls through to the
+// login session and wires the agent with a credential the user did not pick.
+func TestAnInForceProfileIsExportedForChildProcesses(t *testing.T) {
+	profileHarness(t, `{"profiles":{"acme":{"api_key":"sk-orq-profile","type":"apikey"}}}`)
+	buildRoot(t)
+	viper.Set("profile", "acme")
+	t.Setenv("ORQ_API_KEY", "")
+
+	applyProfileAPIKey()
+
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
+		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
+	}
+}
+
+// A losing key left in the environment lets a child pick the credential the
+// parent already decided against, so the others are cleared and the swap is
+// announced once.
+func TestAnInForceProfileClearsAndAnnouncesAShadowedEnvironmentKey(t *testing.T) {
+	profileHarness(t, `{"profiles":{"acme":{"api_key":"sk-orq-profile","type":"apikey"}}}`)
+	buildRoot(t)
+	viper.Set("profile", "acme")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+
+	var out bytes.Buffer
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	applyProfileAPIKey()
+
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
+		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
+	}
+	if !strings.Contains(out.String(), "ORQ_API_KEY") || !strings.Contains(out.String(), "acme") {
+		t.Errorf("no warning naming the shadowed variable and the winner: %q", out.String())
+	}
+}
+
+// A keyless profile exports nothing — and must not clear what the user has set
+// either: bartolo fails the call on the profile itself, and hiding the
+// environment would only make that harder to diagnose.
+func TestAKeylessProfileExportsNothingAndClearsNothing(t *testing.T) {
+	profileHarness(t, `{"profiles":{"acme":{"type":"apikey"}}}`)
+	buildRoot(t)
+	viper.Set("profile", "acme")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+
+	applyProfileAPIKey()
+
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-environment" {
+		t.Errorf("ORQ_API_KEY = %q, want the user's own key untouched", got)
 	}
 }

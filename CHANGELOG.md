@@ -144,6 +144,11 @@ controls on surface changes, whichever side they originate from.
 - **Changed:** `orq auth login --profile x` is an error for a *browser* login
   only. `orq auth login --profile x --api-key sk-…` still writes the key into
   profile `x`.
+- **Changed:** the profile in force is exported to child processes as
+  `ORQ_API_KEY`, so `orq --profile x launch <agent>` and `orq --profile x orqi`
+  authenticate the program they start with that profile's key. It now applies to
+  `ORQ_PROFILE` and `orq auth profile use` as well as the `--profile` flag, and
+  the other key variables are cleared rather than left beside it.
 - **Changed:** `orq doctor` reports a profile that is in force but carries no
   `api_key` as `misconfigured` rather than claiming the environment key
   authenticates: bartolo does not fall through from a selected profile.
