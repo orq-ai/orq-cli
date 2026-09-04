@@ -124,9 +124,9 @@ func TestSliceThread(t *testing.T) {
 
 func TestRenderThreadMarkdown(t *testing.T) {
 	tests := []struct{ name, fixture, want string }{
-		{"chat", "chat.json", "## SYSTEM [0]\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
-		{"responses", "responses.json", "## SYSTEM [0]\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [1]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [2]\n\nSynthetic Responses acknowledgement.\n"},
-		{"responses unavailable output", "responses-unavailable.json", "## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"},
+		{"chat", "chat.json", "> trace `trace-chat` · span `span-chat` · chat_completions\n\n## SYSTEM [0]\n\nReply with one short synthetic acknowledgement.\n\n## USER [1]\n\nSynthetic fixture request: alpha.\n\n## ASSISTANT [2]\n\n### TOOL CALL — synthetic_weather [call-synthetic-weather]\n\n```json\n{\n  \"city\": \"Exampleville\"\n}\n```\n\n## TOOL [3] — synthetic_weather\n\n### TOOL RESULT\n\nSynthetic result: clear and 20 C.\n\n## ASSISTANT [4]\n\nAcknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\n"},
+		{"responses", "responses.json", "> trace `trace-responses` · span `span-responses` · responses\n\n## SYSTEM [0]\n\nReply with exactly: synthetic Responses acknowledgement.\n\n## USER [1]\n\nSynthetic Responses fixture request: beta.\n\n## ASSISTANT [2]\n\nSynthetic Responses acknowledgement.\n"},
+		{"responses unavailable output", "responses-unavailable.json", "> trace `trace-unavailable` · span `span-unavailable` · responses\n\n## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestResponsesFixturesPreserveAvailableContentWithoutInventingUnavailableDat
 		if err := RenderThreadMarkdown(&markdown, thread); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := markdown.String(), "## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"; got != want {
+		if got, want := markdown.String(), "> trace `trace-unavailable` · span `span-unavailable` · responses\n\n## USER [0]\n\nSynthetic Responses request with unavailable output.\n\n## ASSISTANT [1]\n\n[content unavailable: 2 items]\n"; got != want {
 			t.Fatalf("Markdown = %q, want %q", got, want)
 		}
 		encoded, err := json.Marshal(thread)
@@ -590,7 +590,7 @@ func TestNormalizeThreadRendersChatReasoningSummary(t *testing.T) {
 	if err := RenderThreadMarkdown(&out, thread); err != nil {
 		t.Fatal(err)
 	}
-	want := "## ASSISTANT [0]\n\n### REASONING SUMMARY\n\na short summary\n"
+	want := "> chat_completions\n\n## ASSISTANT [0]\n\n### REASONING SUMMARY\n\na short summary\n"
 	if out.String() != want {
 		t.Errorf("Markdown = %q, want %q", out.String(), want)
 	}

@@ -10,6 +10,9 @@ import (
 // RenderThreadMarkdown writes a readable, loss-conscious Markdown thread view.
 func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	var sections []string
+	if header := threadSourceHeader(thread.Source); header != "" {
+		sections = append(sections, header)
+	}
 	for _, message := range thread.Messages {
 		heading := "## " + strings.ToUpper(message.Role) + fmt.Sprintf(" [%d]", message.Index)
 		if message.Role == "tool" && message.Name != "" {
@@ -70,6 +73,26 @@ func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	}
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err
+}
+
+// threadSourceHeader names the span the thread was read from. Trace-only
+// requests pick one span out of many, and a reader who cannot see which one
+// has no way to tell a wrong selection from a wrong conversation.
+func threadSourceHeader(source ThreadSource) string {
+	var fields []string
+	if source.TraceID != "" {
+		fields = append(fields, "trace `"+source.TraceID+"`")
+	}
+	if source.SpanID != "" {
+		fields = append(fields, "span `"+source.SpanID+"`")
+	}
+	if source.Representation != "" {
+		fields = append(fields, source.Representation)
+	}
+	if len(fields) == 0 {
+		return ""
+	}
+	return "> " + strings.Join(fields, " · ")
 }
 
 func appendMarkdownSection(body, section string) string {

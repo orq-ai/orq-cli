@@ -42,11 +42,11 @@
 **Interfaces:**
 - Consumes: an untyped hydrated span response as `map[string]any` and a caller-supplied `ThreadSource`.
 - Produces: `NormalizeThread(span map[string]any, source ThreadSource) (Thread, error)`, `SliceThread(thread Thread, expression string) (Thread, error)`, and `RenderThreadMarkdown(w io.Writer, thread Thread) error`.
-- Produces canonical exported JSON fields: `instructions`, `messages`, and `source`; each message has `index`, `role`, optional `name`, `content`, optional `reasoning`, optional `tool_calls`, and optional `tool_call_id`.
+- Produces canonical exported JSON fields: `messages` and `source`; each message has `index`, `role`, optional `name`, `content`, optional `reasoning`, optional `tool_calls`, and optional `tool_call_id`.
 
 - [ ] **Step 1: Define canonical types and write failing normalization tests**
 
-  Define `Thread`, `ThreadSource`, `ThreadInstruction`, `ThreadMessage`, `ThreadPart`, and `ThreadToolCall` in `thread.go` with snake-case JSON tags and `omitempty` only for optional fields. Table tests must load each JSON fixture and assert the complete normalized value, including original zero-based indices, roles, multipart text, attached reasoning, tool-call names/arguments/call IDs, tool results, instructions, detected representations, typed unsupported placeholders, and unavailable-content markers.
+  Define `Thread`, `ThreadSource`, `ThreadMessage`, `ThreadPart`, and `ThreadToolCall` in `thread.go` with snake-case JSON tags and `omitempty` only for optional fields. Table tests must load each JSON fixture and assert the complete normalized value, including dense zero-based indices, roles, multipart text, attached reasoning, tool-call names/arguments/call IDs, tool results, system/developer messages, detected representations, typed unsupported placeholders, and unavailable-content markers.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail**
 
@@ -54,19 +54,19 @@
 
 - [ ] **Step 3: Implement flexible lookup and Chat Completions normalization**
 
-  In `thread_normalize.go`, implement literal dotted-key and nested-map lookup plus recursive decoding of structured values, JSON strings, and `_value`/`string`/`items.count` wrappers. Normalize Chat input arrays or `{messages:[...]}`, direct output messages, and `choices[].message`; support `system`, `developer`, `user`, `assistant`, and `tool`, string/multipart content, assistant `tool_calls`, `tool_call_id`, and recorded reasoning fields (`reasoning_content`, `reasoning`, `thinking`, summaries, and redacted variants). Convert system/developer messages to instructions. Append output after input and remove only an identical duplicate at the boundary.
+  In `thread_normalize.go`, implement literal dotted-key and nested-map lookup plus recursive decoding of structured values, JSON strings, and `_value`/`string`/`items.count` wrappers. Normalize Chat input arrays or `{messages:[...]}`, direct output messages, and `choices[].message`; support `system`, `developer`, `user`, `assistant`, and `tool`, string/multipart content, assistant `tool_calls`, `tool_call_id`, and recorded reasoning fields (`reasoning_content`, `reasoning`, `thinking`, summaries, and redacted variants). Keep system/developer messages as ordinary messages, dropping Chat instruction messages only when Responses `instructions` already supplied one for the same span. Append output after input and remove only an identical duplicate at the boundary.
 
 - [ ] **Step 4: Implement Responses normalization**
 
-  Normalize `openresponses.instructions`, `openresponses.input`, and `openresponses.output` item arrays. Handle `message`, `reasoning`, `function_call`, and `function_call_output` items; attach standalone reasoning to the following assistant/tool-call message when possible and otherwise create an assistant reasoning-only message. Parse JSON tool arguments when valid while retaining raw text when invalid. If a wrapper exposes only `items.count`, add one canonical unavailable part carrying the count and use an input count as the source-index offset for output. Apply the same assistant boundary deduplication as Chat Completions.
+  Normalize `openresponses.instructions`, `openresponses.input`, and `openresponses.output` item arrays. Handle `message`, `reasoning`, `function_call`, and `function_call_output` items; attach standalone reasoning to the following assistant/tool-call message when possible and otherwise create an assistant reasoning-only message. Parse JSON tool arguments when valid while retaining raw text when invalid. Render `openresponses.instructions` as a leading system message. If a wrapper exposes only `items.count`, add one canonical unavailable part carrying the count. Apply the same assistant boundary deduplication as Chat Completions.
 
 - [ ] **Step 5: Implement Python-style slicing tests and logic**
 
-  Add cases for `-5:`, `:10`, `2:4`, `-4:-1`, `3`, out-of-range bounds, empty results, whitespace, malformed integers, more than one colon, and stride syntax. `SliceThread` must clamp like Python, retain source indices, leave instructions/source untouched, and return a descriptive error for invalid syntax or strides.
+  Add cases for `-5:`, `:10`, `2:4`, `-4:-1`, `3`, out-of-range bounds, empty results, whitespace, malformed integers, more than one colon, and stride syntax. `SliceThread` must clamp like Python, leave `source` untouched, and return a descriptive error for invalid syntax or strides.
 
 - [ ] **Step 6: Implement Markdown golden tests and renderer**
 
-  Assert full Markdown output for Chat text/tool-call/tool-result and Responses reasoning/unavailable fixtures. Render indexed `## USER [n]`, `## ASSISTANT [n]`, and `## TOOL [n] — name`; render instructions before messages; pretty-print structured values in fenced JSON; preserve plain text; render state and unsupported markers without encrypted/redacted payloads; and end output with a newline.
+  Assert full Markdown output for Chat text/tool-call/tool-result and Responses reasoning/unavailable fixtures. Render indexed `## SYSTEM [n]`, `## USER [n]`, `## ASSISTANT [n]`, and `## TOOL [n] — name`, where `n` is the message's `--slice` position; lead with a `> trace ... span ... representation` source line so a reader can see which span was selected; pretty-print structured values in fenced JSON; preserve plain text; render state and unsupported markers without encrypted/redacted payloads; and end output with a newline.
 
 - [ ] **Step 7: Run focused tests and commit**
 

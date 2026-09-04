@@ -2,11 +2,16 @@ package commands
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
 )
+
+// ErrUnsupportedConversation reports a span whose payload is neither dialect.
+// Trace-wide selection distinguishes it from operational failures to decide
+// whether to keep trying other spans.
+var ErrUnsupportedConversation = errors.New("span does not contain a supported Chat Completions or Responses conversation")
 
 // NormalizeThread converts supported Chat Completions and Responses span payloads
 // into a single loss-conscious representation.
@@ -22,7 +27,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	chatOutput := firstUsableChatValue(span, "gen_ai.output", "output", chatOutputMessages)
 	chatInputOK, chatOutputOK := len(chatMessages(chatInput)) > 0, len(chatOutputMessages(chatOutput)) > 0
 	if !responsesInstructionsOK && !responsesInputOK && !responsesOutputOK && !chatInputOK && !chatOutputOK {
-		return Thread{}, fmt.Errorf("span does not contain a supported Chat Completions or Responses conversation")
+		return Thread{}, ErrUnsupportedConversation
 	}
 
 	thread := Thread{Source: source}

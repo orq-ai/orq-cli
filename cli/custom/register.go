@@ -77,7 +77,7 @@ func commandPath(cmd *cobra.Command) string {
 // Register wires custom commands and session-aware auth onto the provided root
 // command. Must be called after generated.Register so that the
 // bartolo `auth` parent command exists for our subcommands to attach onto.
-func Register(root *cobra.Command, traceAPIs ...commands.TraceAPI) {
+func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	if root == nil {
 		root = bartolocli.Root
 	}
@@ -89,10 +89,6 @@ func Register(root *cobra.Command, traceAPIs ...commands.TraceAPI) {
 	root.SilenceUsage = true
 	registerGlobalFlags()
 	installSessionPreRun()
-	var traceAPI commands.TraceAPI
-	if len(traceAPIs) > 0 {
-		traceAPI = traceAPIs[0]
-	}
 	registerCommands(root, traceAPI)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)

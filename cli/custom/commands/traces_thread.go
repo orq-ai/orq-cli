@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -98,7 +99,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		if err == nil {
 			return thread, nil
 		}
-		if !isUnsupportedConversation(err) && operationalErr == nil {
+		if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
 			operationalErr = err
 		}
 	}
@@ -111,7 +112,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		if err == nil {
 			return thread, nil
 		}
-		if !isUnsupportedConversation(err) && operationalErr == nil {
+		if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
 			operationalErr = err
 		}
 	}
@@ -144,13 +145,9 @@ func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (T
 	}
 	thread, err := NormalizeThread(unwrapThreadEnvelope(spanResponse, "span"), ThreadSource{TraceID: traceID, SpanID: spanID})
 	if err != nil {
-		return Thread{}, err
+		return Thread{}, fmt.Errorf("span %q: %w", spanID, err)
 	}
 	return thread, nil
-}
-
-func isUnsupportedConversation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "does not contain a supported")
 }
 
 type threadCandidate struct {

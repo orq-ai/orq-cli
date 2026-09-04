@@ -3,6 +3,7 @@ package custom
 import (
 	"testing"
 
+	"orq/cli/custom/commands"
 	generated "orq/cli/generated"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -33,7 +34,7 @@ func buildRoot(t *testing.T) *cobra.Command {
 
 	root := bartolocli.Root
 	generated.Register(root)
-	Register(root)
+	Register(root, commands.TraceAPI{})
 	return root
 }
 
