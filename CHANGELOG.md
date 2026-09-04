@@ -162,6 +162,13 @@ controls on surface changes, whichever side they originate from.
   Removed in the next minor. `auth list-profiles` now renders bartolo's own
   listing and shows saved API-key profiles only — a browser login is a session,
   reported by `orq whoami`.
+- **Fixed: `orq launch` authenticates with the API-key profile in force**
+  (`--profile`, `ORQ_PROFILE` or `orq auth profile use`) without reading the
+  login session, so a profile with no login on the resolved server still
+  launches. A profile with no `api_key` is an error naming the profile rather
+  than a fall-through to the session, matching how bartolo treats a selected
+  profile everywhere else.
+
 - **Fixed: `orq launch` now uses the key `orq setup` minted even when
   `~/.orq/env` is not sourced.** Credentials were resolved from `ORQ_API_KEY`
   and then straight from the login session, so a shell that had not sourced the

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"golang.org/x/term"
 
 	"orq/cli/custom/auth"
@@ -152,9 +153,10 @@ func APIBaseFor(getenv func(string) string) string {
 }
 
 // ResolveCredentials resolves the orq API key and API base URL explicitly
-// (not relying on the session PreRun env side effect): ORQ_API_KEY env wins
-// (the session is not read at all), else the active workspace token from the
-// login session. API base: the server the root PreRun resolved (--server,
+// (not relying on the session PreRun env side effect): the API-key profile in
+// force wins (the session is not read at all), then ORQ_API_KEY env, then the
+// gateway key `orq setup` minted for the session's workspace, else the active
+// workspace token from the login session. API base: the server the root PreRun resolved (--server,
 // ORQ_SERVER, the deprecated ORQ_API_BASE_URL) → session APIBaseURL → default.
 func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// auth.Server() is empty when the PreRun did not run — the launch tests,
@@ -163,6 +165,18 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	envServer, _ := auth.ServerFromEnv(getenv)
 	resolved := firstNonEmpty(auth.Server(), envServer)
 	apiBase := firstNonEmpty(resolved, DefaultGatewayAPIBaseURL)
+
+	// A profile in force is the credential, full stop: bartolo does not fall
+	// through from a selected profile to an ambient key, and neither does this.
+	// The session is not read, so a profile with no login on this server still
+	// launches, and errNotLoggedIn cannot send a profile user to a browser
+	// login that the profile then refuses.
+	if name, key, ok := profileKey(); ok {
+		if key == "" {
+			return nil, fmt.Errorf("profile %q has no api_key; add one with 'orq auth profile add apikey %s <api-key>' or pass --profile \"\" for this call", name, name)
+		}
+		return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialAPIKey}, nil
+	}
 
 	var supersededWorkspace string
 	var session *auth.Session
@@ -247,6 +261,17 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		Workspace:           active.WorkspaceKey,
 		SupersededWorkspace: supersededWorkspace,
 	}, nil
+}
+
+// profileKey reports the API-key profile in force and its key. Same test as
+// commands.profileInForce, which launch cannot import: a selected name that
+// does not resolve is refused up front by rejectUnknownProfile.
+func profileKey() (name, key string, ok bool) {
+	name = bartolocli.ActiveProfileName()
+	if name == "" || !bartolocli.ProfileExists(name) {
+		return "", "", false
+	}
+	return name, strings.TrimSpace(bartolocli.GetProfile()["api_key"]), true
 }
 
 // savedKeyForWorkspace returns the saved agent key when it is recorded for the

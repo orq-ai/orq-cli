@@ -21,11 +21,13 @@ through the orq.ai AI Router.
 
 Credentials are resolved in this order, first match wins:
 
-  1. ORQ_API_KEY from the environment — the login session is not read at all,
-     so an exported key overrides the workspace picked by 'orq auth login'.
-  2. The key 'orq setup' minted, when it belongs to the workspace shown by
+  1. The API-key profile in force (--profile, ORQ_PROFILE or 'orq auth
+     profile use') — the login session is not read at all.
+  2. ORQ_API_KEY from the environment — likewise, so an exported key
+     overrides the workspace picked by 'orq auth login'.
+  3. The key 'orq setup' minted, when it belongs to the workspace shown by
      'orq workspace' and has not expired.
-  3. The active workspace token from the 'orq auth login' session, for the
+  4. The active workspace token from the 'orq auth login' session, for the
      workspace shown by 'orq workspace'.
 
 Unset ORQ_API_KEY to launch against the workspace you selected at login.
