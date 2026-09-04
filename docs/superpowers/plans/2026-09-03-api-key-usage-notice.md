@@ -28,7 +28,7 @@
 
 **Interfaces:**
 - Consumes: `ownExportedKey()`, `commands.ConfiguredCredential()`, `auth.Session`, `bartolocli.Stderr`, and the outgoing Bartolo request.
-- Produces: `configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool, session *auth.Session)` and `apiKeyUsageNoticeBeforeDial`, backed by the shared `commands.UserAPIKeyCredential()` and `commands.MachineFormatRequested()` decisions.
+- Produces: `configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool)` and `apiKeyUsageNoticeBeforeDial`, backed by the shared `commands.ConfiguredCredential()` and `commands.MachineFormatRequested()` decisions.
 
 - [ ] **Step 1: Write failing table tests for the display predicate**
 
@@ -72,10 +72,10 @@ Expected: compilation fails because the request-bound notice helpers are undefin
 
 - [ ] **Step 3: Implement the request-bound notice**
 
-Export the existing machine-format predicate and environment credential-source resolver from `cli/custom/commands`. In `cli/custom/register.go`, let `configureAPIKeyUsageNotice` require `explicitKey`, a login session, terminal human output, no opt-out, and no stored profile key. Register a `before dial` middleware that compares the actual Authorization header with the candidate exported key and emits at most once:
+Export the existing machine-format predicate and environment credential-source resolver from `cli/custom/commands`. In `cli/custom/register.go`, let `configureAPIKeyUsageNotice` require `explicitKey`, a stderr terminal, no machine format, no opt-out, and no stored profile key. Register a `before dial` middleware that compares the actual Authorization header with the candidate exported key and emits at most once:
 
 ```go
-fmt.Fprintf(bartolocli.Stderr, "Using %s from environment\n", notice.source)
+commands.Notice("Using %s from environment", notice.source)
 ```
 
 - [ ] **Step 4: Wire the helper into pre-run**

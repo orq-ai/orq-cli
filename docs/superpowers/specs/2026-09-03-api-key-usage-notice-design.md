@@ -10,17 +10,20 @@ not expose the key or alter structured stdout.
 
 - Before an API-backed command runs, snapshot user-provided credentials before
   the session bridge injects its own token into `ORQ_API_KEY`.
-- When `ORQ_API_KEY`, `ORQ_TOKEN`, or `ORQ_AUTHORIZATION` wins over an active
-  login session, print `Using <VARIABLE> from environment` once to stderr, naming
-  the variable that supplied the key so the user knows which one to unset. A
+- When `ORQ_API_KEY`, `ORQ_TOKEN`, or `ORQ_AUTHORIZATION` is the credential a
+  request authenticates with, print `Using <VARIABLE> from environment` once to
+  stderr, naming the variable that supplied the key so the user knows which one
+  to unset. Whether a login session exists does not matter: the user who never
+  logged in is told the same thing as the one whose session the key displaces. A
   selected stored API-key profile remains authoritative and does not produce
   the notice.
-- Show the line only when stdout is a terminal. Piped output and explicit
-  machine formats remain quiet.
+- Show the line only when stderr is a terminal — that is the stream it goes
+  to, and `orq x | jq` is a person reading stderr with stdout handed to a pipe.
+  Explicit machine formats remain quiet.
 - Suppress the line when `ORQ_NO_API_KEY_NOTICE` is non-empty.
-- Suppress the line when no session exists to be displaced. Local and
-  session-authenticated commands never produce it because their requests do not
-  carry the exported credential through Bartolo's API-key client.
+- Local and session-authenticated commands never produce it because their
+  requests do not carry the exported credential through Bartolo's API-key
+  client.
 
 ## Placement
 
@@ -31,18 +34,20 @@ actually contains that credential. This boundary covers generated API commands
 without maintaining a command allowlist or claiming that session-only and local
 commands used the key.
 
-The notice uses stderr directly through the CLI writer. It is informational,
-not a warning, and never includes any portion of the credential.
+The notice is written with the commands package's dimmed secondary-context
+style (`commands.Notice`, the ungated half of `info`). It is informational, not
+a warning, and never includes any portion of the credential.
 
 ## Tests
 
 Focused tests will pin that the notice:
 
-- appears for a TTY request when an environment key displaces a login session;
+- appears for a request when an environment key authenticates it and stderr
+  is a terminal, whether or not a login session exists;
 - names the supported environment variable that won, without exposing its value;
-- is absent outside a TTY, when `ORQ_NO_API_KEY_NOTICE` is set, when no user
-  profile is displaced, when a stored profile wins, and when the actual request
-  uses a different credential;
+- is absent when stderr is not a terminal, when `ORQ_NO_API_KEY_NOTICE` is
+  set, when a stored profile wins, and when the actual request uses a different
+  credential;
 - writes only to stderr, preserving stdout and the JSON contract.
 
 The change will also add an `Unreleased` changelog entry because users will see
