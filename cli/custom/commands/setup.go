@@ -20,6 +20,7 @@ import (
 	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -928,10 +929,49 @@ func BartoloAuthType() string {
 	return ""
 }
 
+// profileSelected reports whether a profile NAME is in force (--profile,
+// ORQ_PROFILE or `auth profile use`), whether or not it resolves to an entry.
+// This is the question `auth login`/`auth logout` ask: those refuse the flag
+// itself, not the credential behind it.
+func profileSelected() bool { return bartolocli.ActiveProfileName() != "" }
+
 // profileInForce reports whether bartolo will authenticate with a saved API
-// key on this call (--profile, ORQ_PROFILE or `auth profile use`). When it
-// does, the login session is not consulted at all.
-func profileInForce() bool { return bartolocli.ActiveProfileName() != "" }
+// key on this call: a name is selected AND credentials.json has that entry.
+// When it does, the login session is not consulted at all. A selected name
+// with no entry is nobody's credential — custom.rejectUnknownProfile stops
+// those commands up front, and the ones it exempts fall back to the session.
+func profileInForce() bool {
+	name := bartolocli.ActiveProfileName()
+	return name != "" && bartolocli.ProfileExists(name)
+}
+
+// ProfileSelection reports the profile name in force, where it was selected
+// and how to unselect it, so an error can name the thing the user actually
+// typed. Bartolo's precedence chain is unexported, so this mirrors it:
+// --profile, then ORQ_PROFILE, then the persisted `auth profile use` choice.
+func ProfileSelection() (name, source, drop string) {
+	name = bartolocli.ActiveProfileName()
+	if name == "" {
+		return "", "", ""
+	}
+	if f := rootProfileFlag(); f != nil && f.Changed {
+		return name, "--profile", "drop --profile"
+	}
+	if strings.TrimSpace(viper.GetString("profile")) != "" {
+		return name, "ORQ_PROFILE", "unset ORQ_PROFILE"
+	}
+	return name, "`orq auth profile use`", "run `orq auth profile clear`"
+}
+
+// rootProfileFlag is the ROOT persistent --profile. A generated command may
+// define a local --profile request field that shadows it; that is request
+// data, not a credentials selection.
+func rootProfileFlag() *pflag.Flag {
+	if bartolocli.Root == nil {
+		return nil
+	}
+	return bartolocli.Root.PersistentFlags().Lookup("profile")
+}
 
 // bartoloProfileName is the profile an API-key write lands in: the one in
 // force, else `default`.
@@ -1219,6 +1259,11 @@ func sanitizeKeyName(name string) string {
 }
 
 func maskToken(token string) string {
+	// An empty token must not render as a plausible-looking key: this is what
+	// `whoami` prints, and a profile with no api_key is a real state.
+	if token == "" {
+		return ""
+	}
 	if len(token) <= 12 {
 		return "sk-orq-…"
 	}

@@ -263,7 +263,10 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 	}
 	if s == nil {
 		// No session for this host — the documented drop: a gateway key with
-		// nowhere to attach is dead weight, not a failure.
+		// nowhere to attach is dead weight, not a failure. Say so out loud:
+		// logout never revoked the key server-side, so the id being dropped
+		// here is the last local record of a credential that still works.
+		reportDroppedGatewayKey(host, fields)
 		return nil
 	}
 	changed := false
@@ -282,6 +285,25 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 		return nil
 	}
 	return saveSessionTo(path, s)
+}
+
+// reportDroppedGatewayKey names a gateway key the migration is discarding and
+// how to revoke it. Anything quieter leaves a live key in the workspace with
+// nothing on disk left to identify it by.
+func reportDroppedGatewayKey(host string, fields map[string]string) {
+	id := strings.TrimSpace(fields["gateway_key_id"])
+	if id == "" && strings.TrimSpace(fields["gateway_key"]) == "" {
+		return
+	}
+	if id == "" {
+		fmt.Fprintf(bartolocli.Stderr,
+			"dropped a gateway key for %s: there is no login left to attach it to, and no key id was recorded. "+
+				"It still works; revoke it from the API keys page.\n", host)
+		return
+	}
+	fmt.Fprintf(bartolocli.Stderr,
+		"dropped the gateway key for %s: there is no login left to attach it to. "+
+			"It still works; revoke it with: orq api-keys delete %s\n", host, id)
 }
 
 func credentialsNeedMigration() bool {

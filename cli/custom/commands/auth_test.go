@@ -195,15 +195,21 @@ func TestWhoAmIStructuredOutputForAPIKeyProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var payload struct {
-		Profile  string `json:"profile"`
-		Server   string `json:"server"`
-		APIKey   string `json:"api_key"`
-		Identity any    `json:"identity"`
+		Profile     string `json:"profile"`
+		Server      string `json:"server"`
+		APIKey      string `json:"api_key"`
+		SessionFile string `json:"session_file"`
+		Identity    any    `json:"identity"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
 	}
 	if payload.Profile != "work" || payload.Server == "" || payload.APIKey != maskToken("sk-orq-profile-secret") || payload.Identity != nil {
 		t.Errorf("whoami payload = %+v", payload)
+	}
+	// orqi reads session_file off this payload (RES-1500), and a profile in
+	// force does not make the session file stop existing.
+	if payload.SessionFile == "" {
+		t.Errorf("whoami payload has no session_file: %+v", payload)
 	}
 }

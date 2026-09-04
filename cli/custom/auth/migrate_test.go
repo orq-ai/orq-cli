@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -489,5 +491,52 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	again, _ := os.Stat(path)
 	if string(first) != string(second) || !info.ModTime().Equal(again.ModTime()) {
 		t.Error("second run rewrote the session file")
+	}
+}
+
+// A gateway key whose login is already gone has nowhere to live, so migration
+// drops it. Logout never revoked it server-side, so the id in the message is
+// the last local record of a credential that still works: dropping it silently
+// would leave the user unable to revoke a key that is wired into agent configs.
+func TestMigrateNamesADroppedGatewayKeyAndHowToRevokeIt(t *testing.T) {
+	var out bytes.Buffer
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	dir := layoutHarness(t, `{"profiles":{"acme":{
+		"server":"https://acme.example",
+		"gateway_key":"sk-orq-GW","gateway_key_id":"KEYID"
+	}}}`, nil)
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	got := out.String()
+	for _, want := range []string{"acme.example", "orq api-keys delete KEYID"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("dropped-key notice does not mention %q: %q", want, got)
+		}
+	}
+	creds := readDoc(t, filepath.Join(dir, "credentials.json"))
+	if _, present := creds["profiles"]; present {
+		t.Errorf("the keyless profile survived: %v", creds)
+	}
+}
+
+// Nothing to revoke, nothing to say: a profile carrying only a workspace must
+// not produce a scary notice about a key that never existed.
+func TestMigrateSaysNothingWhenThereIsNoGatewayKeyToDrop(t *testing.T) {
+	var out bytes.Buffer
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	dir := layoutHarness(t, `{"profiles":{"acme":{"server":"https://acme.example","workspace":"acme"}}}`, nil)
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "api-keys delete") {
+		t.Errorf("a revoke hint was printed for a profile with no key: %q", out.String())
 	}
 }

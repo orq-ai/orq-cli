@@ -96,7 +96,12 @@ because that is what a profile is now.
 the session otherwise. `doctor` names the session file (host) in play.
 
 `orq launch` and `orq orqi` pass `ORQ_SERVER` as well as `ORQ_PROFILE` to the child, so the
-child picks the same session the parent authenticated against.
+child picks the same session the parent authenticated against. The environment variable is
+the contract, not a `--server` argument: every child here is an `orq`-aware program that
+already resolves the server from the environment, and a flag would have to be spelled
+differently for each of them and accepted by all of them before it could be relied on.
+`orq --server <url> orqi …` therefore sets `ORQ_SERVER=<url>` on the subprocess and leaves
+the passthrough arguments untouched.
 
 ### Migration, on the first command of the new binary
 
@@ -136,7 +141,9 @@ Kept: `repairAuthProfileType` (fixes real API-key profiles written before bartol
 orqi (orq-ai/orqi) reads `~/.orq/sessions/<profile>.json` directly. After this change the
 file is `sessions/<host>.json` and the child receives `ORQ_SERVER`. orqi must adopt the same
 host rule, or shell out to `orq` for the session, before this release ships. Track as a
-blocking companion change.
+blocking companion change. Settled with the orqi side (RES-1500 / orq-ai/orqi#4): orqi reads
+the session path from `orq auth whoami --json` (`session_file`, present on the profile payload
+too), and takes the server from `ORQ_SERVER` rather than from a forwarded flag.
 
 ## User-visible changes (CHANGELOG)
 

@@ -13,10 +13,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// profileInForceError is what login and logout say when --profile names an
-// API key: the session they act on is not what that flag selects.
+// profileInForceError is what login and logout say when a profile is selected:
+// the session they act on is not what a profile selects. The message names
+// where the selection came from, because it is as often ORQ_PROFILE or a
+// persisted `auth profile use` as it is the flag.
 func profileInForceError(verb string) error {
-	return fmt.Errorf("profile %q is an API key, not a login; %s without --profile, or pass --profile \"\" for this call", bartolocli.ActiveProfileName(), verb)
+	name, source, drop := ProfileSelection()
+	return fmt.Errorf(
+		"profile %q is an API key, not a login (selected by %s); to %s, %s, or pass --profile \"\" for this call",
+		name, source, verb, drop,
+	)
 }
 
 func NewLoginCommand() *cobra.Command {
@@ -43,7 +49,7 @@ func NewLoginCommand() *cobra.Command {
 				}
 			}
 
-			if method != "API key" && profileInForce() {
+			if method != "API key" && profileSelected() {
 				return profileInForceError("log in to another server with --server")
 			}
 
@@ -123,7 +129,7 @@ func NewLogoutCommand() *cobra.Command {
 		Use:   "logout",
 		Short: "Revoke the refresh token and clear local credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if profileInForce() {
+			if profileSelected() {
 				return profileInForceError("log out")
 			}
 			session, err := auth.ReadSession()
@@ -302,17 +308,25 @@ func NewWhoAmICommand() *cobra.Command {
 		Short: "Show the current authenticated user and workspace",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if profileInForce() {
+				key := maskToken(bartolocli.GetProfile()["api_key"])
 				if wantsHumanView(cmd) {
 					success("Using API-key profile %s", bartolocli.ActiveProfileName())
 					kv(9, "server", "%s", auth.ResolveURLs(serverURL()).APIBaseURL)
-					kv(9, "api_key", "%s", maskToken(bartolocli.GetProfile()["api_key"]))
+					if key == "" {
+						// The profile exists but carries no key, so every request
+						// will fail; say that rather than print a blank field.
+						kv(9, "api_key", "%s", "(not set — run `orq auth profile add apikey "+bartolocli.ActiveProfileName()+" <api-key>`)")
+						return nil
+					}
+					kv(9, "api_key", "%s", key)
 					return nil
 				}
 				return emit(map[string]any{
-					"profile":  bartolocli.ActiveProfileName(),
-					"server":   auth.ResolveURLs(serverURL()).APIBaseURL,
-					"api_key":  maskToken(bartolocli.GetProfile()["api_key"]),
-					"identity": nil,
+					"profile":      bartolocli.ActiveProfileName(),
+					"server":       auth.ResolveURLs(serverURL()).APIBaseURL,
+					"api_key":      key,
+					"session_file": auth.SessionFilePath(),
+					"identity":     nil,
 				})
 			}
 			session, err := auth.ReadSession()

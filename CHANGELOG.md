@@ -122,6 +122,21 @@ controls on surface changes, whichever side they originate from.
   including its workspace and project scope, moves from `credentials.json`
   into the session file, and a keyless profile this CLI wrote is deleted. A
   keyless profile with none of this CLI's fields is left alone.
+- **Breaking:** a profile that is selected but not configured is now refused up
+  front, naming where the selection came from (`--profile`, `ORQ_PROFILE` or
+  `orq auth profile use`) and how to drop it. The commands that create, list or
+  unselect a profile, and those that never call the orq API (`doctor`,
+  `version`, `update`, `orqi`), still run. Previously such a name reached
+  bartolo, which aborted every command with `no authentication handler
+  configured`.
+- **Added:** `orq launch` and `orq orqi` pass the resolved server to the child
+  as `ORQ_SERVER`, so a nested `orq` and orqi stay on the host the parent
+  chose. The environment variable is the contract; no `--server` argument is
+  forwarded.
+- **Changed:** when migration finds a gateway key whose login is already gone,
+  it says so and prints `orq api-keys delete <id>`. Logout never revoked that
+  key server-side, so dropping it silently left a working credential with no
+  local record of its id.
 - **Deprecated:** `auth list-profiles` and `auth add-profile` print a notice;
   use `auth profile list` and `auth profile add`. Removed in the next minor.
 

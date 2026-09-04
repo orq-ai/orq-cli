@@ -33,6 +33,33 @@ var (
 // where the docs live and where to report problems).
 const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-ai/orq-cli/issues"
 
+// profileExemptCommands keep working when the selected profile does not
+// exist: the commands that create, list or unselect one, and the commands that
+// never call the orq API. Everything else is stopped by rejectUnknownProfile,
+// because bartolo will not fall through from a selected profile to an ambient
+// key — it aborts with "no authentication handler configured", which names
+// neither the profile nor where it was selected.
+var profileExemptCommands = map[string]bool{
+	"auth login":           true,
+	"auth logout":          true,
+	"setup":                true,
+	"auth setup":           true,
+	"auth add-profile":     true,
+	"auth list-profiles":   true, // listing profiles is how you diagnose an unknown one
+	"auth profile add":     true,
+	"auth profile list":    true,
+	"auth profile current": true,
+	"auth profile use":     true,
+	"auth profile clear":   true,
+	"doctor":               true,
+	"update":               true, // updating must work without a credential; it touches no orq API
+	"orqi":                 true, // installs and launches orqi; touches no orq API
+	"version":              true, // reports build info only; never calls the API
+	"help":                 true,
+	"completion":           true,
+	"man-pages":            true,
+}
+
 // interactiveWizardCommands are bartolo-owned commands whose prompts run
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
@@ -150,6 +177,9 @@ func installSessionPreRun() {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
 		repairAuthProfileType()
+		if err := rejectUnknownProfile(cmd); err != nil {
+			return err
+		}
 		// A sourced gateway key written by this CLI defers to its session; every
 		// user-supplied env key or bartolo profile remains authoritative.
 		explicitKey := apiKeyConfigured() && !ownExportedKey()
@@ -268,6 +298,26 @@ func applyNoColor() {
 	// The first argument controls colour; the second controls terminal-only
 	// table rendering. NO_COLOR must change only the former.
 	bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, stdoutIsTerminal())
+}
+
+// rejectUnknownProfile errors when a profile is selected but credentials.json
+// has no such entry. It runs after MigrateLayout, which is itself a way to
+// reach this state: a keyless profile this CLI wrote is deleted there, and an
+// exported ORQ_PROFILE naming it survives the deletion.
+func rejectUnknownProfile(cmd *cobra.Command) error {
+	if profileExemptCommands[commandPath(cmd)] {
+		return nil
+	}
+	name, source, drop := commands.ProfileSelection()
+	if name == "" || bartolocli.ProfileExists(name) {
+		return nil
+	}
+	return fmt.Errorf(
+		"unknown profile %q (selected by %s): credentials.json has no entry of that name. "+
+			"Add it with `orq auth profile add apikey %s <api-key>`, see what exists with `orq auth profile list`, or %s. "+
+			"A browser login is not a profile: it belongs to a server, and is selected with --server",
+		name, source, name, drop,
+	)
 }
 
 // repairAuthProfileType rewrites, in memory only, a stored profile whose "type"
