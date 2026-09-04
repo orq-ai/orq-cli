@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [7.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.0.0) — 2026-09-04
+
 - **Breaking:** `--profile` names a saved API-key profile and nothing else. A
   browser login belongs to a server: `~/.orq/sessions/<host>.json`
   (`my.orq.ai.json` for the hosted service), chosen by `--server`, `ORQ_SERVER`
