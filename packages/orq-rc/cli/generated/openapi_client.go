@@ -8444,6 +8444,40 @@ func OpenapiNotifierUpdate(paramNotifierId string, params *viper.Viper, body str
 	return resp, decoded, nil
 }
 
+// OpenapiPIICapabilities Get PII capabilities
+func OpenapiPIICapabilities(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "pii capabilities"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/pii/capabilities"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		decoded = after.(map[string]interface{})
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiPIIDetect Detect PII
 func OpenapiPIIDetect(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "pii detect"

@@ -25,22 +25,74 @@ func registerpiiCommands(root *cobra.Command) {
 
 		var examples string
 
-		examples += "  " + parent.CommandPath() + " detect --example\n"
-
 		cmd := &cobra.Command{
-			Use:     "detect",
-			Short:   "Detect PII",
-			Long:    bartolocli.Markdown("Reports whether the supplied text contains personally identifiable information, optionally with a per-type entity breakdown.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `include_entities` (boolean)\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Use:     "capabilities",
+			Short:   "Get PII capabilities",
+			Long:    bartolocli.Markdown("Reports the entity catalog, supported regions, and default thresholds the PII detection service currently exposes, including per-entity default thresholds."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"include_entities\": false,\n  \"language\": \"language\",\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
+
+				_, decoded, err := OpenapiPIICapabilities(params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := piiCmd
+
+		params := viper.New()
+
+		var examples string
+
+		examples += "  " + parent.CommandPath() + " detect --example\n"
+
+		cmd := &cobra.Command{
+			Use:     "detect",
+			Short:   "Detect PII",
+			Long:    bartolocli.Markdown("Reports whether the supplied text contains personally identifiable information, optionally with a per-type entity breakdown.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entities` (array)\n- `entity_thresholds` (object)\n- `include_entities` (boolean)\n- `language` (string)\n- `regions` (array)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"entities\": [\n    \"entities\"\n  ],\n  \"entity_thresholds\": {},\n  \"include_entities\": false,\n  \"language\": \"language\",\n  \"regions\": [\n    \"regions\"\n  ],\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "entities",
+							FlagName:    "entities",
+							Type:        "string-slice",
+							Description: "The entity types to cover. A named type fires even when it belongs to a\n region, so a region's types can be selected individually without naming\n the region. Alone this is a strict allowlist; alongside `regions` it adds\n to the region coverage instead of narrowing it.",
+						},
+						{
+							Name:        "entity_thresholds",
+							FlagName:    "entity-thresholds",
+							Type:        "json",
+							Description: "Per-entity confidence cutoff overrides. An override REPLACES the global\n `threshold` for that type and may sit above or below it: the gateway\n lowers the first-pass floor it sends the detector to the smallest value\n in the map, and every selected type carries its own cutoff, so a\n sub-global override detects MORE of that type without widening the rest.\n\n This only tunes confidence; it never changes which types are covered.\n Coverage is decided by `entities` alone, so every key here must also\n appear in `entities` — a key that does not is rejected, as is any key at\n all when `entities` is empty.\n\n Declarative [0,1] bound mirrors existing constraint on `threshold`.",
+						},
 						{
 							Name:        "include_entities",
 							FlagName:    "include-entities",
@@ -52,6 +104,12 @@ func registerpiiCommands(root *cobra.Command) {
 							FlagName:    "language",
 							Type:        "string",
 							Description: "BCP-47 language code. Unset means auto-detect.",
+						},
+						{
+							Name:        "regions",
+							FlagName:    "regions",
+							Type:        "string-slice",
+							Description: "Region codes selecting whole regions of coverage, e.g. \"nl\", \"gb\". Every\n entity type those regions cover is included, alongside the base catalog.\n [\"all\"] is exclusive. Leaving this and `entities` both empty also runs every\n region, so selecting nothing is the widest request rather than the narrowest.\n Empty alongside a non-empty `entities` stays strict. See the capabilities\n endpoint for the region list.\n\n Combines with `entities`: the detector unions the two selections, so a\n request carrying both covers the regions plus the named types. Note that\n `entities` only narrows coverage when it travels alone.",
 						},
 						{
 							Name:        "text",
@@ -90,6 +148,18 @@ func registerpiiCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "entities",
+					FlagName:    "entities",
+					Type:        "string-slice",
+					Description: "The entity types to cover. A named type fires even when it belongs to a\n region, so a region's types can be selected individually without naming\n the region. Alone this is a strict allowlist; alongside `regions` it adds\n to the region coverage instead of narrowing it.",
+				},
+				{
+					Name:        "entity_thresholds",
+					FlagName:    "entity-thresholds",
+					Type:        "json",
+					Description: "Per-entity confidence cutoff overrides. An override REPLACES the global\n `threshold` for that type and may sit above or below it: the gateway\n lowers the first-pass floor it sends the detector to the smallest value\n in the map, and every selected type carries its own cutoff, so a\n sub-global override detects MORE of that type without widening the rest.\n\n This only tunes confidence; it never changes which types are covered.\n Coverage is decided by `entities` alone, so every key here must also\n appear in `entities` — a key that does not is rejected, as is any key at\n all when `entities` is empty.\n\n Declarative [0,1] bound mirrors existing constraint on `threshold`.",
+				},
+				{
 					Name:        "include_entities",
 					FlagName:    "include-entities",
 					Type:        "bool",
@@ -100,6 +170,12 @@ func registerpiiCommands(root *cobra.Command) {
 					FlagName:    "language",
 					Type:        "string",
 					Description: "BCP-47 language code. Unset means auto-detect.",
+				},
+				{
+					Name:        "regions",
+					FlagName:    "regions",
+					Type:        "string-slice",
+					Description: "Region codes selecting whole regions of coverage, e.g. \"nl\", \"gb\". Every\n entity type those regions cover is included, alongside the base catalog.\n [\"all\"] is exclusive. Leaving this and `entities` both empty also runs every\n region, so selecting nothing is the widest request rather than the narrowest.\n Empty alongside a non-empty `entities` stays strict. See the capabilities\n endpoint for the region list.\n\n Combines with `entities`: the detector unions the two selections, so a\n request carrying both covers the regions plus the named types. Note that\n `entities` only narrows coverage when it travels alone.",
 				},
 				{
 					Name:        "text",
@@ -136,22 +212,40 @@ func registerpiiCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "redact",
 			Short:   "Redact PII",
-			Long:    bartolocli.Markdown("Replaces detected PII with placeholders and returns the reverse mapping needed to restore the original text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `language` (string)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Replaces detected PII with placeholders and returns the reverse mapping needed to restore the original text.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `entities` (array)\n- `entity_thresholds` (object)\n- `language` (string)\n- `regions` (array)\n- `text` (string)\n- `threshold` (number)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"language\": \"language\",\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"entities\": [\n    \"entities\"\n  ],\n  \"entity_thresholds\": {},\n  \"language\": \"language\",\n  \"regions\": [\n    \"regions\"\n  ],\n  \"text\": \"text\",\n  \"threshold\": 0\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
 					[]bartolocli.BodyField{
 						{
+							Name:        "entities",
+							FlagName:    "entities",
+							Type:        "string-slice",
+							Description: "The entity types to cover. A named type fires even when it belongs to a\n region, so a region's types can be selected individually without naming\n the region. Alone this is a strict allowlist; alongside `regions` it adds\n to the region coverage instead of narrowing it.",
+						},
+						{
+							Name:        "entity_thresholds",
+							FlagName:    "entity-thresholds",
+							Type:        "json",
+							Description: "Per-entity confidence cutoff overrides. An override REPLACES the global\n `threshold` for that type and may sit above or below it: the gateway\n lowers the first-pass floor it sends the detector to the smallest value\n in the map, and every selected type carries its own cutoff, so a\n sub-global override detects MORE of that type without widening the rest.\n\n This only tunes confidence; it never changes which types are covered.\n Coverage is decided by `entities` alone, so every key here must also\n appear in `entities` — a key that does not is rejected, as is any key at\n all when `entities` is empty.\n\n Declarative [0,1] bound mirrors existing constraint on `threshold`.",
+						},
+						{
 							Name:        "language",
 							FlagName:    "language",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "regions",
+							FlagName:    "regions",
+							Type:        "string-slice",
+							Description: "Region codes selecting whole regions of coverage, e.g. \"nl\", \"gb\". Every\n entity type those regions cover is included, alongside the base catalog.\n [\"all\"] is exclusive. Leaving this and `entities` both empty also runs every\n region, so selecting nothing is the widest request rather than the narrowest.\n Empty alongside a non-empty `entities` stays strict. See the capabilities\n endpoint for the region list.\n\n Combines with `entities`: the detector unions the two selections, so a\n request carrying both covers the regions plus the named types. Note that\n `entities` only narrows coverage when it travels alone.",
 						},
 						{
 							Name:        "text",
@@ -190,10 +284,28 @@ func registerpiiCommands(root *cobra.Command) {
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
 				{
+					Name:        "entities",
+					FlagName:    "entities",
+					Type:        "string-slice",
+					Description: "The entity types to cover. A named type fires even when it belongs to a\n region, so a region's types can be selected individually without naming\n the region. Alone this is a strict allowlist; alongside `regions` it adds\n to the region coverage instead of narrowing it.",
+				},
+				{
+					Name:        "entity_thresholds",
+					FlagName:    "entity-thresholds",
+					Type:        "json",
+					Description: "Per-entity confidence cutoff overrides. An override REPLACES the global\n `threshold` for that type and may sit above or below it: the gateway\n lowers the first-pass floor it sends the detector to the smallest value\n in the map, and every selected type carries its own cutoff, so a\n sub-global override detects MORE of that type without widening the rest.\n\n This only tunes confidence; it never changes which types are covered.\n Coverage is decided by `entities` alone, so every key here must also\n appear in `entities` — a key that does not is rejected, as is any key at\n all when `entities` is empty.\n\n Declarative [0,1] bound mirrors existing constraint on `threshold`.",
+				},
+				{
 					Name:        "language",
 					FlagName:    "language",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "regions",
+					FlagName:    "regions",
+					Type:        "string-slice",
+					Description: "Region codes selecting whole regions of coverage, e.g. \"nl\", \"gb\". Every\n entity type those regions cover is included, alongside the base catalog.\n [\"all\"] is exclusive. Leaving this and `entities` both empty also runs every\n region, so selecting nothing is the widest request rather than the narrowest.\n Empty alongside a non-empty `entities` stays strict. See the capabilities\n endpoint for the region list.\n\n Combines with `entities`: the detector unions the two selections, so a\n request carrying both covers the regions plus the named types. Note that\n `entities` only narrows coverage when it travels alone.",
 				},
 				{
 					Name:        "text",
