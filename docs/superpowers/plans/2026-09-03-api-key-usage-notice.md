@@ -27,7 +27,7 @@
 - Test: `cli/custom/server_test.go`
 
 **Interfaces:**
-- Consumes: `ownExportedKey()`, `auth.ActiveProfile()`, `auth.Session`, `bartolocli.Stderr`, and the outgoing Bartolo request.
+- Consumes: `ownExportedKey()`, `commands.ConfiguredCredential()`, `auth.Session`, `bartolocli.Stderr`, and the outgoing Bartolo request.
 - Produces: `configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool, session *auth.Session)` and `apiKeyUsageNoticeBeforeDial`, backed by the shared `commands.UserAPIKeyCredential()` and `commands.MachineFormatRequested()` decisions.
 
 - [ ] **Step 1: Write failing table tests for the display predicate**
