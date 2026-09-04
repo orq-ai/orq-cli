@@ -48,7 +48,10 @@ func resolveCodex(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	plan := &LaunchPlan{
-		Env: map[string]string{"ORQ_API_KEY": ctx.Creds.APIKey},
+		Env: map[string]string{
+			"ORQ_API_KEY": ctx.Creds.APIKey,
+			"ORQ_SERVER":  ctx.Creds.APIBaseURL,
+		},
 	}
 	appendModelWarnings(plan, resolved, codexNormalize, "openai/gpt-5.4")
 

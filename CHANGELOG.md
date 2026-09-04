@@ -111,6 +111,58 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Breaking:** `--profile` names a saved API-key profile and nothing else. A
+  browser login belongs to a server: `~/.orq/sessions/<host>.json`
+  (`my.orq.ai.json` for the hosted service), chosen by `--server`, `ORQ_SERVER`
+  or `orq server set`. `orq auth login --profile x` is an error; use `--server`
+  for another host. While a profile is in force the session is not consulted,
+  and `orq whoami` / `orq doctor` report the profile. Existing session files
+  are renamed to their host on the next command; a second file for the same
+  host is kept as `<name>.json.deprecated`. The gateway key `orq setup` minted,
+  including its workspace and project scope, moves from `credentials.json`
+  into the session file, and a keyless profile this CLI wrote is deleted. A
+  keyless profile with none of this CLI's fields is left alone.
+- **Breaking:** a profile that is selected but not configured is now refused up
+  front, naming where the selection came from (`--profile`, `ORQ_PROFILE` or
+  `orq auth profile use`) and how to drop it. The commands that create, list or
+  unselect a profile, and those that never call the orq API (`doctor`,
+  `version`, `update`, `orqi`), still run. Previously such a name reached
+  bartolo, which aborted every command with `no authentication handler
+  configured`.
+- **Added:** `orq launch` and `orq orqi` pass the resolved server to the child
+  as `ORQ_SERVER`, so a nested `orq` and orqi stay on the host the parent
+  chose. The environment variable is the contract; no `--server` argument is
+  forwarded.
+- **Changed:** when migration finds a gateway key whose login is already gone,
+  it says so and prints `orq api-keys delete <id>`. Logout never revoked that
+  key server-side, so dropping it silently left a working credential with no
+  local record of its id.
+- **Breaking:** `orq auth logout` clears the browser session only. It no longer
+  deletes a saved API-key profile, so after `orq auth login --api-key` a logout
+  leaves that profile authenticating; remove it with `orq auth profile clear`
+  or by deleting the entry.
+- **Changed:** `orq auth login --profile x` is an error for a *browser* login
+  only. `orq auth login --profile x --api-key sk-…` still writes the key into
+  profile `x`.
+- **Changed:** the profile in force is exported to child processes as
+  `ORQ_API_KEY`, so `orq --profile x launch <agent>` and `orq --profile x orqi`
+  authenticate the program they start with that profile's key. It now applies to
+  `ORQ_PROFILE` and `orq auth profile use` as well as the `--profile` flag, and
+  the other key variables are cleared rather than left beside it.
+- **Changed:** `orq doctor` reports a profile that is in force but carries no
+  `api_key` as `misconfigured` rather than claiming the environment key
+  authenticates: bartolo does not fall through from a selected profile.
+  `orq whoami` shows the same profile's key as unset instead of masking an
+  empty value, and its `--json` payload now carries `session_file`.
+- **Changed:** a session file that cannot be parsed is skipped with a notice
+  naming the path, instead of aborting every command. Migration still fails
+  closed where it is about to delete a credential's last copy.
+- **Deprecated:** `auth list-profiles` and `auth add-profile` print a notice
+  and are hidden from `--help`; use `auth profile list` and `auth profile add`.
+  Removed in the next minor. `auth list-profiles` now renders bartolo's own
+  listing and shows saved API-key profiles only — a browser login is a session,
+  reported by `orq whoami`.
+
 ## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
 
 - **Fixed: `orq setup` now shows the project picker during ordinary terminal

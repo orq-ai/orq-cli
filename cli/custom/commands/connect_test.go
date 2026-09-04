@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 	"orq/cli/custom/skills"
 
@@ -65,8 +66,27 @@ const codingModelCatalogueJSON = `[{"provider":"anthropic","model_id":"claude-so
 func connectHarness(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
 	home := connectStatusHarness(t)
+	viper.Set("profile", "")
 	t.Setenv("ORQ_API_BASE_URL", srv.URL)
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "env")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
 	return home
+}
+
+func saveConnectSession(t *testing.T, apiBase, workspace, gatewayKey, gatewayWorkspace string) {
+	t.Helper()
+	expiresAt := time.Now().Add(time.Hour).Format(time.RFC3339)
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: apiBase, V1BaseURL: apiBase, AuthBaseURL: apiBase, ProfileBaseURL: apiBase,
+		User: &auth.SessionUser{ID: "u1", Email: "user@example.com"}, Workspaces: []map[string]any{{"key": workspace}},
+		ActiveWorkspaceKey: &workspace, RefreshToken: "refresh-token",
+		BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: expiresAt},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{workspace: {Token: "session-token-" + workspace, ExpiresAt: expiresAt}},
+		GatewayKey:      gatewayKey, GatewayWorkspace: gatewayWorkspace,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The subcommand's documented case, through the new verb: a saved key and no
@@ -74,6 +94,10 @@ func connectHarness(t *testing.T, srv *httptest.Server) string {
 func TestConnectWiresTheSavedKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "ProfileService") {
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+			return
+		}
 		if strings.Contains(r.URL.Path, "model") {
 			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
@@ -83,9 +107,7 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 	defer srv.Close()
 
 	home := connectHarness(t, srv)
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", ""); err != nil {
-		t.Fatal(err)
-	}
+	saveConnectSession(t, srv.URL, "acme", "sk-orq-SAVED", "")
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
@@ -117,6 +139,10 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 func TestConnectRecordsAgentWiring(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "ProfileService") {
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+			return
+		}
 		if strings.Contains(r.URL.Path, "model") {
 			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
@@ -126,9 +152,7 @@ func TestConnectRecordsAgentWiring(t *testing.T) {
 	defer srv.Close()
 
 	connectHarness(t, srv)
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveConnectSession(t, srv.URL, "acme", "sk-orq-SAVED", "acme")
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
@@ -157,6 +181,10 @@ func TestConnectRecordsAgentWiring(t *testing.T) {
 func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "ProfileService") {
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"user@example.com","workspaces":[{"key":"acme"}]}}`)
+			return
+		}
 		if strings.Contains(r.URL.Path, "model") {
 			fmt.Fprint(w, codingModelCatalogueJSON)
 			return
@@ -168,9 +196,7 @@ func TestConnectWithAPIKeyRecordsEmptyWorkspace(t *testing.T) {
 	connectHarness(t, srv)
 	// A saved key with a workspace exists, but --api-key below must win as the
 	// bearer, and the record must reflect that this run used a key that is not it.
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveConnectSession(t, srv.URL, "acme", "sk-orq-SAVED", "acme")
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi", "--api-key", "sk-orq-SUPPLIED"})
@@ -201,14 +227,11 @@ func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	home := connectHarness(t, srv)
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "A"); err != nil {
-		t.Fatal(err)
-	}
+	connectHarness(t, srv)
+	saveConnectSession(t, srv.URL, "A", "sk-orq-SAVED", "A")
 
-	// connect against workspace A: no session file exists yet, so
-	// resolveConnectAuth takes the saved-key fast path and records the key's
-	// own workspace.
+	// Connect against workspace A using the gateway key stored on that
+	// resolved-server session, and record the key's own workspace.
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
 	if err := cmd.Execute(); err != nil {
@@ -220,26 +243,15 @@ func TestWorkspaceSupersessionEndToEnd(t *testing.T) {
 
 	// The session moves to B — 'orq workspace use B' — without anyone rewiring
 	// kimi. sk-orq-SAVED, minted for A, is what's still exported.
-	future := time.Now().Add(time.Hour).Format(time.RFC3339)
-	dir := filepath.Join(home, ".orq", "sessions")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session missing: %v", err)
 	}
-	session, err := json.Marshal(map[string]any{
-		"version":            1,
-		"apiBaseUrl":         srv.URL,
-		"v1BaseUrl":          srv.URL,
-		"authBaseUrl":        srv.URL,
-		"profileBaseUrl":     srv.URL,
-		"activeWorkspaceKey": "B",
-		"refreshToken":       "refresh-token",
-		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
-		"workspaceTokens":    map[string]any{"B": map[string]any{"token": "session-token-B", "expiresAt": future}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "default.json"), session, 0o600); err != nil {
+	workspaceB := "B"
+	session.ActiveWorkspaceKey = &workspaceB
+	session.Workspaces = []map[string]any{{"key": "A"}, {"key": "B"}}
+	session.WorkspaceTokens["B"] = auth.StoredAccessToken{Token: "session-token-B", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)}
+	if err := auth.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
 
@@ -294,24 +306,18 @@ func connectStatusHarness(t *testing.T) string {
 	t.Setenv("ORQ_API_KEY", "")
 	t.Chdir(t.TempDir())
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	} else {
-		// Package tests run sequentially against a shared bartolocli.Creds, and a
-		// caller of this harness routinely calls writeAPIKeyProfile afterward
-		// (connectHarness's callers do), which sets these same fields. When this
-		// call didn't create the store fresh, that later Set would otherwise leak
-		// into whichever test runs next.
-		prevKey := bartolocli.Creds.GetString("profiles.default.gateway_key")
+		// Package tests run sequentially against a shared bartolocli.Creds, and
+		// callers may write a real API-key profile afterward. When this call did
+		// not create the store fresh, that write would otherwise leak into the
+		// next test.
 		prevAPIKey := bartolocli.Creds.GetString("profiles.default.api_key")
-		prevWS := bartolocli.Creds.GetString("profiles.default.workspace")
 		t.Cleanup(func() {
-			bartolocli.Creds.Set("profiles.default.gateway_key", prevKey)
 			bartolocli.Creds.Set("profiles.default.api_key", prevAPIKey)
-			bartolocli.Creds.Set("profiles.default.workspace", prevWS)
 		})
 	}
 	if bartolocli.Formatter == nil {

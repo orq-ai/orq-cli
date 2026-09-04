@@ -15,8 +15,6 @@ import (
 
 	"github.com/pelletier/go-toml"
 
-	bartolocli "github.com/orq-ai/bartolo/cli"
-
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
@@ -1416,7 +1414,7 @@ func TestCodingAgentChecksWorkspaceParentheticalOnEveryMessage(t *testing.T) {
 		if _, err := writeKimiProviderTOML(providerPath, "https://api.orq.ai/v3/router", "sk-orq-old", models, ""); err != nil {
 			t.Fatal(err)
 		}
-		bartolocli.Creds.Set("profiles.default.gateway_key", "sk-orq-new")
+		saveTestGatewayKey(t, "sk-orq-new", "acme")
 		if err := recordAgentWiring("kimi", "acme", "KEYID"); err != nil {
 			t.Fatal(err)
 		}
@@ -1509,7 +1507,8 @@ func TestCodingAgentChecksReportsWorkspaceMismatchAsInfo(t *testing.T) {
 	}
 	const pinned = "Kimi Code is pinned to workspace acme, the workspace it was connected against — "
 
-	// Each arm seeds both profile fields, so any subset can run alone.
+	// Each arm seeds the gateway fields on the resolved-server session, so
+	// any subset can run alone.
 	for _, arm := range []struct {
 		name, savedKey, savedWS, want string
 	}{
@@ -1528,8 +1527,7 @@ func TestCodingAgentChecksReportsWorkspaceMismatchAsInfo(t *testing.T) {
 		},
 	} {
 		t.Run(arm.name, func(t *testing.T) {
-			bartolocli.Creds.Set("profiles.default.gateway_key", arm.savedKey)
-			bartolocli.Creds.Set("profiles.default.workspace", arm.savedWS)
+			saveTestGatewayKey(t, arm.savedKey, arm.savedWS)
 			if got := mismatchRow(t).Message; got != arm.want {
 				t.Errorf("message:\n got %q\nwant %q", got, arm.want)
 			}

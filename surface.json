@@ -1236,7 +1236,8 @@
       "use": "list-profiles",
       "aliases": [
         "ls"
-      ]
+      ],
+      "hidden": true
     },
     {
       "path": "orq auth login",

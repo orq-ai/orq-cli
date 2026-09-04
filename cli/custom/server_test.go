@@ -2,7 +2,6 @@ package custom
 
 import (
 	"bytes"
-	"os"
 	"strings"
 	"testing"
 
@@ -114,8 +113,7 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return out.String(), errBuf.String()
 }
 
-// Precedence, and the provenance `orq doctor` reports. The session is layered
-// on by the PreRun itself, below every source here.
+// Precedence, and the provenance `orq doctor` reports.
 func TestResolveServerPrecedence(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root := buildRoot(t)
@@ -156,9 +154,9 @@ func TestResolveServerPrecedence(t *testing.T) {
 			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{
-			name: "env beats the profile",
+			name: "profile beats the env",
 			env:  map[string]string{"ORQ_SERVER": "https://env.example"}, profile: "https://profile.example",
-			wantServer: "https://env.example", wantSource: "env",
+			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{name: "env", env: map[string]string{"ORQ_SERVER": "https://env.example"}, wantServer: "https://env.example", wantSource: "env"},
 		{name: "deprecated env", env: map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"}, wantServer: "https://legacy.example", wantSource: "env"},
@@ -217,51 +215,13 @@ func TestResolveServerPrecedence(t *testing.T) {
 // setProfileServer binds a host to the active credentials profile for one test.
 func setProfileServer(t *testing.T, server string) {
 	t.Helper()
-	key := "profiles." + auth.ActiveProfile() + ".server"
+	previousProfile := viper.GetString("profile")
+	bartolocli.SelectProfile("server-test")
+	key := "profiles.server-test.server"
 	prev := bartolocli.Creds.GetString(key)
 	bartolocli.Creds.Set(key, server)
-	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
-}
-
-// An explicitly typed --profile is a more specific statement of intent than an
-// exported key, so the profile's own key must reach the request instead.
-func TestProfileAPIKeyBeatsTheEnvironment(t *testing.T) {
-	root := buildRoot(t)
-	profile := auth.ActiveProfile()
-	key := "profiles." + profile + ".api_key"
-	prev := bartolocli.Creds.GetString(key)
-	bartolocli.Creds.Set(key, "profile-key")
-	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
-
-	flags := root.PersistentFlags()
-	t.Cleanup(func() { flags.Lookup("profile").Changed = false })
-
-	// Without the flag, env versus env is bartolo's call and nothing moves.
-	t.Setenv("ORQ_API_KEY", "env-key")
-	flags.Lookup("profile").Changed = false
-	applyProfileAPIKey(root)
-	if got := os.Getenv("ORQ_API_KEY"); got != "env-key" {
-		t.Fatalf("no --profile: got %q, want the environment untouched", got)
-	}
-
-	// With it, the profile wins and says so on stderr. The flag carries the
-	// name: bartolo 0.8 retired the implicit `default` profile, so a changed
-	// but empty --profile puts no profile in force.
-	t.Setenv("ORQ_TOKEN", "env-token")
-	if err := flags.Set("profile", profile); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = flags.Set("profile", "") })
-	flags.Lookup("profile").Changed = true
-	_, stderr := captureOutput(t, func() { applyProfileAPIKey(root) })
-	if got := os.Getenv("ORQ_API_KEY"); got != "profile-key" {
-		t.Fatalf("--profile: got %q, want the profile key", got)
-	}
-	// The other spellings are cleared, or bartolo would read them first.
-	if got := os.Getenv("ORQ_TOKEN"); got != "" {
-		t.Errorf("ORQ_TOKEN: got %q, want it cleared", got)
-	}
-	if !strings.Contains(stderr, "takes precedence") {
-		t.Errorf("no warning for the shadowed key: %q", stderr)
-	}
+	t.Cleanup(func() {
+		bartolocli.Creds.Set(key, prev)
+		viper.Set("profile", previousProfile)
+	})
 }

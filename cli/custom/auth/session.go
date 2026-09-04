@@ -5,19 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/spf13/viper"
 )
 
 const (
 	sessionDirName     = ".orq"
 	sessionsSubdirName = "sessions"
 	legacyFileName     = "session.json"
-	defaultProfile     = "default"
 )
 
 type StoredAccessToken struct {
@@ -46,6 +45,16 @@ type Session struct {
 	RefreshToken       string                       `json:"refreshToken"`
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
+
+	// The gateway key `orq setup` minted from this login for coding agents,
+	// its id (the handle for revoking it), its expiry, and the workspace it
+	// was minted for. Not a credential for the platform API, so never a
+	// bartolo profile.
+	GatewayKey          string `json:"gatewayKey,omitempty"`
+	GatewayKeyID        string `json:"gatewayKeyId,omitempty"`
+	GatewayKeyExpiresAt string `json:"gatewayKeyExpiresAt,omitempty"`
+	GatewayWorkspace    string `json:"gatewayWorkspace,omitempty"`
+	GatewayProject      string `json:"gatewayProject,omitempty"`
 }
 
 type SessionInspectStatus string
@@ -65,14 +74,37 @@ type SessionInspectResult struct {
 	Message string
 }
 
-// ActiveProfile returns the profile name the user passed via --profile (or the
-// ORQ_PROFILE env var bartolo wires up via viper). Defaults to "default".
-func ActiveProfile() string {
-	name := viper.GetString("profile")
-	if name == "" {
-		return defaultProfile
+// SessionHost names the session file for a server: the host, lowercased, with
+// `_<port>` when one is present and anything outside [a-z0-9.-] replaced by
+// `_`. No scheme — http and https to one host are one login. The hosted
+// service answers under two names, and those are one login too.
+func SessionHost(apiBase string) string {
+	apiBase = strings.TrimSpace(apiBase)
+	if IsHostedAPIBase(apiBase) {
+		apiBase = DefaultAPIBaseURL
 	}
-	return name
+	u, err := url.Parse(apiBase)
+	if err != nil || u.Hostname() == "" {
+		return sanitizeHost(apiBase)
+	}
+	name := u.Hostname()
+	if p := u.Port(); p != "" {
+		name += "_" + p
+	}
+	return sanitizeHost(name)
+}
+
+func sanitizeHost(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
 }
 
 func sessionsDir() string {
@@ -83,11 +115,15 @@ func sessionsDir() string {
 	return filepath.Join(home, sessionDirName, sessionsSubdirName)
 }
 
-// SessionFilePath returns the per-profile session file path. Each profile
-// stores its own credentials at ~/.orq/sessions/<profile>.json so that
-// `orq --profile acme` and `orq --profile default` don't share state.
+func sessionPathFor(host string) string {
+	return filepath.Join(sessionsDir(), host+".json")
+}
+
+// SessionFilePath is the session for the server this invocation resolved
+// (custom.resolveServer → SetServer), so `--server https://my.staging.orq.ai`
+// reads the staging login and a bare `orq` reads the hosted one.
 func SessionFilePath() string {
-	return filepath.Join(sessionsDir(), ActiveProfile()+".json")
+	return sessionPathFor(SessionHost(ResolveURLs("").APIBaseURL))
 }
 
 func legacySessionFilePath() string {
@@ -98,7 +134,7 @@ func legacySessionFilePath() string {
 	return filepath.Join(home, sessionDirName, legacyFileName)
 }
 
-// SessionsDir exposes the directory backing every profile's session file, so
+// SessionsDir exposes the directory holding the per-server session files, so
 // a caller outside this package (doctor's permission check) can enumerate it
 // without reverse-engineering the layout from SessionFilePath.
 func SessionsDir() string {
@@ -106,33 +142,11 @@ func SessionsDir() string {
 }
 
 // LegacySessionFilePath exposes the pre-multi-profile `~/.orq/session.json`
-// path. It normally disappears into the per-profile layout the first time
-// InspectSession runs (see migrateLegacySession), but a caller auditing
-// credentials on disk should not have to assume that migration already ran.
+// path. It normally disappears into the host-keyed layout the first time
+// MigrateLayout runs, but a caller auditing credentials on disk should not
+// have to assume that migration already ran.
 func LegacySessionFilePath() string {
 	return legacySessionFilePath()
-}
-
-// migrateLegacySession moves a pre-multi-profile ~/.orq/session.json into the
-// per-profile layout under ~/.orq/sessions/default.json the first time we see
-// one, so existing logged-in users aren't logged out by the upgrade.
-func migrateLegacySession() {
-	legacy := legacySessionFilePath()
-	if _, err := os.Stat(legacy); err != nil {
-		return
-	}
-	target := filepath.Join(sessionsDir(), defaultProfile+".json")
-	if _, err := os.Stat(target); err == nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return
-	}
-	_ = os.Rename(legacy, target)
-}
-
-func ensureSessionDir() error {
-	return os.MkdirAll(filepath.Dir(SessionFilePath()), 0o700)
 }
 
 func validateSession(s *Session) error {
@@ -155,7 +169,6 @@ func validateSession(s *Session) error {
 }
 
 func InspectSession() SessionInspectResult {
-	migrateLegacySession()
 	path := SessionFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -244,7 +257,14 @@ func pruneExpiredWorkspaceTokens(tokens map[string]StoredAccessToken) map[string
 // the token cache, costing at most one extra token exchange) instead of
 // corrupted JSON from a shorter write racing a longer one.
 func SaveSession(s *Session) error {
-	if err := ensureSessionDir(); err != nil {
+	return saveSessionTo(SessionFilePath(), s)
+}
+
+// saveSessionTo writes through WriteSecretFile — temp file in the same
+// directory, 0600, then rename — so a session file gets the same atomicity and
+// permissions as credentials.json, from one implementation.
+func saveSessionTo(path string, s *Session) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	// Shallow copy so the pruned token map is this write's alone; every other
@@ -255,25 +275,7 @@ func SaveSession(s *Session) error {
 	if err != nil {
 		return err
 	}
-	path := SessionFilePath()
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".session-*.json")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath) // no-op once the rename succeeds
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return WriteSecretFile(path, data)
 }
 
 func ClearSession() error {
@@ -285,25 +287,22 @@ func ClearSession() error {
 }
 
 // SavedAgentKey returns the credential agent configs are wired with, and the
-// workspace it was minted for. gateway_key is what `orq setup` writes now;
-// api_key is the fallback for keys minted before the split and for keys the
-// user brought themselves.
-//
-// It lives here rather than in commands because launch needs it too, and
-// launch cannot import commands. Three copies of this lookup drifted apart
-// once already: the split moved the key and one caller kept reading api_key,
-// which made every `orq launch` warn about a workspace mismatch that was not
-// there.
+// workspace it was minted for. A bartolo profile in force is authoritative: its
+// key is returned with an unknowable workspace and the login session is ignored
+// completely. With no profile in force, the gateway key belongs to the login
+// session. It lives here because launch needs it too and launch cannot import
+// commands.
 func SavedAgentKey() (key, workspace string) {
-	if bartolocli.Creds == nil {
-		return "", ""
+	if bartolocli.ActiveProfileName() != "" {
+		if bartolocli.Creds == nil {
+			return "", ""
+		}
+		return strings.TrimSpace(bartolocli.GetProfile()["api_key"]), ""
 	}
-	profile := ActiveProfile()
-	workspace = StateValueOf(profile, "workspace")
-	if key = StateValueOf(profile, "gateway_key"); key != "" {
-		return key, workspace
+	if session, err := ReadSession(); err == nil && session != nil {
+		return session.GatewayKey, session.GatewayWorkspace
 	}
-	return strings.TrimSpace(bartolocli.Creds.GetString("profiles." + profile + ".api_key")), workspace
+	return "", ""
 }
 
 // EnvKeyShadowsWorkspace is the one definition of "the exported key conflicts

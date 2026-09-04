@@ -29,41 +29,14 @@ func DeprecatedAPIBaseFlag(cmd *cobra.Command) {
 // auth.ResolveURLs then supplies.
 func serverURL() string { return auth.Server() }
 
-// ProfileServer is the host bound to the active credentials profile, or "" when
-// that profile has none. A profile is the more specific statement of intent
-// than a host persisted globally with `orq server set`, so custom.resolveServer
-// ranks it above the config layer and below the env vars and flags.
+// ProfileServer is the host bound to the bartolo profile in force, or "" when
+// there is none. Selecting a profile is how you select a backend, so
+// custom.resolveServer ranks it above `orq server set`.
 func ProfileServer() string {
-	if bartolocli.Creds == nil {
+	if bartolocli.Creds == nil || !profileInForce() {
 		return ""
 	}
-	return auth.StateValueOf(auth.ActiveProfile(), "server")
-}
-
-// BindProfileServer records a host on a profile, so `orq --profile acme ...`
-// routes to acme's backend with no flag and no session read. Only an explicit
-// host is bound: pinning the default would survive a change of default and
-// silently keep an old one alive.
-func BindProfileServer(profile, server string) error {
-	server = strings.TrimSpace(server)
-	if bartolocli.Creds == nil || profile == "" || server == "" {
-		return nil
-	}
-	if auth.StateValueOf(profile, "server") == server {
-		return nil
-	}
-	// A profile that authenticates with an API key is bartolo's, and bartolo
-	// resolves its server itself; anything else is ours to record.
-	if strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) != "" {
-		bartolocli.Creds.Set("profiles."+profile+".server", server)
-		// State outranks the profile in StateValueOf, so a server left there by
-		// an earlier session login would keep winning against the host this
-		// profile just bound.
-		auth.SetStateValue(profile, "server", "")
-	} else {
-		auth.SetStateValue(profile, "server", server)
-	}
-	return saveCreds()
+	return strings.TrimSpace(bartolocli.GetProfile()["server"])
 }
 
 // saveCreds persists the credentials file through bartolo's 0600 write.

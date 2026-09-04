@@ -22,10 +22,6 @@ import (
 func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	prevProfile := viper.GetString("profile")
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", prevProfile) })
-
 	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewCredentialsFile: %v", err)
@@ -35,14 +31,12 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 	prevCreds := bartolocli.Creds
 	bartolocli.Creds = creds
 	t.Cleanup(func() { bartolocli.Creds = prevCreds })
-	creds.Set("profiles.default.gateway_key", "sk-orq-OURS")
-
 	writeSession := func() {
 		dir := filepath.Join(home, ".orq", "sessions")
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "default.json"), []byte(`{"version":1,"apiBaseUrl":"https://api.orq.ai","v1BaseUrl":"https://api.orq.ai/v1","authBaseUrl":"https://api.orq.ai/v2/auth","profileBaseUrl":"https://api.orq.ai/v2/auth/profile","user":{"id":"u"},"workspaces":[],"activeWorkspaceKey":"acme","refreshToken":"r","bootstrapToken":{"token":"t","expiresAt":"2099-01-01T00:00:00Z"},"workspaceTokens":{}}`), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "my.orq.ai.json"), []byte(`{"version":1,"apiBaseUrl":"https://api.orq.ai","v1BaseUrl":"https://api.orq.ai/v1","authBaseUrl":"https://api.orq.ai/v2/auth","profileBaseUrl":"https://api.orq.ai/v2/auth/profile","user":{"id":"u"},"workspaces":[],"activeWorkspaceKey":"acme","refreshToken":"r","bootstrapToken":{"token":"t","expiresAt":"2099-01-01T00:00:00Z"},"workspaceTokens":{},"gatewayKey":"sk-orq-OURS"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -66,6 +60,9 @@ func TestOwnExportedKeyDefersOnlyToOurOwnKey(t *testing.T) {
 
 	// A credentials profile is an explicit choice too.
 	t.Setenv("ORQ_API_KEY", "sk-orq-OURS")
+	prevProfile := viper.GetString("profile")
+	viper.Set("profile", "default")
+	t.Cleanup(func() { viper.Set("profile", prevProfile) })
 	creds.Set("profiles.default.api_key", "sk-orq-PROFILE")
 	if ownExportedKey() {
 		t.Error("a profile api_key must keep winning")
@@ -195,7 +192,10 @@ func TestBridgeProjectFlagUsesAnyConfiguredCredential(t *testing.T) {
 				t.Setenv(tc.envVar, tc.envKey)
 			}
 			prevProfile := viper.GetString("profile")
-			viper.Set("profile", "default")
+			viper.Set("profile", "")
+			if tc.profileKey != "" {
+				viper.Set("profile", "default")
+			}
 			t.Cleanup(func() { viper.Set("profile", prevProfile) })
 			creds, err := bartolocli.NewCredentialsFile(t.TempDir())
 			if err != nil {
@@ -222,5 +222,107 @@ func TestBridgeProjectFlagUsesAnyConfiguredCredential(t *testing.T) {
 				t.Errorf("--project-id = %q, want the id --project resolved to", got)
 			}
 		})
+	}
+}
+
+// The generated --project bridge is part of the same credential decision as
+// Bartolo's request handler. A selected profile must choose both its server and
+// its key even when the shell exports a different pair; splitting those two
+// decisions can send one deployment's key to another deployment.
+func TestGeneratedProjectNameUsesProfileKeyAndServerOverEnvironment(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	var profileRequests, envRequests int
+	var profilePaths []string
+	profileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		profileRequests++
+		profilePaths = append(profilePaths, r.URL.RequestURI())
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-profile" {
+			t.Errorf("profile server Authorization = %q, want the profile key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v2/projects" {
+			fmt.Fprint(w, `{"data":[{"project_id":"11111111-2222-3333-4444-555555555555","key":"banking","name":"Banking"}],"has_more":false}`)
+			return
+		}
+		fmt.Fprint(w, `{"data":[],"has_more":false}`)
+	}))
+	t.Cleanup(profileServer.Close)
+	envServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		envRequests++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"project_id":"11111111-2222-3333-4444-555555555555","key":"banking","name":"Banking"}],"has_more":false}`)
+	}))
+	t.Cleanup(envServer.Close)
+
+	t.Setenv("ORQ_API_KEY", "sk-environment")
+	t.Setenv("ORQ_SERVER", envServer.URL)
+	root := buildRoot(t)
+	bartolocli.Creds.Set("profiles.acme.api_key", "sk-profile")
+	bartolocli.Creds.Set("profiles.acme.server", profileServer.URL)
+	bartolocli.Creds.Set("profiles.acme.type", "")
+	// buildRoot is used repeatedly in this package, while viper's programmatic
+	// values are process-global. Pin the value the flag represents so this
+	// integration remains about credential/server routing rather than prior
+	// tests' binding order.
+	setProjectRef(t, "banking")
+	root.SetArgs([]string{"--profile", "acme", "--project", "banking", "alerts", "list"})
+	var runErr error
+	captureOutput(t, func() { runErr = root.Execute() })
+	if runErr != nil {
+		t.Fatalf("generated command: %v", runErr)
+	}
+	if envRequests != 0 {
+		t.Errorf("environment server received %d requests, want none", envRequests)
+	}
+	if profileRequests < 2 {
+		t.Errorf("profile server received %d requests (%v), want project lookup and generated request", profileRequests, profilePaths)
+	}
+}
+
+// Setup has its own HTTP client rather than Bartolo's generated request path,
+// so it needs an integration pin of the same profile-first decision. The
+// environment server deliberately answers successfully: the test must detect
+// routing to the wrong host, not pass only because that host rejected the key.
+func TestSetupUsesProfileKeyAndServerOverEnvironment(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	var profileRequests, envRequests int
+	profileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		profileRequests++
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-profile" {
+			t.Errorf("profile server Authorization = %q, want the profile key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"settings":{"key":"acme"}}`)
+	}))
+	t.Cleanup(profileServer.Close)
+	envServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		envRequests++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"settings":{"key":"environment"}}`)
+	}))
+	t.Cleanup(envServer.Close)
+
+	t.Setenv("ORQ_API_KEY", "sk-environment")
+	t.Setenv("ORQ_SERVER", envServer.URL)
+	root := buildRoot(t)
+	bartolocli.Creds.Set("profiles.acme.api_key", "sk-profile")
+	bartolocli.Creds.Set("profiles.acme.server", profileServer.URL)
+	bartolocli.Creds.Set("profiles.acme.type", "")
+	root.SetArgs([]string{"--profile", "acme", "--no-input", "setup", "--no-project"})
+	var runErr error
+	captureOutput(t, func() { runErr = root.Execute() })
+	if runErr != nil {
+		t.Fatalf("setup: %v", runErr)
+	}
+	if envRequests != 0 {
+		t.Errorf("environment server received %d requests, want none", envRequests)
+	}
+	if profileRequests < 2 {
+		t.Errorf("profile server received %d requests, want saved-key check and verification", profileRequests)
 	}
 }

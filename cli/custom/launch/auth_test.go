@@ -11,8 +11,7 @@ import (
 	"testing"
 	"time"
 
-	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/spf13/viper"
+	"orq/cli/custom/auth"
 )
 
 func TestResolveCredentialsEnvKey(t *testing.T) {
@@ -63,14 +62,7 @@ func TestResolveCredentialsSession(t *testing.T) {
 		"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
 		"workspaceTokens":    map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
 	}
-	dir := filepath.Join(home, ".orq", "sessions")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	encoded, _ := json.Marshal(session)
-	if err := os.WriteFile(filepath.Join(dir, "default.json"), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSessionFile(t, home, session)
 
 	creds, err := ResolveCredentials(os.Getenv)
 	if err != nil {
@@ -84,32 +76,6 @@ func TestResolveCredentialsSession(t *testing.T) {
 	}
 }
 
-// seedProfile points the default profile's gateway_key and workspace at the
-// given values, the way `orq setup` leaves them on disk.
-func seedProfile(t *testing.T, key, ws string) {
-	t.Helper()
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	// Package tests share bartolocli.Creds sequentially; a test running after this
-	// one must not inherit these fields, whether or not this call created the
-	// store fresh — restore what was here before, not just whether it existed.
-	prevKey := bartolocli.Creds.GetString("profiles.default.gateway_key")
-	prevAPIKey := bartolocli.Creds.GetString("profiles.default.api_key")
-	prevWS := bartolocli.Creds.GetString("profiles.default.workspace")
-	t.Cleanup(func() {
-		bartolocli.Creds.Set("profiles.default.gateway_key", prevKey)
-		bartolocli.Creds.Set("profiles.default.api_key", prevAPIKey)
-		bartolocli.Creds.Set("profiles.default.workspace", prevWS)
-	})
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", "") })
-	bartolocli.Creds.Set("profiles.default.gateway_key", key)
-	bartolocli.Creds.Set("profiles.default.api_key", "")
-	bartolocli.Creds.Set("profiles.default.workspace", ws)
-}
-
 // TestResolveCredentialsSupersession covers ResolveCredentials' fall-through
 // decision for an exported ORQ_API_KEY that matches the key we minted: it
 // must lose only when the session has since moved to a different workspace.
@@ -120,8 +86,8 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 		name     string
 		savedWS  string
 		activeWS string
-		// savedKey is the key seedProfile records as minted; empty means "same
-		// as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
+		// savedKey is the key recorded on the session as minted; empty means
+		// "same as the exported ORQ_API_KEY" (sk-minted), the ordinary case.
 		savedKey string
 		// envKey overrides the exported ORQ_API_KEY; empty means "sk-minted",
 		// the ordinary case.
@@ -265,8 +231,6 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 			if savedKey == "" {
 				savedKey = "sk-minted"
 			}
-			seedProfile(t, savedKey, tc.savedWS)
-
 			tokens := map[string]any{tc.activeWS: map[string]any{"token": "session-token-for-" + tc.activeWS, "expiresAt": future}}
 			for ws, tok := range tc.extraTokens {
 				tokens[ws] = map[string]any{"token": tok, "expiresAt": future}
@@ -281,6 +245,8 @@ func TestResolveCredentialsSupersession(t *testing.T) {
 				"refreshToken":       "refresh-token",
 				"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
 				"workspaceTokens":    tokens,
+				"gatewayKey":         savedKey,
+				"gatewayWorkspace":   tc.savedWS,
 			})
 
 			creds, err := ResolveCredentials(os.Getenv)
@@ -325,9 +291,12 @@ func TestResolveCredentialsTokenFetchFailure(t *testing.T) {
 		t.Setenv("ORQ_API_BASE_URL", "")
 		if withEnvKey {
 			t.Setenv("ORQ_API_KEY", "sk-minted")
-			seedProfile(t, "sk-minted", "acme")
 		} else {
 			t.Setenv("ORQ_API_KEY", "")
+		}
+		gatewayKey, gatewayWorkspace := "", ""
+		if withEnvKey {
+			gatewayKey, gatewayWorkspace = "sk-minted", "acme"
 		}
 		writeSessionFile(t, home, map[string]any{
 			"version":            1,
@@ -338,6 +307,8 @@ func TestResolveCredentialsTokenFetchFailure(t *testing.T) {
 			"activeWorkspaceKey": "other",
 			"refreshToken":       "refresh-token",
 			"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+			"gatewayKey":         gatewayKey,
+			"gatewayWorkspace":   gatewayWorkspace,
 		})
 	}
 
@@ -493,7 +464,8 @@ func writeSessionFile(t *testing.T, home string, session map[string]any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "default.json"), data, 0o600); err != nil {
+	resolved := auth.ResolveURLs("").APIBaseURL
+	if err := os.WriteFile(filepath.Join(dir, auth.SessionHost(resolved)+".json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

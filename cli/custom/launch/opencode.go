@@ -107,6 +107,7 @@ func resolveOpenCodeFamily(ctx *AgentContext, family openCodeFamily) (*LaunchPla
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":       ctx.Creds.APIKey,
+			"ORQ_SERVER":        ctx.Creds.APIBaseURL,
 			family.configEnvVar: configJSON,
 		},
 	}

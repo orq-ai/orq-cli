@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // validSession returns a minimal session that passes validateSession, with the
@@ -195,5 +198,80 @@ func TestSaveSessionKeepsUnparseableExpiryAndDoesNotMutateTheCaller(t *testing.T
 	}
 	if _, present := got.WorkspaceTokens["acme#expired"]; present {
 		t.Errorf("a provably expired entry survived the prune: %+v", got.WorkspaceTokens)
+	}
+}
+
+func TestSessionHostRule(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://api.orq.ai":        "my.orq.ai",
+		"https://my.orq.ai/":        "my.orq.ai",
+		"https://My.Staging.ORQ.ai": "my.staging.orq.ai",
+		"http://localhost:8080":     "localhost_8080",
+		"http://127.0.0.1:3000/v2":  "127.0.0.1_3000",
+		"https://orq.acme.internal": "orq.acme.internal",
+		"https://[::1]:4200":        "__1_4200",
+	} {
+		if got := SessionHost(in); got != want {
+			t.Errorf("SessionHost(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The session in play is the one for the server this invocation resolved:
+// --server, ORQ_SERVER, `orq server set`, else the hosted default.
+func TestSessionFilePathFollowsTheResolvedServer(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+
+	SetServer("", "default")
+	if got := filepath.Base(SessionFilePath()); got != "my.orq.ai.json" {
+		t.Errorf("default session file = %q, want my.orq.ai.json", got)
+	}
+	SetServer("https://my.staging.orq.ai", "flag")
+	if got := filepath.Base(SessionFilePath()); got != "my.staging.orq.ai.json" {
+		t.Errorf("staging session file = %q, want my.staging.orq.ai.json", got)
+	}
+}
+
+// With no profile in force, agents are wired with the minted gateway key
+// recorded on the login it was minted from.
+func TestSavedAgentKeyReadsTheSession(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+	s := validSession("acme")
+	s.GatewayKey, s.GatewayWorkspace = "sk-orq-GW", "acme"
+	if err := SaveSession(s); err != nil {
+		t.Fatal(err)
+	}
+	if key, ws := SavedAgentKey(); key != "sk-orq-GW" || ws != "acme" {
+		t.Errorf("SavedAgentKey = (%q, %q), want the session's gateway key", key, ws)
+	}
+}
+
+func TestSavedAgentKeyIgnoresSessionWhenProfileIsInForce(t *testing.T) {
+	isolateHome(t)
+	t.Cleanup(func() { SetServer("", "default") })
+
+	s := validSession("session-workspace")
+	s.GatewayKey, s.GatewayWorkspace = "sk-orq-SESSION", "session-workspace"
+	if err := SaveSession(s); err != nil {
+		t.Fatal(err)
+	}
+
+	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = creds
+	bartolocli.Creds.Set("profiles.chosen.api_key", "sk-orq-PROFILE")
+	viper.Set("profile", "chosen")
+	t.Cleanup(func() {
+		bartolocli.Creds = previousCreds
+		viper.Set("profile", "")
+	})
+
+	if key, ws := SavedAgentKey(); key != "sk-orq-PROFILE" || ws != "" {
+		t.Errorf("SavedAgentKey = (%q, %q), want the profile key and no session workspace", key, ws)
 	}
 }
