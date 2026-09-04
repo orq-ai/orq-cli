@@ -58,7 +58,7 @@ cases := []struct {
 }
 ```
 
-For positive cases, send a request through the middleware, assert its Authorization header uses the exported key, and assert stderr is exactly `Using ORQ_API_KEY from environment` while excluding the key. Cover all three supported variables and a mismatched session credential that must remain silent.
+For positive cases, send a request through the middleware, assert its Authorization header uses the exported key, and assert stderr is exactly `Using <VARIABLE> from environment` for the variable under test while excluding the key. Cover all three supported variables and a mismatched session credential that must remain silent.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -75,7 +75,7 @@ Expected: compilation fails because the request-bound notice helpers are undefin
 Export the existing machine-format predicate and environment credential-source resolver from `cli/custom/commands`. In `cli/custom/register.go`, let `configureAPIKeyUsageNotice` require `explicitKey`, a login session, terminal human output, no opt-out, and no stored profile key. Register a `before dial` middleware that compares the actual Authorization header with the candidate exported key and emits at most once:
 
 ```go
-fmt.Fprintln(bartolocli.Stderr, "Using ORQ_API_KEY from environment")
+fmt.Fprintf(bartolocli.Stderr, "Using %s from environment\n", notice.source)
 ```
 
 - [ ] **Step 4: Wire the helper into pre-run**
@@ -122,8 +122,8 @@ Under `## Unreleased`, add:
 
 ```markdown
 - **Added: interactive commands now say when an exported API key is used instead
-  of the active user profile.** The fixed `Using ORQ_API_KEY from environment`
-  banner never includes the credential, is written to stderr, and stays out of
+  of the active user profile.** The `Using ORQ_API_KEY from environment` banner
+  names the variable that supplied the key and never includes the credential, is written to stderr, and stays out of
   piped or explicitly machine-formatted output. Set `ORQ_NO_API_KEY_NOTICE` to
   any non-empty value to hide it.
 ```
