@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -207,6 +208,21 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	if session.APIBaseURL != "" && resolved == "" {
 		apiBase = session.APIBaseURL
 	}
+	// The key `orq setup` minted lives for 90 days; the session token below
+	// lives about an hour and is baked into the child process once, so an agent
+	// running longer than that meets a 401. Without ~/.orq/env sourced the env
+	// branch above never sees the minted key, so look it up here. Only a key
+	// recorded for the session's own workspace qualifies: anything else would
+	// silently launch against a workspace the user did not pick.
+	if key, ws := savedKeyForWorkspace(session); key != "" {
+		return &Credentials{
+			APIKey:              key,
+			APIBaseURL:          apiBase,
+			Kind:                CredentialAPIKey,
+			Workspace:           ws,
+			SupersededWorkspace: supersededWorkspace,
+		}, nil
+	}
 	// apiBase, not session.APIBaseURL: an explicit --server diverts the token
 	// fetch too, so one run cannot straddle two hosts.
 	client := auth.NewClient(apiBase)
@@ -228,6 +244,27 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		Workspace:           active.WorkspaceKey,
 		SupersededWorkspace: supersededWorkspace,
 	}, nil
+}
+
+// savedKeyForWorkspace returns the saved agent key when it was minted for the
+// session's active workspace and has not expired. An unrecorded expiry is
+// unknown, not expired: keys minted before expiry was recorded, and keys the
+// user brought, keep working.
+func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
+	if session == nil || session.ActiveWorkspaceKey == nil {
+		return "", ""
+	}
+	active := strings.TrimSpace(*session.ActiveWorkspaceKey)
+	key, workspace = auth.SavedAgentKey()
+	if key == "" || active == "" || workspace != active {
+		return "", ""
+	}
+	if exp := auth.StateValue("gateway_key_expires_at"); exp != "" {
+		if t, err := time.Parse(time.RFC3339, exp); err == nil && !t.After(time.Now()) {
+			return "", ""
+		}
+	}
+	return key, workspace
 }
 
 // LoginHook, when set, runs the interactive device login and persists the

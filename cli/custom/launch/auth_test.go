@@ -554,3 +554,75 @@ func TestInjectedSessionTokenIsRecognisedWhenAProjectIsActive(t *testing.T) {
 		t.Error("our own project-scoped session token was reported as shadowing the session")
 	}
 }
+
+// TestResolveCredentialsPrefersSavedGatewayKey covers the fallback between the
+// env key and the session token: the key `orq setup` minted lives 90 days, the
+// session token about an hour, and launch bakes whichever it picks into the
+// child once. The minted key wins only for the workspace it was minted for and
+// only while it is unexpired.
+func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	// Only the session-token fallback talks to the server; the minted-key path
+	// never touches the network.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"profile": map[string]any{
+			"id": "u1", "email": "user@example.com", "workspaces": []map[string]any{{"key": "ws1"}},
+		}})
+	}))
+	defer srv.Close()
+
+	for _, tc := range []struct {
+		name    string
+		savedWS string
+		expires string
+		wantKey string
+	}{
+		{name: "same workspace", savedWS: "ws1", wantKey: "minted-key"},
+		{name: "unexpired", savedWS: "ws1", expires: future, wantKey: "minted-key"},
+		{name: "expired", savedWS: "ws1", expires: past, wantKey: "workspace-token"},
+		{name: "other workspace", savedWS: "ws2", wantKey: "workspace-token"},
+		{name: "no key", savedWS: "", wantKey: "workspace-token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ORQ_API_KEY", "")
+			t.Setenv("ORQ_API_BASE_URL", "")
+			writeSessionFile(t, home, map[string]any{
+				"version":            1,
+				"apiBaseUrl":         srv.URL,
+				"v1BaseUrl":          srv.URL,
+				"authBaseUrl":        srv.URL,
+				"profileBaseUrl":     srv.URL,
+				"activeWorkspaceKey": "ws1",
+				"refreshToken":       "refresh-token",
+				"bootstrapToken":     map[string]any{"token": "bootstrap-token", "expiresAt": future},
+				"workspaceTokens":    map[string]any{"ws1": map[string]any{"token": "workspace-token", "expiresAt": future}},
+			})
+			key := "minted-key"
+			if tc.savedWS == "" {
+				key = ""
+			}
+			seedProfile(t, key, tc.savedWS)
+			prev := bartolocli.Creds.GetString("profiles.default.gateway_key_expires_at")
+			bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", tc.expires)
+			t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", prev) })
+
+			creds, err := ResolveCredentials(os.Getenv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if creds.APIKey != tc.wantKey {
+				t.Fatalf("want %q, got %+v", tc.wantKey, creds)
+			}
+			wantKind := CredentialSessionToken
+			if tc.wantKey == "minted-key" {
+				wantKind = CredentialAPIKey
+			}
+			if creds.Kind != wantKind {
+				t.Fatalf("want kind %v, got %v", wantKind, creds.Kind)
+			}
+		})
+	}
+}
