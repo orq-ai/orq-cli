@@ -111,6 +111,15 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: interactive API commands now say when an exported API key is used instead
+  of the active user profile.** The `Using ORQ_API_KEY from environment` banner
+  names the variable that actually supplied the key — `ORQ_TOKEN` and
+  `ORQ_AUTHORIZATION` are reported under their own names, so the line says which
+  one to unset. It never includes the credential, is written to stderr, and shows
+  only when stderr is a terminal — `orq x | jq` still sees it, `2>/dev/null`
+  and explicit machine formats do not. Set `ORQ_NO_API_KEY_NOTICE` to any
+  non-empty value to hide it.
+
 ## [7.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.0.0) — 2026-09-04
 
 - **Breaking:** `--profile` names a saved API-key profile and nothing else. A

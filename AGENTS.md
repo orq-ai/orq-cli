@@ -81,6 +81,23 @@ brings older trees up to this on the next command. `auth/migrate.go` reads barto
 `profile-decided` survives without anything depending on it; check both names
 when bumping the generator.
 
+**Which credential wins, and which profile name to ask for.** The order is
+bartolo's apikey handler's: the profile in force (`commands.profileInForce`:
+selected AND present in `credentials.json`) first, then `ORQ_API_KEY`,
+`ORQ_TOKEN`, `ORQ_AUTHORIZATION`; the session token is injected into
+`ORQ_API_KEY` by PreRun only when none of those is set. A profile in force with
+no key is nobody's credential, never a fall-through to the environment.
+`commands.ConfiguredCredential()` answers "which key, and what is it called"
+(`profile <name>` or the variable name) for `orq status`, `orq doctor` and the
+`Using ORQ_API_KEY from environment` notice; `custom.configuredAPIKey` is the
+PreRun-time key-only reading of the same rule. Change one, change both.
+
+Ask `bartolocli.ActiveProfileName()` for the profile name: it ranks `--profile`
+above `ORQ_PROFILE` above `orq auth profile use` and returns `""` when none is
+selected. A browser login is not a profile and has no name; it is keyed by
+server host (`auth.SessionHost`), so nothing derives a session file or a state
+bucket from a profile name any more.
+
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,
 checksums and a stamped `install.sh` on the GitHub release. `install.sh` is
