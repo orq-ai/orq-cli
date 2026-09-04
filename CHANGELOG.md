@@ -170,7 +170,9 @@ controls on surface changes, whichever side they originate from.
   a 401 while a 90-day key sat unused in `credentials.json`. The saved key now
   sits between the two: it wins when it was minted for the workspace the login
   currently selects and has not expired, and the session token remains the
-  fallback for everything else.
+  fallback for everything else. When launch does fall back to the session
+  token it now says so on stderr and points at `orq setup`, instead of handing
+  the agent an hourly credential in silence.
 
 ## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
 

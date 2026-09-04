@@ -170,6 +170,17 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 		// Error ignored here on purpose: an unreadable session must not block a
 		// valid exported key from winning below.
 		session, _ = auth.ReadSession()
+		// installSessionPreRun puts the session's own token here on every run
+		// that has no explicit key, which is the ordinary state. That is not a
+		// key the user exported, so it does not win: the saved key is checked
+		// first, exactly as when the env is empty. Returning here on the token
+		// was what made the saved-key lookup below unreachable in a real run.
+		if session != nil && isSessionWorkspaceToken(key, session) {
+			if saved, ws := savedKeyForWorkspace(session); saved != "" {
+				return &Credentials{APIKey: saved, APIBaseURL: apiBase, Kind: CredentialAPIKey, Workspace: ws}, nil
+			}
+			return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialSessionToken}, nil
+		}
 		savedKey, savedWS := auth.SavedAgentKey()
 		mintedFor, superseded := supersededBySession(key, session, savedKey, savedWS)
 		if !superseded {
@@ -181,11 +192,6 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 			}
 			if savedWS != "" && savedKey == key {
 				creds.Workspace = savedWS
-			}
-			// installSessionPreRun injects the session's own token into ORQ_API_KEY
-			// whenever no api_key is configured, which is the ordinary state.
-			if session != nil && isSessionWorkspaceToken(key, session) {
-				creds.Kind = CredentialSessionToken
 			}
 			return creds, nil
 		}
@@ -210,10 +216,7 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	}
 	// The key `orq setup` minted lives for 90 days; the session token below
 	// lives about an hour and is baked into the child process once, so an agent
-	// running longer than that meets a 401. Without ~/.orq/env sourced the env
-	// branch above never sees the minted key, so look it up here. Only a key
-	// recorded for the session's own workspace qualifies: anything else would
-	// silently launch against a workspace the user did not pick.
+	// running longer than that meets a 401.
 	if key, ws := savedKeyForWorkspace(session); key != "" {
 		return &Credentials{
 			APIKey:              key,
@@ -246,10 +249,10 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	}, nil
 }
 
-// savedKeyForWorkspace returns the saved agent key when it was minted for the
-// session's active workspace and has not expired. An unrecorded expiry is
-// unknown, not expired: keys minted before expiry was recorded, and keys the
-// user brought, keep working.
+// savedKeyForWorkspace returns the saved agent key when it is recorded for the
+// session's active workspace and has not expired. Only a key for that workspace
+// qualifies: anything else would silently launch against a workspace the user
+// did not pick. An unrecorded expiry is unknown, not expired.
 func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
 	if session == nil || session.ActiveWorkspaceKey == nil {
 		return "", ""
@@ -259,10 +262,8 @@ func savedKeyForWorkspace(session *auth.Session) (key, workspace string) {
 	if key == "" || active == "" || workspace != active {
 		return "", ""
 	}
-	if exp := auth.StateValue("gateway_key_expires_at"); exp != "" {
-		if t, err := time.Parse(time.RFC3339, exp); err == nil && !t.After(time.Now()) {
-			return "", ""
-		}
+	if at, ok := session.GatewayKeyExpiry(); ok && !at.After(time.Now()) {
+		return "", ""
 	}
 	return key, workspace
 }

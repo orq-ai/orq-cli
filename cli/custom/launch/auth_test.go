@@ -576,9 +576,14 @@ func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
 		name    string
 		savedWS string
 		expires string
-		wantKey string
+		// injected mirrors a real run: installSessionPreRun has already put the
+		// session token into ORQ_API_KEY before launch resolves credentials.
+		injected bool
+		wantKey  string
 	}{
 		{name: "same workspace", savedWS: "ws1", wantKey: "minted-key"},
+		{name: "same workspace, token already injected", savedWS: "ws1", injected: true, wantKey: "minted-key"},
+		{name: "no key, token already injected", savedWS: "", injected: true, wantKey: "workspace-token"},
 		{name: "unexpired", savedWS: "ws1", expires: future, wantKey: "minted-key"},
 		{name: "expired", savedWS: "ws1", expires: past, wantKey: "workspace-token"},
 		{name: "other workspace", savedWS: "ws2", wantKey: "workspace-token"},
@@ -608,6 +613,10 @@ func TestResolveCredentialsPrefersSavedGatewayKey(t *testing.T) {
 			prev := bartolocli.Creds.GetString("profiles.default.gateway_key_expires_at")
 			bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", tc.expires)
 			t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.gateway_key_expires_at", prev) })
+
+			if tc.injected {
+				t.Setenv("ORQ_API_KEY", "workspace-token")
+			}
 
 			creds, err := ResolveCredentials(os.Getenv)
 			if err != nil {
