@@ -1,0 +1,8 @@
+{
+  "trace_id": "trace-chat",
+  "span_id": "span-chat",
+  "attributes": {
+    "gen_ai.input": "[{\"role\":\"system\",\"content\":\"Reply with one short synthetic acknowledgement.\"},{\"role\":\"user\",\"content\":\"Synthetic fixture request: alpha.\"},{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call-synthetic-weather\",\"type\":\"function\",\"function\":{\"name\":\"synthetic_weather\",\"arguments\":\"{\\\"city\\\":\\\"Exampleville\\\"}\"}}]},{\"role\":\"tool\",\"content\":\"Synthetic result: clear and 20 C.\",\"tool_call_id\":\"call-synthetic-weather\"}]",
+    "gen_ai.output": "{\"role\":\"assistant\",\"content\":\"Acknowledged! The synthetic weather for Exampleville is clear with a temperature of 20°C.\",\"refusal\":null}"
+  }
+}

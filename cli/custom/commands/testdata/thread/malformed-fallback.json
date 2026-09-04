@@ -1,0 +1,6 @@
+{
+  "trace_id": "trace-fallback",
+  "span_id": "span-fallback",
+  "input": {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "secret-image"}}]}]},
+  "output": {"role": "assistant", "content": "I cannot view that image.", "tool_calls": [{"id": "call-bad", "function": {"name": "inspect", "arguments": "{not json"}}]}
+}

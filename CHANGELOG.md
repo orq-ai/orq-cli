@@ -8,9 +8,12 @@ changes scripts could observe. Internal refactors do not.
 
 What you may depend on, and what you may not:
 
-- **`--json` output on stdout is the machine contract.** Field names and
-  structure follow the orq API response for the endpoint behind the command.
-  Scripts should parse this and nothing else. Caveat on what CI enforces: the
+- **`--json` output on stdout is the machine contract.** For commands backed
+  directly by an orq API endpoint, field names and structure follow that
+  endpoint's response. Documented transformation commands may instead expose
+  their own documented derived schema; for example, `orq traces thread`
+  returns a canonical normalized thread. Scripts should parse `--json` and
+  nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
   regeneration into `--json` with nothing in CI failing, so response
@@ -110,6 +113,16 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Added: `orq traces thread` renders a conversational trace span as Markdown.**
+  It normalizes Chat Completions and Responses payloads, uses the newest
+  detailed non-evaluator conversational span (with the trace's leading/root
+  spans as resilience fallbacks), and supports `--slice` for selecting
+  messages. System and developer messages are ordinary indexed messages, a
+  heading's index is its `--slice` position, and the output leads with the
+  trace, span, and detected dialect it was read from. Explicit `--json`, `-o yaml`, and
+  `-o toon` return the canonical structured thread; content retained only as a
+  count is shown explicitly as unavailable rather than invented.
 
 ## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
 

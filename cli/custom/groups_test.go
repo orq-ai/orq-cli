@@ -3,6 +3,7 @@ package custom
 import (
 	"testing"
 
+	"orq/cli/custom/commands"
 	generated "orq/cli/generated"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -33,7 +34,7 @@ func buildRoot(t *testing.T) *cobra.Command {
 
 	root := bartolocli.Root
 	generated.Register(root)
-	Register(root)
+	Register(root, commands.TraceAPI{})
 	return root
 }
 
@@ -109,5 +110,26 @@ func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {
 				"whichever registered first, so the other is unreachable. A new "+
 				"openapi.yaml tag has most likely taken a name cli/custom owns.", n, name)
 		}
+	}
+}
+
+func TestTracesThreadAttachesToGeneratedTracesParent(t *testing.T) {
+	root := buildRoot(t)
+	traces, _, err := root.Find([]string{"traces"})
+	if err != nil || traces == nil {
+		t.Fatalf("generated traces parent = %v, %v", traces, err)
+	}
+	var thread *cobra.Command
+	for _, child := range traces.Commands() {
+		if child.Name() == "thread" {
+			thread = child
+			break
+		}
+	}
+	if thread == nil {
+		t.Fatal("traces thread command is not registered")
+	}
+	if got := thread.Use; got != "thread trace-id [span-id]" {
+		t.Errorf("thread Use = %q", got)
 	}
 }
