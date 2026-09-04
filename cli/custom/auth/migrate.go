@@ -92,7 +92,15 @@ func migrateSessionFiles() (map[string]string, error) {
 		path := filepath.Join(dir, name)
 		s, err := readSessionFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("reading legacy session candidate %s: %w", path, err)
+			// Renaming a file we cannot even parse would gain nothing, so an
+			// unreadable candidate is not worth failing the command over — and
+			// this runs before EVERY command, so failing here would take
+			// `doctor` and `auth login` down with it: the two commands someone
+			// with a broken ~/.orq reaches for. Say what was skipped and move
+			// on. attachToSession stays fail-closed, because that is the one
+			// place a field's last copy is about to be deleted.
+			fmt.Fprintf(bartolocli.Stderr, "skipped %s: not a readable session file (%v). Delete it or move it aside.\n", path, err)
+			continue
 		}
 		if s == nil || s.APIBaseURL == "" {
 			continue // not a session of ours; leave it where it is
@@ -117,9 +125,17 @@ func migrateSessionFiles() (map[string]string, error) {
 		// A file at the destination that was not grouped above is unreadable or
 		// lacks an API base URL. It may still contain the user's only session;
 		// never let os.Rename replace it silently on platforms where rename
-		// overwrites an existing file.
+		// overwrites an existing file. Leave this host's files where they are
+		// rather than erroring: an unmigrated login is recoverable, a CLI that
+		// refuses to run is not.
 		if fileExists(target) && !targetIsCandidate {
-			return nil, fmt.Errorf("refusing to replace unrecognised session file %s", target)
+			fmt.Fprintf(bartolocli.Stderr,
+				"left %s alone: it is not a session this CLI can read, so the login in %s keeps its current name. Delete or move the unreadable file, then re-run.\n",
+				target, strings.Join(paths, ", "))
+			for _, p := range paths {
+				delete(renamed, strings.TrimSuffix(filepath.Base(p), ".json"))
+			}
+			continue
 		}
 		winner := paths[0]
 		for _, p := range paths[1:] {
@@ -213,8 +229,8 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 		// state.<name>, so this should not be reachable — but a state entry
 		// is proof of ownership for a same-named keyless profile, so if one
 		// is still there, it goes too rather than surviving keyless forever.
-		if profile, ok := profiles[name].(map[string]any); ok && stringField(profile, "api_key") == "" {
-			delete(profiles, name)
+		if key, profile, ok := profileEntryFold(profiles, name); ok && stringField(profile, "api_key") == "" {
+			delete(profiles, key)
 		}
 	}
 	delete(doc, "state")
@@ -304,6 +320,21 @@ func reportDroppedGatewayKey(host string, fields map[string]string) {
 	fmt.Fprintf(bartolocli.Stderr,
 		"dropped the gateway key for %s: there is no login left to attach it to. "+
 			"It still works; revoke it with: orq api-keys delete %s\n", host, id)
+}
+
+// profileEntryFold looks a profile up the way bartolo does: sanitizeProfileName
+// lowercases, so `profiles.Default` and a `state.default` beside it are one
+// profile as far as every reader is concerned. Matching case-sensitively here
+// leaves the keyless husk behind, and bartolo then fails every request on it.
+func profileEntryFold(profiles map[string]any, name string) (string, map[string]any, bool) {
+	for key, value := range profiles {
+		if !strings.EqualFold(key, name) {
+			continue
+		}
+		profile, ok := value.(map[string]any)
+		return key, profile, ok
+	}
+	return "", nil, false
 }
 
 func credentialsNeedMigration() bool {
@@ -429,9 +460,11 @@ func newerThan(a, b string) bool {
 func deprecatedName(path string) string { return path + ".deprecated" }
 
 // uniquePath returns path if nothing is there, else the first path.1, path.2,
-// … that is free. Every destructive rename in this file goes through it
-// rather than os.Rename directly, so a name already taken — by a file left
-// over from an earlier interrupted run — is never silently clobbered.
+// … that is free. Every `.deprecated` rename goes through it rather than
+// os.Rename directly, so a name already taken — by a file left over from an
+// earlier interrupted run — is never silently clobbered. The legacy fold-in
+// has uniqueJSONPath for the same reason, and the winner's promotion to the
+// host name is guarded by the fileExists check at its call site instead.
 func uniquePath(path string) string {
 	if !fileExists(path) {
 		return path

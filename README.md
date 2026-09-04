@@ -223,8 +223,8 @@ orq doctor --fix           # chmod the credential paths the permissions check fl
 
 - CLI binary + runtime (version, orq API version, platform/arch)
 - Active profile or session file path
-- Resolved `api_base_url`, `v1_base_url`, `auth_base_url`, `profile_base_url` with their *source* (flag, session, env, default, derived)
-- Auth status (authenticated / missing / invalid / unreadable), user email, active workspace
+- Resolved `api_base_url`, `v1_base_url`, `auth_base_url`, `profile_base_url` with their *source* (flag, profile, env, config, default; `v1_base_url` and `profile_base_url` may also report session or derived)
+- Auth status (authenticated / misconfigured / missing / invalid / unreadable), user email, active workspace
 - Reachability probes against each endpoint
 - Bootstrap token freshness
 - Credential file permissions under `~/.orq` (Unix only) — group- or other-accessible paths only; a clean tree is not reported.

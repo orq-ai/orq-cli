@@ -135,15 +135,25 @@ func describeSessionCredential(session *auth.Session) *IdentityCredential {
 
 // configuredCredential returns the key the next request would authenticate
 // with and the name of where it came from, in the order bartolo's apikey
-// handler resolves them (APIKeyEnvVars, then the active profile's api_key).
-// Reading ORQ_API_KEY alone reported "no credential at all" for anyone whose
-// key is ORQ_TOKEN or ORQ_AUTHORIZATION — describing a state no command runs
-// in, which is the one thing `orq status` exists to prevent.
+// handler resolves them: a profile in force first — bartolo does not fall
+// through from a selected profile to an ambient environment key — then
+// APIKeyEnvVars. Reading ORQ_API_KEY alone reported "no credential at all" for
+// anyone whose key is ORQ_TOKEN or ORQ_AUTHORIZATION — describing a state no
+// command runs in, which is the one thing `orq status` exists to prevent.
 //
 // ORQ_API_KEY comes from the snapshot rather than the environment, because our
 // own PreRun injects the session token into that variable; the other two are
 // never injected, so the live environment is the honest source for them.
 func configuredCredential() (key, source string) {
+	if profileInForce() {
+		if v := profileAPIKey(); v != "" {
+			return v, "profile " + bartolocli.ActiveProfileName()
+		}
+		// A profile with no key authenticates nothing, and bartolo will not
+		// reach past it: reporting an env key here would name a credential no
+		// request is going to use.
+		return "", ""
+	}
 	for _, envVar := range APIKeyEnvVars {
 		v := strings.TrimSpace(os.Getenv(envVar))
 		if envVar == APIKeyEnvVars[0] {
@@ -152,9 +162,6 @@ func configuredCredential() (key, source string) {
 		if v != "" {
 			return v, envVar
 		}
-	}
-	if v := profileAPIKey(); v != "" {
-		return v, "profile " + bartolocli.ActiveProfileName()
 	}
 	return "", ""
 }

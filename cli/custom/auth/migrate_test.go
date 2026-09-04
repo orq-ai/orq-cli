@@ -85,7 +85,17 @@ func TestMigrateRenamesSessionFilesToTheirHost(t *testing.T) {
 	}
 }
 
-func TestMigrateDoesNotOverwriteUnreadableHostSession(t *testing.T) {
+// An unreadable file sitting at the destination host name must not be
+// overwritten — it may hold the user's only session — but it must not stop the
+// CLI either: MigrateLayout runs before every command, so an error here takes
+// `doctor` and `auth login` down with it. Both files stay put, and the user is
+// told which one to deal with.
+func TestMigrateLeavesAnUnreadableHostSessionAloneWithoutFailing(t *testing.T) {
+	var out bytes.Buffer
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
 	dir := layoutHarness(t, `{}`, map[string]*Session{
 		"default.json": sessionOn("https://api.orq.ai", "valid"),
 	})
@@ -95,14 +105,17 @@ func TestMigrateDoesNotOverwriteUnreadableHostSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := MigrateLayout(dir); err == nil {
-		t.Fatal("expected migration to refuse the occupied target")
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("an unreadable session file stopped the command: %v", err)
 	}
 	if got, err := os.ReadFile(target); err != nil || string(got) != string(corrupt) {
 		t.Fatalf("host session was overwritten: contents=%q err=%v", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "sessions", "default.json")); err != nil {
-		t.Fatalf("legacy session moved despite failed migration: %v", err)
+		t.Fatalf("the readable login was moved anyway: %v", err)
+	}
+	if !strings.Contains(out.String(), "my.orq.ai.json") {
+		t.Errorf("notice does not name the unreadable file: %q", out.String())
 	}
 }
 
@@ -239,7 +252,15 @@ func TestMigrateMovesGatewayMetadataOffAnAPIKeyProfile(t *testing.T) {
 	}
 }
 
-func TestMigrateFailsClosedOnCorruptLegacySessionCandidate(t *testing.T) {
+// Renaming a file we cannot parse would gain nothing, so a corrupt candidate is
+// skipped rather than fatal — but silently skipping it would leave the user
+// with an invisible dead login, so the path is named on stderr.
+func TestMigrateSkipsACorruptSessionCandidateAndSaysSo(t *testing.T) {
+	var out bytes.Buffer
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
 	dir := layoutHarness(t, `{}`, nil)
 	path := filepath.Join(dir, "sessions", "default.json")
 	want := []byte("{not valid json")
@@ -247,12 +268,14 @@ func TestMigrateFailsClosedOnCorruptLegacySessionCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := MigrateLayout(dir)
-	if err == nil {
-		t.Fatal("corrupt legacy session was silently ignored")
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("a corrupt session candidate stopped the command: %v", err)
 	}
 	if got, readErr := os.ReadFile(path); readErr != nil || string(got) != string(want) {
 		t.Fatalf("corrupt candidate was not preserved: contents=%q err=%v", got, readErr)
+	}
+	if !strings.Contains(out.String(), "default.json") {
+		t.Errorf("notice does not name the skipped file: %q", out.String())
 	}
 }
 
@@ -364,6 +387,22 @@ func TestMigrateRemovesCompanionKeylessProfileForStateEntry(t *testing.T) {
 	creds := readDoc(t, filepath.Join(dir, "credentials.json"))
 	if profiles, _ := creds["profiles"].(map[string]any); len(profiles) != 0 {
 		t.Errorf("companion keyless profile survived: %v", profiles)
+	}
+}
+
+// Bartolo lowercases profile names when it writes them, so a hand-edited or
+// older-writer `profiles.Default` beside a `state.default` is one profile to
+// every reader. Matching case-sensitively leaves the keyless husk behind, and
+// bartolo then fails every request with `profile "Default" is not configured`.
+func TestMigrateRemovesACompanionKeylessProfileWhateverItsCase(t *testing.T) {
+	dir := layoutHarness(t, `{"profiles":{"Default":{"api_key":""}},"state":{"default":{"gateway_key":"sk-orq-GW","workspace":"acme"}}}`,
+		map[string]*Session{"default.json": sessionOn("https://api.orq.ai", "acme")})
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	creds := readDoc(t, filepath.Join(dir, "credentials.json"))
+	if profiles, _ := creds["profiles"].(map[string]any); len(profiles) != 0 {
+		t.Errorf("differently-cased keyless profile survived: %v", profiles)
 	}
 }
 

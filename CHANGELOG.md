@@ -137,8 +137,26 @@ controls on surface changes, whichever side they originate from.
   it says so and prints `orq api-keys delete <id>`. Logout never revoked that
   key server-side, so dropping it silently left a working credential with no
   local record of its id.
-- **Deprecated:** `auth list-profiles` and `auth add-profile` print a notice;
-  use `auth profile list` and `auth profile add`. Removed in the next minor.
+- **Breaking:** `orq auth logout` clears the browser session only. It no longer
+  deletes a saved API-key profile, so after `orq auth login --api-key` a logout
+  leaves that profile authenticating; remove it with `orq auth profile clear`
+  or by deleting the entry.
+- **Changed:** `orq auth login --profile x` is an error for a *browser* login
+  only. `orq auth login --profile x --api-key sk-…` still writes the key into
+  profile `x`.
+- **Changed:** `orq doctor` reports a profile that is in force but carries no
+  `api_key` as `misconfigured` rather than claiming the environment key
+  authenticates: bartolo does not fall through from a selected profile.
+  `orq whoami` shows the same profile's key as unset instead of masking an
+  empty value, and its `--json` payload now carries `session_file`.
+- **Changed:** a session file that cannot be parsed is skipped with a notice
+  naming the path, instead of aborting every command. Migration still fails
+  closed where it is about to delete a credential's last copy.
+- **Deprecated:** `auth list-profiles` and `auth add-profile` print a notice
+  and are hidden from `--help`; use `auth profile list` and `auth profile add`.
+  Removed in the next minor. `auth list-profiles` now renders bartolo's own
+  listing and shows saved API-key profiles only — a browser login is a session,
+  reported by `orq whoami`.
 
 ## [6.2.1](https://github.com/orq-ai/orq-cli/releases/tag/v6.2.1) — 2026-09-03
 

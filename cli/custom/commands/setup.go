@@ -445,7 +445,9 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		key, _ := savedAPIKey()
 		if key == "" {
 			name := bartoloProfileName()
-			return nil, fmt.Errorf("profile %q has no API key; run `orq auth setup --profile %s`", name, name)
+			// Not `orq auth setup`: that is an interactive wizard, refused
+			// under --no-input, so a CI run could not follow the advice.
+			return nil, fmt.Errorf("profile %q has no API key; run `orq auth profile add apikey %s <api-key>`", name, name)
 		}
 		rep.ok("using the API key from profile %s", bartoloProfileName())
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key}, nil
@@ -795,14 +797,26 @@ func saveGatewayKeyProfile(key, keyID string, expiresAt time.Time, workspace, pr
 	return auth.SaveSession(session)
 }
 
+// gatewaySession is the login the gateway key lives on, or nil when there is
+// none to read: no session, an unreadable one, or a profile in force, which
+// owns the credential instead. One accessor rather than the same three-line
+// prologue in every reader, so the profile guard cannot drift between them.
+func gatewaySession() *auth.Session {
+	if profileInForce() {
+		return nil
+	}
+	session, err := auth.ReadSession()
+	if err != nil {
+		return nil
+	}
+	return session
+}
+
 // gatewayKeyExpiry reports when the saved key expires. Not-ok means no expiry
 // is recorded, and callers must treat that as "unknown", never as "expired".
 func gatewayKeyExpiry() (time.Time, bool) {
-	if profileInForce() {
-		return time.Time{}, false
-	}
-	session, err := auth.ReadSession()
-	if err != nil || session == nil || session.GatewayKeyExpiresAt == "" {
+	session := gatewaySession()
+	if session == nil || session.GatewayKeyExpiresAt == "" {
 		return time.Time{}, false
 	}
 	at, err := time.Parse(time.RFC3339, session.GatewayKeyExpiresAt)
@@ -824,14 +838,10 @@ func savedAPIKey() (key, workspace string) { return auth.SavedAgentKey() }
 // savedGatewayKeyID is the handle for revoking the minted key; logout prints
 // it because logout cannot revoke the key itself.
 func savedGatewayKeyID() string {
-	if profileInForce() {
-		return ""
+	if session := gatewaySession(); session != nil {
+		return session.GatewayKeyID
 	}
-	session, err := auth.ReadSession()
-	if err != nil || session == nil {
-		return ""
-	}
-	return session.GatewayKeyID
+	return ""
 }
 
 // recordAgentWiring notes which workspace an agent was wired against. Stored at
@@ -899,14 +909,10 @@ func keyWorkspaceMismatch(savedWS, active string) bool {
 // savedKeyProject is the project the saved gateway key was minted for. Empty
 // means workspace-wide, or minted before scoping existed.
 func savedKeyProject() string {
-	if profileInForce() {
-		return ""
+	if session := gatewaySession(); session != nil {
+		return session.GatewayProject
 	}
-	session, err := auth.ReadSession()
-	if err != nil || session == nil {
-		return ""
-	}
-	return session.GatewayProject
+	return ""
 }
 
 // keyProjectMismatch reports whether the saved key belongs to a different
@@ -2088,8 +2094,8 @@ func recordKeyWorkspace(rep *reporter, probed, keyWS string) {
 	if probed != saved || recorded == keyWS {
 		return
 	}
-	session, err := auth.ReadSession()
-	if err != nil || session == nil {
+	session := gatewaySession()
+	if session == nil {
 		return
 	}
 	session.GatewayWorkspace = keyWS

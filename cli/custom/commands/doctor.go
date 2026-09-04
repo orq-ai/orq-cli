@@ -74,8 +74,8 @@ func NewDoctorCommand() *cobra.Command {
 
 			// Provenance comes from where the value was decided, not from
 			// comparing it afterwards: ORQ_SERVER usually holds exactly the
-			// host the session was authenticated against, and string equality
-			// would report that as the session's doing.
+			// host a profile or `orq server set` also names, and string
+			// equality would credit the wrong one of them.
 			apiBaseSource := auth.ServerSource()
 
 			resolvedAPIBase := serverURL()
@@ -151,6 +151,12 @@ func NewDoctorCommand() *cobra.Command {
 				workspaceCount = len(inspect.Session.Workspaces)
 			} else if storedAPIKeyProfile() {
 				authStatus, authSource = "authenticated", "credentials.json:"+bartolocli.ActiveProfileName()
+			} else if profileInForce() {
+				// A profile in force with no api_key authenticates nothing, and
+				// bartolo will not reach past it to an ambient key: reporting
+				// the env var below would name a credential no request uses.
+				authStatus = "misconfigured"
+				authSource = "credentials.json:" + bartolocli.ActiveProfileName() + " (no api_key)"
 			} else if envAPIKeySet() {
 				// No session, but an env key authenticates every command. Saying
 				// "missing" here sends people hunting for a login problem that

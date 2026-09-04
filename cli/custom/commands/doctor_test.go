@@ -1293,3 +1293,21 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 		})
 	}
 }
+
+// A profile with no api_key authenticates nothing, and bartolo will not fall
+// through to an ambient key: reporting "authenticated / env:ORQ_API_KEY" on the
+// one screen people open when nothing works is the worst possible answer.
+func TestDoctorReportsAKeylessProfileAsMisconfigured(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	bartolocli.Creds.Set("profiles.work.type", "apikey")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+
+	report := runDoctorJSON(t)
+	authReport := doctorSection(t, report, "auth")
+	if authReport["status"] != "misconfigured" {
+		t.Errorf("auth = %v, want a keyless profile reported as misconfigured", authReport)
+	}
+	if source, _ := authReport["source"].(string); !strings.Contains(source, "work") {
+		t.Errorf("auth source = %q, want the profile named", source)
+	}
+}

@@ -67,15 +67,19 @@ as their gateway), `cli/custom/skills` (agent skills embedded with `go:embed`,
 installed into each agent's config dir).
 
 **Who owns what under `~/.orq`.** `credentials.json` is bartolo's: `profiles.<name>`
-holds a saved API key, its handler type and its server, written only through
-bartolo's `auth profile add` path (`commands.saveAPIKeyProfile`). Never add a
-field there. A browser login lives in `sessions/<host>.json` — host from
+holds a saved API key, its handler type and its server. Two writers reach it:
+bartolo's own `auth profile add`, and our `commands.saveAPIKeyProfile` (behind
+`orq setup --api-key` and `orq auth login --api-key`). Never add a field there.
+A profile that is selected but absent from the file is refused up front by
+`custom.rejectUnknownProfile`, because bartolo will not fall through from a
+selected profile to an ambient key. A browser login lives in `sessions/<host>.json` — host from
 `auth.SessionHost`, selected by the server `custom.resolveServer` decided — and
 everything this CLI records about that login (the gateway key `orq setup` minted,
 its id, expiry, workspace and project) is a field on `auth.Session`. `auth.MigrateLayout`
-brings older trees up to this on the next command. `state.go`'s dependency on
-bartolo's `profile-selected` / `profile-decided` config keys moved to
-`auth/migrate.go`; check them when bumping the generator.
+brings older trees up to this on the next command. `auth/migrate.go` reads bartolo's
+`profile-selected` config key and rewrites config.json key-preserving, so
+`profile-decided` survives without anything depending on it; check both names
+when bumping the generator.
 
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,

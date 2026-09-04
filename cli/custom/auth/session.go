@@ -126,12 +126,6 @@ func SessionFilePath() string {
 	return sessionPathFor(SessionHost(ResolveURLs("").APIBaseURL))
 }
 
-// sessionFilesDir is an unexported alias of sessionsDir for callers within
-// this package that want the directory without going through SessionFilePath.
-func sessionFilesDir() string {
-	return sessionsDir()
-}
-
 func legacySessionFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -140,7 +134,7 @@ func legacySessionFilePath() string {
 	return filepath.Join(home, sessionDirName, legacyFileName)
 }
 
-// SessionsDir exposes the directory backing every profile's session file, so
+// SessionsDir exposes the directory holding the per-server session files, so
 // a caller outside this package (doctor's permission check) can enumerate it
 // without reverse-engineering the layout from SessionFilePath.
 func SessionsDir() string {
@@ -148,8 +142,8 @@ func SessionsDir() string {
 }
 
 // LegacySessionFilePath exposes the pre-multi-profile `~/.orq/session.json`
-// path. It normally disappears into the per-profile layout the first time
-// InspectSession runs, but a caller auditing credentials on disk should not
+// path. It normally disappears into the host-keyed layout the first time
+// MigrateLayout runs, but a caller auditing credentials on disk should not
 // have to assume that migration already ran.
 func LegacySessionFilePath() string {
 	return legacySessionFilePath()
@@ -266,9 +260,9 @@ func SaveSession(s *Session) error {
 	return saveSessionTo(SessionFilePath(), s)
 }
 
-// saveSessionTo writes atomically: temp file in the same directory, then
-// rename, so a concurrent reader never sees a torn file and two writers end
-// with one intact winner.
+// saveSessionTo writes through WriteSecretFile — temp file in the same
+// directory, 0600, then rename — so a session file gets the same atomicity and
+// permissions as credentials.json, from one implementation.
 func saveSessionTo(path string, s *Session) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -281,24 +275,7 @@ func saveSessionTo(path string, s *Session) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".session-*.json")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath) // no-op once the rename succeeds
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
+	return WriteSecretFile(path, data)
 }
 
 func ClearSession() error {
