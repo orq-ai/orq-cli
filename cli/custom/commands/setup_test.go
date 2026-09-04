@@ -954,6 +954,47 @@ func TestSetupHasNoAgentFlags(t *testing.T) {
 	}
 }
 
+func TestSetupInteractiveFlagDescribesItsRemainingChoices(t *testing.T) {
+	cmd := NewSetupCommand()
+	flag := cmd.Flags().Lookup("interactive")
+	if flag == nil {
+		t.Fatal("setup missing --interactive")
+	}
+	// -i no longer gates the project step, so what matters is that neither the
+	// flag nor the long help still claims it covers every choice. Pinning the
+	// exact sentence only breaks on copy edits.
+	if strings.Contains(strings.ToLower(flag.Usage), "every choice") {
+		t.Errorf("--interactive help still claims it covers every choice: %q", flag.Usage)
+	}
+	if !strings.Contains(strings.ToLower(flag.Usage), "workspace") {
+		t.Errorf("--interactive help does not name what it still revisits: %q", flag.Usage)
+	}
+	if strings.Contains(cmd.Long, "asked about every choice") {
+		t.Errorf("setup long help still claims -i asks about every choice:\n%s", cmd.Long)
+	}
+	for _, phrase := range []string{"`-i`", "`--no-input`"} {
+		if !strings.Contains(cmd.Long, phrase) {
+			t.Errorf("setup long help does not contain %q:\n%s", phrase, cmd.Long)
+		}
+	}
+}
+
+// applyGlobalFlags is the only thing between a piped `orq setup` and a blocking
+// picker: resolveProjectStep prompts whenever noInput is false, so the "no TTY"
+// fold has to happen here. `go test` never holds a terminal on stdin.
+func TestApplyGlobalFlagsForcesNoInputWithoutATTY(t *testing.T) {
+	opts := &setupOptions{interactive: true}
+	if err := applyGlobalFlags(opts); err != nil {
+		t.Fatalf("applyGlobalFlags: %v", err)
+	}
+	if !opts.noInput {
+		t.Error("no TTY did not force --no-input; a piped setup would block on the project picker")
+	}
+	if opts.interactive {
+		t.Error("--no-input did not clear -i")
+	}
+}
+
 // The final screen must not tell the user to append a source line to a profile
 // that already has one. The "is it exported here" check is always false on the
 // run that just wrote the profile — the edit lands in new shells, not this one

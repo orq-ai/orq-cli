@@ -43,12 +43,14 @@ type setupOptions struct {
 	// or name. noProject skips the step outright.
 	project   string
 	noProject bool
-	apiKey    string
-	agents    []string
-	caps      []string
-	noGateway bool
-	noInput   bool
-	yes       bool
+	// pickProjectFn overrides the picker in tests; the same seam as confirmFn.
+	pickProjectFn func([]auth.Project) (*auth.Project, error)
+	apiKey        string
+	agents        []string
+	caps          []string
+	noGateway     bool
+	noInput       bool
+	yes           bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
 	// finalScreen marks a run that ends in printFinalScreen, which reports every
@@ -139,6 +141,13 @@ func (o *setupOptions) confirmPersistent(message string) bool {
 	return o.confirm(message, false)
 }
 
+func (o *setupOptions) pickProject(projects []auth.Project) (*auth.Project, error) {
+	if o.pickProjectFn != nil {
+		return o.pickProjectFn(projects)
+	}
+	return pickProject(projects)
+}
+
 // setupComplete is the run's verdict, and drives both the final screen and the
 // setup_complete field. verified is one narrow fact — the API answered — so on
 // its own it printed a green "Setup complete" directly above an agent that
@@ -197,8 +206,8 @@ func NewSetupCommand() *cobra.Command {
 		Long: bartolocli.Markdown(`Gets a new machine from zero to working: signs you in, creates a ` +
 			`workspace API key, and wires your coding agents to route model calls through the orq AI Gateway.
 
-Run it bare for the short path, with ` + "`-i`" + ` to be asked about every choice, or fully ` +
-			`flagged with ` + "`--no-input`" + ` for CI.
+Run it bare for guided setup, with ` + "`-i`" + ` to revisit inferred workspace and API-key choices,
+or fully flagged with ` + "`--no-input`" + ` for CI.
 
 Supported agents: ` + strings.Join(agentIDs(), ", ") + `.
 
@@ -216,7 +225,7 @@ wins over a key left exported in your shell.`),
 	}
 
 	f := cmd.Flags()
-	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Ask about every choice instead of inferring")
+	f.BoolVarP(&opts.interactive, "interactive", "i", false, "Revisit inferred workspace and API-key choices")
 	f.StringVar(&opts.apiKey, "api-key", "", "Use this API key instead of logging in and creating one")
 	f.BoolVarP(&opts.yes, "yes", "y", false, "Answer yes to every confirmation instead of being asked (except switching workspace, which always needs a person)")
 	f.StringSliceVar(&opts.caps, "capability", nil,

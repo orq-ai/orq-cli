@@ -500,22 +500,76 @@ func registerlogsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " list-facets --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "list-facets",
 			Short:   "List log facets",
-			Long:    bartolocli.Markdown("Return the facet hierarchy: attribute families (native, attribute, resource, scope) with their keys, counts, and top values for the requested time range."),
+			Long:    bartolocli.Markdown("Return the facet hierarchy: attribute families (native, attribute, resource, scope) with their keys, counts, and top values. Accepts optional filters and free-text query to narrow the counted subset.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `key_limit` (integer)\n- `query` (string)\n- `to` (string)\n- `value_limit` (integer)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"key_limit\": 0,\n  \"query\": \"query\",\n  \"to\": \"2024-01-01T00:00:00Z\",\n  \"value_limit\": 0\n}") {
+					return nil
+				}
+				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
+					[]bartolocli.BodyField{
+						{
+							Name:        "filter_operator",
+							FlagName:    "filter-operator",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "filters",
+							FlagName:    "filters",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "from",
+							FlagName:    "from",
+							Type:        "datetime",
+							Description: "",
+						},
+						{
+							Name:        "key_limit",
+							FlagName:    "key-limit",
+							Type:        "int64",
+							Description: "",
+						},
+						{
+							Name:        "query",
+							FlagName:    "query",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "to",
+							FlagName:    "to",
+							Type:        "datetime",
+							Description: "",
+						},
+						{
+							Name:        "value_limit",
+							FlagName:    "value-limit",
+							Type:        "int64",
+							Description: "",
+						},
+					},
+				)
+				if err != nil {
+					return errors.Wrap(err, "unable to get body")
+				}
 
-				_, decoded, err := OpenapiListLogFacets(params)
+				_, decoded, err := OpenapiListLogFacets(params, body)
 				if err != nil {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.FormatList(decoded); err != nil {
+				if err := bartolocli.Formatter.Format(decoded); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
@@ -524,11 +578,54 @@ func registerlogsCommands(root *cobra.Command) {
 			},
 		}
 		parent.AddCommand(cmd)
-
-		cmd.Flags().String("from", "", bartolocli.WithDateTimeHelp(""))
-		cmd.Flags().String("to", "", bartolocli.WithDateTimeHelp(""))
-		cmd.Flags().Int64("key-limit", 0, "")
-		cmd.Flags().Int64("value-limit", 0, "")
+		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
+		bartolocli.AddBodyFieldFlags(cmd,
+			[]bartolocli.BodyField{
+				{
+					Name:        "filter_operator",
+					FlagName:    "filter-operator",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "filters",
+					FlagName:    "filters",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "from",
+					FlagName:    "from",
+					Type:        "datetime",
+					Description: "",
+				},
+				{
+					Name:        "key_limit",
+					FlagName:    "key-limit",
+					Type:        "int64",
+					Description: "",
+				},
+				{
+					Name:        "query",
+					FlagName:    "query",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "to",
+					FlagName:    "to",
+					Type:        "datetime",
+					Description: "",
+				},
+				{
+					Name:        "value_limit",
+					FlagName:    "value-limit",
+					Type:        "int64",
+					Description: "",
+				},
+			},
+		)
 
 		bartolocli.SetCustomFlags(cmd)
 
