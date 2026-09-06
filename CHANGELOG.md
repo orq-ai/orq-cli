@@ -111,6 +111,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [7.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.1.0) — 2026-09-06
+
 - **Added: interactive API commands now say when an exported API key is used instead
   of the active user profile.** The `Using ORQ_API_KEY from environment` banner
   names the variable that actually supplied the key — `ORQ_TOKEN` and
