@@ -708,7 +708,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-openai-like",
 			Short:   "Create OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- `max_tokens` (integer)\n- ... and 9 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a custom model backed by any OpenAI-compatible endpoint. The handler probes the target API with the supplied credentials before persisting the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `api_key` (string, required)\n- `base_url` (string, required)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- ... and 11 more fields\n\nRequired fields: `api_key`, `base_url`, `display_name`, `model_id`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -729,6 +729,18 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "base_url",
 							FlagName:    "base-url",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "cache_read_cost",
+							FlagName:    "cache-read-cost",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "cache_write_cost",
+							FlagName:    "cache-write-cost",
+							Type:        "float64",
 							Description: "",
 						},
 						{
@@ -855,6 +867,18 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "base_url",
 					FlagName:    "base-url",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "cache_read_cost",
+					FlagName:    "cache-read-cost",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "cache_write_cost",
+					FlagName:    "cache-write-cost",
+					Type:        "float64",
 					Description: "",
 				},
 				{
@@ -1850,7 +1874,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-openai-like id",
 			Short:   "Update OpenAI-compatible custom model",
-			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- `max_tokens` (integer)\n- `model_id` (string)\n- ... and 8 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates an OpenAI-compatible custom model. Live-re-probes the target API when base_url or model_id changes, using the stored encrypted api_key. Metadata is merged (existing preserved, new overrides).\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `base_url` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `cost_per_image` (number)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- ... and 10 more fields\n\nRequired fields: `display_name`, `model_type`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1865,6 +1889,18 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "base_url",
 							FlagName:    "base-url",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "cache_read_cost",
+							FlagName:    "cache-read-cost",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "cache_write_cost",
+							FlagName:    "cache-write-cost",
+							Type:        "float64",
 							Description: "",
 						},
 						{
@@ -1985,6 +2021,18 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "base_url",
 					FlagName:    "base-url",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "cache_read_cost",
+					FlagName:    "cache-read-cost",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "cache_write_cost",
+					FlagName:    "cache-write-cost",
+					Type:        "float64",
 					Description: "",
 				},
 				{
