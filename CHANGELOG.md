@@ -120,7 +120,9 @@ controls on surface changes, whichever side they originate from.
   spans as resilience fallbacks), and supports `--slice` for selecting
   messages. System and developer messages are ordinary indexed messages, a
   heading's index is its `--slice` position, and the output leads with the
-  trace, span, and detected dialect it was read from. Explicit `--json`, `-o yaml`, and
+  trace, span, and detected dialect it was read from. Agent spans that
+  serialize Responses items into `gen_ai.input`, and spans that record a whole
+  turn as bare text, are both normalized rather than silently dropped. Explicit `--json`, `-o yaml`, and
   `-o toon` return the canonical structured thread; content retained only as a
   count is shown explicitly as unavailable rather than invented.
 

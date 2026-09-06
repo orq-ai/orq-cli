@@ -666,3 +666,48 @@ func loadThreadFixture(t *testing.T, name string) map[string]any {
 }
 
 func spanString(span map[string]any, key string) string { value, _ := span[key].(string); return value }
+
+func TestNormalizeThreadLiveShapeRegressions(t *testing.T) {
+	t.Run("agent spans serialize Responses items into gen_ai.input", func(t *testing.T) {
+		span := map[string]any{"attributes": map[string]any{
+			"openresponses.instructions": "Answer stock questions.",
+			"gen_ai.input":               `[{"content":[{"type":"input_text","text":"Check item-1."}],"role":"user","type":""},{"type":"function_call","call_id":"call-1","name":"check_inventory","arguments":"{\"skus\":[\"item-1\"]}"},{"type":"function_call_output","call_id":"call-1","output":"{\"available\":true}"}]`,
+			"gen_ai.output":              `[{"content":[{"type":"output_text","text":"It is available."}],"role":"assistant","type":"message"}]`,
+		}}
+		thread, err := NormalizeThread(span, ThreadSource{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		roles := []string{}
+		for _, message := range thread.Messages {
+			roles = append(roles, message.Role)
+		}
+		if !reflect.DeepEqual(roles, []string{"system", "user", "assistant", "tool", "assistant"}) {
+			t.Fatalf("roles = %v", roles)
+		}
+		if calls := thread.Messages[2].ToolCalls; len(calls) != 1 || calls[0].Name != "check_inventory" {
+			t.Fatalf("tool calls = %#v", calls)
+		}
+		if thread.Messages[3].Name != "check_inventory" {
+			t.Fatalf("tool result name = %q", thread.Messages[3].Name)
+		}
+	})
+
+	t.Run("bare text input and output are a user turn and an assistant turn", func(t *testing.T) {
+		span := map[string]any{"attributes": map[string]any{
+			"gen_ai.input":  `"Can we ship widget one?"`,
+			"gen_ai.output": "Not this week.",
+		}}
+		thread, err := NormalizeThread(span, ThreadSource{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []ThreadMessage{
+			{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Can we ship widget one?"}}},
+			{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Not this week."}}},
+		}
+		if !reflect.DeepEqual(thread.Messages, want) {
+			t.Fatalf("messages = %#v", thread.Messages)
+		}
+	})
+}

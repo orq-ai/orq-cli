@@ -47,7 +47,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 			}
 		}
 	} else if chatInputOK {
-		inputCount = appendChatInput(&thread, chatInput, !responsesInstructionsOK, toolNames)
+		inputCount, pending = appendChatInput(&thread, chatInput, !responsesInstructionsOK, toolNames, pending)
 	}
 	if responsesOutputOK {
 		outputItems := responseItems(responsesOutput)
@@ -90,9 +90,13 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	return thread, nil
 }
 
-func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string) int {
+func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string, pending []ThreadPart) (int, []ThreadPart) {
 	inputMessages := chatMessages(input)
 	for index, raw := range inputMessages {
+		if responseItemType(raw) != "" {
+			pending = thread.appendResponseItem(raw, index, pending, toolNames)
+			continue
+		}
 		message, ok := normalizeChatMessage(raw, index)
 		if !ok {
 			continue
@@ -105,9 +109,13 @@ func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames
 		}
 		resolveChatToolName(&message, toolNames)
 		rememberChatToolNames(message, toolNames)
+		if message.Role == "assistant" && len(pending) > 0 {
+			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+			pending = nil
+		}
 		thread.Messages = append(thread.Messages, message)
 	}
-	return len(inputMessages)
+	return len(inputMessages), pending
 }
 
 func isInstructionRole(role string) bool { return role == "system" || role == "developer" }
@@ -115,6 +123,10 @@ func isInstructionRole(role string) bool { return role == "system" || role == "d
 func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[string]string, pending []ThreadPart) []ThreadPart {
 	outputMessages := chatOutputMessages(output)
 	for offset, raw := range outputMessages {
+		if responseItemType(raw) != "" {
+			pending = thread.appendResponseItem(raw, inputCount+offset, pending, toolNames)
+			continue
+		}
 		message, ok := normalizeChatMessage(raw, inputCount+offset)
 		if !ok || isInstructionRole(message.Role) {
 			continue
@@ -157,6 +169,9 @@ func chatMessages(value any) []any {
 	if messages, ok := value.([]any); ok {
 		return messages
 	}
+	if text, ok := bareThreadText(value); ok {
+		return []any{map[string]any{"role": "user", "content": text}}
+	}
 	if object, ok := threadMap(value); ok {
 		if messages, ok := decodeThreadValue(object["messages"]).([]any); ok {
 			return messages
@@ -167,6 +182,12 @@ func chatMessages(value any) []any {
 
 func chatOutputMessages(value any) []any {
 	value = decodeThreadValue(value)
+	if items, ok := value.([]any); ok {
+		return items
+	}
+	if text, ok := bareThreadText(value); ok {
+		return []any{map[string]any{"role": "assistant", "content": text}}
+	}
 	if object, ok := threadMap(value); ok {
 		if choices, ok := decodeThreadValue(object["choices"]).([]any); ok {
 			messages := make([]any, 0, len(choices))
@@ -185,6 +206,35 @@ func chatOutputMessages(value any) []any {
 		}
 	}
 	return nil
+}
+
+// bareThreadText reports a whole input or output recorded as plain text. Agent
+// spans store the task and the final answer that way, with no envelope.
+func bareThreadText(value any) (string, bool) {
+	text, ok := value.(string)
+	if !ok || strings.TrimSpace(text) == "" {
+		return "", false
+	}
+	var quoted string
+	if err := json.Unmarshal([]byte(text), &quoted); err == nil {
+		text = quoted
+	}
+	return text, strings.TrimSpace(text) != ""
+}
+
+// responseItemType names a Responses item smuggled into a Chat-shaped array.
+// Agent spans serialize their whole item list into gen_ai.input, tool calls
+// and all, so a span is not one dialect end to end.
+func responseItemType(raw any) string {
+	object, ok := threadMap(decodeThreadValue(raw))
+	if !ok {
+		return ""
+	}
+	switch itemType := threadString(object["type"]); itemType {
+	case "reasoning", "function_call", "function_call_output":
+		return itemType
+	}
+	return ""
 }
 
 func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
