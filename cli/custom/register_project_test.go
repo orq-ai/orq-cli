@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/commands"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
@@ -324,5 +325,54 @@ func TestSetupUsesProfileKeyAndServerOverEnvironment(t *testing.T) {
 	}
 	if profileRequests < 2 {
 		t.Errorf("profile server received %d requests, want saved-key check and verification", profileRequests)
+	}
+}
+
+// configuredAPIKey walked the env vars before the profile, on the belief that
+// this mirrored bartolo's order. bartolo's lookupKey reads the active profile
+// first, and only applyProfileAPIKey — which fires for the --profile FLAG and
+// nothing else — hid the disagreement. Select a profile any other supported
+// way and `--project` resolved its name against a stray exported key while
+// every real request used the profile: the wrong workspace, silently.
+func TestConfiguredAPIKeyPrefersTheProfileInForce(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		selectedBy func(t *testing.T)
+	}{
+		{"ORQ_PROFILE", func(t *testing.T) { viper.Set("profile", "acme") }},
+		{"orq profile use", func(t *testing.T) { viper.Set("profile-selected", "acme") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prevProfile := viper.GetString("profile")
+			prevSelected := viper.GetString("profile-selected")
+			t.Cleanup(func() {
+				viper.Set("profile", prevProfile)
+				viper.Set("profile-selected", prevSelected)
+			})
+			viper.Set("profile", "")
+			viper.Set("profile-selected", "")
+
+			creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+			if err != nil {
+				t.Fatalf("NewCredentialsFile: %v", err)
+			}
+			prevCreds := bartolocli.Creds
+			bartolocli.Creds = creds
+			t.Cleanup(func() { bartolocli.Creds = prevCreds })
+			creds.Set("profiles.acme.api_key", "sk-profile-acme")
+
+			for _, envVar := range apiKeyEnvVars {
+				t.Setenv(envVar, "")
+			}
+			t.Setenv("ORQ_API_KEY", "sk-stray-env")
+			commands.SetUserEnvAPIKey("sk-stray-env")
+			t.Cleanup(commands.ResetUserEnvAPIKey)
+
+			tc.selectedBy(t)
+
+			if got := configuredAPIKey(); got != "sk-profile-acme" {
+				t.Errorf("configuredAPIKey = %q, want the key of the profile in force", got)
+			}
+		})
 	}
 }

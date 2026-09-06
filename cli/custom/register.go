@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
@@ -16,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	gentlemancontext "gopkg.in/h2non/gentleman.v2/context"
 )
 
 // apiKeyEnvVars mirrors the env vars bartolo's apikey handler looks up for the
@@ -27,11 +30,14 @@ var apiKeyEnvVars = commands.APIKeyEnvVars
 var (
 	setOutputFormat  = bartolocli.SetOutputFormat
 	stdoutIsTerminal = commands.StdoutIsTerminal
+	stderrIsTerminal = commands.StderrIsTerminal
 )
 
 // helpFooter is appended to the root help output (clig.dev: help should say
 // where the docs live and where to report problems).
 const helpFooter = "Docs:   https://docs.orq.ai\nIssues: https://github.com/orq-ai/orq-cli/issues"
+
+const noAPIKeyNoticeEnvVar = "ORQ_NO_API_KEY_NOTICE"
 
 // profileExemptCommands keep working when the selected profile does not
 // exist: the commands that create, list or unselect one, and the commands that
@@ -93,6 +99,7 @@ func Register(root *cobra.Command) {
 	root.SilenceUsage = true
 	registerGlobalFlags()
 	installSessionPreRun()
+	installAPIKeyUsageNotice()
 	registerCommands(root)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)
@@ -195,6 +202,7 @@ func installSessionPreRun() {
 			commands.Warn("--workspace has no effect because an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence")
 		}
 		session, err := auth.ReadSession()
+		configureAPIKeyUsageNotice(cmd, explicitKey)
 		if err != nil || session == nil {
 			// No session to narrow, so --project can only be a request
 			// parameter. API-key-only users live entirely on this path.
@@ -414,6 +422,63 @@ func configuredAPIKey() string {
 		}
 	}
 	return ""
+}
+
+type apiKeyUsageNotice struct {
+	authorization string
+	source        string
+	once          sync.Once
+}
+
+var pendingAPIKeyUsageNotice *apiKeyUsageNotice
+
+func newAPIKeyUsageNotice(key, source string) *apiKeyUsageNotice {
+	authorization := strings.TrimSpace(key)
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		authorization = "Bearer " + authorization
+	}
+	return &apiKeyUsageNotice{authorization: authorization, source: source}
+}
+
+// configureAPIKeyUsageNotice records what an interactive invocation whose
+// credential came from the environment would need to report. The request
+// middleware below is the final authority: it emits only if Bartolo actually
+// puts this credential on the outgoing request.
+//
+// Whether a login session exists is deliberately not a condition. The user who
+// exported a key and never logged in is told the same thing as the one whose
+// session it displaces: which variable is authenticating them. The gate is
+// stderr's terminal, not stdout's — the line goes to stderr, and `orq x | jq`
+// is a person reading stderr with stdout handed to a pipe.
+func configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool) {
+	pendingAPIKeyUsageNotice = nil
+	if !explicitKey || !stderrIsTerminal() || commands.MachineFormatRequested(cmd) || os.Getenv(noAPIKeyNoticeEnvVar) != "" {
+		return
+	}
+	// One resolver decides which credential wins; the notice fires only when
+	// the winner is an environment variable, so a stored profile stays silent
+	// without a second copy of the precedence rule here.
+	key, source := commands.ConfiguredCredential()
+	if key == "" || !slices.Contains(apiKeyEnvVars, source) {
+		return
+	}
+	pendingAPIKeyUsageNotice = newAPIKeyUsageNotice(key, source)
+}
+
+func installAPIKeyUsageNotice() {
+	if bartolocli.Client != nil {
+		bartolocli.Client.UseHandler("before dial", apiKeyUsageNoticeBeforeDial)
+	}
+}
+
+func apiKeyUsageNoticeBeforeDial(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+	notice := pendingAPIKeyUsageNotice
+	if notice != nil && ctx.Request.Header.Get("Authorization") == notice.authorization {
+		notice.once.Do(func() {
+			commands.Notice("Using %s from environment", notice.source)
+		})
+	}
+	h.Next(ctx)
 }
 
 // ownExportedKey reports whether the only API key in the environment is the one

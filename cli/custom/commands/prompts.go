@@ -61,6 +61,11 @@ func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
 // SetUserEnvAPIKey is called alongside SetExplicitAPIKey, before the injection.
 func SetUserEnvAPIKey(v string) { userEnvAPIKey, userEnvAPIKeyTaken = strings.TrimSpace(v), true }
 
+// ResetUserEnvAPIKey returns the snapshot to "PreRun never ran", so a test in
+// another package can undo its own SetUserEnvAPIKey instead of deciding what
+// every later test reads.
+func ResetUserEnvAPIKey() { userEnvAPIKey, userEnvAPIKeyTaken = "", false }
+
 // UserEnvAPIKey reports the key the user exported, never the injected session
 // token. Every credential decision must read this rather than the environment.
 func UserEnvAPIKey() string {

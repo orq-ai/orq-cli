@@ -61,6 +61,16 @@ var humanOutput = func() bool {
 // which rebuilds bartolo's formatter after applying NO_COLOR.
 func StdoutIsTerminal() bool { return humanOutput() }
 
+// stderrIsTerminal is the gate for a line that goes to stderr only: whether a
+// person is watching THAT stream. `orq x | jq` keeps stdout for the pipe and
+// stderr for the human, and stdout's TTY says nothing about the second.
+var stderrIsTerminal = func() bool {
+	return isatty.IsTerminal(os.Stderr.Fd())
+}
+
+// StderrIsTerminal exposes the stderr decision to the root package.
+func StderrIsTerminal() bool { return stderrIsTerminal() }
+
 // wantsHumanView reports whether a command should render its friendly view
 // instead of the structured payload: a person at a terminal who did not ask
 // for a machine format. Scripts (non-TTY) and explicit --json/-o always get
@@ -91,6 +101,10 @@ func machineFormatRequested(cmd *cobra.Command) bool {
 	}
 	return false
 }
+
+// MachineFormatRequested exposes the shared human/machine output decision to
+// the root package for notices emitted by request middleware.
+func MachineFormatRequested(cmd *cobra.Command) bool { return machineFormatRequested(cmd) }
 
 // bold wraps a string in the bold SGR when color is enabled.
 func bold(s string) string { return paint("\033[1m", s) }
@@ -143,6 +157,14 @@ func info(format string, args ...any) {
 	if !humanOutput() {
 		return
 	}
+	Notice(format, args...)
+}
+
+// Notice is info's dimmed stderr line without info's stdout gate: the caller
+// has already decided a person is reading this stderr. Exported so the custom
+// package's PreRun shares one secondary-context style with the commands, as
+// Warn does for warnings.
+func Notice(format string, args ...any) {
 	fmt.Fprintln(bartolocli.Stderr, paint(ansiDim, fmt.Sprintf(format, args...)))
 }
 

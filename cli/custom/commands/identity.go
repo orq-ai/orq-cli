@@ -98,7 +98,7 @@ func describeCredential(session *auth.Session) *IdentityCredential {
 	if !explicitAPIKey && session != nil {
 		return describeSessionCredential(session)
 	}
-	key, source := configuredCredential()
+	key, source := ConfiguredCredential()
 	if key == "" {
 		return nil
 	}
@@ -133,7 +133,7 @@ func describeSessionCredential(session *auth.Session) *IdentityCredential {
 	return cred
 }
 
-// configuredCredential returns the key the next request would authenticate
+// ConfiguredCredential returns the key the next request would authenticate
 // with and the name of where it came from, in the order bartolo's apikey
 // handler resolves them: a profile in force first — bartolo does not fall
 // through from a selected profile to an ambient environment key — then
@@ -144,7 +144,7 @@ func describeSessionCredential(session *auth.Session) *IdentityCredential {
 // ORQ_API_KEY comes from the snapshot rather than the environment, because our
 // own PreRun injects the session token into that variable; the other two are
 // never injected, so the live environment is the honest source for them.
-func configuredCredential() (key, source string) {
+func ConfiguredCredential() (key, source string) {
 	if profileInForce() {
 		if v := profileAPIKey(); v != "" {
 			return v, "profile " + bartolocli.ActiveProfileName()
