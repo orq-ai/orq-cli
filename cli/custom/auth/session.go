@@ -401,7 +401,7 @@ func ListSessions() ([]SessionListEntry, error) {
 		}
 		var session Session
 		if err := json.Unmarshal(data, &session); err != nil {
-			row.Status = SessionStatusUnreadable
+			row.Status = SessionStatusInvalid
 			sessions = append(sessions, row)
 			continue
 		}

@@ -440,8 +440,19 @@ func reportClearedEnvFiles(paths []string) {
 // noteOtherLogins points users with multiple saved logins to the listing.
 func noteOtherLogins(cmd *cobra.Command) {
 	sessions, err := auth.ListSessions()
-	if err != nil || len(sessions) < 2 {
+	count := usableSessionCount(sessions)
+	if err != nil || count < 2 {
 		return
 	}
-	Notice("%d saved logins — see `%s auth sessions`", len(sessions), cmd.Root().Name())
+	Notice("%d saved logins — see `%s auth sessions`", count, cmd.Root().Name())
+}
+
+func usableSessionCount(rows []auth.SessionListEntry) int {
+	count := 0
+	for _, row := range rows {
+		if usableSessionStatus(row.Status) {
+			count++
+		}
+	}
+	return count
 }
