@@ -136,9 +136,10 @@ func renderThreadParts(parts []ThreadPart, maxChars int) string {
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "unsupported":
-			rendered = "[unsupported content: " + part.UnsupportedType
+			// Both halves are recorded span text, so both can carry framing.
+			rendered = "[unsupported content: " + escapeThreadTags(part.UnsupportedType)
 			if part.Text != "" {
-				rendered += " — " + part.Text
+				rendered += " — " + escapeThreadTags(part.Text)
 			}
 			rendered += "]"
 		}

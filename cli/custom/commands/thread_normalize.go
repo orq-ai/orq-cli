@@ -605,7 +605,7 @@ func contentReasoning(value any) []ThreadPart {
 // bytes are not worth printing, but which image or document it was is.
 func mediaReference(part map[string]any) string {
 	for _, key := range []string{"filename", "file_name", "name", "path", "url", "file_id"} {
-		if value := threadString(part[key]); value != "" {
+		if value := namedMediaReference(part[key]); value != "" {
 			return value
 		}
 	}
@@ -614,11 +614,22 @@ func mediaReference(part map[string]any) string {
 			if reference := mediaReference(nested); reference != "" {
 				return reference
 			}
-		} else if value := threadString(part[key]); value != "" && !strings.HasPrefix(value, "data:") {
+		} else if value := namedMediaReference(part[key]); value != "" {
 			return value
 		}
 	}
 	return ""
+}
+
+// namedMediaReference reads a reference that names the media. An inline data
+// URI names nothing and is the payload itself, which is what this whole part is
+// being left unrendered to avoid.
+func namedMediaReference(value any) string {
+	reference := threadString(value)
+	if strings.HasPrefix(reference, "data:") {
+		return ""
+	}
+	return reference
 }
 
 // contentToolCalls lifts tool calls expressed as content parts, the shape
