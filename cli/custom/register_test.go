@@ -403,10 +403,8 @@ func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
 	}
 }
 
-// The schema names both `GET /v2/models` and `GET /v3/router/models`
-// `models list` (ENG-2798). TestCustomCommandsDoNotCollideWithGenerated catches
-// the duplicate; this pins which of the two kept `list`, since a swap leaves the
-// count right and the meaning inverted.
+// TestCustomCommandsDoNotCollideWithGenerated catches the duplicate; this pins
+// which of the two kept `list`, since a swap leaves the count right.
 func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 	models := childCommand(buildRoot(t), "models")
 	if models == nil {

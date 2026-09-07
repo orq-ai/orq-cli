@@ -99,9 +99,8 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 // generated.Register runs first, so an openapi.yaml tag named `setup`,
 // `launch` or `doctor` would shadow a command we own: cobra resolves the pair
 // by first match rather than reporting it, and no file of ours is overwritten.
-// The same collision happens between two generated commands when the schema
-// gives two operations the same `x-cli-group` + `x-cli-name` pair, which is
-// ENG-2798, so the walk covers every parent and not just the root.
+// Two generated operations sharing an `x-cli-group` + `x-cli-name` pair collide
+// the same way (ENG-2798), so the walk covers every parent, not just the root.
 // Counted on the assembled tree — attachAuthSubcommands reuses bartolo's `auth`
 // parent, so registering the halves separately invents a clash that is not real.
 func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {

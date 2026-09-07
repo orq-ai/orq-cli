@@ -759,16 +759,10 @@ func installSkillsRefreshPreRun() {
 	}
 }
 
-// renamePreviewModelsList gives `GET /v3/router/models` its own name. The schema
-// tags it `x-cli-name: list` in the `models` group, the pair `GET /v2/models`
-// already carries, so the generated tree holds two `models list` commands and
-// cobra resolves the invocation to whichever it finds first, leaving the other
-// unreachable (ENG-2798). The fix belongs in the schema, but openapi.yaml here is
-// copied in wholesale from the publish job, so an edit to it would be dropped on
-// the next publish.
-//
-// The router listing is the one renamed: it is not a replacement for the
-// workspace catalogue yet, returning four fields with no enablement, pricing,
+// renamePreviewModelsList gives `GET /v3/router/models` its own name, since the
+// schema names it `models list` too and cobra leaves one of the pair unreachable
+// (ENG-2798). It belongs in openapi.yaml, which the publish job overwrites here.
+// The router listing is the one renamed: four fields, no enablement, pricing,
 // capabilities or model type, over a superset of the enabled models (ENG-2307).
 func renamePreviewModelsList(root *cobra.Command) {
 	models := childCommand(root, "models")
@@ -776,8 +770,7 @@ func renamePreviewModelsList(root *cobra.Command) {
 		return
 	}
 	for _, c := range models.Commands() {
-		// Nothing but the description tells the two apart — bartolo drops the
-		// operation id and path before the command exists.
+		// Bartolo drops the operation id and path, so only the description differs.
 		if c.Name() != "list" || !strings.Contains(c.Long, "Router") {
 			continue
 		}
@@ -787,9 +780,8 @@ func renamePreviewModelsList(root *cobra.Command) {
 			"This is not the workspace catalogue — it carries no enablement, pricing, " +
 			"capability or model-type data, and lists more ids than the workspace has " +
 			"enabled. Use `orq models list` for the catalogue.")
-		// Cobra sorts a parent's children on first read and caches that order,
-		// so a rename in place leaves the command sorted under its old name.
-		// Only RemoveCommand/AddCommand clears the cache.
+		// Cobra caches the sorted child order, so a rename alone leaves the
+		// command in its old sort position.
 		models.RemoveCommand(c)
 		models.AddCommand(c)
 		return
