@@ -133,7 +133,9 @@ controls on surface changes, whichever side they originate from.
   days with no local record naming it; and `--workspace` went back to being a
   silent no-op, because the rule that lets the exported `ORQ_API_KEY` defer to
   your login identifies that key by comparing it against the session's copy. A
-  login as a different user still inherits none of it.
+  login as a different user still inherits none of it, and a login that moves
+  workspace keeps the key but not the active project, which belongs to the
+  workspace it was chosen in.
 
 ## [8.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.0) — 2026-09-07
 

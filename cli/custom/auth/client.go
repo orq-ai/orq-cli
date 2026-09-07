@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -413,9 +414,19 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 // Only for the same user. A different account logging in on this machine must
 // not inherit a key minted from someone else's login: its calls would be billed
 // and scoped to them, and `logout` would name a key id that is not theirs.
+//
+// The project half is narrower still: it also requires the same workspace. See
+// carryOverActiveProject.
 func carryOverOwnFields(session *Session) {
 	previous, err := ReadSession()
-	if err != nil || previous == nil {
+	if err != nil {
+		// The file is unreadable or fails validateSession, and SaveSession is
+		// about to overwrite it. A gateway key in there is a live credential
+		// whose only local record is the bytes being replaced, so recover what
+		// still parses rather than drop it in silence.
+		previous = recoverPreviousSession()
+	}
+	if previous == nil {
 		return
 	}
 	if previous.User == nil || session.User == nil || previous.User.ID != session.User.ID {
@@ -425,9 +436,55 @@ func carryOverOwnFields(session *Session) {
 	session.GatewayKeyID = previous.GatewayKeyID
 	session.GatewayKeyExpiresAt = previous.GatewayKeyExpiresAt
 	session.GatewayWorkspace = previous.GatewayWorkspace
+	carryOverActiveProject(session, previous)
+}
+
+// carryOverActiveProject copies the project fields only when the login stayed
+// in the same workspace. The active project belongs to the workspace it was
+// chosen in: UseWorkspace clears the pair on a change and switch.go repeats the
+// rule, so carrying it across `orq auth login --workspace other` would leave
+// register.go asking for a token narrowed to a project the new workspace does
+// not hold. GatewayProject travels with them — it is the scope recorded for the
+// minted key, and ensureDurableKey compares it against the active project.
+func carryOverActiveProject(session, previous *Session) {
+	if workspaceKeyOf(session) != workspaceKeyOf(previous) {
+		return
+	}
 	session.GatewayProject = previous.GatewayProject
 	session.ActiveProjectID = previous.ActiveProjectID
 	session.ActiveProjectName = previous.ActiveProjectName
+}
+
+func workspaceKeyOf(s *Session) string {
+	if s == nil || s.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	return *s.ActiveWorkspaceKey
+}
+
+// recoverPreviousSession re-reads the session file for the case ReadSession
+// rejects: JSON that parses but fails validateSession, which is every session
+// missing a URL, a refresh token or a bootstrap token. Those fields are exactly
+// what the login now supplies, so a session invalid for *use* can still be a
+// valid source for the fields being carried. Anything that does not parse at
+// all leaves nothing to carry; say so, because the key it held stays live.
+func recoverPreviousSession() *Session {
+	r := InspectSession()
+	if r.Status != StatusInvalid {
+		return nil
+	}
+	data, err := os.ReadFile(r.Path)
+	if err != nil {
+		return nil
+	}
+	var previous Session
+	if err := json.Unmarshal(data, &previous); err != nil {
+		fmt.Fprintf(bartolocli.Stderr,
+			"could not read the previous session at %s, so any gateway key it held is now unreferenced. "+
+				"It still works; revoke it from the API keys page.\n", r.Path)
+		return nil
+	}
+	return &previous
 }
 
 func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
