@@ -218,10 +218,36 @@ the two copies drift.
 
 **Never write a breaking commit without asking first.** A `!` on a commit
 subject, or a `BREAKING CHANGE:` footer in its body, anywhere in the range cuts
-a major release, and it
-cannot be walked back once published. If a change is genuinely breaking, say so
-in the PR and get a decision; otherwise land it as `feat:`/`fix:` and describe
-the break in the PR body and the changelog entry.
+a major release, and it cannot be walked back once published. A major is a bill
+sent to every user, and its size is the migration it forces, not the size of the
+diff that earned it. Before writing one, every check below has to point at a
+major:
+
+- **Is it breaking at all?** Only a documented part of the [stability
+  contract](CHANGELOG.md#stability-contract) changing under a caller counts: a
+  changed `--json` shape, a changed exit code, an existing invocation that now
+  does something else, or a command or flag pulled without a deprecation
+  period. New behaviour behind a new flag, a TOON rendering change, and a
+  generator or internal change that leaves `surface.json` untouched are not.
+  Land them as `feat:` or `refactor:`.
+- **Is it just a deprecation being collected?** Removing a spelling that
+  shipped deprecated in an earlier release — announced in the changelog, hidden
+  from help, printing a notice — is **not** a major. Every caller was told a
+  release ago and warned on every run since; charging the whole user base a
+  major for that is noise, and it trains people to ignore majors. Land it as
+  `feat:` with a `**Removed:**` changelog entry naming the release that
+  deprecated it. Reserve the `!` for breaks nobody was warned about.
+- **Can it be additive instead?** Add the new spelling, keep the old one working
+  and deprecated, remove it later — by the check above, that removal is a
+  minor, so this route turns a major into none at all.
+- **Does it have to ship now?** Removals are announced a release ahead anyway,
+  so pending ones can wait for each other. Landing them together costs users one
+  migration instead of three, and a deprecation carried an extra release costs
+  nothing.
+
+If it still comes out a major, say so in the PR and get an explicit decision;
+otherwise land it as `feat:`/`fix:` and describe the change in the PR body and
+the changelog entry.
 
 ## Changelog
 
