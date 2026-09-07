@@ -1218,28 +1218,6 @@
       "use": "auth"
     },
     {
-      "path": "orq auth add-profile",
-      "use": "add-profile [flags] \u003cname\u003e [\u003capi-key\u003e]",
-      "aliases": [
-        "add"
-      ],
-      "hidden": true,
-      "flags": [
-        {
-          "name": "api-key-file",
-          "type": "string"
-        }
-      ]
-    },
-    {
-      "path": "orq auth list-profiles",
-      "use": "list-profiles",
-      "aliases": [
-        "ls"
-      ],
-      "hidden": true
-    },
-    {
       "path": "orq auth login",
       "use": "login",
       "flags": [
