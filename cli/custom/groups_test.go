@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"strings"
 	"testing"
 
 	"orq/cli/custom/commands"
@@ -98,25 +99,33 @@ func TestEveryVisibleCommandIsMappedOrDeliberatelyUtilities(t *testing.T) {
 // generated.Register runs first, so an openapi.yaml tag named `setup`,
 // `launch` or `doctor` would shadow a command we own: cobra resolves the pair
 // by first match rather than reporting it, and no file of ours is overwritten.
+// Two generated operations sharing an `x-cli-group` + `x-cli-name` pair collide
+// the same way (ENG-2798), so the walk covers every parent, not just the root.
 // Counted on the assembled tree — attachAuthSubcommands reuses bartolo's `auth`
 // parent, so registering the halves separately invents a clash that is not real.
 func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {
 	root := buildRoot(t)
-
-	count := map[string]int{}
-	for _, cmd := range root.Commands() {
-		count[cmd.Name()]++
-	}
-	if len(count) == 0 {
+	if len(root.Commands()) == 0 {
 		t.Fatal("no commands on the assembled root")
 	}
-	for name, n := range count {
-		if n > 1 {
-			t.Errorf("%d commands are registered as %q: cobra resolves the name to "+
-				"whichever registered first, so the other is unreachable. A new "+
-				"openapi.yaml tag has most likely taken a name cli/custom owns.", n, name)
+
+	var walk func(parent *cobra.Command, path string)
+	walk = func(parent *cobra.Command, path string) {
+		count := map[string]int{}
+		for _, cmd := range parent.Commands() {
+			count[cmd.Name()]++
+			walk(cmd, path+" "+cmd.Name())
+		}
+		for name, n := range count {
+			if n > 1 {
+				t.Errorf("%d commands are registered as %q: cobra resolves the name to "+
+					"whichever registered first, so the other is unreachable. Either a new "+
+					"openapi.yaml tag has taken a name cli/custom owns, or two operations "+
+					"share an x-cli-group + x-cli-name pair.", n, strings.TrimSpace(path+" "+name))
+			}
 		}
 	}
+	walk(root, "orq")
 }
 
 func TestTracesThreadAttachesToGeneratedTracesParent(t *testing.T) {

@@ -6039,12 +6039,12 @@
       "use": "list"
     },
     {
-      "path": "orq models list",
-      "use": "list"
-    },
-    {
       "path": "orq models list-litellm",
       "use": "list-litellm"
+    },
+    {
+      "path": "orq models list-preview",
+      "use": "list-preview"
     },
     {
       "path": "orq models update",

@@ -402,3 +402,22 @@ func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
 		t.Fatalf("valid args rejected: %v", err)
 	}
 }
+
+// TestCustomCommandsDoNotCollideWithGenerated catches the duplicate; this pins
+// which of the two kept `list`, since a swap leaves the count right.
+func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
+	models := childCommand(buildRoot(t), "models")
+	if models == nil {
+		t.Fatal("no models command")
+	}
+	list, preview := childCommand(models, "list"), childCommand(models, "list-preview")
+	if list == nil || preview == nil {
+		t.Fatalf("want both list and list-preview, got list=%v list-preview=%v", list != nil, preview != nil)
+	}
+	if !strings.Contains(preview.Long, "Router") {
+		t.Errorf("models list-preview is not the router listing: %q", preview.Long)
+	}
+	if strings.Contains(list.Long, "Router") {
+		t.Errorf("models list is the router listing, so the wrong command was renamed: %q", list.Long)
+	}
+}

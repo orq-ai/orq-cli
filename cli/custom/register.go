@@ -629,6 +629,7 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 }
 
 func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
+	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
@@ -758,12 +759,47 @@ func installSkillsRefreshPreRun() {
 	}
 }
 
-func replaceDoctor(root *cobra.Command) {
-	for _, c := range root.Commands() {
-		if c.Name() == "doctor" {
-			root.RemoveCommand(c)
-			break
+// renamePreviewModelsList gives `GET /v3/router/models` its own name, since the
+// schema names it `models list` too and cobra leaves one of the pair unreachable
+// (ENG-2798). It belongs in openapi.yaml, which the publish job overwrites here.
+// The router listing is the one renamed: four fields, no enablement, pricing,
+// capabilities or model type, over a superset of the enabled models (ENG-2307).
+func renamePreviewModelsList(root *cobra.Command) {
+	models := childCommand(root, "models")
+	if models == nil {
+		return
+	}
+	for _, c := range models.Commands() {
+		// Bartolo drops the operation id and path, so only the description differs.
+		if c.Name() != "list" || !strings.Contains(c.Long, "Router") {
+			continue
 		}
+		c.Use = "list-preview"
+		c.Short = "Preview: list model ids the AI Router serves"
+		c.Long = bartolocli.Markdown("Preview: lists the model ids the AI Router serves, in OpenAI-compatible shape.\n\n" +
+			"This is not the workspace catalogue — it carries no enablement, pricing, " +
+			"capability or model-type data, and lists more ids than the workspace has " +
+			"enabled. Use `orq models list` for the catalogue.")
+		// Cobra caches the sorted child order, so a rename alone leaves the
+		// command in its old sort position.
+		models.RemoveCommand(c)
+		models.AddCommand(c)
+		return
+	}
+}
+
+func childCommand(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func replaceDoctor(root *cobra.Command) {
+	if c := childCommand(root, "doctor"); c != nil {
+		root.RemoveCommand(c)
 	}
 	root.AddCommand(commands.NewDoctorCommand())
 }
@@ -771,11 +807,8 @@ func replaceDoctor(root *cobra.Command) {
 // attachProjectsUse hangs `use` off the generated `projects` group, so the
 // active-project verb sits with list/get/create rather than at the root.
 func attachProjectsUse(root *cobra.Command) {
-	for _, c := range root.Commands() {
-		if c.Name() == "projects" {
-			c.AddCommand(commands.NewProjectsUseCommand())
-			return
-		}
+	if projects := childCommand(root, "projects"); projects != nil {
+		projects.AddCommand(commands.NewProjectsUseCommand())
 	}
 }
 
@@ -793,13 +826,7 @@ func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
 }
 
 func attachAuthSubcommands(root *cobra.Command) {
-	var authParent *cobra.Command
-	for _, c := range root.Commands() {
-		if c.Name() == "auth" {
-			authParent = c
-			break
-		}
-	}
+	authParent := childCommand(root, "auth")
 	if authParent == nil {
 		authParent = &cobra.Command{
 			Use:   "auth",
@@ -810,10 +837,8 @@ func attachAuthSubcommands(root *cobra.Command) {
 	// Bartolo's `auth setup` command ships with a `login` alias for the
 	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
 	// one cobra resolves.
-	for _, c := range authParent.Commands() {
-		if c.Name() == "setup" {
-			c.Aliases = removeString(c.Aliases, "login")
-		}
+	if setup := childCommand(authParent, "setup"); setup != nil {
+		setup.Aliases = removeString(setup.Aliases, "login")
 	}
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
