@@ -402,3 +402,25 @@ func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
 		t.Fatalf("valid args rejected: %v", err)
 	}
 }
+
+// The schema names both `GET /v2/models` and `GET /v3/router/models`
+// `models list`, so without renamePreviewModelsList help lists `list` twice and
+// one of the two is unreachable (ENG-2798).
+func TestModelsListIsNotRegisteredTwice(t *testing.T) {
+	models := childCommand(buildRoot(t), "models")
+	if models == nil {
+		t.Fatal("no models command")
+	}
+	seen := map[string]int{}
+	for _, c := range models.Commands() {
+		seen[c.Name()]++
+	}
+	for name, n := range seen {
+		if n > 1 {
+			t.Errorf("models %s registered %d times", name, n)
+		}
+	}
+	if seen["list"] != 1 || seen["list-preview"] != 1 {
+		t.Errorf("want one list and one list-preview, got %v", seen)
+	}
+}

@@ -629,6 +629,7 @@ func bridgeProjectFlag(cmd *cobra.Command, session *auth.Session) error {
 }
 
 func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
+	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
 	addHiddenAuthAliases(root)
@@ -756,6 +757,52 @@ func installSkillsRefreshPreRun() {
 		}
 		return nil
 	}
+}
+
+// renamePreviewModelsList gives `GET /v3/router/models` its own name. The schema
+// tags it `x-cli-name: list` in the `models` group, the same pair `GET /v2/models`
+// already carries, so the generated tree holds two `models list` commands: help
+// prints the name twice and cobra resolves the invocation to whichever it finds
+// first, leaving the other unreachable (ENG-2798). The fix belongs in the schema,
+// but openapi.yaml here is copied in wholesale from the publish job, so an edit to
+// it would be dropped on the next publish.
+//
+// The router one is the one renamed. `orq models list` has always meant the
+// workspace catalogue, and the router listing is not a replacement for it yet:
+// it returns four fields — no enablement, pricing, capabilities or model type —
+// and is a superset of the enabled models rather than the enabled set.
+// `list-preview` says that out loud until it can carry the catalogue's data
+// (ENG-2307).
+func renamePreviewModelsList(root *cobra.Command) {
+	models := childCommand(root, "models")
+	if models == nil {
+		return
+	}
+	for _, c := range models.Commands() {
+		// Only the descriptions tell the two apart. If the schema ever stops
+		// saying "Router" here, the duplicate comes back and
+		// TestModelsListIsNotRegisteredTwice fails.
+		if c.Name() != "list" || !strings.Contains(c.Long, "Router") {
+			continue
+		}
+		c.Use = "list-preview"
+		c.Short = "Preview: list model ids the AI Router serves"
+		// Cobra sorts a parent's children once and caches the order; renaming
+		// in place leaves the command filed under its old name in help. Only
+		// RemoveCommand/AddCommand clears that cache.
+		models.RemoveCommand(c)
+		models.AddCommand(c)
+		return
+	}
+}
+
+func childCommand(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	return nil
 }
 
 func replaceDoctor(root *cobra.Command) {

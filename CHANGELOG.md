@@ -139,6 +139,12 @@ controls on surface changes, whichever side they originate from.
   that kept the same conversation intact. Explicit `--json`, `-o yaml`, and
   `-o toon` return the canonical structured thread; content retained only as a
   count is shown explicitly as unavailable rather than invented.
+- **Fixed: `orq models` listed `list` twice.** The schema names both
+  `GET /v2/models` and `GET /v3/router/models` `models list`, so help printed the
+  name twice and one of the two commands was unreachable. `orq models list` still
+  lists the workspace catalogue; the AI Router listing is now
+  `orq models list-preview` — preview because it returns only model ids, with no
+  enablement, pricing, capability or model-type data (ENG-2307).
 
 ## [7.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.1.0) — 2026-09-06
 
