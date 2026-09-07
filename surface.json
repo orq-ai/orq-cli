@@ -8896,6 +8896,10 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "format",
+          "type": "string"
+        },
+        {
           "name": "max-chars",
           "type": "int"
         },

@@ -71,10 +71,18 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 		Use:           "orq",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Mirrors how the real root resolves the global format before RunE:
+		// the flag, then --json as its alias, land in viper for the command to
+		// read. Anything the flag did not set stays at the CLI-wide default.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
+				viper.Set("output-format", flag.Value.String())
+			}
 			if flag := cmd.Flags().Lookup("json"); flag != nil && flag.Changed && flag.Value.String() == "true" {
 				viper.Set("json", true)
-				viper.Set("output-format", "json")
+				if f := cmd.Flags().Lookup("output-format"); f == nil || !f.Changed {
+					viper.Set("output-format", "json")
+				}
 			}
 			return nil
 		},
@@ -577,6 +585,88 @@ func partialSpan() map[string]any {
 		"openresponses.input":        map[string]any{"items": map[string]any{"count": 3}},
 		"openresponses.output":       []any{map[string]any{"type": "message", "role": "assistant", "content": "answer"}},
 	}}}
+}
+
+// Every route to the format `table` must reach the same render. The regression
+// this pins was invisible to the default-only tests: the command branched on
+// "was the flag set" rather than on the resolved value, so an explicit
+// `-o table` silently swapped the reading view for a structured dump.
+func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
+	routes := []struct {
+		name  string
+		args  []string
+		setup func(t *testing.T)
+	}{
+		{name: "default"},
+		{name: "flag", args: []string{"--output-format", "table"}},
+		{name: "environment", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
+		{name: "explicit-xml", args: []string{"--format", "xml"}},
+	}
+	var rendered []string
+	for _, route := range routes {
+		t.Run(route.name, func(t *testing.T) {
+			if route.setup != nil {
+				route.setup(t)
+			}
+			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+			out, err := runTracesThread(t, traceAPI(fake), append(route.args, "trace-1", "chosen")...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+				t.Fatalf("output = %q", out)
+			}
+			rendered = append(rendered, out)
+		})
+	}
+	for _, out := range rendered {
+		if out != rendered[0] {
+			t.Fatalf("routes disagree: %q vs %q", out, rendered[0])
+		}
+	}
+}
+
+func TestTracesThreadFormatFlag(t *testing.T) {
+	t.Run("markdown", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "--format", "markdown", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "## USER [0]") || !strings.Contains(out, "first") || strings.Contains(out, "<thread") {
+			t.Fatalf("markdown = %q", out)
+		}
+	})
+	// --format outranks the global flag, which is the only way to serialize
+	// from a shell that pinned `-o table`.
+	t.Run("json over table", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "--format", "json", "--output-format", "table", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
+			t.Fatalf("json = %q", out)
+		}
+	})
+	t.Run("rejects table", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		_, err := runTracesThread(t, traceAPI(fake), "--format", "table", "trace-1", "chosen")
+		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+func TestTracesThreadReportsSliceGrammar(t *testing.T) {
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--slice", "nonsense")
+	if err == nil || !strings.Contains(err.Error(), "2, 2:, :-1 or 1:3") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(fmt.Sprint(err), "strconv") {
+		t.Fatalf("error leaks Go internals: %v", err)
+	}
 }
 
 func TestTracesThreadPrefersASpanThatKeptTheDroppedContent(t *testing.T) {

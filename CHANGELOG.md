@@ -133,6 +133,22 @@ controls on surface changes, whichever side they originate from.
   items fails with `--columns: "<name>" is not a field of the returned items`
   rather than being ignored.
 
+- **Added: `orq traces thread --format`**, which chooses the render for one
+  run: `xml` (the default), `markdown`, `json`, `yaml` or `toon`. Markdown is
+  the plain-headings reading view; `xml` remains the one to trust when a span's
+  own text may imitate the surrounding structure, since it escapes framing.
+  `--format` outranks `-o`, so a shell that pins a global format can still ask
+  this command for something else.
+- **Fixed:** `orq traces thread -o table` renders the readable thread again
+  instead of a structured dump. The command branched on whether the format flag
+  had been set rather than on the resolved format, so an explicit `-o table`
+  silently produced a different render from the identical default. All four
+  routes to `table` — flag, `ORQ_OUTPUT_FORMAT`, config file, or nothing — now
+  reach the same render. `--json`, `-o yaml` and `-o toon` are unchanged.
+- **Fixed:** an invalid `orq traces thread --slice` expression reports the
+  accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
+  `strconv.Atoi` error.
+
 ## [8.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.2.0) — 2026-09-09
 
 - **Added: `orq launch copilot`.** GitHub Copilot CLI joins the launch agents,

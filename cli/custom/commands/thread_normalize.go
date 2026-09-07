@@ -906,7 +906,18 @@ func splitSlice(value string) [2]string {
 	parts := strings.SplitN(value, ":", 2)
 	return [2]string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])}
 }
-func parseSliceInteger(value string) (int, error) { return strconv.Atoi(strings.TrimSpace(value)) }
+
+// parseSliceInteger reports the accepted grammar rather than passing on
+// strconv's error, whose "strconv.Atoi: parsing ..." names a Go function the
+// reader never called and no syntax they can correct.
+func parseSliceInteger(value string) (int, error) {
+	index, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, errors.New("expected an index or a range, for example 2, 2:, :-1 or 1:3")
+	}
+	return index, nil
+}
+
 func clampSliceBound(value, length int) int {
 	if value < 0 {
 		return 0

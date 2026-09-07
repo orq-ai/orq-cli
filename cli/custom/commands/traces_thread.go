@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,24 +26,29 @@ type TraceAPI struct {
 // NewTracesThreadCommand builds `orq traces thread`, rendering the newest
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
-	var slice string
+	var slice, format string
 	maxChars := 4000
 	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
 		Short: "Render a trace conversation as a thread",
-		Long:  "Render a trace's conversational span as XML-demarcated text, or a canonical machine-readable thread.",
+		Long:  "Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
 		Example: strings.Join([]string{
 			"  orq traces thread tr_123 --slice 2",
 			"  orq traces thread tr_123 --slice 2:",
 			"  orq traces thread tr_123 --slice :-1",
+			"  orq traces thread tr_123 --format markdown",
 			"  orq traces thread tr_123 --reasoning=false",
 			"  orq traces thread tr_123 --max-chars 0",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			bartolocli.MarkPassedFlags(cmd, params)
+			resolved, err := resolveThreadFormat(format)
+			if err != nil {
+				return err
+			}
 			thread, err := resolveTraceThread(api, args[0], optionalArg(args, 1), params)
 			if err != nil {
 				return err
@@ -58,16 +64,59 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					thread.Messages[index].Reasoning = nil
 				}
 			}
-			if machineFormatRequested(cmd) {
-				return emit(thread)
+			switch resolved {
+			case threadFormatXML:
+				return RenderThread(bartolocli.Stdout, thread, maxChars)
+			case threadFormatMarkdown:
+				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars)
 			}
-			return RenderThread(bartolocli.Stdout, thread, maxChars)
+			// --format names the serialization for this render only; without
+			// this the formatter would still encode with the global -o value.
+			restore, err := bartolocli.SetOutputFormat(resolved)
+			if err != nil {
+				return err
+			}
+			defer restore()
+			return emit(thread)
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
+	cmd.Flags().StringVar(&format, "format", "", fmt.Sprintf("Thread output format [%s] (default %s; -o/--json select a serialization when unset)", strings.Join(threadFormats, ", "), threadFormatXML))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
+}
+
+const (
+	threadFormatXML      = "xml"
+	threadFormatMarkdown = "markdown"
+)
+
+// threadFormats are the renders this command produces: two reading views and
+// the serializations of the canonical thread.
+var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yaml", "toon"}
+
+// resolveThreadFormat picks one render from one resolved value. A conversation
+// is nested, so there is no table to lay out: `table` — the CLI-wide default,
+// whether it arrived from -o, ORQ_OUTPUT_FORMAT, a config file, or nothing at
+// all — resolves to the XML render, so all four routes agree. --format is the
+// per-command override, and the only way to ask for Markdown, which the global
+// flag does not accept.
+func resolveThreadFormat(format string) (string, error) {
+	if strings.TrimSpace(format) == "" {
+		if resolved := bartolocli.OutputFormat(); resolved != "table" {
+			return resolved, nil
+		}
+		return threadFormatXML, nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(format))
+	if normalized == "md" {
+		normalized = threadFormatMarkdown
+	}
+	if slices.Contains(threadFormats, normalized) {
+		return normalized, nil
+	}
+	return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is not one of [%s]", format, strings.Join(threadFormats, ", ")))
 }
 
 func optionalArg(args []string, index int) string {
