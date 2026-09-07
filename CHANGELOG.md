@@ -124,9 +124,9 @@ controls on surface changes, whichever side they originate from.
   tags, so a span body that happens to contain the renderer's own framing cannot
   forge a turn, and the opening tag reports the trace, span, dialect, model,
   duration, and token count it was read from — plus a status only when the span
-  failed. Each message renders at most `--max-chars` characters of text
-  (4000 by default, `0` for no cap), so one huge tool result cannot flood the
-  output; the cut says how much it left out and never breaks the framing. Every kind of tool call is
+  failed. Each rendered block is cut to `--max-chars` characters (4000 by
+  default, `0` for no cap), so one huge tool result cannot flood the output;
+  the cut says how much it left out and never breaks the framing. Every kind of tool call is
   rendered as one, including the Responses built-ins (`web_search_call`,
   `mcp_call`, and the rest); thinking is lifted out of message bodies into
   reasoning and can be dropped with `--reasoning=false`; and content that

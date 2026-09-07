@@ -66,7 +66,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
-	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered message to this many characters, noting how much was left out (0 for no cap)")
+	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
 

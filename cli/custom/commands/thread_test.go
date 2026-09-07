@@ -877,43 +877,26 @@ func TestRenderThreadDoesNotLetContentForgeTurns(t *testing.T) {
 	}
 }
 
-func TestRenderThreadCapsEachMessage(t *testing.T) {
-	thread := Thread{Messages: []ThreadMessage{
-		{Index: 0, Role: "tool", Content: []ThreadPart{{Type: "text", Text: strings.Repeat("x", 100)}}},
-		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: strings.Repeat("y", 100)}}},
-	}}
+func TestRenderThreadCutsLongBlocks(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{{Index: 0, Role: "assistant",
+		Content:   []ThreadPart{{Type: "text", Text: strings.Repeat("q", 100)}},
+		Reasoning: []ThreadPart{{Type: "text", Text: strings.Repeat("v", 100)}},
+		ToolCalls: []ThreadToolCall{{ID: "call-1", Name: "lookup", Arguments: strings.Repeat("z", 100)}},
+	}}}
 	var out bytes.Buffer
 	if err := RenderThread(&out, thread, 20); err != nil {
 		t.Fatal(err)
 	}
-	// The cap is per message, so the second one is not starved by the first.
-	for _, filler := range []string{"x", "y"} {
-		if !strings.Contains(out.String(), strings.Repeat(filler, 20)+"\n[truncated: 80 more characters]") {
-			t.Fatalf("rendered = %s", out.String())
-		}
-		if strings.Contains(out.String(), strings.Repeat(filler, 21)) {
-			t.Fatalf("kept more than the cap: %s", out.String())
-		}
-	}
-}
-
-func TestRenderThreadSpendsOneBudgetAcrossAMessage(t *testing.T) {
-	thread := Thread{Messages: []ThreadMessage{{Index: 0, Role: "assistant",
-		// Letters this renderer's own tag names never use, so counting them
-		// measures only the content that survived the cap.
-		Content:   []ThreadPart{{Type: "text", Text: strings.Repeat("q", 30)}, {Type: "text", Text: strings.Repeat("j", 30)}},
-		Reasoning: []ThreadPart{{Type: "text", Text: strings.Repeat("v", 30)}},
-		ToolCalls: []ThreadToolCall{{ID: "call-1", Name: "lookup", Arguments: strings.Repeat("z", 30)}},
-	}}}
-	var out bytes.Buffer
-	if err := RenderThread(&out, thread, 40); err != nil {
-		t.Fatal(err)
-	}
 	rendered := out.String()
-	if strings.Count(rendered, "q")+strings.Count(rendered, "j")+strings.Count(rendered, "v")+strings.Count(rendered, "z") != 40 {
-		t.Fatalf("message spent more than its budget: %s", rendered)
+	for _, filler := range []string{"q", "v", "z"} {
+		if !strings.Contains(rendered, strings.Repeat(filler, 20)+"\n[truncated: 80 more characters]") {
+			t.Fatalf("rendered = %s", rendered)
+		}
+		if strings.Contains(rendered, strings.Repeat(filler, 21)) {
+			t.Fatalf("kept more than the cap: %s", rendered)
+		}
 	}
-	// Truncation shortens text inside elements, never the elements themselves.
+	// The cut shortens text inside elements, never the elements themselves.
 	for _, fragment := range []string{"<reasoning>", "</reasoning>", `<tool_call id="call-1" name="lookup">`, "</tool_call>", "</message>"} {
 		if !strings.Contains(rendered, fragment) {
 			t.Fatalf("rendered = %s, want %q", rendered, fragment)

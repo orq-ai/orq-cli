@@ -12,8 +12,8 @@ import (
 // RenderThread writes a readable, loss-conscious view of a thread. Messages are
 // demarcated with XML tags because a span body is arbitrary recorded text: one
 // that happens to contain this renderer's own framing would otherwise forge
-// turns that were never in the conversation. maxChars caps the text each
-// message renders, or is zero for no cap.
+// turns that were never in the conversation. maxChars caps each rendered block,
+// or is zero for no cap.
 func RenderThread(w io.Writer, thread Thread, maxChars int) error {
 	sections := []string{threadOpenTag(thread.Source)}
 	for _, message := range thread.Messages {
@@ -25,9 +25,6 @@ func RenderThread(w io.Writer, thread Thread, maxChars int) error {
 }
 
 func renderThreadMessage(message ThreadMessage, maxChars int) string {
-	// One budget for the whole message: a cap that applied to each block
-	// separately would let a message with many parts render without limit.
-	budget := &threadBudget{remaining: maxChars, capped: maxChars > 0}
 	attributes := []string{"index=" + strconv.Quote(strconv.Itoa(message.Index)), "role=" + strconv.Quote(message.Role)}
 	if message.Name != "" {
 		attributes = append(attributes, "name="+strconv.Quote(message.Name))
@@ -47,9 +44,9 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 			ordinary = append(ordinary, part)
 		}
 	}
-	body := renderThreadParts(ordinary, budget)
-	body = appendThreadElement(body, "error", renderThreadParts(errors, budget))
-	body = appendThreadElement(body, "exception", renderThreadParts(exceptions, budget))
+	body := renderThreadParts(ordinary, maxChars)
+	body = appendThreadElement(body, "error", renderThreadParts(errors, maxChars))
+	body = appendThreadElement(body, "exception", renderThreadParts(exceptions, maxChars))
 
 	var reasoning, summaries []ThreadPart
 	for _, part := range message.Reasoning {
@@ -59,8 +56,8 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 			reasoning = append(reasoning, part)
 		}
 	}
-	body = appendThreadElement(body, "reasoning", renderThreadParts(reasoning, budget))
-	body = appendThreadElement(body, "reasoning_summary", renderThreadParts(summaries, budget))
+	body = appendThreadElement(body, "reasoning", renderThreadParts(reasoning, maxChars))
+	body = appendThreadElement(body, "reasoning_summary", renderThreadParts(summaries, maxChars))
 
 	for _, call := range message.ToolCalls {
 		tag := "tool_call"
@@ -70,7 +67,7 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 		if call.Name != "" {
 			tag += " name=" + strconv.Quote(call.Name)
 		}
-		body = appendThreadElement(body, tag, budget.take(renderThreadValue(call.Arguments)))
+		body = appendThreadElement(body, tag, truncateThreadText(renderThreadValue(call.Arguments), maxChars))
 	}
 	if body == "" {
 		body = "[content unavailable]"
@@ -125,7 +122,7 @@ func appendThreadElement(body, tag, content string) string {
 	return body + "\n\n" + element
 }
 
-func renderThreadParts(parts []ThreadPart, budget *threadBudget) string {
+func renderThreadParts(parts []ThreadPart, maxChars int) string {
 	sections := make([]string, 0, len(parts))
 	for _, part := range parts {
 		var rendered string
@@ -146,7 +143,7 @@ func renderThreadParts(parts []ThreadPart, budget *threadBudget) string {
 			rendered += "]"
 		}
 		if rendered != "" {
-			sections = append(sections, budget.take(rendered))
+			sections = append(sections, truncateThreadText(rendered, maxChars))
 		}
 	}
 	return strings.Join(sections, "\n\n")
@@ -177,31 +174,20 @@ func escapeThreadTags(text string) string {
 	})
 }
 
-// threadBudget caps how much text one message renders. It shortens the text
-// inside elements and never the elements themselves, so a truncated message is
-// still well-formed and still shows which tools it called.
-type threadBudget struct {
-	remaining int
-	capped    bool
-}
-
-// take returns as much of a rendered block as the message has budget left for,
-// saying how much it left out. A trace can hold a single tool result larger
-// than the context it is being read in.
-func (budget *threadBudget) take(text string) string {
-	if !budget.capped {
+// truncateThreadText caps a rendered block, keeping its start and saying how
+// much was left out. A trace can hold a single tool result larger than the
+// context it is being read in. Only the text inside an element is shortened,
+// never the elements themselves, so a truncated message is still well-formed
+// and still shows which tools it called.
+func truncateThreadText(text string, maxChars int) string {
+	if maxChars <= 0 || len(text) <= maxChars {
 		return text
 	}
-	if len(text) <= budget.remaining {
-		budget.remaining -= len(text)
-		return text
-	}
-	kept := text[:budget.remaining]
+	kept := text[:maxChars]
 	// Never split a rune; a cut multi-byte character renders as garbage.
 	for len(kept) > 0 && !isThreadRuneStart(text[len(kept)]) {
 		kept = kept[:len(kept)-1]
 	}
-	budget.remaining = 0
 	return kept + fmt.Sprintf("\n[truncated: %d more characters]", len(text)-len(kept))
 }
 
