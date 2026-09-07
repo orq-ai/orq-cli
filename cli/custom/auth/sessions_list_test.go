@@ -39,6 +39,9 @@ func TestListSessionsNoDirectory(t *testing.T) {
 	if len(sessions) != 0 {
 		t.Fatalf("expected no sessions, got %v", sessions)
 	}
+	if sessions == nil {
+		t.Fatal("expected a non-nil empty slice for stable JSON array output")
+	}
 }
 
 // The listing is one row per host, sorted, carrying what identifies the login.

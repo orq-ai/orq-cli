@@ -376,7 +376,7 @@ func ListSessions() ([]SessionListEntry, error) {
 	entries, err := os.ReadDir(sessionsDir())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
+			return []SessionListEntry{}, nil
 		}
 		return nil, err
 	}
