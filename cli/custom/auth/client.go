@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -362,7 +361,18 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 			return nil, err
 		}
 	}
+	// Read before resolving the workspace: when the user chose none, the
+	// previous session's active workspace is a better answer than the server
+	// preference, which `orq workspace use` never PATCHes and which therefore
+	// drifts. resolveWorkspace (setup.go) already prefers it this way.
+	previous := c.previousSession(profile.ID, true)
+	chosen := strings.TrimSpace(workspaceKey) != ""
 	resolvedKey := resolveWorkspaceKey(profile, workspaceKey)
+	if !chosen {
+		if k := workspaceKeyOf(previous); k != "" {
+			resolvedKey = k
+		}
+	}
 	workspaceTokens := map[string]StoredAccessToken{}
 	if resolvedKey != "" {
 		tok, err := c.ExchangeAccessToken(approved.RefreshToken, resolvedKey)
@@ -375,116 +385,129 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 	if err != nil {
 		return nil, err
 	}
-	session := &Session{
-		Version:        1,
-		APIBaseURL:     c.URLs.APIBaseURL,
-		V1BaseURL:      c.URLs.V1BaseURL,
-		AuthBaseURL:    c.URLs.AuthBaseURL,
-		ProfileBaseURL: c.URLs.ProfileBaseURL,
-		User: &SessionUser{
-			ID:          profile.ID,
-			Email:       profile.Email,
-			DisplayName: resolveDisplayName(profile),
-		},
-		Workspaces:         profile.Workspaces,
-		ActiveWorkspaceKey: stringPtr(resolvedKey),
-		RefreshToken:       approved.RefreshToken,
-		BootstrapToken: StoredAccessToken{
-			Token:     approved.AccessToken,
-			ExpiresAt: formatISO(bootstrapExp),
-		},
-		WorkspaceTokens: workspaceTokens,
+	// Re-read immediately before the write. The login blocks on browser
+	// approval, and an `orq setup` landing in that window writes a gateway key
+	// this session was built before; saving the older copy would lose it, which
+	// is the class of loss this whole function exists to prevent.
+	// mergeWorkspaceToken guards the same hazard the same way. The general fix,
+	// one UpdateSession helper for all eight SaveSession callers, is RES-1532.
+	if latest := c.previousSession(profile.ID, false); latest != nil {
+		previous = latest
 	}
-	carryOverOwnFields(session)
+	session := sessionForLogin(previous)
+	session.Version = 1
+	session.APIBaseURL = c.URLs.APIBaseURL
+	session.V1BaseURL = c.URLs.V1BaseURL
+	session.AuthBaseURL = c.URLs.AuthBaseURL
+	session.ProfileBaseURL = c.URLs.ProfileBaseURL
+	session.User = &SessionUser{
+		ID:          profile.ID,
+		Email:       profile.Email,
+		DisplayName: resolveDisplayName(profile),
+	}
+	session.Workspaces = profile.Workspaces
+	session.RefreshToken = approved.RefreshToken
+	session.BootstrapToken = StoredAccessToken{
+		Token:     approved.AccessToken,
+		ExpiresAt: formatISO(bootstrapExp),
+	}
+	// Deliberately only the token this login just issued. The cached entries
+	// were exchanged from the refresh token this login replaces, and carrying
+	// them would leave later commands authenticating with a credential from
+	// before the login the user just performed.
+	session.WorkspaceTokens = workspaceTokens
+	// The active project belongs to the workspace it was chosen in: UseWorkspace
+	// clears the pair on a change and switch.go repeats the rule. Only a chosen
+	// workspace can be a change — an unchosen one resolved to the previous
+	// session's own key above, so there is nothing to move away from.
+	if chosen && workspaceKeyOf(previous) != strings.TrimSpace(resolvedKey) {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
+	session.ActiveWorkspaceKey = stringPtr(resolvedKey)
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
 	return session, nil
 }
 
-// carryOverOwnFields moves the fields no login response can rebuild off the
-// session already on disk: the gateway key `orq setup` minted, its id, expiry
-// and scope, and the active project. A login writes a whole new session, so
-// without this a second `orq auth login` silently un-wires the coding agents,
-// strips the only local record of a live 90-day key (the id `logout` prints for
-// revoking it), and re-arms RES-1465: the precedence rule identifies the
-// exported ORQ_API_KEY by comparing it against GatewayKey, so a session that
-// lost the field lets that key outrank the login again.
-//
-// Only for the same user. A different account logging in on this machine must
-// not inherit a key minted from someone else's login: its calls would be billed
-// and scoped to them, and `logout` would name a key id that is not theirs.
-//
-// The project half is narrower still: it also requires the same workspace. See
-// carryOverActiveProject.
-func carryOverOwnFields(session *Session) {
-	previous, err := ReadSession()
-	if err != nil {
-		// The file is unreadable or fails validateSession, and SaveSession is
-		// about to overwrite it. A gateway key in there is a live credential
-		// whose only local record is the bytes being replaced, so recover what
-		// still parses rather than drop it in silence.
-		previous = recoverPreviousSession()
-	}
+// sessionForLogin is the session the login builds on. Starting from the
+// previous one and overwriting what the login issues makes "kept" the default:
+// the alternative, building from zero and copying seven fields back, regresses
+// silently the next time anyone adds a durable field to Session.
+func sessionForLogin(previous *Session) *Session {
 	if previous == nil {
-		return
+		return &Session{}
 	}
-	if previous.User == nil || session.User == nil || previous.User.ID != session.User.ID {
-		return
-	}
-	session.GatewayKey = previous.GatewayKey
-	session.GatewayKeyID = previous.GatewayKeyID
-	session.GatewayKeyExpiresAt = previous.GatewayKeyExpiresAt
-	session.GatewayWorkspace = previous.GatewayWorkspace
-	carryOverActiveProject(session, previous)
+	kept := *previous
+	return &kept
 }
 
-// carryOverActiveProject copies the project fields only when the login stayed
-// in the same workspace. The active project belongs to the workspace it was
-// chosen in: UseWorkspace clears the pair on a change and switch.go repeats the
-// rule, so carrying it across `orq auth login --workspace other` would leave
-// register.go asking for a token narrowed to a project the new workspace does
-// not hold. GatewayProject travels with them — it is the scope recorded for the
-// minted key, and ensureDurableKey compares it against the active project.
-func carryOverActiveProject(session, previous *Session) {
-	if workspaceKeyOf(session) != workspaceKeyOf(previous) {
-		return
+// previousSession is the session on disk this login may build on: the same
+// user's, whatever state the file is in. Everything else returns nil, and the
+// paths that discard a live gateway key say so — the key stays valid for 90
+// days, and after the save there is nothing left on disk naming it.
+//
+// warn is false for the re-read immediately before the write, which must not
+// repeat a message the first read already printed.
+func (c *Client) previousSession(userID string, warn bool) *Session {
+	host := SessionHost(c.URLs.APIBaseURL)
+	r := InspectSession()
+	var previous *Session
+	switch r.Status {
+	case StatusMissing:
+		// A first login on this machine. Nothing to keep, nothing to lose.
+		return nil
+	case StatusOK:
+		previous = r.Session
+	case StatusInvalid:
+		// Invalid for *use* is not invalid as a source: validateSession rejects
+		// a session missing a URL, a refresh token or a bootstrap token, and
+		// those are the fields this login supplies. Only bytes that do not
+		// parse leave nothing to carry.
+		var err error
+		previous, err = readSessionFile(r.Path)
+		if err != nil || previous == nil {
+			if warn {
+				reportUnreadableGatewayKey(host, r.Path)
+			}
+			return nil
+		}
+	default: // StatusUnreadable
+		if warn {
+			reportUnreadableGatewayKey(host, r.Path)
+		}
+		return nil
 	}
-	session.GatewayProject = previous.GatewayProject
-	session.ActiveProjectID = previous.ActiveProjectID
-	session.ActiveProjectName = previous.ActiveProjectName
+	if sameSessionUser(previous, userID) {
+		return previous
+	}
+	if warn {
+		// A different account. Inheriting the key would bill and scope its
+		// calls to the previous user and make `logout` name a key id that is
+		// not theirs, so it is dropped — out loud, because the save below is
+		// what removes the last record of it.
+		reportDroppedGatewayKey(host, previous.GatewayKey, previous.GatewayKeyID,
+			"a different user signed in on this machine")
+		reportSupersededExportedKey(previous)
+	}
+	return nil
+}
+
+// sameSessionUser requires both ids to be present. Two unknown users are not
+// the same user, and treating them as one hands a minted key to whoever logs
+// in next.
+func sameSessionUser(previous *Session, userID string) bool {
+	if previous == nil || previous.User == nil {
+		return false
+	}
+	return previous.User.ID != "" && userID != "" && previous.User.ID == userID
 }
 
 func workspaceKeyOf(s *Session) string {
 	if s == nil || s.ActiveWorkspaceKey == nil {
 		return ""
 	}
-	return *s.ActiveWorkspaceKey
-}
-
-// recoverPreviousSession re-reads the session file for the case ReadSession
-// rejects: JSON that parses but fails validateSession, which is every session
-// missing a URL, a refresh token or a bootstrap token. Those fields are exactly
-// what the login now supplies, so a session invalid for *use* can still be a
-// valid source for the fields being carried. Anything that does not parse at
-// all leaves nothing to carry; say so, because the key it held stays live.
-func recoverPreviousSession() *Session {
-	r := InspectSession()
-	if r.Status != StatusInvalid {
-		return nil
-	}
-	data, err := os.ReadFile(r.Path)
-	if err != nil {
-		return nil
-	}
-	var previous Session
-	if err := json.Unmarshal(data, &previous); err != nil {
-		fmt.Fprintf(bartolocli.Stderr,
-			"could not read the previous session at %s, so any gateway key it held is now unreferenced. "+
-				"It still works; revoke it from the API keys page.\n", r.Path)
-		return nil
-	}
-	return &previous
+	return strings.TrimSpace(*s.ActiveWorkspaceKey)
 }
 
 func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
