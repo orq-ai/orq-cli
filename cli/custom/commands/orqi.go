@@ -13,6 +13,7 @@ import (
 	survey "github.com/AlecAivazis/survey/v2"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 )
 
@@ -331,14 +332,14 @@ func runOrqi(cmd *cobra.Command, argv []string) (int, error) {
 		path = filepath.Join(dir, "orqi")
 	}
 
-	// --profile was parsed onto the root before dispatch, by
-	// splitPassthroughGlobals — the same path that made installSessionPreRun
-	// resolve this profile's token rather than the default one's. Reading it
-	// back here keeps the profile orqi is told about and the ORQ_API_KEY it
-	// inherits as one answer.
+	// The child must land on the same login as the parent: the profile it was
+	// told about, and the server that selects the session.
 	env := map[string]string{}
 	if f := cmd.Root().PersistentFlags().Lookup("profile"); f != nil && f.Changed {
 		env["ORQ_PROFILE"] = f.Value.String()
+	}
+	if server := auth.Server(); server != "" {
+		env["ORQ_SERVER"] = server
 	}
 	return runOrqiChild(path, passthrough, env)
 }

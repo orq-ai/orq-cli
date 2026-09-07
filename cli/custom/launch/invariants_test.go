@@ -272,3 +272,36 @@ func TestLocalDryRunRedactsKey(t *testing.T) {
 		t.Fatalf("expected redaction marker in output:\n%s", out)
 	}
 }
+
+// TestEveryAgentInheritsTheResolvedServer pins the other launch-wide env
+// invariant: the server the parent resolved reaches every child as ORQ_SERVER.
+// That env var, not a flag, is how a nested `orq` (and orqi) stays on the host
+// its parent chose — a launcher that drops the line silently points its agent
+// at the hosted service while the user asked for a self-hosted one.
+func TestEveryAgentInheritsTheResolvedServer(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	const server = "https://my.staging.orq.ai"
+
+	for _, def := range Agents() {
+		def := def
+		t.Run(def.Name, func(t *testing.T) {
+			plan, err := def.Resolve(&AgentContext{
+				Creds:  &Credentials{APIKey: "orq-key", APIBaseURL: server, Kind: CredentialAPIKey},
+				Getenv: env(nil),
+				Fetch: func(_, _ string) ([]ModelInfo, error) {
+					return []ModelInfo{{ID: "openai/gpt-5-mini", ContextWindow: 400000, MaxOutputTokens: 128000}}, nil
+				},
+				ExecProbe: func(string, ...string) (string, error) { return "", io.EOF },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Cleanup != nil {
+				defer plan.Cleanup()
+			}
+			if got := plan.Env["ORQ_SERVER"]; got != server {
+				t.Errorf("ORQ_SERVER = %q, want %q", got, server)
+			}
+		})
+	}
+}

@@ -74,6 +74,7 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 	plan := &LaunchPlan{
 		Env: map[string]string{
 			"ORQ_API_KEY":         ctx.Creds.APIKey,
+			"ORQ_SERVER":          ctx.Creds.APIBaseURL,
 			"PI_CODING_AGENT_DIR": dir,
 		},
 		PreArgs:  []string{"--provider", PiProvider, "--model", resolved.GatewayModel},

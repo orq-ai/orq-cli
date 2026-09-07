@@ -13,6 +13,7 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"orq/cli/custom/auth"
 )
 
 func TestParseOrqiArgvStopsAtFirstUnownedArg(t *testing.T) {
@@ -398,6 +399,8 @@ func TestRunOrqiPassesArgumentsThrough(t *testing.T) {
 func TestRunOrqiPropagatesProfile(t *testing.T) {
 	orqiFakeLookPath(t, "/usr/local/bin/orqi", nil)
 	_, _, env := orqiFakeChild(t, 0)
+	auth.SetServer("https://my.staging.orq.ai", "flag")
+	t.Cleanup(func() { auth.SetServer("", "default") })
 	// As Task 0 leaves it: parsed onto the root, not sitting in argv.
 	root := orqiTestRoot(t)
 	if err := root.PersistentFlags().Set("profile", "staging"); err != nil {
@@ -408,6 +411,9 @@ func TestRunOrqiPropagatesProfile(t *testing.T) {
 	}
 	if (*env)["ORQ_PROFILE"] != "staging" {
 		t.Errorf("env = %v, want ORQ_PROFILE=staging", *env)
+	}
+	if (*env)["ORQ_SERVER"] != "https://my.staging.orq.ai" {
+		t.Errorf("env = %v, want ORQ_SERVER=https://my.staging.orq.ai", *env)
 	}
 }
 

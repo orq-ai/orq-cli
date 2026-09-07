@@ -48,9 +48,6 @@ and the hand-written commands on top of the generated tree.
 **Guards that live in `register.go`,** and are the reason a new command sometimes
 fails in a non-obvious way:
 
-- `profileExemptCommands` — commands that must work before a session exists
-  (`login`, `setup`, `doctor`, `update`, `version`, …). A new command that never
-  calls the orq API belongs here.
 - `interactiveWizardCommands` — bartolo-owned prompts that ignore `--no-input`,
   refused up front so `--no-input` never prompts.
 - `commandGroup` in `groups.go` — every visible command needs an entry, or
@@ -63,27 +60,43 @@ it, so a surface change has to be committed deliberately and shows up in the PR.
 It ships to nobody and exists only for that diff.
 
 **Subpackages worth knowing before adding to them:** `cli/custom/auth` (OAuth
-device login, the `~/.orq/sessions` profile store, self-hosted URL resolution),
+device login, the server-keyed `~/.orq/sessions` browser-session store,
+self-hosted URL resolution),
 `cli/custom/launch` (runs coding agents — one file per agent — with orq wired in
 as their gateway), `cli/custom/skills` (agent skills embedded with `go:embed`,
 installed into each agent's config dir).
 
-**Who owns what in `~/.orq/credentials.json`.** `profiles.<name>` is bartolo's:
-a profile that exists but holds no `api_key` fails every request rather than
-falling back to `ORQ_API_KEY`, so this CLI writes one only for a real API key.
-Everything else it tracks per profile — the minted gateway key, its id and
-expiry, the workspace it was minted for, and a session-bound server — lives
-under the `state` key of the same file, read and written through
-`cli/custom/auth/state.go`. `auth.MigrateProfileState` moves any older layout
-across on the next command, so never add a field of ours to a profile: the
-closed list this CLI may write there is `api_key`, `type`, and `server`. An
-API-key profile keeps its own `server`, because bartolo resolves that one
-itself — state only carries the server of a profile that has no key.
-`state.go` relies on bartolo's unexported `profile-selected` field in
-`config.json` when repairing a dangling selection. That repair rewrites
-`config.json` wholesale and must preserve `profile-decided`, or bartolo
-re-adopts a default profile on the next run; check both names when bumping the
-generator.
+**Who owns what under `~/.orq`.** `credentials.json` is bartolo's: `profiles.<name>`
+holds a saved API key, its handler type and its server. Two writers reach it:
+bartolo's own `auth profile add`, and our `commands.saveAPIKeyProfile` (behind
+`orq setup --api-key` and `orq auth login --api-key`). Never add a field there.
+A profile that is selected but absent from the file is refused up front by
+`custom.rejectUnknownProfile`, because bartolo will not fall through from a
+selected profile to an ambient key. A browser login lives in `sessions/<host>.json` — host from
+`auth.SessionHost`, selected by the server `custom.resolveServer` decided — and
+everything this CLI records about that login (the gateway key `orq setup` minted,
+its id, expiry, workspace and project) is a field on `auth.Session`. `auth.MigrateLayout`
+brings older trees up to this on the next command. `auth/migrate.go` reads bartolo's
+`profile-selected` config key and rewrites config.json key-preserving, so
+`profile-decided` survives without anything depending on it; check both names
+when bumping the generator.
+
+**Which credential wins, and which profile name to ask for.** The order is
+bartolo's apikey handler's: the profile in force (`commands.profileInForce`:
+selected AND present in `credentials.json`) first, then `ORQ_API_KEY`,
+`ORQ_TOKEN`, `ORQ_AUTHORIZATION`; the session token is injected into
+`ORQ_API_KEY` by PreRun only when none of those is set. A profile in force with
+no key is nobody's credential, never a fall-through to the environment.
+`commands.ConfiguredCredential()` answers "which key, and what is it called"
+(`profile <name>` or the variable name) for `orq status`, `orq doctor` and the
+`Using ORQ_API_KEY from environment` notice; `custom.configuredAPIKey` is the
+PreRun-time key-only reading of the same rule. Change one, change both.
+
+Ask `bartolocli.ActiveProfileName()` for the profile name: it ranks `--profile`
+above `ORQ_PROFILE` above `orq auth profile use` and returns `""` when none is
+selected. A browser login is not a profile and has no name; it is keyed by
+server host (`auth.SessionHost`), so nothing derives a session file or a state
+bucket from a profile name any more.
 
 **Distribution:** five cross-compiled binaries per release, wrapped as
 `npm/cli-<os>-<arch>` packages behind the `@orq-ai/cli` shim, plus raw binaries,

@@ -91,7 +91,7 @@ func TestCodexResolve(t *testing.T) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	if plan.Env["ORQ_API_KEY"] != "orq-key" || len(plan.Env) != 1 {
+	if plan.Env["ORQ_API_KEY"] != "orq-key" || plan.Env["ORQ_SERVER"] != "https://my.orq.ai" || len(plan.Env) != 2 {
 		t.Fatalf("env: %v", plan.Env)
 	}
 	joined := strings.Join(plan.PreArgs, " ")

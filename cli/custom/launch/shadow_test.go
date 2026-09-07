@@ -3,9 +3,6 @@ package launch
 import (
 	"testing"
 
-	bartolocli "github.com/orq-ai/bartolo/cli"
-	"github.com/spf13/viper"
-
 	"orq/cli/custom/auth"
 )
 
@@ -31,22 +28,14 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 		{name: "a key we did not mint", envKey: "sk-b", savedKey: "sk-a", savedWS: "acme", activeWS: ws("acme"), want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if bartolocli.Creds == nil {
-				bartolocli.Creds = newTestCreds(t)
-				t.Cleanup(func() { bartolocli.Creds = nil })
-			}
-			viper.Set("profile", "default")
-			t.Cleanup(func() { viper.Set("profile", "") })
-			// gateway_key is the field `orq setup` writes now. Seeding api_key
-			// here is what let the "warns forever" regression ship green: the
-			// fixture described a credential layout setup no longer produces.
-			bartolocli.Creds.Set("profiles.default.gateway_key", tc.savedKey)
-			bartolocli.Creds.Set("profiles.default.api_key", "")
-			bartolocli.Creds.Set("profiles.default.workspace", tc.savedWS)
-
 			var session *auth.Session
 			if tc.activeWS != nil {
-				session = &auth.Session{ActiveWorkspaceKey: tc.activeWS}
+				session = &auth.Session{
+					ActiveWorkspaceKey: tc.activeWS,
+					GatewayKey:         tc.savedKey,
+					GatewayWorkspace:   tc.savedWS,
+				}
+				saveLaunchSession(t, session)
 			}
 			if got := shadowsSession(tc.envKey, session); got != tc.want {
 				t.Errorf("shadowsSession = %v, want %v", got, tc.want)
@@ -55,21 +44,10 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 	}
 }
 
-// A key the user brought themselves still lives in api_key, so the fallback has
-// to keep working — otherwise the same warning fires forever for them instead.
-func TestShadowsSessionReadsTheLegacyFieldToo(t *testing.T) {
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", "") })
-	bartolocli.Creds.Set("profiles.default.gateway_key", "")
-	bartolocli.Creds.Set("profiles.default.api_key", "sk-brought")
-	bartolocli.Creds.Set("profiles.default.workspace", "acme")
-
+func TestShadowsSessionReadsTheSavedGatewayKey(t *testing.T) {
 	active := "acme"
-	session := &auth.Session{ActiveWorkspaceKey: &active}
+	session := &auth.Session{ActiveWorkspaceKey: &active, GatewayKey: "sk-brought", GatewayWorkspace: "acme"}
+	saveLaunchSession(t, session)
 	if shadowsSession("sk-brought", session) {
 		t.Error("a user-supplied key in its own workspace reported as a mismatch")
 	}
@@ -83,27 +61,39 @@ func TestShadowsSessionReadsTheLegacyFieldToo(t *testing.T) {
 // the gateway_key split made the ordinary state — so launch was comparing our own
 // token against the saved key and reporting a mismatch on every run.
 func TestShadowsSessionIgnoresOurOwnInjectedToken(t *testing.T) {
-	if bartolocli.Creds == nil {
-		bartolocli.Creds = newTestCreds(t)
-		t.Cleanup(func() { bartolocli.Creds = nil })
-	}
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", "") })
-	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-orq-MINTED")
-	bartolocli.Creds.Set("profiles.default.api_key", "")
-	bartolocli.Creds.Set("profiles.default.workspace", "acme")
-
 	active := "acme"
 	session := &auth.Session{
 		ActiveWorkspaceKey: &active,
 		WorkspaceTokens:    map[string]auth.StoredAccessToken{"acme": {Token: "session-jwt"}},
+		GatewayKey:         "sk-orq-MINTED",
+		GatewayWorkspace:   "acme",
 	}
+	saveLaunchSession(t, session)
 	if shadowsSession("session-jwt", session) {
 		t.Error("our own injected session token reported as a shadowing key")
 	}
 	// A real foreign key must still be caught.
 	if !shadowsSession("sk-somebody-elses", session) {
 		t.Error("a genuinely different key stopped being reported")
+	}
+}
+
+func saveLaunchSession(t *testing.T, session *auth.Session) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	urls := auth.ResolveURLs("")
+	session.Version = 1
+	session.APIBaseURL = urls.APIBaseURL
+	session.V1BaseURL = urls.V1BaseURL
+	session.AuthBaseURL = urls.AuthBaseURL
+	session.ProfileBaseURL = urls.ProfileBaseURL
+	session.RefreshToken = "refresh-token"
+	session.BootstrapToken = auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"}
+	if session.WorkspaceTokens == nil {
+		session.WorkspaceTokens = map[string]auth.StoredAccessToken{}
+	}
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -161,13 +151,4 @@ func TestSupersededBySession(t *testing.T) {
 			}
 		})
 	}
-}
-
-func newTestCreds(t *testing.T) *bartolocli.CredentialsFile {
-	t.Helper()
-	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewCredentialsFile: %v", err)
-	}
-	return creds
 }

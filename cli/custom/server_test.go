@@ -2,15 +2,20 @@ package custom
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/commands"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	gentleman "gopkg.in/h2non/gentleman.v2"
+	gentlemancontext "gopkg.in/h2non/gentleman.v2/context"
 )
 
 // The user-visible contract of ENG-2852: one name for the host on every
@@ -114,8 +119,143 @@ func captureOutput(t *testing.T, fn func()) (stdout, stderr string) {
 	return out.String(), errBuf.String()
 }
 
-// Precedence, and the provenance `orq doctor` reports. The session is layered
-// on by the PreRun itself, below every source here.
+func TestConfigureAPIKeyUsageNotice(t *testing.T) {
+	cases := []struct {
+		name, envVar, profileKey, noNotice string
+		explicitKey, stderrTTY, stdoutTTY  bool
+		json                               bool
+		wantPending                        bool
+	}{
+		{name: "ORQ_API_KEY on a stderr tty", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
+		{name: "ORQ_TOKEN on a stderr tty", envVar: "ORQ_TOKEN", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
+		{name: "ORQ_AUTHORIZATION on a stderr tty", envVar: "ORQ_AUTHORIZATION", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
+		// `orq x | jq`: stdout is the pipe's, stderr is still the person's.
+		{name: "stdout piped, stderr tty", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, wantPending: true},
+		{name: "stored profile wins", envVar: "ORQ_TOKEN", explicitKey: true, profileKey: "profile-key", stderrTTY: true, stdoutTTY: true},
+		{name: "opt out", envVar: "ORQ_API_KEY", explicitKey: true, noNotice: "1", stderrTTY: true, stdoutTTY: true},
+		{name: "stderr redirected", envVar: "ORQ_API_KEY", explicitKey: true, stdoutTTY: true},
+		{name: "machine format", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, json: true},
+		{name: "session bridge owns exported key", envVar: "ORQ_API_KEY", stderrTTY: true, stdoutTTY: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prevProfile := viper.GetString("profile")
+			prevJSON := viper.GetBool("json")
+			// machineFormatRequested reads output-format from viper, so an
+			// inherited value would silently turn every tty case into a
+			// machine-format one.
+			prevFormat := viper.GetString("output-format")
+			viper.Set("profile", "default")
+			viper.Set("json", tc.json)
+			viper.Set("output-format", "toon")
+			t.Cleanup(func() {
+				viper.Set("profile", prevProfile)
+				viper.Set("json", prevJSON)
+				viper.Set("output-format", prevFormat)
+			})
+			t.Setenv("ORQ_NO_API_KEY_NOTICE", tc.noNotice)
+			for _, envVar := range apiKeyEnvVars {
+				t.Setenv(envVar, "")
+			}
+			t.Setenv(tc.envVar, "sk-orq-DO-NOT-PRINT")
+			commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
+			t.Cleanup(commands.ResetUserEnvAPIKey)
+
+			creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			prevCreds := bartolocli.Creds
+			bartolocli.Creds = creds
+			t.Cleanup(func() { bartolocli.Creds = prevCreds })
+			if tc.profileKey != "" {
+				creds.Set("profiles.default.api_key", tc.profileKey)
+			}
+
+			root := &cobra.Command{Use: "orq"}
+			root.PersistentFlags().String("output-format", "toon", "")
+			cmd := &cobra.Command{Use: "models"}
+			root.AddCommand(cmd)
+
+			prevOut, prevErr := stdoutIsTerminal, stderrIsTerminal
+			stdoutIsTerminal = func() bool { return tc.stdoutTTY }
+			stderrIsTerminal = func() bool { return tc.stderrTTY }
+			t.Cleanup(func() { stdoutIsTerminal, stderrIsTerminal = prevOut, prevErr })
+
+			configureAPIKeyUsageNotice(cmd, tc.explicitKey)
+			if got := pendingAPIKeyUsageNotice != nil; got != tc.wantPending {
+				t.Errorf("pending notice = %v, want %v", got, tc.wantPending)
+			}
+		})
+	}
+}
+
+func TestAPIKeyUsageNoticeFollowsActualRequestCredential(t *testing.T) {
+	for _, envVar := range apiKeyEnvVars {
+		t.Run(envVar, func(t *testing.T) {
+			key := "sk-orq-" + envVar
+			pendingAPIKeyUsageNotice = newAPIKeyUsageNotice(key, envVar)
+			t.Cleanup(func() { pendingAPIKeyUsageNotice = nil })
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(srv.Close)
+
+			client := gentleman.New()
+			client.UseRequest(func(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+				ctx.Request.Header.Set("Authorization", "Bearer "+key)
+				h.Next(ctx)
+			})
+			client.UseHandler("before dial", apiKeyUsageNoticeBeforeDial)
+
+			stdout, stderr := captureOutput(t, func() {
+				for range 2 {
+					if _, err := client.URL(srv.URL).Get().Do(); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+			if stdout != "" {
+				t.Errorf("notice wrote to stdout: %q", stdout)
+			}
+			if want := "Using " + envVar + " from environment\n"; stderr != want {
+				t.Errorf("notice = %q, want %q", stderr, want)
+			}
+			if strings.Contains(stderr, key) {
+				t.Errorf("notice exposed the API key: %q", stderr)
+			}
+		})
+	}
+}
+
+func TestAPIKeyUsageNoticeIgnoresDifferentRequestCredential(t *testing.T) {
+	pendingAPIKeyUsageNotice = newAPIKeyUsageNotice("environment-key", "ORQ_API_KEY")
+	t.Cleanup(func() { pendingAPIKeyUsageNotice = nil })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	client := gentleman.New()
+	client.UseRequest(func(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+		ctx.Request.Header.Set("Authorization", "Bearer session-token")
+		h.Next(ctx)
+	})
+	client.UseHandler("before dial", apiKeyUsageNoticeBeforeDial)
+
+	_, stderr := captureOutput(t, func() {
+		if _, err := client.URL(srv.URL).Get().Do(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if stderr != "" {
+		t.Errorf("session-authenticated request got API-key notice: %q", stderr)
+	}
+}
+
+// Precedence, and the provenance `orq doctor` reports.
 func TestResolveServerPrecedence(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root := buildRoot(t)
@@ -156,9 +296,9 @@ func TestResolveServerPrecedence(t *testing.T) {
 			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{
-			name: "env beats the profile",
+			name: "profile beats the env",
 			env:  map[string]string{"ORQ_SERVER": "https://env.example"}, profile: "https://profile.example",
-			wantServer: "https://env.example", wantSource: "env",
+			wantServer: "https://profile.example", wantSource: "profile",
 		},
 		{name: "env", env: map[string]string{"ORQ_SERVER": "https://env.example"}, wantServer: "https://env.example", wantSource: "env"},
 		{name: "deprecated env", env: map[string]string{"ORQ_API_BASE_URL": "https://legacy.example"}, wantServer: "https://legacy.example", wantSource: "env"},
@@ -217,51 +357,89 @@ func TestResolveServerPrecedence(t *testing.T) {
 // setProfileServer binds a host to the active credentials profile for one test.
 func setProfileServer(t *testing.T, server string) {
 	t.Helper()
-	key := "profiles." + auth.ActiveProfile() + ".server"
+	previousProfile := viper.GetString("profile")
+	bartolocli.SelectProfile("server-test")
+	key := "profiles.server-test.server"
 	prev := bartolocli.Creds.GetString(key)
 	bartolocli.Creds.Set(key, server)
-	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
+	t.Cleanup(func() {
+		bartolocli.Creds.Set(key, prev)
+		viper.Set("profile", previousProfile)
+	})
 }
 
-// An explicitly typed --profile is a more specific statement of intent than an
-// exported key, so the profile's own key must reach the request instead.
-func TestProfileAPIKeyBeatsTheEnvironment(t *testing.T) {
-	root := buildRoot(t)
-	profile := auth.ActiveProfile()
-	key := "profiles." + profile + ".api_key"
-	prev := bartolocli.Creds.GetString(key)
-	bartolocli.Creds.Set(key, "profile-key")
-	t.Cleanup(func() { bartolocli.Creds.Set(key, prev) })
+// The notice's whole correctness argument is that it reads the credential
+// bartolo actually put on the wire. The two tests above stamp the Authorization
+// header themselves, so they would keep passing if Register stopped installing
+// the middleware, if bartolo resolved a different credential, or if the handler
+// order changed. This one runs the real chain: generated.Register installs
+// bartolo's apikey handler, Register installs the notice, and a request through
+// bartolocli.Client has to carry the exported key and announce it.
+func TestAPIKeyUsageNoticeRidesTheRealClient(t *testing.T) {
+	for _, envVar := range apiKeyEnvVars {
+		t.Run(envVar, func(t *testing.T) {
+			key := "sk-orq-REAL-" + envVar
+			for _, name := range apiKeyEnvVars {
+				t.Setenv(name, "")
+			}
+			t.Setenv(envVar, key)
+			t.Setenv("ORQ_NO_API_KEY_NOTICE", "")
 
-	flags := root.PersistentFlags()
-	t.Cleanup(func() { flags.Lookup("profile").Changed = false })
+			prevProfile := viper.GetString("profile")
+			prevSelected := viper.GetString("profile-selected")
+			t.Cleanup(func() {
+				viper.Set("profile", prevProfile)
+				viper.Set("profile-selected", prevSelected)
+			})
+			// No profile in force, so bartolo's lookupKey falls through to the
+			// environment — the state the notice exists to report.
+			viper.Set("profile", "")
+			viper.Set("profile-selected", "")
 
-	// Without the flag, env versus env is bartolo's call and nothing moves.
-	t.Setenv("ORQ_API_KEY", "env-key")
-	flags.Lookup("profile").Changed = false
-	applyProfileAPIKey(root)
-	if got := os.Getenv("ORQ_API_KEY"); got != "env-key" {
-		t.Fatalf("no --profile: got %q, want the environment untouched", got)
-	}
+			creds, err := bartolocli.NewCredentialsFile(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			prevCreds := bartolocli.Creds
+			t.Cleanup(func() { bartolocli.Creds = prevCreds })
 
-	// With it, the profile wins and says so on stderr. The flag carries the
-	// name: bartolo 0.8 retired the implicit `default` profile, so a changed
-	// but empty --profile puts no profile in force.
-	t.Setenv("ORQ_TOKEN", "env-token")
-	if err := flags.Set("profile", profile); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = flags.Set("profile", "") })
-	flags.Lookup("profile").Changed = true
-	_, stderr := captureOutput(t, func() { applyProfileAPIKey(root) })
-	if got := os.Getenv("ORQ_API_KEY"); got != "profile-key" {
-		t.Fatalf("--profile: got %q, want the profile key", got)
-	}
-	// The other spellings are cleared, or bartolo would read them first.
-	if got := os.Getenv("ORQ_TOKEN"); got != "" {
-		t.Errorf("ORQ_TOKEN: got %q, want it cleared", got)
-	}
-	if !strings.Contains(stderr, "takes precedence") {
-		t.Errorf("no warning for the shadowed key: %q", stderr)
+			root := buildRoot(t)
+			bartolocli.Creds = creds
+			commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
+			t.Cleanup(commands.ResetUserEnvAPIKey)
+
+			prevTTY := stderrIsTerminal
+			stderrIsTerminal = func() bool { return true }
+			t.Cleanup(func() { stderrIsTerminal = prevTTY })
+
+			var gotAuth string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotAuth = r.Header.Get("Authorization")
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(srv.Close)
+
+			cmd, _, err := root.Find([]string{"whoami"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			configureAPIKeyUsageNotice(cmd, true)
+			t.Cleanup(func() { pendingAPIKeyUsageNotice = nil })
+
+			_, stderr := captureOutput(t, func() {
+				if _, err := bartolocli.Client.URL(srv.URL).Get().Do(); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if gotAuth != "Bearer "+key {
+				t.Fatalf("bartolo sent Authorization %q, want the exported key", gotAuth)
+			}
+			if want := "Using " + envVar + " from environment\n"; stderr != want {
+				t.Errorf("notice = %q, want %q", stderr, want)
+			}
+			if strings.Contains(stderr, key) {
+				t.Errorf("notice exposed the API key: %q", stderr)
+			}
+		})
 	}
 }

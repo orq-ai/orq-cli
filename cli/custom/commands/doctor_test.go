@@ -16,6 +16,7 @@ import (
 	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 
+	"github.com/orq-ai/bartolo/apikey"
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -363,8 +364,8 @@ func TestCredentialPermsCheck(t *testing.T) {
 
 	// setupConfig points both viper's config-directory and the auth
 	// package's HOME-derived sessions dir at a fresh temp tree, and returns
-	// the config directory and the path where the active profile's session
-	// file would live.
+	// the config directory and the directory containing every server-named
+	// session file.
 	setupConfig := func(t *testing.T) (dir, sessionsDir string) {
 		t.Helper()
 		home := t.TempDir()
@@ -464,7 +465,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 		if err := os.MkdirAll(sessionsDir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		sessionPath := filepath.Join(sessionsDir, auth.ActiveProfile()+".json")
+		sessionPath := auth.SessionFilePath()
 		if err := os.WriteFile(sessionPath, []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -829,6 +830,146 @@ func runDoctor(t *testing.T, wantErr bool, args ...string) map[string]any {
 	return report
 }
 
+// doctorAuthHarness isolates the two real credential stores doctor reads:
+// bartolo's API-key profiles and auth's server-named OAuth sessions.
+func doctorAuthHarness(t *testing.T, profile string) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+
+	dir := t.TempDir()
+	creds, err := bartolocli.NewCredentialsFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origCreds, origHandlers := bartolocli.Creds, bartolocli.AuthHandlers
+	bartolocli.Creds = creds
+	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{
+		"apikey": &apikey.Handler{Name: "Authorization", In: apikey.LocationHeader},
+	}
+	viper.Set("config-directory", dir)
+	viper.Set("profile", profile)
+	viper.Set("profile-selected", "")
+	t.Cleanup(func() {
+		bartolocli.Creds, bartolocli.AuthHandlers = origCreds, origHandlers
+		viper.Set("config-directory", "")
+		viper.Set("profile", "")
+		viper.Set("profile-selected", "")
+	})
+}
+
+func saveDoctorSession(t *testing.T, apiBase, email, workspace string) {
+	t.Helper()
+	urls := auth.ResolveURLs(apiBase)
+	if err := auth.SaveSession(&auth.Session{
+		Version:            1,
+		APIBaseURL:         urls.APIBaseURL,
+		V1BaseURL:          urls.V1BaseURL,
+		AuthBaseURL:        urls.AuthBaseURL,
+		ProfileBaseURL:     urls.ProfileBaseURL,
+		User:               &auth.SessionUser{ID: "user-1", Email: email},
+		Workspaces:         []map[string]any{{"key": workspace}},
+		ActiveWorkspaceKey: &workspace,
+		RefreshToken:       "refresh-token",
+		BootstrapToken: auth.StoredAccessToken{
+			Token:     "bootstrap-token",
+			ExpiresAt: "2099-01-01T00:00:00Z",
+		},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{},
+	}); err != nil {
+		t.Fatalf("save doctor session: %v", err)
+	}
+}
+
+func doctorSection(t *testing.T, report map[string]any, name string) map[string]any {
+	t.Helper()
+	section, ok := report[name].(map[string]any)
+	if !ok {
+		t.Fatalf("doctor report has no %s object: %v", name, report[name])
+	}
+	return section
+}
+
+func TestDoctorReportPrefersActiveAPIKeyProfileOverExistingSession(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+
+	if err := saveAPIKeyProfile("sk-orq-profile"); err != nil {
+		t.Fatalf("save API-key profile: %v", err)
+	}
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+	saveDoctorSession(t, srv.URL, "session@example.com", "session-workspace")
+
+	report := runDoctorJSON(t)
+	authReport := doctorSection(t, report, "auth")
+	if authReport["status"] != "authenticated" || authReport["source"] != "credentials.json:work" {
+		t.Errorf("auth = %v, want the active API-key profile", authReport)
+	}
+	if authReport["user_email"] != "" || authReport["active_workspace_key"] != nil || authReport["workspace_count"] != float64(0) {
+		t.Errorf("auth leaked identity from the ignored session: %v", authReport)
+	}
+	if profile := doctorSection(t, report, "config")["profile"]; profile != "work" {
+		t.Errorf("config.profile = %v, want work", profile)
+	}
+	if check := findCheck(t, report, "bootstrap_token"); check != nil {
+		t.Errorf("doctor reported the ignored session's bootstrap token: %v", check)
+	}
+	if check := findCheck(t, report, "session_file"); check == nil || check["message"] != "No session file (authenticated with an API key)" {
+		t.Errorf("session_file check = %v, want the API-key-only result", check)
+	}
+}
+
+func TestDoctorReportNamesResolvedSessionHostAndTableOutput(t *testing.T) {
+	doctorAuthHarness(t, "")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+	saveDoctorSession(t, srv.URL, "login@example.com", "login-workspace")
+
+	report := runDoctorJSON(t)
+	config := doctorSection(t, report, "config")
+	if config["profile"] != "" {
+		t.Errorf("config.profile = %v, want no profile", config["profile"])
+	}
+	if got, want := config["session_host"], auth.SessionHost(srv.URL); got != want {
+		t.Errorf("config.session_host = %v, want %q", got, want)
+	}
+	authReport := doctorSection(t, report, "auth")
+	if authReport["source"] != "session-file" || authReport["user_email"] != "login@example.com" {
+		t.Errorf("auth = %v, want the resolved-host session", authReport)
+	}
+
+	output := doctorSection(t, report, "output")
+	if output["default_format"] != "table" {
+		t.Errorf("output.default_format = %v, want table", output["default_format"])
+	}
+	formats, ok := output["supported_formats"].([]any)
+	if !ok {
+		t.Fatalf("output.supported_formats = %T, want an array", output["supported_formats"])
+	}
+	var hasTable bool
+	for _, format := range formats {
+		if format == "table" {
+			hasTable = true
+		}
+	}
+	if !hasTable {
+		t.Errorf("output.supported_formats = %v, want table included", formats)
+	}
+}
+
 // findCheck returns the check with the given id, or nil when the report has none.
 func findCheck(t *testing.T, report map[string]any, id string) map[string]any {
 	t.Helper()
@@ -1076,9 +1217,7 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 		explicitAPIKey = prevExplicit
 		userEnvAPIKey, userEnvAPIKeyTaken = prevEnv, prevTaken
 	})
-	bartolocli.Creds.Set("profiles.default.gateway_key", "sk-orq-MINTED")
-
-	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK}
+	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{GatewayKey: "sk-orq-MINTED"}}
 	loggedOut := auth.SessionInspectResult{Status: auth.StatusMissing}
 
 	for name, tc := range map[string]struct {
@@ -1095,9 +1234,10 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			inspect: loggedIn, exported: "sk-orq-MINTED",
 			wantRow: true, wantStatus: "pass", wantSaid: "login session instead",
 		},
-		"our key with no session to fall back to": {
+		// Gateway metadata belongs to the session now. Without one, doctor
+		// cannot identify an opaque exported key as one setup minted.
+		"no session means no gateway identity to compare": {
 			inspect: loggedOut, exported: "sk-orq-MINTED",
-			wantRow: true, wantStatus: "warn", wantSaid: "orq auth login",
 		},
 		"a key that really outranks the login": {
 			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
@@ -1111,10 +1251,9 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			otherEnv: map[string]string{"ORQ_TOKEN": "sk-orq-SOMEONE-ELSES"},
 			wantRow:  true, wantStatus: "warn", wantSaid: "ORQ_TOKEN also takes precedence",
 		},
-		"a profile api_key waits behind ORQ_API_KEY": {
+		"a profile api_key makes the exported gateway key irrelevant": {
 			inspect: loggedIn, exported: "sk-orq-MINTED", explicit: true,
 			profileKey: "sk-orq-PROFILE",
-			wantRow:    true, wantStatus: "warn", wantSaid: "api_key in profile default also takes precedence",
 		},
 		"a key we did not mint is not this row's business": {
 			inspect: loggedIn, exported: "sk-orq-SOMEONE-ELSES", explicit: true,
@@ -1127,7 +1266,11 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 			}
 			if tc.profileKey != "" {
 				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
-				t.Cleanup(func() { bartolocli.Creds.Set("profiles.default.api_key", "") })
+				viper.Set("profile", "default")
+				t.Cleanup(func() {
+					bartolocli.Creds.Set("profiles.default.api_key", "")
+					viper.Set("profile", "")
+				})
 			}
 			SetUserEnvAPIKey(tc.exported)
 			SetExplicitAPIKey(tc.explicit)
@@ -1148,5 +1291,23 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 				t.Error("the check printed the credential")
 			}
 		})
+	}
+}
+
+// A profile with no api_key authenticates nothing, and bartolo will not fall
+// through to an ambient key: reporting "authenticated / env:ORQ_API_KEY" on the
+// one screen people open when nothing works is the worst possible answer.
+func TestDoctorReportsAKeylessProfileAsMisconfigured(t *testing.T) {
+	doctorAuthHarness(t, "work")
+	bartolocli.Creds.Set("profiles.work.type", "apikey")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+
+	report := runDoctorJSON(t)
+	authReport := doctorSection(t, report, "auth")
+	if authReport["status"] != "misconfigured" {
+		t.Errorf("auth = %v, want a keyless profile reported as misconfigured", authReport)
+	}
+	if source, _ := authReport["source"].(string); !strings.Contains(source, "work") {
+		t.Errorf("auth source = %q, want the profile named", source)
 	}
 }

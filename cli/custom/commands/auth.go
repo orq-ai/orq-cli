@@ -9,8 +9,21 @@ import (
 	"orq/cli/custom/auth"
 
 	survey "github.com/AlecAivazis/survey/v2"
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 )
+
+// profileInForceError is what login and logout say when a profile is selected:
+// the session they act on is not what a profile selects. The message names
+// where the selection came from, because it is as often ORQ_PROFILE or a
+// persisted `auth profile use` as it is the flag.
+func profileInForceError(verb string) error {
+	name, source, drop := ProfileSelection()
+	return fmt.Errorf(
+		"profile %q is an API key, not a login (selected by %s); to %s, %s, or pass --profile \"\" for this call",
+		name, source, verb, drop,
+	)
+}
 
 func NewLoginCommand() *cobra.Command {
 	var workspace string
@@ -34,6 +47,10 @@ func NewLoginCommand() *cobra.Command {
 				}, &method, promptStdio()); err != nil {
 					return err
 				}
+			}
+
+			if method != "API key" && profileSelected() {
+				return profileInForceError("log in to another server with --server")
 			}
 
 			if method == "API key" {
@@ -88,17 +105,17 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 	}
 	// A user-supplied key carries no workspace provenance — saved as unknown,
 	// so setup's reuse check treats it as such rather than as a mismatch.
-	if err := saveAPIKeyProfile(key, ""); err != nil {
+	if err := saveAPIKeyProfile(key); err != nil {
 		return err
 	}
 
 	if wantsHumanView(cmd) {
-		success("Signed in with an API key (profile: %s, %d projects visible)", auth.ActiveProfile(), len(projects))
+		success("Signed in with an API key (profile: %s, %d projects visible)", bartoloProfileName(), len(projects))
 		return nil
 	}
 	return emit(map[string]any{
 		"method":   "api_key",
-		"profile":  auth.ActiveProfile(),
+		"profile":  bartoloProfileName(),
 		"verified": true,
 	})
 }
@@ -112,17 +129,14 @@ func NewLogoutCommand() *cobra.Command {
 		Use:   "logout",
 		Short: "Revoke the refresh token and clear local credentials",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if profileSelected() {
+				return profileInForceError("log out")
+			}
 			session, err := auth.ReadSession()
 			if err != nil {
 				return err
 			}
-			// A stored API key authenticates on its own, so logging out has to
-			// clear it too — otherwise "logged out" still runs every command.
 			if session == nil {
-				keyCleared, err := clearAPIKeyProfile()
-				if err != nil {
-					return err
-				}
 				envCleared, err := clearShellEnvFile()
 				if err != nil {
 					return err
@@ -130,29 +144,28 @@ func NewLogoutCommand() *cobra.Command {
 				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
-					if keyCleared {
-						success("Cleared the stored API key")
-					} else {
-						info("Not logged in - nothing to clear.")
-					}
+					info("Not logged in - nothing to clear.")
 					reportClearedEnvFiles(envCleared)
-					reportSurvivingGatewayKey()
+					reportSurvivingGatewayKey("")
 					return removalError(removeFailed)
 				}
 				if err := emit(map[string]any{
 					"authenticated":               false,
-					"cleared":                     keyCleared,
-					"api_key_profile_cleared":     keyCleared,
+					"cleared":                     false,
 					"env_files_cleared":           envCleared,
 					"coding_agents_removed":       removed,
 					"coding_agents_remove_failed": removeFailed,
-					"gateway_key_id":              savedGatewayKeyID(),
+					"gateway_key_id":              "",
 					"session_file":                auth.SessionFilePath(),
 				}); err != nil {
 					return err
 				}
 				return removalError(removeFailed)
 			}
+			// The gateway key is deliberately not revoked by logout. Capture its
+			// handle before deleting the session that owns the metadata so both
+			// human and machine output can still tell the user what survives.
+			gatewayKeyID := session.GatewayKeyID
 
 			// --force clears local credentials no matter what, so it implies
 			// consent; asking "are you sure?" after the user said "force" is noise.
@@ -204,13 +217,9 @@ func NewLogoutCommand() *cobra.Command {
 			if err := client.ClearLocalSession(); err != nil {
 				return err
 			}
-			keyCleared, err := clearAPIKeyProfile()
-			if err != nil {
-				return err
-			}
 			envCleared, err := clearShellEnvFile()
 			if err != nil {
-				return err
+				return postLogoutError(gatewayKeyID, err)
 			}
 			removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 			warnLingeringAPIKeys()
@@ -226,23 +235,22 @@ func NewLogoutCommand() *cobra.Command {
 					Warn("local credentials cleared, but the server-side token was not revoked")
 				}
 				reportClearedEnvFiles(envCleared)
-				reportSurvivingGatewayKey()
-				return removalError(removeFailed)
+				reportSurvivingGatewayKey(gatewayKeyID)
+				return postLogoutError(gatewayKeyID, removalError(removeFailed))
 			}
 			if err := emit(map[string]any{
 				"authenticated":               false,
 				"cleared":                     true,
 				"revoked":                     revokeErr == nil,
-				"api_key_profile_cleared":     keyCleared,
 				"env_files_cleared":           envCleared,
 				"coding_agents_removed":       removed,
 				"coding_agents_remove_failed": removeFailed,
-				"gateway_key_id":              savedGatewayKeyID(),
+				"gateway_key_id":              gatewayKeyID,
 				"session_file":                auth.SessionFilePath(),
 			}); err != nil {
-				return err
+				return postLogoutError(gatewayKeyID, err)
 			}
-			return removalError(removeFailed)
+			return postLogoutError(gatewayKeyID, removalError(removeFailed))
 		},
 	}
 	DeprecatedAPIBaseFlag(cmd)
@@ -261,11 +269,24 @@ func removalError(failed bool) error {
 	return nil
 }
 
+// postLogoutError preserves the only handle for a gateway key after its
+// owning session has been deleted. Keep wrapping the original error so callers
+// can still classify it with errors.Is/errors.As.
+func postLogoutError(gatewayKeyID string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if gatewayKeyID == "" {
+		return fmt.Errorf("local session cleared: %w", err)
+	}
+	return fmt.Errorf("local session cleared; gateway key %s remains active and must be revoked separately: %w", gatewayKeyID, err)
+}
+
 // reportSurvivingGatewayKey names the one thing logout cannot undo. The key is
 // still Active in the workspace until its own expiry, and the id is the only
 // handle for killing it, so saying nothing here strands a live credential.
-func reportSurvivingGatewayKey() {
-	if id := savedGatewayKeyID(); id != "" {
+func reportSurvivingGatewayKey(id string) {
+	if id != "" {
 		info("the gateway key is still active — revoke it with: orq api-keys delete %s", id)
 	}
 }
@@ -286,6 +307,28 @@ func NewWhoAmICommand() *cobra.Command {
 		Use:   "whoami",
 		Short: "Show the current authenticated user and workspace",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if profileInForce() {
+				key := maskToken(bartolocli.GetProfile()["api_key"])
+				if wantsHumanView(cmd) {
+					success("Using API-key profile %s", bartolocli.ActiveProfileName())
+					kv(9, "server", "%s", auth.ResolveURLs(serverURL()).APIBaseURL)
+					if key == "" {
+						// The profile exists but carries no key, so every request
+						// will fail; say that rather than print a blank field.
+						kv(9, "api_key", "%s", "(not set — run `orq auth profile add apikey "+bartolocli.ActiveProfileName()+" <api-key>`)")
+						return nil
+					}
+					kv(9, "api_key", "%s", key)
+					return nil
+				}
+				return emit(map[string]any{
+					"profile":      bartolocli.ActiveProfileName(),
+					"server":       auth.ResolveURLs(serverURL()).APIBaseURL,
+					"api_key":      key,
+					"session_file": auth.SessionFilePath(),
+					"identity":     nil,
+				})
+			}
 			session, err := auth.ReadSession()
 			if err != nil {
 				return err

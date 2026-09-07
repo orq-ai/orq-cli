@@ -343,8 +343,8 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 			viper.Set("config-directory", dir)
 			t.Cleanup(func() { viper.Set("config-directory", "") })
 
-			if err := writeAPIKeyProfile("default", "a-key", "test-ws"); err != nil {
-				t.Fatalf("writeAPIKeyProfile: %v", err)
+			if err := saveAPIKeyProfile("a-key"); err != nil {
+				t.Fatalf("saveAPIKeyProfile: %v", err)
 			}
 			written := bartolocli.Creds.GetString("profiles.default.type")
 			if _, ok := bartolocli.AuthHandlers[written]; !ok {
@@ -365,13 +365,48 @@ func credsHarness(t *testing.T) {
 	prevDir, prevProfile := viper.GetString("config-directory"), viper.GetString("profile")
 	bartolocli.Creds = newTestCreds(t)
 	bartolocli.AuthHandlers = map[string]bartolocli.AuthHandler{"apikey": fakeAuthHandler{}}
+	// Preserve an explicit temp HOME a caller prepared for provider fixtures;
+	// otherwise keep session writes away from the developer's real ~/.orq.
+	home := filepath.Clean(os.Getenv("HOME"))
+	tempRoot := filepath.Clean(os.TempDir()) + string(os.PathSeparator)
+	if home == "." || !strings.HasPrefix(home+string(os.PathSeparator), tempRoot) {
+		t.Setenv("HOME", t.TempDir())
+	}
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer("", "default")
+	urls := auth.ResolveURLs("")
+	if err := auth.SaveSession(&auth.Session{
+		Version:         1,
+		APIBaseURL:      urls.APIBaseURL,
+		V1BaseURL:       urls.V1BaseURL,
+		AuthBaseURL:     urls.AuthBaseURL,
+		ProfileBaseURL:  urls.ProfileBaseURL,
+		RefreshToken:    "refresh-token",
+		BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		bartolocli.Creds, bartolocli.AuthHandlers = restoreCreds, restoreHandlers
 		viper.Set("config-directory", prevDir)
 		viper.Set("profile", prevProfile)
+		auth.SetServer(origServer, origSource)
 	})
+}
+
+func saveTestGatewayKey(t *testing.T, key, workspace string) {
+	t.Helper()
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session missing: %v", err)
+	}
+	session.GatewayKey = key
+	session.GatewayWorkspace = workspace
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // An API key is minted against whatever workspace is active at mint time and
@@ -420,7 +455,13 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			if err := saveAPIKeyProfile("sk-orq-old", tc.storedWS); err != nil {
+			session, err := auth.ReadSession()
+			if err != nil || session == nil {
+				t.Fatalf("session missing: %v", err)
+			}
+			session.GatewayKey = "sk-orq-old"
+			session.GatewayWorkspace = tc.storedWS
+			if err := auth.SaveSession(session); err != nil {
 				t.Fatal(err)
 			}
 			state := &authState{
@@ -430,7 +471,7 @@ func TestSavedKeyIsReusedOnlyForItsOwnWorkspace(t *testing.T) {
 			}
 			// noInput skips every confirm.
 			opts := &setupOptions{noInput: true}
-			_, _, _, err := resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
+			_, _, _, err = resolveAPIKey(newReporter(true), auth.NewClient(srv.URL), state, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -730,9 +771,8 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 		t.Fatal(err)
 	}
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
 	viper.Set("no-input", true)
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", ""); viper.Set("no-input", false) })
+	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("no-input", false) })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
@@ -843,8 +883,7 @@ func TestAFailedWireExitsNonZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
@@ -1088,18 +1127,19 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	t.Chdir(t.TempDir()) // no project markers: scope inference picks $HOME
 
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() {
-		viper.Set("config-directory", "")
-		viper.Set("profile", "")
-	})
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		// initAuth, which normally creates this, runs from the generated
 		// runtime that unit tests do not start.
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
 	}
-	if err := writeAPIKeyProfile("default", "sk-orq-OLD-STALE", ""); err != nil {
+	urls := auth.ResolveURLs("")
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL, AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		RefreshToken: "refresh-token", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{}, GatewayKey: "sk-orq-OLD-STALE",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if bartolocli.Formatter == nil {
@@ -1219,9 +1259,7 @@ func TestWiredWorkspaceIsHonestAboutTheExportedKey(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := writeAPIKeyProfile("default", tc.saved, tc.savedWS); err != nil {
-				t.Fatal(err)
-			}
+			saveTestGatewayKey(t, tc.saved, tc.savedWS)
 			SetUserEnvAPIKey(tc.envKey)
 			state := &authState{bearer: tc.bearer, session: session}
 			if got := wiredWorkspace(state); got != tc.want {
@@ -1262,8 +1300,7 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	t.Setenv("ORQ_API_KEY", "sk-orq-EXPORTED")
 
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
@@ -1334,11 +1371,7 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() {
-		viper.Set("config-directory", "")
-		viper.Set("profile", "")
-	})
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
@@ -1346,9 +1379,6 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 	if bartolocli.Formatter == nil {
 		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
-	}
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED-DURABLE", "acme"); err != nil {
-		t.Fatal(err)
 	}
 	key := "acme"
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
@@ -1364,6 +1394,8 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 		WorkspaceTokens: map[string]auth.StoredAccessToken{
 			key: {Token: "session-token", ExpiresAt: exp},
 		},
+		GatewayKey:       "sk-orq-SAVED-DURABLE",
+		GatewayWorkspace: "acme",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1840,8 +1872,7 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	viper.Set("config-directory", t.TempDir())
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
+	t.Cleanup(func() { viper.Set("config-directory", "") })
 	if bartolocli.Creds == nil {
 		bartolocli.Creds = newTestCreds(t)
 		t.Cleanup(func() { bartolocli.Creds = nil })
@@ -1850,7 +1881,12 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
 		t.Cleanup(func() { bartolocli.Formatter = nil })
 	}
-	if err := writeAPIKeyProfile("default", "sk-orq-SAVED", "acme"); err != nil {
+	urls := auth.ResolveURLs("")
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL, AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
+		RefreshToken: "refresh-token", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{}, GatewayKey: "sk-orq-SAVED", GatewayWorkspace: "acme",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	resetSetupMemos(t)
@@ -2066,9 +2102,12 @@ func TestMintedKeyIsGatewayScopedAndStoredSeparately(t *testing.T) {
 		t.Errorf("gateway domains missing or mis-levelled: %v", access)
 	}
 
-	stored := auth.StateOf(auth.ActiveProfile())
-	if stored["gateway_key"] != token || stored["gateway_key_id"] != "KEYID1" {
-		t.Errorf("state = %v, want the key and its id under gateway_key*", stored)
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session missing after setup: %v", err)
+	}
+	if session.GatewayKey != token || session.GatewayKeyID != "KEYID1" {
+		t.Errorf("session = %+v, want the key and its id under GatewayKey*", session)
 	}
 	if storedAPIKeyProfile() {
 		t.Error("the minted key was stored as api_key and will shadow the session")
@@ -2128,7 +2167,9 @@ func TestLegacyAPIKeyProfileIsReusedNotReminted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveAPIKeyProfile("sk-orq-legacy", "acme"); err != nil {
+	viper.Set("profile", "legacy")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	if err := saveAPIKeyProfile("sk-orq-legacy"); err != nil {
 		t.Fatal(err)
 	}
 	ws := "acme"
@@ -2165,7 +2206,14 @@ func TestGatewayKeyRenewsBeforeExpiryOnly(t *testing.T) {
 			if err := saveGatewayKeyProfile("sk-orq-old", "KEYID", now.Add(90*24*time.Hour), "acme", ""); err != nil {
 				t.Fatal(err)
 			}
-			auth.SetStateValue("default", "gateway_key_expires_at", tc.expiresAt)
+			session, err := auth.ReadSession()
+			if err != nil || session == nil {
+				t.Fatalf("session missing: %v", err)
+			}
+			session.GatewayKeyExpiresAt = tc.expiresAt
+			if err := auth.SaveSession(session); err != nil {
+				t.Fatal(err)
+			}
 			if got := gatewayKeyDueForRenewal(now); got != tc.want {
 				t.Errorf("dueForRenewal = %v, want %v", got, tc.want)
 			}
@@ -2208,9 +2256,12 @@ func TestRenewalMintsWithoutRevokingTheOldKey(t *testing.T) {
 	if n := atomic.LoadInt64(&mints); n != 1 {
 		t.Errorf("minted %d keys, want 1", n)
 	}
-	stored := auth.StateOf(auth.ActiveProfile())
-	if stored["gateway_key"] != token || stored["gateway_key_id"] != "NEWID" {
-		t.Errorf("state still holds the superseded key: %v", stored)
+	session, err := auth.ReadSession()
+	if err != nil || session == nil {
+		t.Fatalf("session missing after setup: %v", err)
+	}
+	if session.GatewayKey != token || session.GatewayKeyID != "NEWID" {
+		t.Errorf("session still holds the superseded key: %+v", session)
 	}
 	at, ok := gatewayKeyExpiry()
 	if !ok || at.Before(time.Now().Add(80*24*time.Hour)) {
@@ -2284,9 +2335,7 @@ func TestGatewayKeyExpiryCheckBands(t *testing.T) {
 	// A key with no recorded expiry gets no row at all: silence is honest,
 	// "expires in 0 days" would not be.
 	credsHarness(t)
-	if err := saveAPIKeyProfile("sk-orq-legacy", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveTestGatewayKey(t, "sk-orq-legacy", "acme")
 	if _, ok := gatewayKeyExpiryCheck(now); ok {
 		t.Error("a key with no recorded expiry produced an expiry row")
 	}
@@ -2559,133 +2608,46 @@ func TestLogoutFailsWhenShellEnvironmentCannotBeCleared(t *testing.T) {
 	}
 }
 
-// The logout fix landed with no test: deleting the gateway-clearing lines left
-// the whole suite green, which means "signed out" could go back to leaving a
-// live gateway key in credentials.json without anything noticing.
-func TestClearAPIKeyProfileClearsBothCredentials(t *testing.T) {
-	t.Run("gateway key", func(t *testing.T) {
-		credsHarness(t)
-		if err := saveGatewayKeyProfile("sk-orq-K", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
-			t.Fatal(err)
-		}
-		held, err := clearAPIKeyProfile()
-		if err != nil || !held {
-			t.Fatalf("held=%v err=%v, want a cleared gateway key", held, err)
-		}
-		if storedAPIKeyProfile() {
-			t.Error("api_key survived logout")
-		}
-		state := auth.StateOf(auth.ActiveProfile())
-		if state["gateway_key"] != "" {
-			t.Errorf("gateway_key survived logout: %q", state["gateway_key"])
-		}
-		if key, _ := savedAPIKey(); key != "" {
-			t.Errorf("savedAPIKey still returns %q after logout", key)
-		}
-		// The key outlives the session: logout does not revoke it server-side.
-		// The id and the expiry authenticate nothing, and they are the only
-		// record of what is still live, so they are kept on purpose.
-		for _, field := range []string{"gateway_key_id", "gateway_key_expires_at"} {
-			if state[field] == "" {
-				t.Errorf("%s was discarded, leaving no handle to revoke the surviving key", field)
-			}
-		}
-	})
-
-	t.Run("legacy api key", func(t *testing.T) {
-		credsHarness(t)
-		if err := saveAPIKeyProfile("sk-orq-legacy", "acme"); err != nil {
-			t.Fatal(err)
-		}
-		held, err := clearAPIKeyProfile()
-		if err != nil || !held {
-			t.Fatalf("held=%v err=%v, want a cleared legacy key", held, err)
-		}
-	})
-
-	t.Run("nothing stored", func(t *testing.T) {
-		credsHarness(t)
-		if held, err := clearAPIKeyProfile(); held || err != nil {
-			t.Errorf("held=%v err=%v, want (false, nil)", held, err)
-		}
-	})
-}
-
-func TestGatewayKeyWritersLeaveNoKeylessProfileOnDisk(t *testing.T) {
-	credsHarness(t)
-	dir := viper.GetString("config-directory")
-
-	if err := saveGatewayKeyProfile("sk-orq-K", "KEYID", time.Now().Add(24*time.Hour), "acme", ""); err != nil {
-		t.Fatal(err)
-	}
-	assertNoKeylessProfileOnDisk(t, dir, "sk-orq-K")
-
-	held, err := clearAPIKeyProfile()
-	if err != nil || !held {
-		t.Fatalf("clearAPIKeyProfile = (%v, %v), want (true, nil)", held, err)
-	}
-	assertNoKeylessProfileOnDisk(t, dir, "")
-}
-
-func assertNoKeylessProfileOnDisk(t *testing.T, dir, wantGatewayKey string) {
-	t.Helper()
-	var doc map[string]any
-	if err := json.Unmarshal(mustRead(t, filepath.Join(dir, "credentials.json")), &doc); err != nil {
-		t.Fatal(err)
-	}
-	profiles, _ := doc["profiles"].(map[string]any)
-	if _, ok := profiles["default"]; ok {
-		t.Errorf("profiles.default survived on disk: %v", profiles["default"])
-	}
-	state, _ := doc["state"].(map[string]any)
-	entry, _ := state["default"].(map[string]any)
-	if got, _ := entry["gateway_key"].(string); got != wantGatewayKey {
-		t.Errorf("state.default.gateway_key = %q, want %q", got, wantGatewayKey)
-	}
-}
-
-// A key passed with --api-key must be the one later commands wire. savedAPIKey
-// prefers gateway_key, so leaving a previously minted key in place made the
-// supplied key silently lose — and only on the *next* command, which is the
-// worst possible latency for this class of bug.
-func TestSuppliedKeyDisplacesAMintedOne(t *testing.T) {
+// An API-key profile is authoritative only when selected; the gateway key and
+// its revocation metadata remain attached to the independent login session.
+func TestAPIKeyProfileTakesPrecedenceOverMintedSessionKey(t *testing.T) {
 	credsHarness(t)
 	if err := saveGatewayKeyProfile("sk-orq-MINTED", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "acme", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := saveAPIKeyProfile("sk-orq-SUPPLIED", ""); err != nil {
+	viper.Set("profile", "supplied")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	if err := saveAPIKeyProfile("sk-orq-SUPPLIED"); err != nil {
 		t.Fatal(err)
 	}
 	if key, _ := savedAPIKey(); key != "sk-orq-SUPPLIED" {
-		t.Errorf("savedAPIKey = %q, want the key the user just supplied", key)
+		t.Errorf("savedAPIKey = %q, want the selected profile key", key)
 	}
 	if id := savedGatewayKeyID(); id != "" {
-		t.Errorf("stale gateway_key_id %q survived; it names a key no longer in use", id)
+		t.Errorf("savedGatewayKeyID = %q while a profile is in force, want hidden", id)
 	}
 	if _, ok := gatewayKeyExpiry(); ok {
-		t.Error("stale expiry survived, so renewal would fire against a key that is not wired")
+		t.Error("session gateway expiry must not drive renewal while a profile is in force")
 	}
 }
 
-// The mirror of TestSuppliedKeyDisplacesAMintedOne. Versions before the
-// credential split wrote the minted key to api_key with a workspace beside it,
-// so an upgraded machine that switches workspace mints a new gateway key while
-// the old one survives. apiKeyConfigured reads only api_key, so leaving it
-// there suppresses session injection and every generated command authenticates
-// with a stale key for the workspace the user just left.
-func TestMintedKeyDisplacesALegacyOne(t *testing.T) {
+func TestMintedSessionKeyDoesNotMutateAnAPIKeyProfile(t *testing.T) {
 	credsHarness(t)
-	if err := saveAPIKeyProfile("sk-orq-LEGACY-for-A", "workspace-A"); err != nil {
+	viper.Set("profile", "profile")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	if err := saveAPIKeyProfile("sk-orq-PROFILE"); err != nil {
 		t.Fatal(err)
 	}
+	viper.Set("profile", "")
 	if err := saveGatewayKeyProfile("sk-orq-NEW-for-B", "01HZXW2K7Y8Q9M0N1P2R3S4T5V", time.Now().Add(90*24*time.Hour), "workspace-B", ""); err != nil {
 		t.Fatal(err)
 	}
-	if storedAPIKeyProfile() {
-		t.Error("api_key survived the mint; apiKeyConfigured would suppress session injection and commands would use the stale key")
-	}
 	if key, ws := savedAPIKey(); key != "sk-orq-NEW-for-B" || ws != "workspace-B" {
 		t.Errorf("savedAPIKey = (%q, %q), want the key just minted for workspace-B", key, ws)
+	}
+	viper.Set("profile", "profile")
+	if key, _ := savedAPIKey(); key != "sk-orq-PROFILE" {
+		t.Errorf("selected profile key = %q, want the API key left intact", key)
 	}
 }
 
@@ -2700,7 +2662,9 @@ func TestStoredAPIKeyProfileIgnoresTheGatewayKey(t *testing.T) {
 	if storedAPIKeyProfile() {
 		t.Error("a gateway-key-only profile reported as holding an authenticating key")
 	}
-	if err := saveAPIKeyProfile("sk-orq-REAL", "acme"); err != nil {
+	viper.Set("profile", "real")
+	t.Cleanup(func() { viper.Set("profile", "") })
+	if err := saveAPIKeyProfile("sk-orq-REAL"); err != nil {
 		t.Fatal(err)
 	}
 	if !storedAPIKeyProfile() {
@@ -3102,9 +3066,7 @@ func TestRejectedSavedKeyIsRemintedAtStepTwo(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveTestGatewayKey(t, "sk-orq-dead", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
@@ -3136,9 +3098,7 @@ func TestDecliningTheReplacementMintsNothing(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveAPIKeyProfile("sk-orq-dead", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveTestGatewayKey(t, "sk-orq-dead", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
@@ -3181,9 +3141,7 @@ func TestCrossWorkspaceKeyIsNotTreatedAsRevoked(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := saveAPIKeyProfile("sk-orq-elsewhere", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveTestGatewayKey(t, "sk-orq-elsewhere", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
@@ -3226,9 +3184,7 @@ func TestUnconfirmableWorkspaceReusesTheSavedKey(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			if err := saveAPIKeyProfile("sk-orq-old", ""); err != nil {
-				t.Fatal(err)
-			}
+			saveTestGatewayKey(t, "sk-orq-old", "")
 			ws := "workspace-b"
 			state := &authState{apiBase: srv.URL, bearer: "session-token",
 				session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}
@@ -3331,19 +3287,18 @@ func TestYesDoesNotSwitchWorkspace(t *testing.T) {
 		defer srv.Close()
 
 		ws := "acme"
-		sess := &auth.Session{
-			APIBaseURL:         srv.URL,
-			ActiveWorkspaceKey: &ws,
-			User:               &auth.SessionUser{ID: "u1"},
-			RefreshToken:       "rt",
-			Workspaces:         []map[string]any{{"key": "acme"}, {"key": "other-workspace"}},
+		sess, err := auth.ReadSession()
+		if err != nil || sess == nil {
+			t.Fatalf("session missing: %v", err)
 		}
+		sess.APIBaseURL = srv.URL
+		sess.ActiveWorkspaceKey = &ws
+		sess.User = &auth.SessionUser{ID: "u1"}
+		sess.Workspaces = []map[string]any{{"key": "acme"}, {"key": "other-workspace"}}
 		if err := auth.SaveSession(sess); err != nil {
 			t.Fatal(err)
 		}
-		if err := saveAPIKeyProfile("sk-orq-elsewhere", ""); err != nil {
-			t.Fatal(err)
-		}
+		saveTestGatewayKey(t, "sk-orq-elsewhere", "")
 		state := &authState{apiBase: srv.URL, bearer: "session-token", session: sess}
 		var out strings.Builder
 		if _, _, _, err := resolveAPIKey(&reporter{w: &out}, auth.NewClient(srv.URL), state, opts); err != nil {
@@ -3433,9 +3388,7 @@ func TestResolveAPIKeyReportsReuseAsNotMinted(t *testing.T) {
 		t.Errorf("unexpected call %s %s", r.Method, r.URL.Path)
 	}))
 	defer srv.Close()
-	if err := saveAPIKeyProfile("sk-orq-saved", "acme"); err != nil {
-		t.Fatal(err)
-	}
+	saveTestGatewayKey(t, "sk-orq-saved", "acme")
 	ws := "acme"
 	state := &authState{apiBase: srv.URL, bearer: "session-token",
 		session: &auth.Session{ActiveWorkspaceKey: &ws, User: &auth.SessionUser{ID: "u1"}}}

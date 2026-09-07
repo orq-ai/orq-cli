@@ -54,20 +54,23 @@ func TestServerResolution(t *testing.T) {
 	}
 }
 
-// A host bound to a profile is what makes `orq --profile acme ...` route with
-// no flag, so it has to survive a write and be readable back.
-func TestBindProfileServer(t *testing.T) {
+// Saving an API-key profile records the resolved server on that Bartolo
+// profile, so selecting it routes later commands back to the same host.
+func TestSaveAPIKeyProfileRecordsResolvedServer(t *testing.T) {
 	dir := t.TempDir()
 	prevDir := viper.GetString("config-directory")
 	viper.Set("config-directory", dir)
-	t.Cleanup(func() { viper.Set("config-directory", prevDir) })
+	viper.Set("profile", "acme")
+	t.Cleanup(func() { viper.Set("config-directory", prevDir); viper.Set("profile", "") })
 
 	prevCreds := bartolocli.Creds
 	bartolocli.Creds = newTestCreds(t)
 	t.Cleanup(func() { bartolocli.Creds = prevCreds })
 
-	profile := auth.ActiveProfile()
-	if err := BindProfileServer(profile, "https://orq.acme.internal"); err != nil {
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer("https://orq.acme.internal", "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+	if err := saveAPIKeyProfile("sk-orq-profile"); err != nil {
 		t.Fatal(err)
 	}
 	if got := ProfileServer(); got != "https://orq.acme.internal" {
@@ -84,7 +87,8 @@ func TestBindProfileServer(t *testing.T) {
 	}
 
 	// The default host is never pinned — it would outlive a change of default.
-	if err := BindProfileServer(profile, "  "); err != nil {
+	auth.SetServer("", "default")
+	if err := saveAPIKeyProfile("sk-orq-replacement"); err != nil {
 		t.Fatal(err)
 	}
 	if got := ProfileServer(); got != "https://orq.acme.internal" {

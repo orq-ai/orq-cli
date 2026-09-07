@@ -359,7 +359,7 @@ func registerguardrailRulesCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"threshold\": 0\n    }\n  ]\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"enabled\": false,\n  \"expression\": {\n    \"cel\": \"cel\",\n    \"config\": {}\n  },\n  \"guardrails\": [\n    {\n      \"execute_on\": \"execute_on\",\n      \"id\": \"id\"\n    }\n  ],\n  \"plugins\": [\n    {\n      \"entities\": [\n        \"entities\"\n      ],\n      \"entity_thresholds\": {},\n      \"id\": \"id\",\n      \"language\": \"language\",\n      \"on_failure\": \"on_failure\",\n      \"regions\": [\n        \"regions\"\n      ],\n      \"threshold\": 0\n    }\n  ]\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,

@@ -10,6 +10,7 @@ import (
 	"orq/cli/custom/auth"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
+	"github.com/spf13/viper"
 )
 
 // jwtCredential builds a token of the shape auth.InspectToken reads claims
@@ -153,8 +154,12 @@ func TestDescribeCredentialNamesEveryAcceptedKeySpelling(t *testing.T) {
 	}{
 		"ORQ_TOKEN":         {env: map[string]string{"ORQ_TOKEN": "sk-orq-TOKEN"}, wantSource: "ORQ_TOKEN"},
 		"ORQ_AUTHORIZATION": {env: map[string]string{"ORQ_AUTHORIZATION": "sk-orq-AUTH"}, wantSource: "ORQ_AUTHORIZATION"},
-		"profile api_key":   {profileKey: "sk-orq-PROFILE", wantSource: "profile default"},
-		// ORQ_API_KEY resolves first, the same order bartolo's apikey handler uses.
+		"profile api_key wins over environment": {
+			env:        map[string]string{"ORQ_API_KEY": "sk-orq-ENV"},
+			profileKey: "sk-orq-PROFILE",
+			wantSource: "profile default",
+		},
+		// With no selected profile, ORQ_API_KEY is the first environment alias.
 		"ORQ_API_KEY wins over the others": {
 			env:        map[string]string{"ORQ_API_KEY": "sk-orq-ENV", "ORQ_TOKEN": "sk-orq-TOKEN"},
 			wantSource: "ORQ_API_KEY",
@@ -170,6 +175,7 @@ func TestDescribeCredentialNamesEveryAcceptedKeySpelling(t *testing.T) {
 			SetExplicitAPIKey(true)
 			if tc.profileKey != "" {
 				bartolocli.Creds.Set("profiles.default.api_key", tc.profileKey)
+				viper.Set("profile", "default")
 			}
 
 			cred := describeCredential(&auth.Session{})
@@ -180,6 +186,22 @@ func TestDescribeCredentialNamesEveryAcceptedKeySpelling(t *testing.T) {
 				t.Errorf("source = %q, want %q", cred.Source, tc.wantSource)
 			}
 		})
+	}
+}
+
+func TestConfiguredCredentialNamesSelectedProfile(t *testing.T) {
+	credsHarness(t)
+	snapshotCredentialGlobals(t)
+	prevProfile := viper.GetString("profile")
+	t.Cleanup(func() { viper.Set("profile", prevProfile) })
+	viper.Set("profile", "acme")
+	bartolocli.Creds.Set("profiles.acme.api_key", "sk-orq-PROFILE")
+	t.Setenv("ORQ_API_KEY", "sk-orq-ENV")
+	SetUserEnvAPIKey("sk-orq-ENV")
+
+	_, source := ConfiguredCredential()
+	if source != "profile acme" {
+		t.Errorf("source = %q, want %q", source, "profile acme")
 	}
 }
 

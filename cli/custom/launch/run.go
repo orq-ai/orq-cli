@@ -137,6 +137,9 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
 func reportCredentialNotices(def *AgentDef, creds *Credentials) {
+	if creds.Kind == CredentialSessionToken {
+		fmt.Fprintln(os.Stderr, "Note: no durable API key for this workspace; the agent gets a login token that expires in about an hour. Run 'orq setup' to mint a 90-day key.")
+	}
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")
 	}

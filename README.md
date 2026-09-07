@@ -107,7 +107,7 @@ Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Nam
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
 
-Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable, and the real value goes to `~/.orq/credentials.json` (mode 0600) and `~/.orq/env`, which setup offers to source from your shell profile (`~/.orq/env.fish` for fish).
+Your API key is **not written into an agent config**, with one exception — those configs reference the `ORQ_API_KEY` environment variable. A gateway key minted from a browser login lives in the server-keyed `~/.orq/sessions/<host>.json`; a saved API-key profile lives in `~/.orq/credentials.json`. Setup also writes the effective key to `~/.orq/env`, which it offers to source from your shell profile (`~/.orq/env.fish` for fish). These credential files are mode 0600.
 
 The exception is kimi: version 0.34 reads a provider credential only as a literal in `config.toml`, ignoring both `${ORQ_API_KEY}` interpolation and an `env_key` indirection, so `~/.kimi-code/config.toml` holds the key itself. Setup writes that file mode 0600.
 
@@ -132,7 +132,9 @@ Every provider config resolves to one absolute path, so the gateway has no proje
 
 ## Authentication
 
-The CLI supports two auth methods. Both respect `--profile <name>` so you can keep multiple identities (personal account, CI, self-hosted customer) side by side.
+Two ways in. A browser login is an account on a server and sees every workspace
+that account can; a profile is one saved API key. `--profile` selects a profile
+and nothing else.
 
 ### OAuth device login (interactive)
 
@@ -140,7 +142,19 @@ The CLI supports two auth methods. Both respect `--profile <name>` so you can ke
 orq auth login
 ```
 
-This walks you through a browser-based device-authorization flow, writes credentials to `~/.orq/sessions/default.json`, and picks an active workspace. Re-running `orq auth login` refreshes the session. Sign out with `orq auth logout`.
+Walks you through a browser device-authorization flow, stores the login in
+`~/.orq/sessions/<host>.json` (`my.orq.ai.json` for the hosted service), and
+picks an active workspace. Re-running `orq auth login` refreshes it. Sign out
+with `orq auth logout`.
+
+A second server is a second login, selected the way every other command selects
+a server:
+
+```sh
+orq auth login --server https://orq.acme.internal
+orq --server https://orq.acme.internal prompts list
+orq server set https://orq.acme.internal     # make it the default
+```
 
 ### API key (headless / CI)
 
@@ -149,34 +163,20 @@ export ORQ_API_KEY=sk_live_...
 orq agents list
 ```
 
-For multiple keys, save each one to a profile:
+For several keys, save each as a profile and pick one per call, or persist the
+pick:
 
 ```sh
-orq auth add-profile apikey ci <api-key>
+orq auth profile add apikey ci <api-key>
 orq --profile ci agents list
+orq auth profile use ci
+orq auth profile current
+orq auth profile clear
 ```
 
----
-
-## Profiles
-
-Every command accepts `--profile <name>` (or the `ORQ_PROFILE` env var). On `orq launch` it goes before the agent name — `orq launch --profile acme claude` — because everything after the agent name is handed to the agent. Each profile has its own session file at `~/.orq/sessions/<name>.json` and its own API key credentials in `~/.orq/credentials.json`. The default profile is `default`.
-
-```sh
-# personal account against SaaS
-orq auth login
-
-# work account against SaaS
-orq --profile work auth login
-orq --profile work workspace use marketing
-orq --profile work prompts list
-
-# self-hosted customer
-orq --profile acme auth login --server https://orq.acme.internal
-orq --profile acme prompts list
-```
-
-After login, every command on that profile automatically routes to the host you authenticated against — you do not need to pass `--server` on subsequent calls. Override once with `--server <url>` or `ORQ_SERVER=<url>` when you need to talk to a different host.
+While a profile is in force the login session is not consulted: `--workspace`
+has no effect and `orq whoami` reports the profile. `--profile ""` turns a
+persisted pick off for one call.
 
 ---
 
@@ -222,9 +222,9 @@ orq doctor --fix           # chmod the credential paths the permissions check fl
 `doctor` reports:
 
 - CLI binary + runtime (version, orq API version, platform/arch)
-- Active profile + session file path
-- Resolved `api_base_url`, `v1_base_url`, `auth_base_url`, `profile_base_url` with their *source* (flag, session, env, default, derived)
-- Auth status (authenticated / missing / invalid / unreadable), user email, active workspace
+- Active profile or session file path
+- Resolved `api_base_url`, `v1_base_url`, `auth_base_url`, `profile_base_url` with their *source* (flag, profile, env, config, default; `v1_base_url` and `profile_base_url` may also report session or derived)
+- Auth status (authenticated / misconfigured / missing / invalid / unreadable), user email, active workspace
 - Reachability probes against each endpoint
 - Bootstrap token freshness
 - Credential file permissions under `~/.orq` (Unix only) — group- or other-accessible paths only; a clean tree is not reported.
@@ -273,10 +273,8 @@ surface changes are always a reviewed diff.
 | `orq setup` | First-run onboarding: auth, API key, coding agents |
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
-| `orq auth whoami` | Show the current authenticated user and workspace |
-| `orq auth add-profile apikey <name> <key>` | Save an API-key profile |
-| `orq auth list-profiles` | List configured credential profiles |
-| `orq auth profile list\|current\|use\|add\|clear` | Inspect and switch the active credentials profile |
+| `orq auth whoami` | Show current identity (alias: `orq whoami`) |
+| `orq auth profile add\|list\|current\|use\|clear` | Save and select API-key profiles |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |
 | `orq projects list` | List projects in the active workspace |
@@ -437,9 +435,9 @@ so and stops.
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_API_KEY` | API key for headless/CI auth. An explicitly typed `--profile` outranks it: the flag names credentials, and the CLI warns on stderr when it overrides an exported key |
-| `ORQ_PROFILE` | Default profile (same as `--profile`, except that it does not outrank an exported `ORQ_API_KEY` — env against env has no tie-breaker) |
-| `ORQ_SERVER` | The orq host (same as `--server`). Drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
+| `ORQ_API_KEY` | API key for headless/CI auth. Any active profile outranks it because the profile is the selected credential |
+| `ORQ_PROFILE` | Default profile (same as `--profile`). A selected profile's API key and server both outrank ambient `ORQ_API_KEY` and `ORQ_SERVER` values |
+| `ORQ_SERVER` | The orq host (same as `--server`). Used when no active profile supplies a server, and drives every command — auth (`auth login`, `whoami`, `workspace`), the generated API commands, and the URLs `orq setup` writes and `orq launch` injects: router, anthropic and MCP |
 | `ORQ_API_BASE_URL` | Deprecated spelling of `ORQ_SERVER`, honored for one release. The matching `--api-base-url` flag on `auth`, `workspace` and `doctor` is deprecated the same way |
 | `ORQ_V1_BASE_URL` | Override v1 API base URL (advanced/local dev) |
 | `ORQ_PROFILE_BASE_URL` | Override profile endpoint (advanced/local dev) |
@@ -488,14 +486,21 @@ format, or when the check fails.
 ## Self-hosted orq.ai
 
 ```sh
-orq --profile acme auth login --server https://orq.acme.internal
+orq auth login --server https://orq.acme.internal
 ```
 
-The host is stored in the session and reused for every subsequent command on that profile — there is one name for it, the global `--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a call. No per-command flag. `orq auth login --server <url>` binds the host to the profile it authenticates, so later calls on that profile need no flag at all. The full order, highest first: `--server`, `ORQ_SERVER`, the host bound to the active profile, a host persisted globally with `orq server set`, the session's own host, then `https://my.orq.ai`. `orq doctor` reports which of those the current run used. Switch back and forth between profiles without logging out of either:
+The server selects the login session. There is one name for it, the global
+`--server` (env: `ORQ_SERVER`), and you only pass it when you want to divert a
+call. No per-command flag. Persist a host with `orq server set` when you do not
+want to pass it on subsequent calls. The full order, highest first: `--server`,
+the active profile's server, `ORQ_SERVER`, a host persisted globally with
+`orq server set`, then `https://my.orq.ai`. `orq doctor` reports which of those
+the current run used.
+Switch back and forth between servers without logging out of either:
 
 ```sh
-orq --profile acme prompts list            # talks to acme's backend
-orq --profile default prompts list         # talks to my.orq.ai
+orq --server https://orq.acme.internal prompts list
+orq --server https://my.orq.ai prompts list
 ```
 
 That one host also drives everything `orq setup` writes and `orq launch` injects, so a coding agent on a self-hosted deployment never talks to the public gateway. On `orq launch`, global flags go before the agent name — `orq launch --server <url> claude`, or `orq --server <url> launch claude` — because everything after the agent name is handed to the agent verbatim, so its own flags (`--resume`, codex's `-p`) reach it untouched.
@@ -507,14 +512,16 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 | `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch` and persistently by `orq connect mcp` |
 
 ```sh
-orq --profile acme auth login --server https://orq.acme.internal
-orq --profile acme setup                   # writes acme's URLs into the agent's config
-orq launch --profile acme kimi             # model calls stay on acme's network
+orq auth login --server https://orq.acme.internal
+orq --server https://orq.acme.internal setup
+orq launch --server https://orq.acme.internal kimi
 ```
 
-Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no session and no override.
+Nothing is compiled in: the same released binary serves SaaS, staging and every self-hosted deployment. `https://my.orq.ai` — the API spec's own `servers[0]` — is only the fallback when there is no server override.
 
-Without a session — CI, or an API key alone — set `ORQ_SERVER` (or pass `--server`) instead, which resolves the same three URLs.
+For an exported API key in CI, set `ORQ_SERVER` (or pass `--server`) to target a
+different host; a saved API-key profile carries its own server. Either source
+resolves the same three URLs.
 
 If a deployment serves the AI gateway from a different hostname than the platform API, override just that one with `ORQ_GATEWAY_URL` (all agents) or `--base-url` (one command) — see [per-agent environment overrides](#per-agent-environment-overrides). Both take precedence over the derived value.
 
