@@ -114,6 +114,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [7.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.3.0) — 2026-09-07
+
 - **Added:** `orq doctor` and `orq connect --status` now report the version of
   the installed orq agent-skills bundle. Human output shows the installed
   bundle version, sourced from the source commit when available and otherwise
