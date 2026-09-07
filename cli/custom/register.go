@@ -46,16 +46,13 @@ const noAPIKeyNoticeEnvVar = "ORQ_NO_API_KEY_NOTICE"
 // key — it aborts with "no authentication handler configured", which names
 // neither the profile nor where it was selected.
 var profileExemptCommands = map[string]bool{
-	"auth login":        true,
-	"auth logout":       true,
-	"setup":             true,
-	"auth setup":        true,
-	"auth profile add":  true,
-	"auth profile list": true, // listing profiles is how you diagnose an unknown one
-	"auth sessions":     true, // as is listing logins, which no profile selects
-	// Keep deprecated aliases guarded until the bartolo bump removes them.
-	"auth add-profile":     true,
-	"auth list-profiles":   true,
+	"auth login":           true,
+	"auth logout":          true,
+	"setup":                true,
+	"auth setup":           true,
+	"auth profile add":     true,
+	"auth profile list":    true, // listing profiles is how you diagnose an unknown one
+	"auth sessions":        true, // as is listing logins, which no profile selects
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
@@ -78,8 +75,6 @@ var profileExemptCommands = map[string]bool{
 var interactiveWizardCommands = map[string]bool{
 	"auth setup":       true,
 	"auth profile add": true,
-	// Keep this alias guarded until the bartolo bump removes it.
-	"auth add-profile": true,
 }
 
 // commandPath is the command's path with the root binary name removed, so the

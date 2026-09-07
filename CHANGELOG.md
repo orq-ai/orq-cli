@@ -114,6 +114,19 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Removed: `orq auth add-profile` and `orq auth list-profiles`**, the
+  deprecated spellings announced for removal in 7.0.0. Use `orq auth profile
+  add` and `orq auth profile list`. Both were already hidden from `--help` and
+  printed a deprecation notice; they now leave `surface.json`.
+- **Fixed:** table output renders nested columns instead of dropping them, and
+  a list operation is classified from the schema's own metadata rather than
+  guessed from its name, so list-shaped responses format as tables more
+  reliably. Both come from upgrading the bartolo generator and runtime to
+  v0.12.0.
+- **Fixed:** a generated command whose `after` handler returns something other
+  than an object now fails with an error naming the handler and the type it
+  returned, instead of panicking on a type assertion.
+
 ## [7.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.3.0) — 2026-09-07
 
 - **Added:** `orq doctor` and `orq connect --status` now report the version of
