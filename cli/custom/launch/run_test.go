@@ -61,7 +61,7 @@ func TestRunBadFlag(t *testing.T) {
 }
 
 func TestFindAgentRegistry(t *testing.T) {
-	for _, name := range []string{"claude", "codex", "opencode", "kilo", "kimi", "copilot"} {
+	for _, name := range []string{"claude", "codex", "opencode", "kilo", "pi", "kimi", "copilot"} {
 		if FindAgent(name) == nil {
 			t.Fatalf("agent %s missing", name)
 		}

@@ -1,6 +1,9 @@
 package launch
 
-import "encoding/json"
+import (
+	"fmt"
+	"strconv"
+)
 
 const (
 	DefaultCopilotModel = "openai/gpt-5.6-terra"
@@ -68,18 +71,44 @@ func resolveCopilot(ctx *AgentContext) (*LaunchPlan, error) {
 		wireAPI = "responses"
 	}
 
+	// Copilot assumes its own built-in defaults for a BYOK provider unless told
+	// otherwise, so the catalogue's real limits have to be passed through or a
+	// long context silently truncates. Only the one active model matters here:
+	// unlike kimi/pi, copilot writes no per-model table.
+	contextSize, outputSize := fallbackContextSize, fallbackOutputSize
+	capsKnown := false
+	for _, info := range resolved.Infos {
+		if info.ID != resolved.GatewayModel {
+			continue
+		}
+		if info.ContextWindow > 0 {
+			contextSize, capsKnown = info.ContextWindow, true
+		}
+		if info.MaxOutputTokens > 0 {
+			outputSize, capsKnown = info.MaxOutputTokens, true
+		}
+		break
+	}
+
 	plan := &LaunchPlan{
 		Env: map[string]string{
-			"ORQ_API_KEY":               ctx.Creds.APIKey,
-			"ORQ_SERVER":                ctx.Creds.APIBaseURL,
-			"COPILOT_PROVIDER_BASE_URL": resolved.BaseURL,
-			"COPILOT_PROVIDER_API_KEY":  ctx.Creds.APIKey,
-			"COPILOT_PROVIDER_TYPE":     copilotProviderType,
-			"COPILOT_PROVIDER_WIRE_API": wireAPI,
-			"COPILOT_MODEL":             resolved.GatewayModel,
+			"ORQ_API_KEY":                        ctx.Creds.APIKey,
+			"ORQ_SERVER":                         ctx.Creds.APIBaseURL,
+			"COPILOT_PROVIDER_BASE_URL":          resolved.BaseURL,
+			"COPILOT_PROVIDER_API_KEY":           ctx.Creds.APIKey,
+			"COPILOT_PROVIDER_TYPE":              copilotProviderType,
+			"COPILOT_PROVIDER_WIRE_API":          wireAPI,
+			"COPILOT_MODEL":                      resolved.GatewayModel,
+			"COPILOT_PROVIDER_MAX_PROMPT_TOKENS": strconv.Itoa(contextSize),
+			"COPILOT_PROVIDER_MAX_OUTPUT_TOKENS": strconv.Itoa(outputSize),
 		},
 	}
 	appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5.4")
+	if !capsKnown {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"no metadata for %s; using conservative caps (context %d, max output %d) — responses may truncate early on capable models",
+			resolved.GatewayModel, fallbackContextSize, fallbackOutputSize))
+	}
 
 	// --additional-mcp-config wires the orq MCP server for this session only,
 	// without touching the user's real Copilot config (mirrors codex's -c
@@ -87,26 +116,8 @@ func resolveCopilot(ctx *AgentContext) (*LaunchPlan, error) {
 	// is wrapped in a top-level "mcpServers" object: a bare name-keyed map was
 	// rejected live with `mcpServers: Required`.
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("copilot") {
-		encoded, err := json.Marshal(copilotMCPConfig(url))
-		if err != nil {
-			return nil, err
-		}
-		plan.PreArgs = append(plan.PreArgs, "--additional-mcp-config", string(encoded))
+		plan.PreArgs = append(plan.PreArgs, "--additional-mcp-config", httpMCPConfigJSON(url))
 	}
 	maybeInstallSessionSkills(ctx, plan, "copilot")
 	return plan, nil
-}
-
-// copilotMCPConfig is the --additional-mcp-config payload for one session's
-// orq MCP server. Copilot authenticates the remote through its own OAuth
-// flow, same as claude/kimi.
-func copilotMCPConfig(url string) map[string]any {
-	return map[string]any{
-		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
-		},
-	}
 }

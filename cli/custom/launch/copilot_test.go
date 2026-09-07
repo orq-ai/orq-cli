@@ -192,3 +192,53 @@ func TestCopilotSkillsAreDeclaredUnavailable(t *testing.T) {
 		t.Fatalf("expected a skills-unavailable warning, got: %v", plan.Warnings)
 	}
 }
+
+// TestCopilotCapsFollowCatalogueMetadata pins the token limits to the fetched
+// metadata for the one active model. Copilot otherwise applies its own BYOK
+// defaults, which truncate a 400k-context model at a fraction of its window.
+func TestCopilotCapsFollowCatalogueMetadata(t *testing.T) {
+	plan, err := copilotAgent().Resolve(&AgentContext{
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+		Getenv: env(nil),
+		Flags:  GatewayFlags{Model: "openai/gpt-5-mini"},
+		Fetch:  func(_, _ string) ([]ModelInfo, error) { return copilotInfos, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := plan.Env["COPILOT_PROVIDER_MAX_PROMPT_TOKENS"]; got != "400000" {
+		t.Errorf("max prompt tokens = %q, want 400000", got)
+	}
+	if got := plan.Env["COPILOT_PROVIDER_MAX_OUTPUT_TOKENS"]; got != "128000" {
+		t.Errorf("max output tokens = %q, want 128000", got)
+	}
+	if warningsContain(plan, "conservative caps") {
+		t.Errorf("caps are known, so no fallback warning belongs on the plan: %v", plan.Warnings)
+	}
+}
+
+// TestCopilotCapsFallBackWhenMetadataMissing is the other half: a model with no
+// metadata gets the conservative pair, and the user is told rather than left to
+// discover the truncation.
+func TestCopilotCapsFallBackWhenMetadataMissing(t *testing.T) {
+	plan, err := copilotAgent().Resolve(&AgentContext{
+		Creds:  &Credentials{APIKey: "sk-test", APIBaseURL: DefaultGatewayAPIBaseURL, Kind: CredentialAPIKey},
+		Getenv: env(nil),
+		Flags:  GatewayFlags{Model: "openai/gpt-5-mini"},
+		Fetch:  func(_, _ string) ([]ModelInfo, error) { return []ModelInfo{{ID: "openai/gpt-5-mini"}}, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := plan.Env["COPILOT_PROVIDER_MAX_PROMPT_TOKENS"]; got != "128000" {
+		t.Errorf("max prompt tokens = %q, want the %d fallback", got, fallbackContextSize)
+	}
+	if got := plan.Env["COPILOT_PROVIDER_MAX_OUTPUT_TOKENS"]; got != "8192" {
+		t.Errorf("max output tokens = %q, want the %d fallback", got, fallbackOutputSize)
+	}
+	if !warningsContain(plan, "conservative caps") {
+		t.Errorf("expected a conservative-caps warning, got: %v", plan.Warnings)
+	}
+}

@@ -151,9 +151,11 @@ func persistedMCPConfigured(agent string) bool {
 	return PersistedMCPHook(agent)
 }
 
-// claudeMCPConfig is the --mcp-config file payload. Claude authenticates the
-// remote through its own OAuth flow.
-func claudeMCPConfig(url string) string {
+// httpMCPConfigJSON is the mcpServers payload for the agents that take the orq
+// MCP server as JSON: claude through --mcp-config, copilot through
+// --additional-mcp-config. Both authenticate the remote through their own OAuth
+// flow, so no credential appears in it.
+func httpMCPConfigJSON(url string) string {
 	encoded, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			MCPServerName: map[string]any{
@@ -171,7 +173,7 @@ func writeClaudeMCPConfig(url string) (path string, cleanup func(), err error) {
 		return "", nil, err
 	}
 	path = filepath.Join(dir, "mcp.json")
-	if err := os.WriteFile(path, []byte(claudeMCPConfig(url)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(httpMCPConfigJSON(url)), 0o600); err != nil {
 		os.RemoveAll(dir)
 		return "", nil, err
 	}
