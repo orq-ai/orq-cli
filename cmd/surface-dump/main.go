@@ -25,6 +25,7 @@ import (
 	pflag "github.com/spf13/pflag"
 
 	custom "orq/cli/custom"
+	"orq/cli/custom/commands"
 	generated "orq/cli/generated"
 
 	"github.com/spf13/cobra"
@@ -111,7 +112,7 @@ func dump() ([]byte, error) {
 		Version:             "surface", // fixed: the manifest must not churn per release
 	})
 	generated.Register(bartolocli.Root)
-	custom.Register(bartolocli.Root)
+	custom.Register(bartolocli.Root, commands.TraceAPI{})
 
 	// Reported here because this is the tool a regeneration forces you to run:
 	// a new openapi.yaml tag becomes a top-level command with no topic, and

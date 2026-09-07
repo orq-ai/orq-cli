@@ -8,9 +8,12 @@ changes scripts could observe. Internal refactors do not.
 
 What you may depend on, and what you may not:
 
-- **`--json` output on stdout is the machine contract.** Field names and
-  structure follow the orq API response for the endpoint behind the command.
-  Scripts should parse this and nothing else. Caveat on what CI enforces: the
+- **`--json` output on stdout is the machine contract.** For commands backed
+  directly by an orq API endpoint, field names and structure follow that
+  endpoint's response. Documented transformation commands may instead expose
+  their own documented derived schema; for example, `orq traces thread`
+  returns a canonical normalized thread. Scripts should parse `--json` and
+  nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
   regeneration into `--json` with nothing in CI failing, so response
@@ -110,6 +113,32 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Added: `orq traces thread` renders a conversational trace span as readable text.**
+  It normalizes Chat Completions, Responses, and flattened OpenTelemetry GenAI
+  payloads, uses the newest detailed non-evaluator conversational span (with
+  the trace's leading/root spans as resilience fallbacks), and supports
+  `--slice` for selecting messages. System and developer messages are ordinary
+  indexed messages, and a message's index is its `--slice` position. Messages
+  are demarcated with XML
+  tags, so neither a span body nor a recorded id, name, or model that happens to
+  contain the renderer's own framing can forge a turn, and the opening tag reports the trace, span, dialect, model,
+  duration, and token count it was read from — plus a status only when the span
+  failed. Each rendered block is cut to `--max-chars` characters (4000 by
+  default, `0` for no cap), so one huge tool result cannot flood the output;
+  the cut says how much it left out and never breaks the framing. Every kind of tool call is
+  rendered as one, including the Responses built-ins (`web_search_call`,
+  `mcp_call`, and the rest); thinking is lifted out of message bodies into
+  reasoning and can be dropped with `--reasoning=false`; and content that
+  cannot be rendered, such as an image or a file, is named by its URL or
+  filename. Agent spans that serialize Responses items into `gen_ai.input`,
+  spans that record a whole turn as bare text, and tool calls and results
+  carried as message content parts are all normalized rather than silently
+  dropped. When the selected span is missing content the collector never
+  stored, the remaining spans are searched for one
+  that kept the same conversation intact. Explicit `--json`, `-o yaml`, and
+  `-o toon` return the canonical structured thread; content retained only as a
+  count is shown explicitly as unavailable rather than invented.
 
 ## [7.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.1.0) — 2026-09-06
 

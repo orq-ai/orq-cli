@@ -22,7 +22,7 @@ import (
 // apiVersion is the orq API line the generated commands came from. It stays out
 // of root.Version, which install.sh and the update check parse as a bare semver,
 // and is surfaced through the version template and `orq version` instead.
-func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)) {
+func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerated func(root *cobra.Command)) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	sigCh := make(chan os.Signal, 1)
@@ -46,7 +46,7 @@ func Run(version, apiVersion string, registerGenerated func(root *cobra.Command)
 	commands.SetAPIVersion(bartolocli.Root, apiVersion)
 
 	registerGenerated(bartolocli.Root)
-	Register(bartolocli.Root)
+	Register(bartolocli.Root, traceAPI)
 	// Passthrough commands (launch, orqi) disable flag parsing, so cobra
 	// parses no flags at all for them — not even the root's own. Take orq's
 	// globals typed before the command's own argv and parse them here (see

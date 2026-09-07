@@ -8903,6 +8903,24 @@
       ]
     },
     {
+      "path": "orq traces thread",
+      "use": "thread trace-id [span-id]",
+      "flags": [
+        {
+          "name": "max-chars",
+          "type": "int"
+        },
+        {
+          "name": "reasoning",
+          "type": "bool"
+        },
+        {
+          "name": "slice",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "path": "orq transcriptions",
       "use": "transcriptions"
     },
