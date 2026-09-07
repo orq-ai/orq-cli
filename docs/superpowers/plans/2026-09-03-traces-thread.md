@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- V1 recognizes exactly two conversation dialects: Chat Completions and OpenAI Responses. OpenTelemetry GenAI `gen_ai.input.messages` / `gen_ai.output.messages` normalization is out of scope.
+- V1 recognizes Chat Completions and OpenAI Responses payloads, plus the flattened OpenTelemetry GenAI shape orq collectors emit: a singular `message` (or `messages`) under `gen_ai.input` / `gen_ai.output`, whose `parts` arrive as a map keyed by position (`{"0": ...}`) and whose parts use `kind` where the SDKs use `type`.
 - Observed Chat Completions payloads stored directly in `gen_ai.input` and `gen_ai.output` remain in scope; `gen_ai.output` may be a direct assistant object rather than a `choices[].message` envelope.
 - Parse fields independently because spans may be partial or hybrid. Prefer usable `openresponses.*` content, then Chat Completions shapes, then legacy `span.input` / `span.output` fallbacks.
 - Flexible values may be structured maps/arrays, JSON strings, or wrappers containing `_value`, `string`, and `items.count`. A count is the raw Responses collection-item count, not a thread-message count. A count without content becomes one `[content unavailable: N items]` part, and a count-only input still offsets known output indices by N; never infer missing text, tools, or reasoning.

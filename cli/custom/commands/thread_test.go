@@ -747,3 +747,34 @@ func TestNormalizeThreadConvertsToolContentParts(t *testing.T) {
 		t.Fatalf("Markdown = %q", out.String())
 	}
 }
+
+func TestNormalizeThreadReadsOTelFlattenedMessages(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{
+		"gen_ai.input": map[string]any{"background": true, "stream": false, "message": map[string]any{
+			"role":  "user",
+			"parts": map[string]any{"0": map[string]any{"kind": "text", "text": "Check inventory for item one."}},
+		}},
+		"gen_ai.output": map[string]any{"messages": map[string]any{
+			"0": map[string]any{"role": "assistant", "parts": map[string]any{
+				"0": map[string]any{"kind": "text", "text": "Checking."},
+				"1": map[string]any{"kind": "tool_call", "id": "call-1", "name": "check_inventory", "arguments": map[string]any{"sku": "item-1"}},
+			}},
+			"1": map[string]any{"role": "tool", "parts": map[string]any{
+				"0": map[string]any{"kind": "tool_result", "tool_call_id": "call-1", "result": map[string]any{"available": false}},
+			}},
+		}},
+	}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThreadMessage{
+		{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Check inventory for item one."}}},
+		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Checking."}},
+			ToolCalls: []ThreadToolCall{{ID: "call-1", Name: "check_inventory", Arguments: map[string]any{"sku": "item-1"}}}},
+		{Index: 2, Role: "tool", Name: "check_inventory", ToolCallID: "call-1", Content: []ThreadPart{{Type: "json", Value: map[string]any{"available": false}}}},
+	}
+	if !reflect.DeepEqual(thread.Messages, want) {
+		t.Fatalf("messages = %#v", thread.Messages)
+	}
+}

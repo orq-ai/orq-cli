@@ -115,8 +115,8 @@ controls on surface changes, whichever side they originate from.
 ## Unreleased
 
 - **Added: `orq traces thread` renders a conversational trace span as Markdown.**
-  It normalizes Chat Completions and Responses payloads, uses the newest
-  detailed non-evaluator conversational span (with the trace's leading/root
+  It normalizes Chat Completions, Responses, and flattened OpenTelemetry GenAI
+  payloads, uses the newest detailed non-evaluator conversational span (with the trace's leading/root
   spans as resilience fallbacks), and supports `--slice` for selecting
   messages. System and developer messages are ordinary indexed messages, a
   heading's index is its `--slice` position, and the output leads with the

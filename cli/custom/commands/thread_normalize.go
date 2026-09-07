@@ -173,8 +173,12 @@ func chatMessages(value any) []any {
 		return []any{map[string]any{"role": "user", "content": text}}
 	}
 	if object, ok := threadMap(value); ok {
-		if messages, ok := decodeThreadValue(object["messages"]).([]any); ok {
+		if messages := threadList(object["messages"]); messages != nil {
 			return messages
+		}
+		// OTel GenAI records a single turn per span, under the singular key.
+		if object["message"] != nil {
+			return []any{object["message"]}
 		}
 	}
 	return nil
@@ -189,6 +193,9 @@ func chatOutputMessages(value any) []any {
 		return []any{map[string]any{"role": "assistant", "content": text}}
 	}
 	if object, ok := threadMap(value); ok {
+		if messages := threadList(object["messages"]); messages != nil {
+			return messages
+		}
 		if choices, ok := decodeThreadValue(object["choices"]).([]any); ok {
 			messages := make([]any, 0, len(choices))
 			for _, choice := range choices {
@@ -246,10 +253,11 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 	if role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool" {
 		return ThreadMessage{}, false
 	}
-	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(object["content"]), ToolCallID: threadString(object["tool_call_id"])}
-	message.ToolCalls = append(message.ToolCalls, contentToolCalls(object["content"])...)
+	content := messageContent(object)
+	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(content), ToolCallID: threadString(object["tool_call_id"])}
+	message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 	if message.ToolCallID == "" {
-		message.ToolCallID = contentToolCallID(object["content"])
+		message.ToolCallID = contentToolCallID(content)
 	}
 	if role == "assistant" {
 		message.Reasoning = recordedReasoning(object)
@@ -307,10 +315,11 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 		if role == "" {
 			role = "assistant"
 		}
-		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(item["content"]), ToolCallID: threadString(item["call_id"])}
-		message.ToolCalls = append(message.ToolCalls, contentToolCalls(item["content"])...)
+		content := messageContent(item)
+		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(content), ToolCallID: threadString(item["call_id"])}
+		message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 		if message.ToolCallID == "" {
-			message.ToolCallID = contentToolCallID(item["content"])
+			message.ToolCallID = contentToolCallID(content)
 		}
 		if role == "assistant" {
 			message.Reasoning = pending
@@ -470,6 +479,39 @@ func markThreadPartsSummary(parts []ThreadPart) []ThreadPart {
 // payloads spell it `kind` where the provider SDKs spell it `type`.
 func contentPartKind(object map[string]any) string {
 	return firstThreadString(object["type"], object["kind"])
+}
+
+// threadList reads a value recorded as a list, accepting the map-keyed-by-position
+// form an OTel collector produces when it flattens `parts.0`, `parts.1`, ...
+func threadList(value any) []any {
+	value = decodeThreadValue(value)
+	if list, ok := value.([]any); ok {
+		return list
+	}
+	object, ok := threadMap(value)
+	if !ok || len(object) == 0 {
+		return nil
+	}
+	list := make([]any, len(object))
+	seen := make([]bool, len(object))
+	for key, item := range object {
+		index, err := strconv.Atoi(key)
+		if err != nil || index < 0 || index >= len(object) || seen[index] {
+			return nil
+		}
+		list[index], seen[index] = item, true
+	}
+	return list
+}
+
+// messageContent reads a message body, which OTel GenAI spells `parts` where the
+// provider SDKs spell it `content`.
+func messageContent(object map[string]any) any {
+	content := firstThreadPresent(object, "content", "parts")
+	if list := threadList(content); list != nil {
+		return list
+	}
+	return content
 }
 
 func firstThreadPresent(object map[string]any, keys ...string) any {
