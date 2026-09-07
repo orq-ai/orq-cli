@@ -25,12 +25,12 @@ func RenderThread(w io.Writer, thread Thread, maxChars int) error {
 }
 
 func renderThreadMessage(message ThreadMessage, maxChars int) string {
-	attributes := []string{"index=" + strconv.Quote(strconv.Itoa(message.Index)), "role=" + strconv.Quote(message.Role)}
+	attributes := []string{"index=" + threadAttribute(strconv.Itoa(message.Index)), "role=" + threadAttribute(message.Role)}
 	if message.Name != "" {
-		attributes = append(attributes, "name="+strconv.Quote(message.Name))
+		attributes = append(attributes, "name="+threadAttribute(message.Name))
 	}
 	if message.ToolCallID != "" {
-		attributes = append(attributes, "tool_call_id="+strconv.Quote(message.ToolCallID))
+		attributes = append(attributes, "tool_call_id="+threadAttribute(message.ToolCallID))
 	}
 
 	var ordinary, errors, exceptions []ThreadPart
@@ -62,10 +62,10 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 	for _, call := range message.ToolCalls {
 		tag := "tool_call"
 		if call.ID != "" {
-			tag += " id=" + strconv.Quote(call.ID)
+			tag += " id=" + threadAttribute(call.ID)
 		}
 		if call.Name != "" {
-			tag += " name=" + strconv.Quote(call.Name)
+			tag += " name=" + threadAttribute(call.Name)
 		}
 		body = appendThreadElement(body, tag, truncateThreadText(renderThreadValue(call.Arguments), maxChars))
 	}
@@ -103,7 +103,7 @@ func threadTagAttributes(pairs ...string) string {
 	var attributes []string
 	for index := 0; index+1 < len(pairs); index += 2 {
 		if pairs[index+1] != "" {
-			attributes = append(attributes, pairs[index]+"="+strconv.Quote(pairs[index+1]))
+			attributes = append(attributes, pairs[index]+"="+threadAttribute(pairs[index+1]))
 		}
 	}
 	return strings.Join(attributes, " ")
@@ -162,6 +162,16 @@ func renderThreadValue(value any) string {
 	}
 	return escapeThreadTags(string(encoded))
 }
+
+// threadAttribute quotes an attribute value. Every one of them — a trace id, a
+// model name, a role, a tool call id — is recorded span data, so the markup
+// characters are escaped outright rather than only where they spell a tag: an
+// attribute is never prose, so nothing legible is lost by escaping all of them.
+func threadAttribute(value string) string {
+	return `"` + threadAttributeEscaper.Replace(value) + `"`
+}
+
+var threadAttributeEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "\n", " ", "\r", " ", "\t", " ")
 
 // threadTagPattern matches this renderer's own framing. Only those tags are
 // escaped when they appear in recorded content, so HTML a conversation happens

@@ -121,8 +121,8 @@ controls on surface changes, whichever side they originate from.
   `--slice` for selecting messages. System and developer messages are ordinary
   indexed messages, and a message's index is its `--slice` position. Messages
   are demarcated with XML
-  tags, so a span body that happens to contain the renderer's own framing cannot
-  forge a turn, and the opening tag reports the trace, span, dialect, model,
+  tags, so neither a span body nor a recorded id, name, or model that happens to
+  contain the renderer's own framing can forge a turn, and the opening tag reports the trace, span, dialect, model,
   duration, and token count it was read from — plus a status only when the span
   failed. Each rendered block is cut to `--max-chars` characters (4000 by
   default, `0` for no cap), so one huge tool result cannot flood the output;
