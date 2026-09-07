@@ -410,6 +410,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	// kimi, or a run that never asked about skills at all, must not surface
 	// another agent's or another capability's broken links.
 	if hasCap(caps, capSkills) {
+		reportSkillsVersion(rep, agents)
 		reportBrokenSkillLinks(rep, agents)
 	}
 	isWired := map[string]bool{}
@@ -1153,6 +1154,21 @@ func countDirs(paths []string) (int, int) {
 		dirs[filepath.Dir(p)] = true
 	}
 	return len(paths), len(dirs)
+}
+
+// reportSkillsVersion names the bundle behind permanent links visible to this
+// request. Other projects and session-only links do not make it appear.
+func reportSkillsVersion(rep *reporter, agents []string) {
+	status, err := skills.ReadStatus()
+	if err != nil || status == nil || status.Version == "" {
+		return
+	}
+	for _, link := range status.Links {
+		if skills.Belongs(link.Agent, agents) && link.Place != skills.PlaceElsewhere {
+			rep.info("skills version %s", shortSkillsVersion(status.Version))
+			return
+		}
+	}
 }
 
 // reportBrokenSkillLinks warns about every recorded link the table renders a

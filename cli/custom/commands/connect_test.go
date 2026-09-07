@@ -1302,6 +1302,14 @@ func TestConnectStatusGroupsByAgent(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	status, err := skills.ReadStatus()
+	if err != nil || status == nil {
+		t.Fatalf("ReadStatus() = %+v, %v", status, err)
+	}
+	wantVersion := status.Version
+	if len(wantVersion) > 7 {
+		wantVersion = wantVersion[:7]
+	}
 
 	out := captureOutput(t, func() {
 		s := NewConnectCommand()
@@ -1315,6 +1323,41 @@ func TestConnectStatusGroupsByAgent(t *testing.T) {
 	})
 	if !strings.Contains(out, "claude") || !strings.Contains(out, "skills") {
 		t.Errorf("status did not report claude's skills:\n%s", out)
+	}
+	if !strings.Contains(out, "skills version "+wantVersion) {
+		t.Errorf("status did not report installed skills version %q:\n%s", wantVersion, out)
+	}
+}
+
+func TestConnectStatusOmitsSkillsVersionWhenSkillsWereNotRequested(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+	resetSetupMemos(t)
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "skills"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "mcp", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "skills version") {
+		t.Errorf("MCP-only status reported unrelated skills metadata:\n%s", out)
 	}
 }
 

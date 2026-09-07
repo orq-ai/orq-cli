@@ -68,6 +68,9 @@ type LinkStatus struct {
 // and their absence between sessions is not breakage.
 type Status struct {
 	Links []LinkStatus
+	// Version identifies the installed bundle: source commit when available,
+	// content fingerprint otherwise.
+	Version string
 	// Stale reports that the recorded fingerprint is behind this CLI's, so
 	// the installed set is from an older version. Refresh repairs it, but
 	// only on the commands that touch skills (see skillsCommand in
@@ -84,7 +87,10 @@ func ReadStatus() (*Status, error) {
 	if err != nil || m == nil {
 		return nil, err
 	}
-	s := &Status{Stale: m.Fingerprint != Fingerprint()}
+	s := &Status{
+		Version: installedVersion(m),
+		Stale:   m.Fingerprint != Fingerprint(),
+	}
 	for _, l := range m.Links {
 		if l.Session {
 			continue
