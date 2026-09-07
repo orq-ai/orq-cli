@@ -53,9 +53,7 @@ var profileExemptCommands = map[string]bool{
 	"auth profile add":  true,
 	"auth profile list": true, // listing profiles is how you diagnose an unknown one
 	"auth sessions":     true, // as is listing logins, which no profile selects
-	// bartolo still attaches these deprecated spellings (hidden, but runnable)
-	// until the go.mod bump past bartolo#41; surface.json lists them, so they
-	// need the same exemption the canonical spellings have.
+	// Keep deprecated aliases guarded until the bartolo bump removes them.
 	"auth add-profile":     true,
 	"auth list-profiles":   true,
 	"auth profile current": true,
@@ -80,8 +78,7 @@ var profileExemptCommands = map[string]bool{
 var interactiveWizardCommands = map[string]bool{
 	"auth setup":       true,
 	"auth profile add": true,
-	// Same reason as profileExemptCommands: the deprecated spelling is still
-	// attached and still prompts. Drops out with the bartolo bump.
+	// Keep this alias guarded until the bartolo bump removes it.
 	"auth add-profile": true,
 }
 

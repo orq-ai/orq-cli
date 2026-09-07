@@ -405,9 +405,7 @@ func ListSessions() ([]SessionListEntry, error) {
 			sessions = append(sessions, row)
 			continue
 		}
-		// The same check InspectSession and doctor use. Without it a file that
-		// parses but has lost its refresh token lists as a healthy login while
-		// every other command calls it invalid.
+		// Keep listing validation consistent with InspectSession and doctor.
 		if err := validateSession(&session); err != nil {
 			row.Status = SessionStatusInvalid
 			sessions = append(sessions, row)
@@ -422,8 +420,7 @@ func ListSessions() ([]SessionListEntry, error) {
 			row.Workspace = *session.ActiveWorkspaceKey
 		}
 		row.Project = session.ActiveProjectName
-		// Same 60s skew as EnsureBootstrapToken, so the listing never disagrees
-		// with what the next call will actually do.
+		// Match EnsureBootstrapToken's 60-second clock skew.
 		row.Status = SessionStatusOK
 		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
 			row.Status = SessionStatusNeedsRefresh

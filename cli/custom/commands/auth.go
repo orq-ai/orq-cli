@@ -437,9 +437,7 @@ func reportClearedEnvFiles(paths []string) {
 	}
 }
 
-// noteOtherLogins points at `auth sessions` when there is more than one login
-// on disk. Nothing else in the CLI mentions that command, so the user with
-// several logins — the one it was built for — had no way to learn it exists.
+// noteOtherLogins points users with multiple saved logins to the listing.
 func noteOtherLogins(cmd *cobra.Command) {
 	sessions, err := auth.ListSessions()
 	if err != nil || len(sessions) < 2 {

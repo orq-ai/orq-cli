@@ -9,16 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewSessionsCommand lists the logins on disk. A session is not a profile —
-// a profile is an API key in credentials.json, a session is an OAuth login in
-// ~/.orq/sessions/<host>.json — so `auth profile list` cannot show these, and
-// before this command nothing could.
-//
-// List-only, deliberately. `orq whoami` already reports the current session
-// and `orq auth logout` already ends one; a `current` and a `clear` here would
-// be a second way to say each. There is no `use` either: a session is selected
-// by the host it belongs to, via --server, ORQ_SERVER or `orq server set`, and
-// a second persisted selection would compete with that one.
+// NewSessionsCommand lists OAuth logins stored per server host.
 func NewSessionsCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:     "sessions",
@@ -45,9 +36,7 @@ func NewSessionsCommand() *cobra.Command {
 	}
 }
 
-// printSessionList renders the logins, with a dot on the one this invocation
-// would use. The on-disk path is left to the structured output: it is the
-// widest column and the least useful one to read.
+// printSessionList renders the logins and marks the resolved host.
 func printSessionList(rows []auth.SessionListEntry) {
 	out := bartolocli.Stdout
 	heading("Logins")
@@ -69,9 +58,7 @@ func printSessionList(rows []auth.SessionListEntry) {
 	}
 }
 
-// paintStatus colors a session state: only the two that need a human to do
-// something are highlighted. "needs-refresh" is not one of them — the next call
-// re-mints the token by itself.
+// paintStatus highlights session states that require user action.
 func paintStatus(status string) string {
 	switch status {
 	case auth.SessionStatusInvalid, auth.SessionStatusUnreadable:
@@ -81,10 +68,7 @@ func paintStatus(status string) string {
 	}
 }
 
-// warnIfActiveSessionShadowed says so when the row marked active is not the
-// credential in use: an explicit API key (ORQ_API_KEY or a --profile) outranks
-// the session, so "active" would otherwise read as "this is what authenticates
-// your calls" when nothing here does.
+// warnIfActiveSessionShadowed explains when an API key outranks the active login.
 func warnIfActiveSessionShadowed(rows []auth.SessionListEntry) {
 	if !explicitAPIKey {
 		return

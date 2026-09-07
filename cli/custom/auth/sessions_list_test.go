@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// writeSessionFile drops raw bytes at sessions/<name>, bypassing SaveSession so
-// a test can write a file SaveSession would never produce.
+// writeSessionFile bypasses SaveSession so tests can write malformed files.
 func writeSessionFile(t *testing.T, name string, data []byte) {
 	t.Helper()
 	dir := sessionsDir()
@@ -44,7 +43,6 @@ func TestListSessionsNoDirectory(t *testing.T) {
 	}
 }
 
-// The listing is one row per host, sorted, carrying what identifies the login.
 func TestListSessionsReportsEachHost(t *testing.T) {
 	isolateHome(t)
 
@@ -87,8 +85,7 @@ func TestListSessionsReportsEachHost(t *testing.T) {
 	}
 }
 
-// migrateSessionFiles parks the loser of a host collision under
-// <name>.json.deprecated. Those are not logins and must not be listed.
+// Migration backups are not live sessions and must not be listed.
 func TestListSessionsSkipsDeprecatedAndNonJSON(t *testing.T) {
 	isolateHome(t)
 
@@ -106,8 +103,7 @@ func TestListSessionsSkipsDeprecatedAndNonJSON(t *testing.T) {
 	}
 }
 
-// A session too broken to decode is what someone runs this command to find, so
-// it is reported by host rather than dropped.
+// Malformed sessions remain visible so users can find them.
 func TestListSessionsReportsUnreadableSession(t *testing.T) {
 	isolateHome(t)
 
@@ -141,9 +137,7 @@ func TestListSessionsMarksStaleBootstrapToken(t *testing.T) {
 	}
 }
 
-// A file that parses but is not a usable session is "invalid", distinct from
-// one that will not parse at all: doctor and whoami make the same distinction,
-// and a row of blanks alone could not.
+// Distinguish malformed session data from invalid JSON.
 func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
 	isolateHome(t)
 
@@ -167,8 +161,7 @@ func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
 	}
 }
 
-// "Active" is the session this invocation would actually use, which is the
-// host --server / ORQ_SERVER / `orq server set` resolved — not a stored flag.
+// Active follows the resolved server rather than a stored flag.
 func TestListSessionsMarksResolvedHostActive(t *testing.T) {
 	isolateHome(t)
 	prevServer, prevSource := Server(), ServerSource()
