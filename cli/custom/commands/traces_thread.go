@@ -26,6 +26,7 @@ type TraceAPI struct {
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
+	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
@@ -35,6 +36,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --slice 2",
 			"  orq traces thread tr_123 --slice 2:",
 			"  orq traces thread tr_123 --slice :-1",
+			"  orq traces thread tr_123 --reasoning=false",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,6 +51,11 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return err
 				}
 			}
+			if !reasoning {
+				for index := range thread.Messages {
+					thread.Messages[index].Reasoning = nil
+				}
+			}
 			if machineFormatRequested(cmd) {
 				return emit(thread)
 			}
@@ -56,6 +63,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
+	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	return cmd
 }
 

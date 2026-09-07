@@ -116,14 +116,19 @@ controls on surface changes, whichever side they originate from.
 
 - **Added: `orq traces thread` renders a conversational trace span as Markdown.**
   It normalizes Chat Completions, Responses, and flattened OpenTelemetry GenAI
-  payloads, uses the newest detailed non-evaluator conversational span (with the trace's leading/root
-  spans as resilience fallbacks), and supports `--slice` for selecting
-  messages. System and developer messages are ordinary indexed messages, a
+  payloads, uses the newest detailed non-evaluator conversational span (with
+  the trace's leading/root spans as resilience fallbacks), and supports
+  `--slice` for selecting messages. System and developer messages are ordinary indexed messages, a
   heading's index is its `--slice` position, and the output leads with the
-  trace, span, and detected dialect it was read from. Agent spans that
-  serialize Responses items into `gen_ai.input`, spans that record a whole turn
-  as bare text, and tool calls and results carried as message content parts are
-  all normalized rather than silently dropped. When the selected span is missing
+  trace, span, and detected dialect it was read from. Every kind of tool call
+  is rendered as one, including the Responses built-ins (`web_search_call`,
+  `mcp_call`, and the rest); thinking is lifted out of message bodies into
+  reasoning and can be dropped with `--reasoning=false`; and content that
+  cannot be rendered, such as an image or a file, is named by its URL or
+  filename. Agent spans that serialize Responses items into `gen_ai.input`,
+  spans that record a whole turn as bare text, and tool calls and results
+  carried as message content parts are all normalized rather than silently
+  dropped. When the selected span is missing
   content the collector never stored, the remaining spans are searched for one
   that kept the same conversation intact. Explicit `--json`, `-o yaml`, and
   `-o toon` return the canonical structured thread; content retained only as a

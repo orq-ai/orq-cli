@@ -54,12 +54,12 @@ func TestNormalizeThread(t *testing.T) {
 			},
 		},
 		{
-			name:    "legacy fallback retains malformed arguments and unsupported content type without payload",
+			name:    "legacy fallback retains malformed arguments and names an unrenderable content type",
 			fixture: "malformed-fallback.json",
 			want: Thread{
 				Source: ThreadSource{Representation: "chat_completions", TraceID: "trace-fallback", SpanID: "span-fallback"},
 				Messages: []ThreadMessage{
-					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: "image_url"}}},
+					{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: "image_url", Text: "https://example.test/diagram.png"}}},
 					{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "I cannot view that image."}}, ToolCalls: []ThreadToolCall{{ID: "call-bad", Name: "inspect", Arguments: "{not json"}}},
 				},
 			},
@@ -773,6 +773,79 @@ func TestNormalizeThreadReadsOTelFlattenedMessages(t *testing.T) {
 		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Checking."}},
 			ToolCalls: []ThreadToolCall{{ID: "call-1", Name: "check_inventory", Arguments: map[string]any{"sku": "item-1"}}}},
 		{Index: 2, Role: "tool", Name: "check_inventory", ToolCallID: "call-1", Content: []ThreadPart{{Type: "json", Value: map[string]any{"available": false}}}},
+	}
+	if !reflect.DeepEqual(thread.Messages, want) {
+		t.Fatalf("messages = %#v", thread.Messages)
+	}
+}
+
+func TestNormalizeThreadFormatsBuiltInToolCalls(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"openresponses.input": []any{
+		map[string]any{"type": "web_search_call", "id": "ws-1", "action": map[string]any{"query": "rain"}},
+		map[string]any{"type": "web_search_call_output", "id": "ws-1", "output": "wet"},
+		map[string]any{"type": "mcp_call", "id": "m-1", "name": "list_files", "arguments": "{\"dir\":\"/\"}"},
+		map[string]any{"type": "mcp_list_tools", "id": "m-0"},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThreadMessage{
+		{Index: 0, Role: "assistant", Content: []ThreadPart{}, ToolCalls: []ThreadToolCall{{ID: "ws-1", Name: "web_search", Arguments: map[string]any{"query": "rain"}}}},
+		{Index: 1, Role: "tool", Name: "web_search", ToolCallID: "ws-1", Content: []ThreadPart{{Type: "text", Text: "wet"}}},
+		{Index: 2, Role: "assistant", Content: []ThreadPart{}, ToolCalls: []ThreadToolCall{{ID: "m-1", Name: "list_files", Arguments: map[string]any{"dir": "/"}}}},
+		// Not a call, but reported rather than dropped without trace.
+		{Index: 3, Role: "assistant", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: "mcp_list_tools"}}},
+	}
+	if !reflect.DeepEqual(thread.Messages, want) {
+		t.Fatalf("messages = %#v", thread.Messages)
+	}
+}
+
+func TestNormalizeThreadKeepsLegacyAndPositionKeyedToolCalls(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "assistant", "function_call": map[string]any{"name": "lookup", "arguments": "{\"id\":1}"}},
+		map[string]any{"role": "assistant", "tool_calls": map[string]any{"0": map[string]any{"id": "call-1", "function": map[string]any{"name": "fetch", "arguments": "{}"}}}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThreadToolCall{{Name: "lookup", Arguments: map[string]any{"id": float64(1)}}}
+	if !reflect.DeepEqual(thread.Messages[0].ToolCalls, want) {
+		t.Fatalf("legacy call = %#v", thread.Messages[0].ToolCalls)
+	}
+	want = []ThreadToolCall{{ID: "call-1", Name: "fetch", Arguments: map[string]any{}}}
+	if !reflect.DeepEqual(thread.Messages[1].ToolCalls, want) {
+		t.Fatalf("position-keyed call = %#v", thread.Messages[1].ToolCalls)
+	}
+}
+
+func TestNormalizeThreadNamesUnrenderableMediaAndLiftsThinking(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "user", "content": []any{
+			map[string]any{"type": "input_file", "filename": "spec.pdf"},
+			map[string]any{"type": "image", "source": map[string]any{"url": "https://example.test/plot.png"}},
+		}},
+		map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "thinking", "thinking": "weigh the options"},
+			map[string]any{"type": "redacted_thinking", "data": "opaque"},
+			map[string]any{"type": "text", "text": "Ship it."},
+		}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThreadMessage{
+		{Index: 0, Role: "user", Content: []ThreadPart{
+			{Type: "unsupported", UnsupportedType: "input_file", Text: "spec.pdf"},
+			{Type: "unsupported", UnsupportedType: "image", Text: "https://example.test/plot.png"},
+		}},
+		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Ship it."}}, Reasoning: []ThreadPart{
+			{Type: "text", Text: "weigh the options"},
+			{Type: "state", State: "redacted thinking"},
+		}},
 	}
 	if !reflect.DeepEqual(thread.Messages, want) {
 		t.Fatalf("messages = %#v", thread.Messages)

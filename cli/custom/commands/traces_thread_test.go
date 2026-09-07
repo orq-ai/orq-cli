@@ -665,3 +665,24 @@ func TestTracesThreadKeepsScanningPastAShorterWholeSpan(t *testing.T) {
 		t.Fatalf("Markdown = %q", out)
 	}
 }
+
+func TestTracesThreadOmitsReasoningOnRequest(t *testing.T) {
+	span := map[string]any{"span": map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "assistant", "reasoning_content": "step by step", "content": "Done."},
+	}}}}
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": span}}
+	kept, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(kept, "step by step") {
+		t.Fatalf("Markdown = %q, want the reasoning by default", kept)
+	}
+	dropped, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--reasoning=false")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(dropped, "step by step") || !strings.Contains(dropped, "Done.") {
+		t.Fatalf("Markdown = %q", dropped)
+	}
+}

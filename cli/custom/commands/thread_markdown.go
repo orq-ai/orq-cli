@@ -116,7 +116,11 @@ func renderThreadParts(parts []ThreadPart) string {
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "unsupported":
-			rendered = "[unsupported content: " + part.UnsupportedType + "]"
+			rendered = "[unsupported content: " + part.UnsupportedType
+			if part.Text != "" {
+				rendered += " — " + part.Text
+			}
+			rendered += "]"
 		}
 		if rendered != "" {
 			sections = append(sections, rendered)

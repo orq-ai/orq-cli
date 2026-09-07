@@ -237,11 +237,11 @@ func responseItemType(raw any) string {
 	if !ok {
 		return ""
 	}
-	switch itemType := threadString(object["type"]); itemType {
-	case "reasoning", "function_call", "function_call_output":
-		return itemType
+	itemType := threadString(object["type"])
+	if itemType == "" || threadString(object["role"]) != "" {
+		return ""
 	}
-	return ""
+	return itemType
 }
 
 func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
@@ -260,8 +260,15 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 		message.ToolCallID = contentToolCallID(content)
 	}
 	if role == "assistant" {
-		message.Reasoning = recordedReasoning(object)
-		message.ToolCalls = append(chatToolCalls(object["tool_calls"]), message.ToolCalls...)
+		message.Reasoning = append(recordedReasoning(object), contentReasoning(content)...)
+		calls := chatToolCalls(object["tool_calls"])
+		// Chat Completions before tool_calls put one call here, unnamed by id.
+		if legacy, ok := threadMap(decodeThreadValue(object["function_call"])); ok {
+			calls = append(calls, responseToolCall(legacy))
+		}
+		message.ToolCalls = append(calls, message.ToolCalls...)
+	} else {
+		message.Reasoning = contentReasoning(content)
 	}
 	return message, true
 }
@@ -307,7 +314,18 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 	if !ok {
 		return pending
 	}
-	switch threadString(item["type"]) {
+	itemType := threadString(item["type"])
+	// Every Responses item that invokes a tool shares function_call's shape —
+	// the built-in ones (web_search_call, mcp_call, code_interpreter_call, ...)
+	// differ only in the name they carry in the type — so they all read as tool
+	// calls rather than vanishing from the conversation.
+	switch {
+	case isToolResultItem(itemType):
+		itemType = "tool_result"
+	case isToolCallItem(itemType):
+		itemType = "tool_call"
+	}
+	switch itemType {
 	case "reasoning":
 		return append(pending, responseReasoning(item)...)
 	case "message":
@@ -326,23 +344,23 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 			pending = nil
 		}
 		thread.Messages = append(thread.Messages, message)
-	case "function_call":
+	case "tool_call":
 		call := responseToolCall(item)
 		if toolNames != nil {
 			toolNames[call.ID] = call.Name
 		}
 		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{}, Reasoning: pending, ToolCalls: []ThreadToolCall{call}})
 		return nil
-	case "function_call_output":
-		callID := threadString(item["call_id"])
+	case "tool_result":
+		callID := firstThreadString(item["call_id"], item["id"])
 		name := threadString(item["name"])
 		if name == "" && toolNames != nil {
 			name = toolNames[callID]
 		}
-		content := item["output"]
-		if content == nil {
-			content = item["content"]
+		if name == "" {
+			name = toolItemName(item)
 		}
+		content := firstThreadPresent(item, "output", "content", "result")
 		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "tool", Name: name, ToolCallID: callID, Content: threadParts(content)})
 	case "error", "exception":
 		role := threadString(item["role"])
@@ -354,20 +372,49 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 			content = item[threadString(item["type"])]
 		}
 		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: role, Content: threadErrorParts(content, threadString(item["type"]))})
+	default:
+		// A dropped item reads as a gap in the conversation with no sign it
+		// existed, so unrecognized items are reported rather than skipped.
+		if itemType != "" {
+			thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: itemType}}, Reasoning: pending})
+			return nil
+		}
 	}
 	return pending
 }
 
+func isToolCallItem(itemType string) bool { return strings.HasSuffix(itemType, "_call") }
+
+func isToolResultItem(itemType string) bool {
+	return strings.HasSuffix(itemType, "_call_output") || strings.HasSuffix(itemType, "_call_result")
+}
+
+// toolItemName names a built-in tool call, which reports its identity in the
+// item type instead of a name field the way a function call does.
+func toolItemName(item map[string]any) string {
+	itemType := threadString(item["type"])
+	for _, suffix := range []string{"_call_output", "_call_result", "_call"} {
+		if trimmed, ok := strings.CutSuffix(itemType, suffix); ok {
+			return trimmed
+		}
+	}
+	return ""
+}
+
 func responseToolCall(item map[string]any) ThreadToolCall {
-	arguments := item["arguments"]
+	arguments := firstThreadPresent(item, "arguments", "args", "input", "action", "query")
 	if raw, ok := arguments.(string); ok {
 		arguments = decodeJSONOrString(raw)
 	}
-	return ThreadToolCall{ID: firstThreadString(item["call_id"], item["id"]), Name: threadString(item["name"]), Arguments: arguments}
+	name := threadString(item["name"])
+	if name == "" {
+		name = toolItemName(item)
+	}
+	return ThreadToolCall{ID: firstThreadString(item["call_id"], item["id"]), Name: name, Arguments: arguments}
 }
 
 func chatToolCalls(value any) []ThreadToolCall {
-	items, _ := decodeThreadValue(value).([]any)
+	items := threadList(value)
 	if len(items) == 0 {
 		return nil
 	}
@@ -523,6 +570,56 @@ func firstThreadPresent(object map[string]any, keys ...string) any {
 	return nil
 }
 
+// carriedOffBody reports a content part the message carries in a field of its
+// own — a tool call or its reasoning — rather than in its body.
+func carriedOffBody(kind string) bool {
+	switch kind {
+	case "tool_use", "tool_call", "function_call", "thinking", "redacted_thinking", "reasoning":
+		return true
+	}
+	return false
+}
+
+// contentReasoning lifts thinking expressed as a content part onto the message,
+// where the reasoning recorded in a dedicated field already lands.
+func contentReasoning(value any) []ThreadPart {
+	var parts []ThreadPart
+	for _, raw := range threadList(value) {
+		object, ok := threadMap(decodeThreadValue(raw))
+		if !ok {
+			continue
+		}
+		switch contentPartKind(object) {
+		case "thinking", "reasoning":
+			parts = append(parts, threadParts(firstThreadPresent(object, "thinking", "text", "reasoning", "content"))...)
+		case "redacted_thinking":
+			// The provider withheld the text; say so instead of nothing.
+			parts = append(parts, ThreadPart{Type: "state", State: "redacted thinking"})
+		}
+	}
+	return parts
+}
+
+// mediaReference names the file or address an unrenderable part points at. The
+// bytes are not worth printing, but which image or document it was is.
+func mediaReference(part map[string]any) string {
+	for _, key := range []string{"filename", "file_name", "name", "path", "url", "file_id"} {
+		if value := threadString(part[key]); value != "" {
+			return value
+		}
+	}
+	for _, key := range []string{"image_url", "source", "file", "input_file", "image", "audio", "document"} {
+		if nested, ok := threadMap(decodeThreadValue(part[key])); ok {
+			if reference := mediaReference(nested); reference != "" {
+				return reference
+			}
+		} else if value := threadString(part[key]); value != "" && !strings.HasPrefix(value, "data:") {
+			return value
+		}
+	}
+	return ""
+}
+
 // contentToolCalls lifts tool calls expressed as content parts, the shape
 // Anthropic-style messages use, onto the message that made them.
 func contentToolCalls(value any) []ThreadToolCall {
@@ -628,6 +725,11 @@ func threadStateValuePresent(value any) bool {
 
 func threadParts(value any) []ThreadPart {
 	if object, ok := threadMap(value); ok {
+		// Checked before state detection, which would otherwise claim a
+		// redacted thinking part as this message's body.
+		if carriedOffBody(contentPartKind(object)) {
+			return nil
+		}
 		if states := stateThreadParts(object); len(states) > 0 {
 			return states
 		}
@@ -658,13 +760,10 @@ func threadParts(value any) []ThreadPart {
 		switch kind {
 		case "text", "input_text", "output_text", "summary_text", "refusal":
 			return threadParts(typed["text"])
-		case "tool_use", "tool_call", "function_call":
-			// Carried on the message as a tool call, not as body text.
-			return nil
 		case "tool_result", "function_call_output":
 			return threadParts(firstThreadPresent(typed, "result", "content", "output"))
 		default:
-			return []ThreadPart{{Type: "unsupported", UnsupportedType: kind}}
+			return []ThreadPart{{Type: "unsupported", UnsupportedType: kind, Text: mediaReference(typed)}}
 		}
 	default:
 		return []ThreadPart{{Type: "json", Value: typed}}

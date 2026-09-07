@@ -8907,6 +8907,10 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "reasoning",
+          "type": "bool"
+        },
+        {
           "name": "slice",
           "type": "string"
         }
