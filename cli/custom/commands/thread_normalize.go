@@ -316,10 +316,8 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 		return pending
 	}
 	itemType := threadString(item["type"])
-	// Every Responses item that invokes a tool shares function_call's shape —
-	// the built-in ones (web_search_call, mcp_call, code_interpreter_call, ...)
-	// differ only in the name they carry in the type — so they all read as tool
-	// calls rather than vanishing from the conversation.
+	// Every Responses item that invokes a tool shares function_call's shape, so
+	// the built-in ones read as tool calls rather than vanishing.
 	switch {
 	case isToolResultItem(itemType):
 		itemType = "tool_result"
@@ -374,8 +372,7 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 		}
 		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: role, Content: threadErrorParts(content, threadString(item["type"]))})
 	default:
-		// A dropped item reads as a gap in the conversation with no sign it
-		// existed, so unrecognized items are reported rather than skipped.
+		// A dropped item reads as a gap with no sign it ever existed.
 		if itemType != "" {
 			thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: itemType}}, Reasoning: pending})
 			return nil
@@ -622,8 +619,7 @@ func mediaReference(part map[string]any) string {
 }
 
 // namedMediaReference reads a reference that names the media. An inline data
-// URI names nothing and is the payload itself, which is what this whole part is
-// being left unrendered to avoid.
+// URI names nothing; it is the payload this part is left unrendered to avoid.
 func namedMediaReference(value any) string {
 	reference := threadString(value)
 	if strings.HasPrefix(reference, "data:") {
@@ -737,8 +733,7 @@ func threadStateValuePresent(value any) bool {
 
 func threadParts(value any) []ThreadPart {
 	if object, ok := threadMap(value); ok {
-		// Checked before state detection, which would otherwise claim a
-		// redacted thinking part as this message's body.
+		// Before state detection, which would claim a redacted thinking part.
 		if carriedOffBody(contentPartKind(object)) {
 			return nil
 		}
@@ -942,8 +937,7 @@ func describeThreadSpan(source *ThreadSource, span map[string]any) {
 		return ""
 	}
 	source.Model = lookup("model", "gen_ai.request.model", "gen_ai.response.model")
-	// A zero is what a collector writes when it did not measure, so reporting it
-	// would claim the span took no time or spent no tokens.
+	// A collector writes zero when it did not measure, not when nothing happened.
 	source.DurationMS = nonZeroThreadCount(lookup("duration_ms"))
 	if usage, ok := threadMap(summary["usage"]); ok {
 		source.Tokens = nonZeroThreadCount(threadScalar(usage["total_tokens"]))

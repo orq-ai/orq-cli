@@ -103,10 +103,9 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	var operationalErr error
 	var best *Thread
 	degraded := false
-	// The newest conversational span usually holds the whole history, so it is
-	// returned as soon as it hydrates. Once one has content the collector
-	// dropped, every remaining span is worth hydrating: a sibling often kept
-	// that same conversation intact, and it is not always the next one tried.
+	// The newest span usually holds the whole history, so it returns as soon as
+	// it hydrates; once one is missing content, a sibling that kept it is worth
+	// finding, and it is not always the next span tried.
 	consider := func(spanID string) *Thread {
 		thread, err := hydrateThread(api, traceID, spanID, params)
 		if err != nil {

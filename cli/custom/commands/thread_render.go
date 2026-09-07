@@ -87,7 +87,6 @@ func threadOpenTag(source ThreadSource) string {
 		"model", source.Model,
 		"duration_ms", source.DurationMS,
 		"tokens", source.Tokens,
-		// Reported only when the span failed; a healthy span says nothing.
 		"status", source.Status,
 	)
 	tag := "<thread"
@@ -176,10 +175,9 @@ func escapeThreadTags(text string) string {
 }
 
 // truncateThreadText caps a rendered block, keeping its start and saying how
-// much was left out. A trace can hold a single tool result larger than the
-// context it is being read in. Only the text inside an element is shortened,
-// never the elements themselves, so a truncated message is still well-formed
-// and still shows which tools it called.
+// much was left out. Only text inside an element is shortened, so a truncated
+// message stays well-formed. A trace can hold one tool result larger than the
+// context it is being read in.
 func truncateThreadText(text string, maxChars int) string {
 	if maxChars <= 0 || len(text) <= maxChars {
 		return text
