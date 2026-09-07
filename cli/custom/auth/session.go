@@ -338,6 +338,18 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 	return savedWS != "" && savedWS != activeWS
 }
 
+// Session states reported by ListSessions. A login is never reported as
+// "expired": the only date on disk belongs to the bootstrap token, which the
+// client re-mints from the refresh token on any call that needs it, so a stale
+// one means the next command does one extra round-trip — not that the login is
+// dead. Only the server can end a login, by rejecting the refresh token.
+const (
+	SessionStatusOK           = "ok"
+	SessionStatusNeedsRefresh = "needs-refresh"
+	SessionStatusInvalid      = "invalid"
+	SessionStatusUnreadable   = "unreadable"
+)
+
 // SessionListEntry is one login on disk, for `orq auth sessions`.
 type SessionListEntry struct {
 	Host      string `json:"host"`
@@ -345,7 +357,7 @@ type SessionListEntry struct {
 	User      string `json:"user,omitempty"`
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
-	Expired   bool   `json:"expired"`
+	Status    string `json:"status"`
 	Active    bool   `json:"active"`
 	Path      string `json:"path"`
 }
@@ -354,11 +366,12 @@ type SessionListEntry struct {
 // only: the file name is the host (see sessionPathFor), so the listing needs
 // no state beyond the directory itself.
 //
-// A file that will not decode is reported with its host and nothing else
-// rather than dropped, because a session too broken to read is exactly what
-// someone runs this command to find. `.deprecated` files are skipped: they are
-// what migrateSessionFiles parks a host collision's loser under, not a login
-// anything will authenticate with.
+// A file that will not decode is reported with its host and a status saying
+// so, rather than dropped: a session too broken to read is exactly what someone
+// runs this command to find, and a row of blank fields alone would be
+// indistinguishable from a healthy login that has set no project.
+// `.deprecated` files are skipped: they are what migrateSessionFiles parks a
+// host collision's loser under, not a login anything will authenticate with.
 func ListSessions() ([]SessionListEntry, error) {
 	entries, err := os.ReadDir(sessionsDir())
 	if err != nil {
@@ -382,11 +395,21 @@ func ListSessions() ([]SessionListEntry, error) {
 
 		data, err := os.ReadFile(path)
 		if err != nil {
+			row.Status = SessionStatusUnreadable
 			sessions = append(sessions, row)
 			continue
 		}
 		var session Session
 		if err := json.Unmarshal(data, &session); err != nil {
+			row.Status = SessionStatusUnreadable
+			sessions = append(sessions, row)
+			continue
+		}
+		// The same check InspectSession and doctor use. Without it a file that
+		// parses but has lost its refresh token lists as a healthy login while
+		// every other command calls it invalid.
+		if err := validateSession(&session); err != nil {
+			row.Status = SessionStatusInvalid
 			sessions = append(sessions, row)
 			continue
 		}
@@ -399,11 +422,12 @@ func ListSessions() ([]SessionListEntry, error) {
 			row.Workspace = *session.ActiveWorkspaceKey
 		}
 		row.Project = session.ActiveProjectName
-		// The refresh token is what keeps a session alive, but it carries no
-		// expiry of its own here; the bootstrap token's is the only date on
-		// disk, so "expired" means the CLI must refresh before its next call,
-		// not that the login is dead.
-		row.Expired = isExpired(session.BootstrapToken.ExpiresAt, 0)
+		// Same 60s skew as EnsureBootstrapToken, so the listing never disagrees
+		// with what the next call will actually do.
+		row.Status = SessionStatusOK
+		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
+			row.Status = SessionStatusNeedsRefresh
+		}
 		sessions = append(sessions, row)
 	}
 

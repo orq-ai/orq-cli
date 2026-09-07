@@ -46,13 +46,18 @@ const noAPIKeyNoticeEnvVar = "ORQ_NO_API_KEY_NOTICE"
 // key — it aborts with "no authentication handler configured", which names
 // neither the profile nor where it was selected.
 var profileExemptCommands = map[string]bool{
-	"auth login":           true,
-	"auth logout":          true,
-	"setup":                true,
-	"auth setup":           true,
-	"auth profile add":     true,
-	"auth profile list":    true, // listing profiles is how you diagnose an unknown one
-	"auth sessions":        true, // as is listing logins, which no profile selects
+	"auth login":        true,
+	"auth logout":       true,
+	"setup":             true,
+	"auth setup":        true,
+	"auth profile add":  true,
+	"auth profile list": true, // listing profiles is how you diagnose an unknown one
+	"auth sessions":     true, // as is listing logins, which no profile selects
+	// bartolo still attaches these deprecated spellings (hidden, but runnable)
+	// until the go.mod bump past bartolo#41; surface.json lists them, so they
+	// need the same exemption the canonical spellings have.
+	"auth add-profile":     true,
+	"auth list-profiles":   true,
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
@@ -75,6 +80,9 @@ var profileExemptCommands = map[string]bool{
 var interactiveWizardCommands = map[string]bool{
 	"auth setup":       true,
 	"auth profile add": true,
+	// Same reason as profileExemptCommands: the deprecated spelling is still
+	// attached and still prompts. Drops out with the bartolo bump.
+	"auth add-profile": true,
 }
 
 // commandPath is the command's path with the root binary name removed, so the
@@ -370,7 +378,7 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 	}
 	return fmt.Errorf(
 		"unknown profile %q (selected by %s): credentials.json has no entry of that name. "+
-			"Add it with `orq auth profile add apikey %s <api-key>`, see what exists with `orq auth profile list`, or %s. "+
+			"Add it with `orq auth profile add %s --api-key-file <file>`, see what exists with `orq auth profile list`, or %s. "+
 			"A browser login is not a profile: it belongs to a server, and is selected with --server",
 		name, source, name, drop,
 	)

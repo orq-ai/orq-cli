@@ -315,7 +315,7 @@ func NewWhoAmICommand() *cobra.Command {
 					if key == "" {
 						// The profile exists but carries no key, so every request
 						// will fail; say that rather than print a blank field.
-						kv(9, "api_key", "%s", "(not set — run `orq auth profile add apikey "+bartolocli.ActiveProfileName()+" <api-key>`)")
+						kv(9, "api_key", "%s", "(not set — run `orq auth profile add "+bartolocli.ActiveProfileName()+" --api-key-file <file>`)")
 						return nil
 					}
 					kv(9, "api_key", "%s", key)
@@ -344,6 +344,7 @@ func NewWhoAmICommand() *cobra.Command {
 			report := BuildIdentityReport(session, &client.URLs)
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
+				noteOtherLogins(cmd)
 				return nil
 			}
 			return emit(report)
@@ -434,4 +435,15 @@ func reportClearedEnvFiles(paths []string) {
 	for _, path := range paths {
 		info("Removed the exported key from %s", tilde(path))
 	}
+}
+
+// noteOtherLogins points at `auth sessions` when there is more than one login
+// on disk. Nothing else in the CLI mentions that command, so the user with
+// several logins — the one it was built for — had no way to learn it exists.
+func noteOtherLogins(cmd *cobra.Command) {
+	sessions, err := auth.ListSessions()
+	if err != nil || len(sessions) < 2 {
+		return
+	}
+	Notice("%d saved logins — see `%s auth sessions`", len(sessions), cmd.Root().Name())
 }

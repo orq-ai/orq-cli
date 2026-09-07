@@ -79,8 +79,8 @@ func TestListSessionsReportsEachHost(t *testing.T) {
 	if got.Project != "checkout" {
 		t.Errorf("Project = %q", got.Project)
 	}
-	if got.Expired {
-		t.Error("Expired = true, want false for a 2099 bootstrap token")
+	if got.Status != SessionStatusOK {
+		t.Errorf("Status = %q, want %q for a 2099 bootstrap token", got.Status, SessionStatusOK)
 	}
 }
 
@@ -117,12 +117,12 @@ func TestListSessionsReportsUnreadableSession(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("expected the broken session listed, got %v", sessions)
 	}
-	if sessions[0].Host != "broken.example" || sessions[0].Server != "" {
-		t.Fatalf("expected a host-only row, got %+v", sessions[0])
+	if sessions[0].Host != "broken.example" || sessions[0].Status != SessionStatusUnreadable {
+		t.Fatalf("expected an unreadable row, got %+v", sessions[0])
 	}
 }
 
-func TestListSessionsMarksExpiredBootstrapToken(t *testing.T) {
+func TestListSessionsMarksStaleBootstrapToken(t *testing.T) {
 	isolateHome(t)
 
 	stale := validSession("prod")
@@ -133,8 +133,34 @@ func TestListSessionsMarksExpiredBootstrapToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSessions: %v", err)
 	}
-	if !sessions[0].Expired {
-		t.Error("Expired = false, want true for a year-2000 bootstrap token")
+	if sessions[0].Status != SessionStatusNeedsRefresh {
+		t.Errorf("Status = %q, want %q for a year-2000 bootstrap token", sessions[0].Status, SessionStatusNeedsRefresh)
+	}
+}
+
+// A file that parses but is not a usable session is "invalid", distinct from
+// one that will not parse at all: doctor and whoami make the same distinction,
+// and a row of blanks alone could not.
+func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
+	isolateHome(t)
+
+	gutted := validSession("prod")
+	gutted.RefreshToken = ""
+	writeSessionFile(t, "my.orq.ai.json", marshalSession(t, gutted))
+	writeSessionFile(t, "bad.example.json", []byte("{"))
+
+	sessions, err := ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 rows, got %v", sessions)
+	}
+	if sessions[0].Status != SessionStatusUnreadable {
+		t.Errorf("bad.example: Status = %q, want %q", sessions[0].Status, SessionStatusUnreadable)
+	}
+	if sessions[1].Status != SessionStatusInvalid {
+		t.Errorf("my.orq.ai: Status = %q, want %q", sessions[1].Status, SessionStatusInvalid)
 	}
 }
 
@@ -142,6 +168,8 @@ func TestListSessionsMarksExpiredBootstrapToken(t *testing.T) {
 // host --server / ORQ_SERVER / `orq server set` resolved — not a stored flag.
 func TestListSessionsMarksResolvedHostActive(t *testing.T) {
 	isolateHome(t)
+	prevServer, prevSource := Server(), ServerSource()
+	t.Cleanup(func() { SetServer(prevServer, prevSource) })
 	SetServer("", "test")
 
 	writeSessionFile(t, "my.orq.ai.json", marshalSession(t, validSession("prod")))
