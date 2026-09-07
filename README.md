@@ -173,12 +173,16 @@ For several keys, save each as a profile and pick one per call, or persist the
 pick:
 
 ```sh
-orq auth profile add apikey ci <api-key>
+orq auth profile add ci --api-key-file ci.key   # `-` reads the key from stdin
 orq --profile ci agents list
 orq auth profile use ci
 orq auth profile current
 orq auth profile clear
 ```
+
+The key is read from a file rather than typed as an argument: a secret on the
+command line lands in your shell history and in `ps`. Omit `--api-key-file` on
+a terminal and the CLI prompts for it without echo.
 
 While a profile is in force the login session is not consulted: `--workspace`
 has no effect and `orq whoami` reports the profile. `--profile ""` turns a
@@ -280,6 +284,7 @@ surface changes are always a reviewed diff.
 | `orq auth login` | OAuth device login |
 | `orq auth logout` | Revoke refresh token, clear local session |
 | `orq auth whoami` | Show current identity (alias: `orq whoami`) |
+| `orq auth sessions` | List saved logins, one per host |
 | `orq auth profile add\|list\|current\|use\|clear` | Save and select API-key profiles |
 | `orq workspace list` | List workspaces |
 | `orq workspace use <key>` | Switch active workspace |

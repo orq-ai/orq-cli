@@ -421,3 +421,31 @@ func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 		t.Errorf("models list is the router listing, so the wrong command was renamed: %q", list.Long)
 	}
 }
+
+// The canonical profile-add command must be covered by the --no-input guard.
+func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
+	if !interactiveWizardCommands["auth profile add"] {
+		t.Error("`auth profile add` must be refused under --no-input")
+	}
+	// Deprecated aliases remain guarded while they are present in surface.json.
+	surface, err := os.ReadFile(filepath.Join("..", "..", "surface.json"))
+	if err != nil {
+		t.Fatalf("read surface.json: %v", err)
+	}
+	for _, path := range []string{"auth add-profile", "auth list-profiles"} {
+		stillShips := bytes.Contains(surface, []byte(`"orq `+path+`"`))
+		if stillShips && !profileExemptCommands[path] {
+			t.Errorf("%q still ships (surface.json) but lost its profile exemption", path)
+		}
+		if !stillShips && profileExemptCommands[path] {
+			t.Errorf("%q is gone from surface.json; drop it from profileExemptCommands", path)
+		}
+	}
+	if bytes.Contains(surface, []byte(`"orq auth add-profile"`)) != interactiveWizardCommands["auth add-profile"] {
+		t.Error("`auth add-profile` must be in interactiveWizardCommands exactly while it still ships")
+	}
+	// Listing logins must work before one exists.
+	if !profileExemptCommands["auth sessions"] {
+		t.Error("`auth sessions` must be exempt from the unknown-profile guard")
+	}
+}

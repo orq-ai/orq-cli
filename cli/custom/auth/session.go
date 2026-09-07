@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -335,4 +336,77 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 		return true
 	}
 	return savedWS != "" && savedWS != activeWS
+}
+
+// SessionListEntry is one login on disk, for `orq auth sessions`.
+type SessionListEntry struct {
+	Host      string `json:"host"`
+	Server    string `json:"server"`
+	User      string `json:"user,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Expired   bool   `json:"expired"`
+	Active    bool   `json:"active"`
+	Path      string `json:"path"`
+}
+
+// ListSessions reads every session in the sessions directory, newest layout
+// only: the file name is the host (see sessionPathFor), so the listing needs
+// no state beyond the directory itself.
+//
+// A file that will not decode is reported with its host and nothing else
+// rather than dropped, because a session too broken to read is exactly what
+// someone runs this command to find. `.deprecated` files are skipped: they are
+// what migrateSessionFiles parks a host collision's loser under, not a login
+// anything will authenticate with.
+func ListSessions() ([]SessionListEntry, error) {
+	entries, err := os.ReadDir(sessionsDir())
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	activeHost := SessionHost(ResolveURLs("").APIBaseURL)
+
+	sessions := make([]SessionListEntry, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		host := strings.TrimSuffix(name, ".json")
+		path := filepath.Join(sessionsDir(), name)
+		row := SessionListEntry{Host: host, Active: host == activeHost, Path: path}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			sessions = append(sessions, row)
+			continue
+		}
+		var session Session
+		if err := json.Unmarshal(data, &session); err != nil {
+			sessions = append(sessions, row)
+			continue
+		}
+
+		row.Server = session.APIBaseURL
+		if session.User != nil {
+			row.User = session.User.Email
+		}
+		if session.ActiveWorkspaceKey != nil {
+			row.Workspace = *session.ActiveWorkspaceKey
+		}
+		row.Project = session.ActiveProjectName
+		// The refresh token is what keeps a session alive, but it carries no
+		// expiry of its own here; the bootstrap token's is the only date on
+		// disk, so "expired" means the CLI must refresh before its next call,
+		// not that the login is dead.
+		row.Expired = isExpired(session.BootstrapToken.ExpiresAt, 0)
+		sessions = append(sessions, row)
+	}
+
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Host < sessions[j].Host })
+	return sessions, nil
 }

@@ -119,6 +119,13 @@ controls on surface changes, whichever side they originate from.
   bundle version, sourced from the source commit when available and otherwise
   the content fingerprint, while `doctor --json` exposes the full value as
   `checks[id=skills].details.version`.
+- **Added: `orq auth sessions`,** which lists saved logins by host, including
+  workspace, project, user, status, and the active server. It also surfaces
+  malformed sessions so they can be repaired.
+- **Fixed:** `--no-input` now refuses `orq auth profile add` before it can
+  prompt for a key.
+- **Note:** deprecated `auth add-profile` and `auth list-profiles` aliases
+  remain until the bartolo generator bump removes them.
 
 ## [7.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.2.0) — 2026-09-07
 
