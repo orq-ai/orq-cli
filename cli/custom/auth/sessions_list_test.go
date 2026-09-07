@@ -103,8 +103,8 @@ func TestListSessionsSkipsDeprecatedAndNonJSON(t *testing.T) {
 	}
 }
 
-// Malformed sessions remain visible so users can find them.
-func TestListSessionsReportsUnreadableSession(t *testing.T) {
+// Malformed JSON remains visible so users can find it.
+func TestListSessionsReportsInvalidJSONSession(t *testing.T) {
 	isolateHome(t)
 
 	writeSessionFile(t, "broken.example.json", []byte("{not json"))
@@ -137,8 +137,7 @@ func TestListSessionsMarksStaleBootstrapToken(t *testing.T) {
 	}
 }
 
-// Distinguish malformed session data from invalid JSON.
-func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
+func TestListSessionsMarksInvalidSessions(t *testing.T) {
 	isolateHome(t)
 
 	gutted := validSession("prod")
