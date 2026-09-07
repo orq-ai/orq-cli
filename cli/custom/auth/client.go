@@ -394,10 +394,40 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 		},
 		WorkspaceTokens: workspaceTokens,
 	}
+	carryOverOwnFields(session)
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
 	return session, nil
+}
+
+// carryOverOwnFields moves the fields no login response can rebuild off the
+// session already on disk: the gateway key `orq setup` minted, its id, expiry
+// and scope, and the active project. A login writes a whole new session, so
+// without this a second `orq auth login` silently un-wires the coding agents,
+// strips the only local record of a live 90-day key (the id `logout` prints for
+// revoking it), and re-arms RES-1465: the precedence rule identifies the
+// exported ORQ_API_KEY by comparing it against GatewayKey, so a session that
+// lost the field lets that key outrank the login again.
+//
+// Only for the same user. A different account logging in on this machine must
+// not inherit a key minted from someone else's login: its calls would be billed
+// and scoped to them, and `logout` would name a key id that is not theirs.
+func carryOverOwnFields(session *Session) {
+	previous, err := ReadSession()
+	if err != nil || previous == nil {
+		return
+	}
+	if previous.User == nil || session.User == nil || previous.User.ID != session.User.ID {
+		return
+	}
+	session.GatewayKey = previous.GatewayKey
+	session.GatewayKeyID = previous.GatewayKeyID
+	session.GatewayKeyExpiresAt = previous.GatewayKeyExpiresAt
+	session.GatewayWorkspace = previous.GatewayWorkspace
+	session.GatewayProject = previous.GatewayProject
+	session.ActiveProjectID = previous.ActiveProjectID
+	session.ActiveProjectName = previous.ActiveProjectName
 }
 
 func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
