@@ -404,23 +404,22 @@ func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
 }
 
 // The schema names both `GET /v2/models` and `GET /v3/router/models`
-// `models list`, so without renamePreviewModelsList help lists `list` twice and
-// one of the two is unreachable (ENG-2798).
-func TestModelsListIsNotRegisteredTwice(t *testing.T) {
+// `models list` (ENG-2798). TestCustomCommandsDoNotCollideWithGenerated catches
+// the duplicate; this pins which of the two kept `list`, since a swap leaves the
+// count right and the meaning inverted.
+func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 	models := childCommand(buildRoot(t), "models")
 	if models == nil {
 		t.Fatal("no models command")
 	}
-	seen := map[string]int{}
-	for _, c := range models.Commands() {
-		seen[c.Name()]++
+	list, preview := childCommand(models, "list"), childCommand(models, "list-preview")
+	if list == nil || preview == nil {
+		t.Fatalf("want both list and list-preview, got list=%v list-preview=%v", list != nil, preview != nil)
 	}
-	for name, n := range seen {
-		if n > 1 {
-			t.Errorf("models %s registered %d times", name, n)
-		}
+	if !strings.Contains(preview.Long, "Router") {
+		t.Errorf("models list-preview is not the router listing: %q", preview.Long)
 	}
-	if seen["list"] != 1 || seen["list-preview"] != 1 {
-		t.Errorf("want one list and one list-preview, got %v", seen)
+	if strings.Contains(list.Long, "Router") {
+		t.Errorf("models list is the router listing, so the wrong command was renamed: %q", list.Long)
 	}
 }

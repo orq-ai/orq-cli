@@ -143,8 +143,9 @@ controls on surface changes, whichever side they originate from.
   `GET /v2/models` and `GET /v3/router/models` `models list`, so help printed the
   name twice and one of the two commands was unreachable. `orq models list` still
   lists the workspace catalogue; the AI Router listing is now
-  `orq models list-preview` — preview because it returns only model ids, with no
-  enablement, pricing, capability or model-type data (ENG-2307).
+  `orq models list-preview` — preview because it returns only id, object, owner
+  and creation time, with no enablement, pricing, capability or model-type data
+  (ENG-2307).
 
 ## [7.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.1.0) — 2026-09-06
 
