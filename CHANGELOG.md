@@ -36,9 +36,12 @@ What you may depend on, and what you may not:
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
-  drift silently under an OpenAPI regeneration. Removing or renaming a
-  command or flag is a breaking change: announce it here at least one release
-  before it disappears.
+  drift silently under an OpenAPI regeneration. Removing or renaming a command
+  or flag is announced here at least one release before it disappears, and the
+  old spelling keeps working, hidden and warning, until then. That notice is
+  what costs users their attention, so the removal that follows it is a minor.
+  A command or flag that disappears without one is the breaking case, and it is
+  what cuts a major.
 
 ## Versioning
 
@@ -120,6 +123,12 @@ controls on surface changes, whichever side they originate from.
   deprecated spellings announced for removal in 7.0.0. Use `orq auth profile
   add` and `orq auth profile list`. Both were already hidden from `--help` and
   printed a deprecation notice; they now leave `surface.json`.
+- **Changed: removing an already-deprecated command or flag no longer cuts a
+  major.** The [stability contract](#stability-contract) still requires a
+  removal to be announced a release ahead, with the old spelling kept working,
+  hidden and warning, until then — but that announcement is what costs callers
+  their attention, so the removal following it is a minor. A command or flag
+  that disappears without such a notice is still a major.
 - **Fixed:** table output renders nested columns instead of dropping them, and
   a list operation is classified from the schema's own metadata rather than
   guessed from its name, so list-shaped responses format as tables more
