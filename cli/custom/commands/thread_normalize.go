@@ -931,9 +931,11 @@ func describeThreadSpan(source *ThreadSource, span map[string]any) {
 		return ""
 	}
 	source.Model = lookup("model", "gen_ai.request.model", "gen_ai.response.model")
-	source.DurationMS = lookup("duration_ms")
+	// A zero is what a collector writes when it did not measure, so reporting it
+	// would claim the span took no time or spent no tokens.
+	source.DurationMS = nonZeroThreadCount(lookup("duration_ms"))
 	if usage, ok := threadMap(summary["usage"]); ok {
-		source.Tokens = threadScalar(usage["total_tokens"])
+		source.Tokens = nonZeroThreadCount(threadScalar(usage["total_tokens"]))
 	}
 	status := strings.ToLower(lookup("status"))
 	if status == "" || status == "ok" || status == "unset" || status == "success" {
@@ -956,4 +958,11 @@ func threadScalar(value any) string {
 		return strconv.FormatBool(typed)
 	}
 	return ""
+}
+
+func nonZeroThreadCount(value string) string {
+	if value == "0" {
+		return ""
+	}
+	return value
 }
