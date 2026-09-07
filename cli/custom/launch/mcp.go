@@ -49,6 +49,14 @@ func maybeInstallSessionSkills(ctx *AgentContext, plan *LaunchPlan, agent string
 	if ctx.Flags.NoSkills {
 		return
 	}
+	// An agent with no skills directory registered would otherwise resolve zero
+	// targets and return success having linked nothing. Say so instead, here
+	// rather than at the call site, so the next agent added inherits the check.
+	if !skills.Receives(agent) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"orq skills are not wired for %s yet, so this session starts without them", agent))
+		return
+	}
 	if runtime.GOOS == "windows" {
 		// No symlinks to rely on, so a session install would mean copying the
 		// whole set in and out of the user's home on every launch. Point at
