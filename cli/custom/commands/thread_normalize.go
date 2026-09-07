@@ -84,6 +84,7 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	} else {
 		thread.Source.Representation = "chat_completions"
 	}
+	describeThreadSpan(&thread.Source, span)
 	for index := range thread.Messages {
 		thread.Messages[index].Index = index
 	}
@@ -908,4 +909,51 @@ func clampSliceBound(value, length int) int {
 		return length
 	}
 	return value
+}
+
+// describeThreadSpan records the span facts a reader needs to judge the
+// conversation: which model produced it, what it cost in time and tokens, and
+// whether it failed. Status is reported only for a failure — a healthy span
+// says nothing, so a status line always means something went wrong.
+func describeThreadSpan(source *ThreadSource, span map[string]any) {
+	summary, _ := threadMap(span["summary"])
+	lookup := func(keys ...string) string {
+		for _, key := range keys {
+			if value := threadScalar(summary[key]); value != "" {
+				return value
+			}
+			if value, ok := threadLookup(span, key); ok {
+				if scalar := threadScalar(value); scalar != "" {
+					return scalar
+				}
+			}
+		}
+		return ""
+	}
+	source.Model = lookup("model", "gen_ai.request.model", "gen_ai.response.model")
+	source.DurationMS = lookup("duration_ms")
+	if usage, ok := threadMap(summary["usage"]); ok {
+		source.Tokens = threadScalar(usage["total_tokens"])
+	}
+	status := strings.ToLower(lookup("status"))
+	if status == "" || status == "ok" || status == "unset" || status == "success" {
+		return
+	}
+	source.Status = status
+	source.Error = lookup("status_message", "error.message", "exception.message", "error")
+}
+
+// threadScalar renders an attribute value that is a single number or string.
+func threadScalar(value any) string {
+	switch typed := decodeThreadValue(value).(type) {
+	case string:
+		return typed
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typed)
+	case bool:
+		return strconv.FormatBool(typed)
+	}
+	return ""
 }

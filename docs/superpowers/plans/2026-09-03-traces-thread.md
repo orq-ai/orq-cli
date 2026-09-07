@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `orq traces thread <trace-id> [span-id]`, which normalizes Chat Completions and Responses conversations from hydrated spans and renders readable Markdown or a canonical structured representation.
+**Goal:** Add `orq traces thread <trace-id> [span-id]`, which normalizes Chat Completions and Responses conversations from hydrated spans and renders readable XML-demarcated text or a canonical structured representation.
 
-**Architecture:** Keep format-specific parsing and Markdown rendering in focused files under `cli/custom/commands`. Inject the three generated trace operations from each binary's own generated module so stable and rc use their matching schemas, then attach the hand-written command to the generated `traces` parent. Normalize untyped and partly wrapped attributes into one canonical `Thread`, slice that model, and render from it.
+**Architecture:** Keep format-specific parsing and rendering in focused files under `cli/custom/commands`. Inject the three generated trace operations from each binary's own generated module so stable and rc use their matching schemas, then attach the hand-written command to the generated `traces` parent. Normalize untyped and partly wrapped attributes into one canonical `Thread`, slice that model, and render from it.
 
 **Tech Stack:** Go 1.25, Cobra, Viper, Bartolo formatter, generated Orq trace operations, table-driven Go tests and JSON fixtures.
 
@@ -17,9 +17,9 @@
 - Parse fields independently because spans may be partial or hybrid. Prefer usable `openresponses.*` content, then Chat Completions shapes, then legacy `span.input` / `span.output` fallbacks.
 - Flexible values may be structured maps/arrays, JSON strings, or wrappers containing `_value`, `string`, and `items.count`. A count is the raw Responses collection-item count, not a thread-message count. A count without content becomes one `[content unavailable: N items]` part, and a count-only input still offsets known output indices by N; never infer missing text, tools, or reasoning.
 - Never print encrypted, signature, or redacted reasoning blobs. Render only `[encrypted]`, `[redacted]`, `[masked]`, or `[truncated]` state markers as appropriate.
-- Default output is Markdown on stdout when no machine format was explicitly requested. `--json`, `-o yaml`, and `-o toon` serialize the canonical selected structure. Errors go to stderr.
+- Default output is XML-demarcated text on stdout when no machine format was explicitly requested. `--json`, `-o yaml`, and `-o toon` serialize the canonical selected structure. Errors go to stderr.
 - `--slice` uses zero-based Python list semantics with an exclusive stop, omitted bounds, negative indices, and a single integer; strides and arbitrary non-contiguous selectors are out of scope. System and developer messages are ordinary sliceable messages.
-- Markdown has indexed `SYSTEM`, `DEVELOPER`, `USER`, `ASSISTANT`, and `TOOL` headings, whose index is the message's `--slice` position. Nested indicators are `REASONING`, `REASONING SUMMARY`, `TOOL CALL`, `TOOL RESULT`, `ERROR`, and `EXCEPTION` only when actual content exists.
+- Each message is a `<message index role>` element, whose index is its `--slice` position; nested `<reasoning>`, `<reasoning_summary>`, `<tool_call>`, `<error>`, and `<exception>` elements appear only when actual content exists. Message bodies are arbitrary recorded text, so this renderer's own tag names are escaped where they appear in content and cannot forge a turn. The opening `<thread>` tag reports the trace, span, dialect, model, duration, and token count, and reports a status only when the span failed.
 - Do not edit `cli/generated/`. Changes under `cli/custom/` must compile for both the root stable module and `packages/orq-rc`.
 - The implementation calls generated Go operations directly through injected functions; it does not invoke the `orq` subprocess or round-trip through `cat`/`jq`.
 - Preserve source order, pair tool requests/results by call ID, and remove only a duplicated final assistant message that is identical across input history and output. Distinct repeated messages remain distinct.
@@ -41,7 +41,7 @@
 
 **Interfaces:**
 - Consumes: an untyped hydrated span response as `map[string]any` and a caller-supplied `ThreadSource`.
-- Produces: `NormalizeThread(span map[string]any, source ThreadSource) (Thread, error)`, `SliceThread(thread Thread, expression string) (Thread, error)`, and `RenderThreadMarkdown(w io.Writer, thread Thread) error`.
+- Produces: `NormalizeThread(span map[string]any, source ThreadSource) (Thread, error)`, `SliceThread(thread Thread, expression string) (Thread, error)`, and `RenderThread(w io.Writer, thread Thread, maxChars int) error`.
 - Produces canonical exported JSON fields: `messages` and `source`; each message has `index`, `role`, optional `name`, `content`, optional `reasoning`, optional `tool_calls`, and optional `tool_call_id`.
 
 - [ ] **Step 1: Define canonical types and write failing normalization tests**
@@ -64,13 +64,13 @@
 
   Add cases for `-5:`, `:10`, `2:4`, `-4:-1`, `3`, out-of-range bounds, empty results, whitespace, malformed integers, more than one colon, and stride syntax. `SliceThread` must clamp like Python, leave `source` untouched, and return a descriptive error for invalid syntax or strides.
 
-- [ ] **Step 6: Implement Markdown golden tests and renderer**
+- [ ] **Step 6: Implement rendering golden tests and renderer**
 
-  Assert full Markdown output for Chat text/tool-call/tool-result and Responses reasoning/unavailable fixtures. Render indexed `## SYSTEM [n]`, `## USER [n]`, `## ASSISTANT [n]`, and `## TOOL [n] — name`, where `n` is the message's `--slice` position; lead with a `> trace ... span ... representation` source line so a reader can see which span was selected; pretty-print structured values in fenced JSON; preserve plain text; render state and unsupported markers without encrypted/redacted payloads; and end output with a newline.
+  Assert full rendered output for Chat text/tool-call/tool-result and Responses reasoning/unavailable fixtures. Render each message as `<message index="n" role="...">`, where `n` is the message's `--slice` position; open with a `<thread>` tag naming the span that was selected so a reader can tell a wrong selection from a wrong conversation; pretty-print structured values as JSON; preserve plain text; render state and unsupported markers without encrypted/redacted payloads; and end output with a newline.
 
 - [ ] **Step 7: Run focused tests and commit**
 
-  Run `go test ./cli/custom/commands -run 'Test(NormalizeThread|SliceThread|RenderThreadMarkdown)' -count=1`, then `gofmt -w cli/custom/commands/thread*.go`, rerun the focused tests, and commit with `feat(traces): normalize and render trace threads`.
+  Run `go test ./cli/custom/commands -run 'Test(NormalizeThread|SliceThread|RenderThread)' -count=1`, then `gofmt -w cli/custom/commands/thread*.go`, rerun the focused tests, and commit with `feat(traces): normalize and render trace threads`.
 
 ### Task 2: Trace API integration and command registration
 
@@ -84,7 +84,7 @@
 - Modify: affected custom registration/run tests when required by the injected dependency.
 
 **Interfaces:**
-- Consumes Task 1's `NormalizeThread`, `SliceThread`, `RenderThreadMarkdown`, and canonical types.
+- Consumes Task 1's `NormalizeThread`, `SliceThread`, `RenderThread`, and canonical types.
 - Produces `TraceAPI` with `GetTrace(traceID string, params *viper.Viper) (map[string]any, error)`, `GetSpan(traceID, spanID string, params *viper.Viper) (map[string]any, error)`, and `ListSpans(traceID string, params *viper.Viper) (map[string]any, error)` function fields.
 - Produces `NewTracesThreadCommand(api TraceAPI) *cobra.Command` and attaches it beneath the generated `traces` command.
 - Stable `cmd/orq/main.go` wraps `orq/cli/generated` operations; rc `packages/orq-rc/cmd/orq/main.go` wraps `orq-rc/cli/generated` operations. Each wrapper discards only the HTTP response and returns the decoded map/error.

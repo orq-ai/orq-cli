@@ -11,11 +11,18 @@ type Thread struct {
 	Source   ThreadSource    `json:"source"`
 }
 
-// ThreadSource identifies the origin of a normalized thread.
+// ThreadSource identifies the origin of a normalized thread, and reports the
+// span facts needed to judge the conversation it holds.
 type ThreadSource struct {
 	Representation string `json:"representation"`
 	TraceID        string `json:"trace_id,omitempty"`
 	SpanID         string `json:"span_id,omitempty"`
+	Model          string `json:"model,omitempty"`
+	DurationMS     string `json:"duration_ms,omitempty"`
+	Tokens         string `json:"tokens,omitempty"`
+	// Status and Error are set only when the span itself failed.
+	Status string `json:"status,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 // ThreadMessage is a message in conversation order, including system and developer

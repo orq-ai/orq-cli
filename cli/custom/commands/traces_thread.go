@@ -26,17 +26,19 @@ type TraceAPI struct {
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
+	maxChars := 0
 	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
 		Short: "Render a trace conversation as a thread",
-		Long:  "Render a trace's conversational span as Markdown, or a canonical machine-readable thread.",
+		Long:  "Render a trace's conversational span as XML-demarcated text, or a canonical machine-readable thread.",
 		Example: strings.Join([]string{
 			"  orq traces thread tr_123 --slice 2",
 			"  orq traces thread tr_123 --slice 2:",
 			"  orq traces thread tr_123 --slice :-1",
 			"  orq traces thread tr_123 --reasoning=false",
+			"  orq traces thread tr_123 --max-chars 2000",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -59,11 +61,12 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			if machineFormatRequested(cmd) {
 				return emit(thread)
 			}
-			return RenderThreadMarkdown(bartolocli.Stdout, thread)
+			return RenderThread(bartolocli.Stdout, thread, maxChars)
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
+	cmd.Flags().IntVar(&maxChars, "max-chars", 0, "Cut each rendered block to this many characters, noting how much was left out")
 	return cmd
 }
 
