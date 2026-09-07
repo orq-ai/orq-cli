@@ -121,8 +121,11 @@ controls on surface changes, whichever side they originate from.
   messages. System and developer messages are ordinary indexed messages, a
   heading's index is its `--slice` position, and the output leads with the
   trace, span, and detected dialect it was read from. Agent spans that
-  serialize Responses items into `gen_ai.input`, and spans that record a whole
-  turn as bare text, are both normalized rather than silently dropped. Explicit `--json`, `-o yaml`, and
+  serialize Responses items into `gen_ai.input`, spans that record a whole turn
+  as bare text, and tool calls and results carried as message content parts are
+  all normalized rather than silently dropped. When the selected span is missing
+  content the collector never stored, the remaining spans are searched for one
+  that kept the same conversation intact. Explicit `--json`, `-o yaml`, and
   `-o toon` return the canonical structured thread; content retained only as a
   count is shown explicitly as unavailable rather than invented.
 

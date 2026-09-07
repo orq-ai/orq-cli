@@ -247,9 +247,13 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 		return ThreadMessage{}, false
 	}
 	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(object["content"]), ToolCallID: threadString(object["tool_call_id"])}
+	message.ToolCalls = append(message.ToolCalls, contentToolCalls(object["content"])...)
+	if message.ToolCallID == "" {
+		message.ToolCallID = contentToolCallID(object["content"])
+	}
 	if role == "assistant" {
 		message.Reasoning = recordedReasoning(object)
-		message.ToolCalls = chatToolCalls(object["tool_calls"])
+		message.ToolCalls = append(chatToolCalls(object["tool_calls"]), message.ToolCalls...)
 	}
 	return message, true
 }
@@ -304,6 +308,10 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 			role = "assistant"
 		}
 		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(item["content"]), ToolCallID: threadString(item["call_id"])}
+		message.ToolCalls = append(message.ToolCalls, contentToolCalls(item["content"])...)
+		if message.ToolCallID == "" {
+			message.ToolCallID = contentToolCallID(item["content"])
+		}
 		if role == "assistant" {
 			message.Reasoning = pending
 			pending = nil
@@ -458,6 +466,70 @@ func markThreadPartsSummary(parts []ThreadPart) []ThreadPart {
 	return parts
 }
 
+// contentPartKind reads the discriminator of a content part. OTel-shaped
+// payloads spell it `kind` where the provider SDKs spell it `type`.
+func contentPartKind(object map[string]any) string {
+	return firstThreadString(object["type"], object["kind"])
+}
+
+func firstThreadPresent(object map[string]any, keys ...string) any {
+	for _, key := range keys {
+		if value := object[key]; value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+// contentToolCalls lifts tool calls expressed as content parts, the shape
+// Anthropic-style messages use, onto the message that made them.
+func contentToolCalls(value any) []ThreadToolCall {
+	items, ok := decodeThreadValue(value).([]any)
+	if !ok {
+		return nil
+	}
+	var calls []ThreadToolCall
+	for _, raw := range items {
+		object, ok := threadMap(decodeThreadValue(raw))
+		if !ok {
+			continue
+		}
+		switch contentPartKind(object) {
+		case "tool_use", "tool_call", "function_call":
+			arguments := firstThreadPresent(object, "input", "arguments", "args")
+			if text, ok := arguments.(string); ok {
+				arguments = decodeJSONOrString(text)
+			}
+			calls = append(calls, ThreadToolCall{
+				ID:        firstThreadString(object["id"], object["call_id"], object["tool_call_id"]),
+				Name:      threadString(object["name"]),
+				Arguments: arguments,
+			})
+		}
+	}
+	return calls
+}
+
+// contentToolCallID reads the call a tool_result content part answers.
+func contentToolCallID(value any) string {
+	items, ok := decodeThreadValue(value).([]any)
+	if !ok {
+		return ""
+	}
+	for _, raw := range items {
+		object, ok := threadMap(decodeThreadValue(raw))
+		if !ok {
+			continue
+		}
+		if kind := contentPartKind(object); kind == "tool_result" || kind == "function_call_output" {
+			if id := firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"]); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
 func threadErrorParts(value any, kind string) []ThreadPart {
 	switch typed := decodeThreadValue(value).(type) {
 	case string:
@@ -534,7 +606,7 @@ func threadParts(value any) []ThreadPart {
 		}
 		return parts
 	case map[string]any:
-		kind := threadString(typed["type"])
+		kind := contentPartKind(typed)
 		if kind == "" {
 			if text, ok := typed["text"]; ok {
 				return threadParts(text)
@@ -544,6 +616,11 @@ func threadParts(value any) []ThreadPart {
 		switch kind {
 		case "text", "input_text", "output_text", "summary_text", "refusal":
 			return threadParts(typed["text"])
+		case "tool_use", "tool_call", "function_call":
+			// Carried on the message as a tool call, not as body text.
+			return nil
+		case "tool_result", "function_call_output":
+			return threadParts(firstThreadPresent(typed, "result", "content", "output"))
 		default:
 			return []ThreadPart{{Type: "unsupported", UnsupportedType: kind}}
 		}

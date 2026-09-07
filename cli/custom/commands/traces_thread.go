@@ -90,17 +90,37 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	candidates, excluded, listErr := listThreadCandidates(api, traceID, params)
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
+	var best *Thread
+	degraded := false
+	// The newest conversational span usually holds the whole history, so it is
+	// returned as soon as it hydrates. Once one has content the collector
+	// dropped, every remaining span is worth hydrating: a sibling often kept
+	// that same conversation intact, and it is not always the next one tried.
+	consider := func(spanID string) *Thread {
+		thread, err := hydrateThread(api, traceID, spanID, params)
+		if err != nil {
+			if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
+				operationalErr = err
+			}
+			return nil
+		}
+		if best == nil || betterThread(thread, *best) {
+			best = &thread
+		}
+		if !threadIsWhole(thread) {
+			degraded = true
+		} else if !degraded {
+			return best
+		}
+		return nil
+	}
 	for _, candidate := range candidates {
 		if tried[candidate.id] {
 			continue
 		}
 		tried[candidate.id] = true
-		thread, err := hydrateThread(api, traceID, candidate.id, params)
-		if err == nil {
-			return thread, nil
-		}
-		if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
-			operationalErr = err
+		if thread := consider(candidate.id); thread != nil {
+			return *thread, nil
 		}
 	}
 	for _, fallbackID := range fallbackIDs {
@@ -108,13 +128,12 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 			continue
 		}
 		tried[fallbackID] = true
-		thread, err := hydrateThread(api, traceID, fallbackID, params)
-		if err == nil {
-			return thread, nil
+		if thread := consider(fallbackID); thread != nil {
+			return *thread, nil
 		}
-		if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
-			operationalErr = err
-		}
+	}
+	if best != nil {
+		return *best, nil
 	}
 	if operationalErr != nil {
 		return Thread{}, operationalErr
@@ -123,6 +142,49 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		return Thread{}, listErr
 	}
 	return Thread{}, fmt.Errorf("no supported conversation found in trace %q", traceID)
+}
+
+// betterThread prefers the thread with more readable messages, and on a tie the
+// one with no dropped content, so an explicit gap never wins over a span that
+// kept the same turns intact.
+func betterThread(candidate, best Thread) bool {
+	candidateCount, bestCount := threadContentMessages(candidate), threadContentMessages(best)
+	if candidateCount != bestCount {
+		return candidateCount > bestCount
+	}
+	return threadIsWhole(candidate) && !threadIsWhole(best)
+}
+
+// threadIsWhole reports a thread with no content the collector dropped.
+func threadIsWhole(thread Thread) bool {
+	for _, message := range thread.Messages {
+		for _, part := range message.Content {
+			if part.Type == "unavailable" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// threadContentMessages counts the messages that carry something to read. A
+// message whose content the collector dropped does not count, so a span that
+// kept a turn outranks one that only reports the turn missing.
+func threadContentMessages(thread Thread) int {
+	total := 0
+	for _, message := range thread.Messages {
+		if len(message.ToolCalls) > 0 || len(message.Reasoning) > 0 {
+			total++
+			continue
+		}
+		for _, part := range message.Content {
+			if part.Type != "unavailable" {
+				total++
+				break
+			}
+		}
+	}
+	return total
 }
 
 func uniqueThreadIDs(ids ...string) []string {

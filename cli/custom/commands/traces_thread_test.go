@@ -570,3 +570,98 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 		}
 	})
 }
+
+func partialSpan() map[string]any {
+	return map[string]any{"span": map[string]any{"attributes": map[string]any{
+		"openresponses.instructions": "be brief",
+		"openresponses.input":        map[string]any{"items": map[string]any{"count": 3}},
+		"openresponses.output":       []any{map[string]any{"type": "message", "role": "assistant", "content": "answer"}},
+	}}}
+}
+
+func TestTracesThreadPrefersASpanThatKeptTheDroppedContent(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "root", "root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "newest", "started_at": "2026-09-03T10:00:02Z"},
+			map[string]any{"span_id": "root", "started_at": "2026-09-03T10:00:00Z"},
+		}}},
+		spans: map[string]map[string]any{
+			"newest": partialSpan(),
+			"root":   conversationalSpan("the question the newest span lost"),
+		},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the question the newest span lost") || strings.Contains(out, "content unavailable") {
+		t.Fatalf("Markdown = %q", out)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:newest", "span:trace-1:root"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
+func TestTracesThreadKeepsThePartialThreadWhenNoSpanKeptMore(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "root", "root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "newest", "started_at": "2026-09-03T10:00:02Z"},
+			map[string]any{"span_id": "root", "started_at": "2026-09-03T10:00:00Z"},
+		}}},
+		spans: map[string]map[string]any{"newest": partialSpan(), "root": partialSpan()},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "content unavailable: 3 items") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}
+
+func TestTracesThreadStopsAtTheNewestWholeConversation(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "root", "root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "newest", "started_at": "2026-09-03T10:00:02Z"},
+			map[string]any{"span_id": "root", "started_at": "2026-09-03T10:00:00Z"},
+		}}},
+		spans: map[string]map[string]any{
+			"newest": conversationalSpan("newest"),
+			"root":   conversationalSpan("root must not be hydrated"),
+		},
+	}
+	if _, err := runTracesThread(t, traceAPI(fake), "trace-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:newest"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
+func TestTracesThreadKeepsScanningPastAShorterWholeSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "root", "root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "newest", "started_at": "2026-09-03T10:00:03Z"},
+			map[string]any{"span_id": "middle", "started_at": "2026-09-03T10:00:02Z"},
+			map[string]any{"span_id": "root", "started_at": "2026-09-03T10:00:00Z"},
+		}}},
+		spans: map[string]map[string]any{
+			"newest": partialSpan(),
+			"middle": {"span": map[string]any{"attributes": map[string]any{
+				"gen_ai.output": map[string]any{"role": "assistant", "content": "answer only"},
+			}}},
+			"root": conversationalSpan("the question every later span lost"),
+		},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the question every later span lost") {
+		t.Fatalf("Markdown = %q", out)
+	}
+}

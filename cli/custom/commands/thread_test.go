@@ -711,3 +711,39 @@ func TestNormalizeThreadLiveShapeRegressions(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeThreadConvertsToolContentParts(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "assistant", "content": []any{
+			map[string]any{"type": "text", "text": "Let me look."},
+			map[string]any{"type": "tool_use", "id": "call-1", "name": "check_inventory", "input": map[string]any{"sku": "item-1"}},
+		}},
+		map[string]any{"role": "tool", "content": []any{
+			map[string]any{"kind": "tool_result", "tool_use_id": "call-1", "result": "in stock"},
+		}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThreadMessage{
+		{Index: 0, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "Let me look."}},
+			ToolCalls: []ThreadToolCall{{ID: "call-1", Name: "check_inventory", Arguments: map[string]any{"sku": "item-1"}}}},
+		{Index: 1, Role: "tool", Name: "check_inventory", ToolCallID: "call-1", Content: []ThreadPart{{Type: "text", Text: "in stock"}}},
+	}
+	if !reflect.DeepEqual(thread.Messages, want) {
+		t.Fatalf("messages = %#v", thread.Messages)
+	}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{"### TOOL CALL — check_inventory [call-1]", "## TOOL [1] — check_inventory", "### TOOL RESULT"} {
+		if !strings.Contains(out.String(), fragment) {
+			t.Fatalf("Markdown = %q, want %q", out.String(), fragment)
+		}
+	}
+	if strings.Contains(out.String(), "unsupported") {
+		t.Fatalf("Markdown = %q", out.String())
+	}
+}
