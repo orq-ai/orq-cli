@@ -46,14 +46,16 @@ const noAPIKeyNoticeEnvVar = "ORQ_NO_API_KEY_NOTICE"
 // key — it aborts with "no authentication handler configured", which names
 // neither the profile nor where it was selected.
 var profileExemptCommands = map[string]bool{
-	"auth login":           true,
-	"auth logout":          true,
-	"setup":                true,
-	"auth setup":           true,
+	"auth login":        true,
+	"auth logout":       true,
+	"setup":             true,
+	"auth setup":        true,
+	"auth profile add":  true,
+	"auth profile list": true, // listing profiles is how you diagnose an unknown one
+	"auth sessions":     true, // as is listing logins, which no profile selects
+	// Keep deprecated aliases guarded until the bartolo bump removes them.
 	"auth add-profile":     true,
-	"auth list-profiles":   true, // listing profiles is how you diagnose an unknown one
-	"auth profile add":     true,
-	"auth profile list":    true,
+	"auth list-profiles":   true,
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
@@ -75,6 +77,8 @@ var profileExemptCommands = map[string]bool{
 // headless in CI. Matching on the bare name refused it.
 var interactiveWizardCommands = map[string]bool{
 	"auth setup":       true,
+	"auth profile add": true,
+	// Keep this alias guarded until the bartolo bump removes it.
 	"auth add-profile": true,
 }
 
@@ -371,7 +375,7 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 	}
 	return fmt.Errorf(
 		"unknown profile %q (selected by %s): credentials.json has no entry of that name. "+
-			"Add it with `orq auth profile add apikey %s <api-key>`, see what exists with `orq auth profile list`, or %s. "+
+			"Add it with `orq auth profile add %s --api-key-file <file>`, see what exists with `orq auth profile list`, or %s. "+
 			"A browser login is not a profile: it belongs to a server, and is selected with --server",
 		name, source, name, drop,
 	)
@@ -843,6 +847,7 @@ func attachAuthSubcommands(root *cobra.Command) {
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
+	authParent.AddCommand(commands.NewSessionsCommand())
 }
 
 func removeString(slice []string, target string) []string {

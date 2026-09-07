@@ -1323,6 +1323,13 @@
       ]
     },
     {
+      "path": "orq auth sessions",
+      "use": "sessions",
+      "aliases": [
+        "session"
+      ]
+    },
+    {
       "path": "orq auth setup",
       "use": "setup",
       "flags": [
