@@ -114,13 +114,13 @@ func registerworkspacesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update key",
 			Short:   "Update a workspace",
-			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key`"),
+			Long:    bartolocli.Markdown("Partially updates a workspace. Omit a field to leave it unchanged. Set `archived` to true to archive, false to restore. The workspace key cannot be changed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `archived` (boolean)\n- `chat_kit` (object)\n- `display_name` (string)\n- `enforce_enabled_models` (boolean)\n- `logo_url` (string)\n- `metadata` (object)\n- `settings` (object)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"archived\": false,\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"logo_url\": \"logo_url\",\n  \"metadata\": {},\n  \"settings\": {\n    \"model_garden_settings\": {},\n    \"plugins\": {},\n    \"same_project_entities_enabled\": false\n  }\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"archived\": false,\n  \"chat_kit\": {\n    \"items\": [\n      {\n        \"display_name\": \"display_name\",\n        \"id\": \"id\",\n        \"resource_id\": \"resource_id\",\n        \"resource_type\": \"resource_type\"\n      }\n    ]\n  },\n  \"display_name\": \"display_name\",\n  \"enforce_enabled_models\": false,\n  \"logo_url\": \"logo_url\",\n  \"metadata\": {},\n  \"settings\": {\n    \"model_garden_settings\": {},\n    \"plugins\": {},\n    \"same_project_entities_enabled\": false\n  }\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -129,6 +129,12 @@ func registerworkspacesCommands(root *cobra.Command) {
 							Name:        "archived",
 							FlagName:    "archived",
 							Type:        "bool",
+							Description: "",
+						},
+						{
+							Name:        "chat_kit",
+							FlagName:    "chat-kit",
+							Type:        "json",
 							Description: "",
 						},
 						{
@@ -189,6 +195,12 @@ func registerworkspacesCommands(root *cobra.Command) {
 					Name:        "archived",
 					FlagName:    "archived",
 					Type:        "bool",
+					Description: "",
+				},
+				{
+					Name:        "chat_kit",
+					FlagName:    "chat-kit",
+					Type:        "json",
 					Description: "",
 				},
 				{
