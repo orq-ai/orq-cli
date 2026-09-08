@@ -103,8 +103,17 @@ const (
 // file state a standing default instead, so the value the whole CLI already
 // defaults to - `table`, what `orq default-format table` writes and what an
 // exported ORQ_OUTPUT_FORMAT usually repeats - is not a request there.
+//
+// A command that resolves its own format from its own -o (the annotation) is
+// classified from that flag alone, because that is all it reads: counting a
+// standing default there would suppress the notices written for a person on
+// the very run that renders them the readable thread.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
+	f := cmd.Flags().Lookup("output-format")
+	if cmd.Annotations[threadFormatAnnotation] != "" {
+		return f != nil && f.Changed && namesMachineFormat(f.Value.String())
+	}
+	if f != nil && f.Changed {
 		return namesMachineFormat(f.Value.String())
 	}
 	if value := strings.TrimSpace(os.Getenv(outputFormatEnvVar)); value != "" {
@@ -136,9 +145,7 @@ func standingDefaultIsMachineFormat(value string) bool {
 // configuredOutputFormat is viper's merged value, lowercased, gated on the
 // config file having named the key at all: InConfig is what distinguishes a
 // written entry from the default underneath it, and GetString then returns
-// whichever tier won rather than the file's own text. Inside
-// RelaxOutputFormat's window that is the masked `table` — and every value it
-// masks is one no source counts as a machine format, so both readings agree.
+// whichever tier won rather than the file's own text.
 func configuredOutputFormat() string {
 	if !viper.InConfig("output-format") {
 		return ""

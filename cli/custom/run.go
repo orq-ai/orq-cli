@@ -43,12 +43,6 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 		Version:             version,
 	})
 
-	// `orq traces thread` renders two formats bartolo's -o does not know, and
-	// bartolo validates the bound value before any command runs. Wrap that
-	// check so the environment and the config file can name them for that
-	// command, the way its flag already can.
-	bartolocli.Root.PersistentPreRunE = relaxOutputFormatBefore(bartolocli.Root.PersistentPreRunE)
-
 	commands.SetAPIVersion(bartolocli.Root, apiVersion)
 
 	registerGenerated(bartolocli.Root)
@@ -86,22 +80,5 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	}
 	if err != nil {
 		os.Exit(1)
-	}
-}
-
-// relaxOutputFormatBefore wraps bartolo's output-format validation so
-// `orq traces thread` can be named a format bartolo's own list does not have —
-// see commands.RelaxOutputFormat. validate may be nil: nothing in this
-// repository owns bartolo's PersistentPreRunE, so a release that moves the
-// check to the non-E hook would otherwise nil-panic every command.
-func relaxOutputFormatBefore(validate func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		if restore, relaxed := commands.RelaxOutputFormat(cmd); relaxed {
-			defer restore()
-		}
-		if validate == nil {
-			return nil
-		}
-		return validate(cmd, args)
 	}
 }

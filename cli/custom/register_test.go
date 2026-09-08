@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"orq/cli/custom/commands"
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -442,45 +441,10 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	}
 }
 
-// bartolo's root validates viper's output-format against its own list before
-// any command runs, and that list has neither of the two renders this command
-// adds. `orq traces thread` ignores ORQ_OUTPUT_FORMAT, so no value of it may
-// decide anything here — including failing the run. Only the real binary runs
-// that check: a synthetic cobra tree has no PersistentPreRunE, so deleting
-// run.go's wrapper would leave the unit tests green while
-// `ORQ_OUTPUT_FORMAT=markdown orq traces thread` told the user markdown is not
-// a format, by the one command that renders it.
-func TestThreadIgnoresTheEnvironmentFormatInTheRealBinary(t *testing.T) {
-	binPath := buildOrqBinary(t)
-	// markdown and xml are this command's own renders; table is the CLI-wide
-	// default a shell most often exports; csv is not a format anywhere.
-	for _, format := range []string{"markdown", "xml", "table", "csv"} {
-		t.Run(format, func(t *testing.T) {
-			cmd := exec.Command(binPath, "traces", "thread", "tr_x")
-			cmd.Dir = t.TempDir()
-			cmd.Env = append(os.Environ(),
-				"HOME="+t.TempDir(),
-				"NO_COLOR=",
-				"ORQ_NO_COLOR=",
-				"ORQ_OUTPUT_FORMAT="+format,
-			)
-			// No credentials and no network reachable from a temp HOME, so the
-			// run fails; what matters is which failure it is. A complaint about
-			// the format means the environment reached a decision it must not.
-			out, _ := cmd.CombinedOutput()
-			if strings.Contains(string(out), "is not one of") || strings.Contains(string(out), "no columns to lay out") {
-				t.Fatalf("ORQ_OUTPUT_FORMAT=%s was judged as a format: %s", format, out)
-			}
-		})
-	}
-}
-
-// viper ranks the environment above the config file, so a command that ignores
-// ORQ_OUTPUT_FORMAT cannot read its config default through viper's merged
-// value: the variable it is ignoring would answer for the file. Only the real
-// binary has both tiers populated, and only a real render says which one won.
-func TestThreadReadsItsConfigDefaultNotTheEnvironment(t *testing.T) {
-	binPath := buildOrqBinary(t)
+// threadSpanServer answers the two calls `orq traces thread tr_x span-1`
+// makes, so a binary-level run reaches a render instead of the network.
+func threadSpanServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path != "/v3/traces/tr_x/spans/span-1" {
@@ -493,49 +457,120 @@ func TestThreadReadsItsConfigDefaultNotTheEnvironment(t *testing.T) {
 			`"gen_ai.input": [{"role": "user", "content": "hello"}],`+
 			`"gen_ai.output": [{"role": "assistant", "content": "hi"}]}}}`)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
+	return server
+}
 
+// threadHome is a HOME whose config file names format, or a bare one when it
+// is empty.
+func threadHome(t *testing.T, format string) string {
+	t.Helper()
 	home := t.TempDir()
+	if format == "" {
+		return home
+	}
 	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".orq", "config.yaml"), []byte("output-format: markdown\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".orq", "config.yaml"), []byte("output-format: "+format+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return home
+}
 
-	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
+// `orq traces thread` takes its format from -o alone. Both standing sources —
+// the exported variable and the config file — answer for every command in a
+// shell or a tree, and neither may swap the render a person came to read.
+// Only the real binary has those tiers populated at all.
+func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := threadSpanServer(t)
+	for _, source := range []string{"environment", "config"} {
+		t.Run(source, func(t *testing.T) {
+			home := threadHome(t, "")
+			env := []string{"HOME=" + home, "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_API_KEY=stub-key", "ORQ_SERVER=" + server.URL, "ORQ_OUTPUT_FORMAT="}
+			if source == "environment" {
+				env[len(env)-1] = "ORQ_OUTPUT_FORMAT=json"
+			} else {
+				env[0] = "HOME=" + threadHome(t, "json")
+			}
+			cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
+			cmd.Dir = t.TempDir()
+			cmd.Env = append(os.Environ(), env...)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("traces thread: %v\n%s", err, out)
+			}
+			if !strings.Contains(string(out), "<thread ") || strings.Contains(string(out), `"messages"`) {
+				t.Fatalf("a standing %s format decided the render: %s", source, out)
+			}
+		})
+	}
+}
+
+// -o is the only route to the two renders bartolo's own list does not have,
+// and it reaches the command without any relaxation of bartolo's check: the
+// local flag shadows the bound global one, so nothing this command is asked
+// ever lands in viper. This is the test that fails if that stops being true.
+func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := threadSpanServer(t)
+	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1", "-o", "markdown")
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(),
-		"HOME="+home,
+		"HOME="+threadHome(t, ""),
 		"NO_COLOR=",
 		"ORQ_NO_COLOR=",
 		"ORQ_API_KEY=stub-key",
 		"ORQ_SERVER="+server.URL,
-		// The tier that must not answer: ignored here, and ranked above the
-		// config file by viper.
-		"ORQ_OUTPUT_FORMAT=json",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("traces thread: %v\n%s", err, out)
+		t.Fatalf("traces thread -o markdown: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "## USER") {
-		t.Fatalf("output = %s, want the config file's markdown render", out)
+		t.Fatalf("output = %s, want the markdown render", out)
 	}
 }
 
-// Nothing in this repository owns bartolo's PersistentPreRunE, so the wrapper
-// has to survive a bartolo release that moves the format check to the non-E
-// hook rather than nil-panicking every command.
-func TestRelaxOutputFormatBeforeToleratesNoValidation(t *testing.T) {
-	thread := commands.NewTracesThreadCommand(commands.TraceAPI{})
-	previous := viper.Get("output-format")
-	t.Cleanup(func() { viper.Set("output-format", previous) })
-	viper.Set("output-format", "markdown")
-	if err := relaxOutputFormatBefore(nil)(thread, nil); err != nil {
-		t.Fatalf("wrapping a nil validation: %v", err)
-	}
-	if got := viper.GetString("output-format"); got != "markdown" {
-		t.Fatalf("after the wrapper ran = %q, want the value it was handed", got)
+// A standing value bartolo does not know is refused before any command runs.
+// `orq traces thread` used to be exempted from that check, so a config file
+// naming `markdown` — a value every other command rejects — worked there and
+// nowhere else. One answer for the whole CLI is the point: the same value
+// fails the same way whichever command it is handed to.
+func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	// Reachable and credentialed, so a run that gets past the check succeeds
+	// and the exit code alone says the check was skipped.
+	server := threadSpanServer(t)
+	const want = `--output-format: "markdown" is not one of`
+	for _, source := range []string{"environment", "config"} {
+		t.Run(source, func(t *testing.T) {
+			for _, args := range [][]string{{"version"}, {"traces", "thread", "tr_x", "span-1"}} {
+				cmd := exec.Command(binPath, args...)
+				cmd.Dir = t.TempDir()
+				home, format := threadHome(t, ""), ""
+				if source == "config" {
+					home = threadHome(t, "markdown")
+				} else {
+					format = "markdown"
+				}
+				cmd.Env = append(os.Environ(),
+					"HOME="+home,
+					"NO_COLOR=",
+					"ORQ_NO_COLOR=",
+					"ORQ_API_KEY=stub-key",
+					"ORQ_SERVER="+server.URL,
+					"ORQ_OUTPUT_FORMAT="+format,
+				)
+				out, err := cmd.CombinedOutput()
+				if err == nil {
+					t.Fatalf("orq %v exited 0 under a %s markdown: %s", args, source, out)
+				}
+				if !strings.Contains(string(out), want) {
+					t.Fatalf("orq %v under a %s markdown = %s, want %q", args, source, out, want)
+				}
+			}
+		})
 	}
 }

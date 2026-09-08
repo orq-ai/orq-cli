@@ -665,33 +665,6 @@ func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 			t.Fatalf("output = %q", out)
 		}
 	})
-	// The config file is not an ask, it is the standing default: `orq
-	// default-format table` writes the CLI-wide one, and answering it with an
-	// error would tell the user to ask for nothing when asking for nothing is
-	// exactly what they did at the command line.
-	t.Run("config renders xml", func(t *testing.T) {
-		writeOutputFormatConfig(t, "table")
-		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
-		if err != nil {
-			t.Fatalf("a config-file default bricked the command: %v", err)
-		}
-		if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
-			t.Fatalf("output = %q", out)
-		}
-	})
-	// Every other format the config names is still honoured.
-	t.Run("config selects a format it can render", func(t *testing.T) {
-		writeOutputFormatConfig(t, "json")
-		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
-			t.Fatalf("config json = %q", out)
-		}
-	})
 }
 
 // writeOutputFormatConfig puts the key in viper's config tier, the one
@@ -721,42 +694,44 @@ func writeOutputFormatConfig(t *testing.T, value string) {
 	}
 }
 
-// ORQ_OUTPUT_FORMAT is exported once and then answers for every command in the
-// shell. This command does not read it: a session that pinned the machine
-// format for a pipeline should not have the render swapped out from under it
-// here, and should not be failed by a `table` it never aimed at this command.
-func TestTracesThreadIgnoresTheEnvironment(t *testing.T) {
+// The two standing sources — an exported ORQ_OUTPUT_FORMAT and the config
+// file — answer for every command in a shell or a tree. This command reads
+// neither: a session that pinned a machine format for a pipeline should not
+// have this render swapped out from under it, and a `markdown` written to the
+// config would be refused for every other command before this one ran. -o is
+// how this command is asked.
+func TestTracesThreadIgnoresStandingDefaults(t *testing.T) {
 	for _, value := range []string{"table", "json", "markdown", "csv"} {
-		t.Run(value, func(t *testing.T) {
+		t.Run("environment "+value, func(t *testing.T) {
 			t.Setenv(outputFormatEnvVar, value)
-			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-			out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
-				t.Fatalf("output = %q, want the render an unset environment gets", out)
-			}
+			assertThreadRendersXML(t)
+		})
+		t.Run("config "+value, func(t *testing.T) {
+			writeOutputFormatConfig(t, value)
+			assertThreadRendersXML(t)
 		})
 	}
+	// Both at once, in case one is only ever masking the other.
+	t.Run("both", func(t *testing.T) {
+		writeOutputFormatConfig(t, "markdown")
+		t.Setenv(outputFormatEnvVar, "json")
+		assertThreadRendersXML(t)
+	})
 }
 
-// The config file is the one standing default this command does read, and an
-// environment that named something else does not displace it.
-func TestTracesThreadReadsTheConfigFileOverTheEnvironment(t *testing.T) {
-	writeOutputFormatConfig(t, "markdown")
-	t.Setenv(outputFormatEnvVar, "json")
+func assertThreadRendersXML(t *testing.T) {
+	t.Helper()
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
 	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "## USER [0]") || strings.Contains(out, `"messages"`) {
-		t.Fatalf("config markdown = %q", out)
+	if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+		t.Fatalf("output = %q, want the render an unset environment and config get", out)
 	}
 }
 
-// The flag is the nearest source, so it answers over a config that named
+// The flag is the only source, so it answers over a config that named
 // something else.
 func TestTracesThreadFlagOutranksTheConfigFile(t *testing.T) {
 	writeOutputFormatConfig(t, "json")
@@ -962,87 +937,15 @@ func TestTracesThreadOmitsReasoningOnRequest(t *testing.T) {
 	}
 }
 
-// The two renders this command adds are not values bartolo's root will accept
-// in viper, so an environment or config file naming one has to be let past that
-// check — see RelaxOutputFormat, which run.go wraps the check with.
-func TestRelaxOutputFormat(t *testing.T) {
-	thread := NewTracesThreadCommand(TraceAPI{})
-	cases := []struct {
-		name    string
-		cmd     *cobra.Command
-		value   string
-		relaxed bool
-	}{
-		{name: "markdown", cmd: thread, value: "markdown", relaxed: true},
-		{name: "xml", cmd: thread, value: "xml", relaxed: true},
-		// Unknown values are relaxed too: the command's own error names the
-		// formats it renders, where bartolo's would name a list that has
-		// neither xml nor markdown on it.
-		{name: "unknown", cmd: thread, value: "csv", relaxed: true},
-		{name: "a format bartolo accepts", cmd: thread, value: "json"},
-		{name: "unset", cmd: thread, value: ""},
-		{name: "another command", cmd: &cobra.Command{Use: "other"}, value: "markdown"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			previous := viper.Get("output-format")
-			t.Cleanup(func() { viper.Set("output-format", previous) })
-			viper.Set("output-format", tc.value)
-			restore, relaxed := RelaxOutputFormat(tc.cmd)
-			if relaxed != tc.relaxed {
-				t.Fatalf("relaxed = %v, want %v", relaxed, tc.relaxed)
-			}
-			if !relaxed {
-				return
-			}
-			if got := viper.GetString("output-format"); got != outputFormatTable {
-				t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, outputFormatTable)
-			}
-			restore()
-			if got := viper.GetString("output-format"); got != tc.value {
-				t.Fatalf("after restore = %q, want %q", got, tc.value)
-			}
-		})
-	}
-}
-
-// The relaxed value came from a tier below the override, and restore() has to
-// put it back in that tier rather than re-Set it: viper.Set writes the override
-// tier, which outranks the environment and the config file, so restoring by Set
-// promotes the value above the source it came from and pins it there for the
-// rest of the process.
-func TestRelaxOutputFormatRestoresTheTierTheValueCameFrom(t *testing.T) {
-	thread := NewTracesThreadCommand(TraceAPI{})
-	writeOutputFormatConfig(t, "markdown")
-
-	restore, relaxed := RelaxOutputFormat(thread)
-	if !relaxed {
-		t.Fatal("a config-file markdown was not relaxed, so bartolo's check would reject it")
-	}
-	if got := viper.GetString("output-format"); got != outputFormatTable {
-		t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, outputFormatTable)
-	}
-	restore()
-	if got := viper.GetString("output-format"); got != "markdown" {
-		t.Fatalf("after restore = %q, want the config file's value back", got)
-	}
-
-	// Reading a new config is what tells the tiers apart: the config tier
-	// answers with the new value, an override left behind keeps shadowing it.
-	viper.SetConfigType("yaml")
-	if err := viper.ReadConfig(strings.NewReader("output-format: xml\n")); err != nil {
-		t.Fatalf("reading config: %v", err)
-	}
-	if got := viper.GetString("output-format"); got != "xml" {
-		t.Fatalf("after restore the config file no longer answers (%q): the value was promoted into viper's override tier", got)
-	}
-}
-
 // Whether a machine format was asked for is a question about the sources, not
 // about a value: this command registers its own -o with its own default, and
 // comparing the resolved value against that default made every run of it a
 // machine-format request — which drops the which-credential notice and the
 // update check on a person who is reading the XML view at a terminal.
+//
+// On this command the flag is the only source, because the flag is all the
+// command itself reads: a standing default counted here would suppress those
+// notices on the very run that renders the readable thread.
 func TestMachineFormatRequestedFollowsTheSourceNotTheFlagDefault(t *testing.T) {
 	// What the bound global -o resolves to when nobody names a format: the
 	// CLI-wide default. It is the value the comparison used to read as a
@@ -1066,18 +969,13 @@ func TestMachineFormatRequestedFollowsTheSourceNotTheFlagDefault(t *testing.T) {
 		// The reading views this command adds are for a person, so naming one
 		// is not a reason to drop the notices written for that person.
 		{name: "the flag named a reading view", flag: "markdown"},
-		{name: "the environment named a serialization", env: "json", wantMachine: true},
+		// Neither standing source reaches this command's render, so neither
+		// says anything about what this run is producing.
+		{name: "the environment named a serialization", env: "json"},
 		{name: "the environment named a reading view", env: "markdown"},
-		{name: "the environment named the xml render", env: "xml"},
-		// An exported ORQ_OUTPUT_FORMAT=table is a standing default like the
-		// config file's, not a request; usually it just repeats what the CLI
-		// already does.
 		{name: "the environment named the CLI-wide default", env: "table"},
-		{name: "the config named a serialization", config: "json", wantMachine: true},
+		{name: "the config named a serialization", config: "json"},
 		{name: "the config named a reading view", config: "markdown"},
-		// `orq default-format table` writes the value the CLI already defaults
-		// to. Reading that as a request would take the human view away from
-		// every command for a user who changed nothing.
 		{name: "the config named the CLI-wide default", config: "table"},
 	}
 	for _, tc := range cases {
@@ -1092,6 +990,40 @@ func TestMachineFormatRequestedFollowsTheSourceNotTheFlagDefault(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if got := machineFormatRequested(cmd); got != tc.wantMachine {
+				t.Fatalf("machineFormatRequested = %v, want %v", got, tc.wantMachine)
+			}
+		})
+	}
+}
+
+// Every other command does read the standing sources, and a user who
+// configured a machine format there wants the structured output rather than
+// the friendly view. Only the annotated command is classified from its flag.
+func TestMachineFormatRequestedStillReadsStandingDefaultsElsewhere(t *testing.T) {
+	previous := viper.Get("output-format")
+	t.Cleanup(func() { viper.Set("output-format", previous) })
+	viper.Set("output-format", outputFormatTable)
+
+	cases := []struct {
+		name        string
+		env         string
+		config      string
+		wantMachine bool
+	}{
+		{name: "the environment named a serialization", env: "json", wantMachine: true},
+		{name: "the environment named the CLI-wide default", env: "table"},
+		{name: "the config named a serialization", config: "json", wantMachine: true},
+		{name: "the config named the CLI-wide default", config: "table"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(outputFormatEnvVar, tc.env)
+			if tc.config != "" {
+				writeOutputFormatConfig(t, tc.config)
+			}
+			cmd := &cobra.Command{Use: "other"}
+			cmd.Flags().StringP("output-format", "o", "", "")
 			if got := machineFormatRequested(cmd); got != tc.wantMachine {
 				t.Fatalf("machineFormatRequested = %v, want %v", got, tc.wantMachine)
 			}

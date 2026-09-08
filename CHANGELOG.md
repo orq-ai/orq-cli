@@ -153,10 +153,13 @@ controls on surface changes, whichever side they originate from.
   search`, `logs query`, `logs aggregate`, `logs get-patterns`, `logs
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
+  Being handed a pipe is not the same as being handed a body: an open stdin
+  that nothing writes to — what CI runners, task runners and
+  `subprocess.Popen` give a child by default — no longer counts as one, so
+  those runs get the default window instead of the "from is required" failure.
 
 - **Added:** `orq traces thread` gains a `markdown` render alongside its
-  existing XML default, reachable from `-o markdown` or the config file like
-  every other format on this command. Unlike XML, the
+  existing XML default, reachable from `-o markdown`. Unlike XML, the
   Markdown view does not escape recorded content — escaping every heading and
   code fence would defeat a view meant to paste into a chat client or ticket —
   so read untrusted traces as XML, whose framing a span cannot forge.
@@ -165,17 +168,17 @@ controls on surface changes, whichever side they originate from.
   on whether the format flag had been set rather than on the format it resolved
   to, so asking for the CLI-wide default explicitly changed the output. Naming
   `table` explicitly — `-o table` — is now an input error naming the formats
-  this command does render. A `table` set only as the
-  CLI-wide default (`orq default-format table`, persisted to the config file)
-  is treated like asking for nothing, since it is a standing default rather
-  than a request, and still renders XML. `-o json`, `-o yaml` and `-o toon` are
-  unchanged.
-- **Changed:** `orq traces thread` ignores `ORQ_OUTPUT_FORMAT`. The variable is
-  exported once and then answers for every command in the shell, so a session
-  that pinned `json` for a pipeline would have had this command's readable
-  render replaced without asking, and a session that pinned `table` would have
-  had it fail on a value never aimed at it. `-o` is how this command is asked;
-  the config file still supplies a standing default.
+  this command does render. `-o json`, `-o yaml` and `-o toon` are unchanged.
+- **Changed:** `-o` is the only way to ask `orq traces thread` for a format.
+  `ORQ_OUTPUT_FORMAT` and the config file's `output-format` are standing
+  defaults for every command in a shell or on a machine, so one naming `json`
+  would have replaced this command's readable render without asking, and one
+  naming `table` would have failed a command whose formats are its own. Neither
+  is read here. `xml` and `markdown` are not values the rest of the CLI
+  accepts, so a config file or an exported variable naming either now fails
+  this command exactly as it already failed `orq version` and every other
+  command — this one command used to be exempted from that check, which is what
+  made a config the rest of the CLI refuses look like it worked.
 - **Fixed:** an invalid `orq traces thread --slice` expression reports the
   accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
   `strconv.Atoi` error, and an index too large to hold is reported as out of
