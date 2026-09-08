@@ -103,8 +103,8 @@ func TestListSessionsSkipsDeprecatedAndNonJSON(t *testing.T) {
 	}
 }
 
-// Malformed sessions remain visible so users can find them.
-func TestListSessionsReportsUnreadableSession(t *testing.T) {
+// Malformed JSON remains visible so users can find it.
+func TestListSessionsReportsInvalidJSONSession(t *testing.T) {
 	isolateHome(t)
 
 	writeSessionFile(t, "broken.example.json", []byte("{not json"))
@@ -116,8 +116,8 @@ func TestListSessionsReportsUnreadableSession(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("expected the broken session listed, got %v", sessions)
 	}
-	if sessions[0].Host != "broken.example" || sessions[0].Status != SessionStatusUnreadable {
-		t.Fatalf("expected an unreadable row, got %+v", sessions[0])
+	if sessions[0].Host != "broken.example" || sessions[0].Status != SessionStatusInvalid {
+		t.Fatalf("expected an invalid row, got %+v", sessions[0])
 	}
 }
 
@@ -137,8 +137,7 @@ func TestListSessionsMarksStaleBootstrapToken(t *testing.T) {
 	}
 }
 
-// Distinguish malformed session data from invalid JSON.
-func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
+func TestListSessionsMarksInvalidSessions(t *testing.T) {
 	isolateHome(t)
 
 	gutted := validSession("prod")
@@ -153,8 +152,8 @@ func TestListSessionsMarksInvalidSessionDistinctly(t *testing.T) {
 	if len(sessions) != 2 {
 		t.Fatalf("expected 2 rows, got %v", sessions)
 	}
-	if sessions[0].Status != SessionStatusUnreadable {
-		t.Errorf("bad.example: Status = %q, want %q", sessions[0].Status, SessionStatusUnreadable)
+	if sessions[0].Status != SessionStatusInvalid {
+		t.Errorf("bad.example: Status = %q, want %q", sessions[0].Status, SessionStatusInvalid)
 	}
 	if sessions[1].Status != SessionStatusInvalid {
 		t.Errorf("my.orq.ai: Status = %q, want %q", sessions[1].Status, SessionStatusInvalid)
