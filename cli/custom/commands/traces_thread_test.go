@@ -72,15 +72,6 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 		Use:           "orq",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Mirrors how the real root resolves the global format before RunE:
-		// the flag lands in viper for the command to read, and anything it did
-		// not set stays at the CLI-wide default.
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
-				viper.Set("output-format", flag.Value.String())
-			}
-			return nil
-		},
 	}
 	root.PersistentFlags().StringP("output-format", "o", "table", "")
 	root.PersistentFlags().VisitAll(func(flag *pflag.Flag) { _ = viper.BindPFlag(flag.Name, flag) })
@@ -581,70 +572,83 @@ func partialSpan() map[string]any {
 	}}}
 }
 
-// Every route to the format `table` must reach the same render. The regression
-// this pins was invisible to the default-only tests: the command branched on
-// "was the flag set" rather than on the resolved value, so an explicit
-// `-o table` silently swapped the reading view for a structured dump.
-func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
+// Asking for `table` is not the same as asking for nothing, and the command
+// used to answer the two differently by accident: it branched on whether the
+// flag was set rather than on the value, so an explicit `-o table` swapped the
+// reading view for a structured dump. Every source that can name a format has
+// to reach the same answer, and a conversation has no columns, so that answer
+// is an error.
+func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 	routes := []struct {
 		name  string
 		args  []string
 		setup func(t *testing.T)
 	}{
-		{name: "default"},
 		{name: "flag", args: []string{"--output-format", "table"}},
-		{name: "environment", setup: func(t *testing.T) { bindOutputFormatEnv(t, "table") }},
-		// The config file resolves through the same viper key as everything
-		// else, which is the tier viper.Set writes.
-		{name: "config", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
-		{name: "explicit-xml", args: []string{"--format", "xml"}},
+		{name: "shorthand", args: []string{"-o", "table"}},
+		{name: "environment", setup: func(t *testing.T) { t.Setenv(threadFormatEnvVar, "table") }},
+		{name: "config", setup: func(t *testing.T) { writeOutputFormatConfig(t, "table") }},
 	}
-	var rendered []string
 	for _, route := range routes {
 		t.Run(route.name, func(t *testing.T) {
 			if route.setup != nil {
 				route.setup(t)
 			}
 			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-			out, err := runTracesThread(t, traceAPI(fake), append(route.args, "trace-1", "chosen")...)
-			if err != nil {
-				t.Fatal(err)
+			_, err := runTracesThread(t, traceAPI(fake), append(route.args, "trace-1", "chosen")...)
+			if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
+				t.Fatalf("err = %v, want the supported formats named", err)
 			}
-			if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
-				t.Fatalf("output = %q", out)
+			var usage *bartolocli.UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("err = %v (%T), want a value error so the exit code says input", err, err)
 			}
-			rendered = append(rendered, out)
 		})
 	}
-	for _, out := range rendered {
-		if out != rendered[0] {
-			t.Fatalf("routes disagree: %q vs %q", out, rendered[0])
+	// Nobody named a format, so the reading view is what the command owes.
+	t.Run("unset renders xml", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
+		if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+			t.Fatalf("output = %q", out)
+		}
+	})
 }
 
-// bindOutputFormatEnv makes ORQ_OUTPUT_FORMAT answer for `output-format` the
-// way bartolo's Init does, and drops the process-wide viper override that would
-// otherwise shadow it — without this the "environment" route above is a second
-// spelling of the default and cannot fail.
-func bindOutputFormatEnv(t *testing.T, value string) {
+// writeOutputFormatConfig puts the key in viper's config tier, the one
+// viper.InConfig reports on — viper.Set writes the override tier above it and
+// would not exercise the config route at all.
+func writeOutputFormatConfig(t *testing.T, value string) {
 	t.Helper()
+	// Other tests in this package leave an empty override on this key, and an
+	// override outranks the config tier — drop it for the duration so the
+	// config is genuinely what answers. viper.Set(key, nil) is how an override
+	// is removed; there is no Unset.
 	previous := viper.Get("output-format")
-	t.Cleanup(func() { viper.Set("output-format", previous) })
+	t.Cleanup(func() {
+		viper.Set("output-format", previous)
+		viper.SetConfigType("yaml")
+		if err := viper.ReadConfig(strings.NewReader("")); err != nil {
+			t.Fatalf("clearing config: %v", err)
+		}
+	})
 	viper.Set("output-format", nil)
-	viper.SetEnvPrefix("ORQ")
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	viper.AutomaticEnv()
-	t.Setenv("ORQ_OUTPUT_FORMAT", value)
-	if got := viper.GetString("output-format"); got != value {
-		t.Fatalf("env binding did not take: output-format = %q, want %q", got, value)
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(strings.NewReader("output-format: " + value + "\n")); err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	if !viper.InConfig("output-format") {
+		t.Fatal("config did not take")
 	}
 }
 
-// The environment route above only means something if the environment is
-// genuinely what answers, so pin a value the flag default cannot supply.
+// The environment must be genuinely what answers, so pin a value neither the
+// flag default nor the config can supply.
 func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
-	bindOutputFormatEnv(t, "json")
+	t.Setenv(threadFormatEnvVar, "json")
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
 	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
 	if err != nil {
@@ -652,6 +656,20 @@ func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
 		t.Fatalf("environment json = %q", out)
+	}
+}
+
+// The flag is the nearest source, so it answers over an environment or a
+// config that named something else.
+func TestTracesThreadFlagOutranksTheEnvironment(t *testing.T) {
+	t.Setenv(threadFormatEnvVar, "table")
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+	out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "## USER [0]") {
+		t.Fatalf("markdown = %q", out)
 	}
 }
 
@@ -672,10 +690,10 @@ func TestRenderThreadMarkdownEscapesStructuralMetadata(t *testing.T) {
 	}
 }
 
-func TestTracesThreadFormatFlag(t *testing.T) {
+func TestTracesThreadOutputFormat(t *testing.T) {
 	t.Run("markdown", func(t *testing.T) {
 		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "--format", "markdown", "trace-1", "chosen")
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -683,21 +701,9 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 			t.Fatalf("markdown = %q", out)
 		}
 	})
-	// --format outranks the global flag, which is the only way to serialize
-	// from a shell that pinned `-o table`.
-	t.Run("json over table", func(t *testing.T) {
-		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "--format", "json", "--output-format", "table", "trace-1", "chosen")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
-			t.Fatalf("json = %q", out)
-		}
-	})
 	t.Run("yaml", func(t *testing.T) {
 		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "--format", "yaml", "trace-1", "chosen")
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "yaml", "trace-1", "chosen")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -705,35 +711,23 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 			t.Fatalf("yaml = %q", out)
 		}
 	})
-	// Answering an explicit `--format table` with the XML render would be the
-	// same silent substitution the resolution fix removed, arriving through
-	// the other flag.
-	t.Run("rejects table", func(t *testing.T) {
-		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		_, err := runTracesThread(t, traceAPI(fake), "--format", "table", "trace-1", "chosen")
-		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
-			t.Fatalf("err = %v", err)
-		}
-		if !strings.Contains(err.Error(), "-o table` renders xml") {
-			t.Fatalf("error does not say where table went: %v", err)
-		}
-	})
 	t.Run("rejects an unknown format", func(t *testing.T) {
 		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		_, err := runTracesThread(t, traceAPI(fake), "--format", "csv", "trace-1", "chosen")
+		_, err := runTracesThread(t, traceAPI(fake), "-o", "csv", "trace-1", "chosen")
 		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
 			t.Fatalf("err = %v", err)
 		}
 	})
-	// `--format` offers every serialization `-o` does, so a format bartolo
-	// gains cannot be one this command calls invalid.
+	// This -o is the global one with two values added, never with any taken
+	// away, so a serialization bartolo gains cannot be one this command calls
+	// invalid.
 	t.Run("offers every global serialization", func(t *testing.T) {
 		for _, format := range bartolocli.OutputFormats {
-			if format == "table" {
+			if format == threadFormatTable {
 				continue
 			}
 			if !slices.Contains(threadFormats, format) {
-				t.Fatalf("--format does not accept %q, which -o does", format)
+				t.Fatalf("-o does not accept %q here, which it does elsewhere", format)
 			}
 		}
 	})
@@ -741,7 +735,7 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 		for _, format := range []string{"xml", "markdown"} {
 			span := conversationalSpan(strings.Repeat("q", 100))
 			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": span}}
-			out, err := runTracesThread(t, traceAPI(fake), "--format", format, "--max-chars", "20", "trace-1", "chosen")
+			out, err := runTracesThread(t, traceAPI(fake), "-o", format, "--max-chars", "20", "trace-1", "chosen")
 			if err != nil {
 				t.Fatal(err)
 			}

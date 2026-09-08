@@ -15,7 +15,7 @@ import (
 // that is this render's whole purpose. The consequence is that a span whose own
 // text contains `## ASSISTANT [1]` produces something that reads like a turn,
 // which is exactly what `escapeThreadTags` stops on the XML side — so
-// `--format xml` stays the render to trust when the recorded text is not.
+// `-o xml` stays the render to trust when the recorded text is not.
 // maxChars caps each rendered block, or is zero for no cap.
 func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
 	var sections []string

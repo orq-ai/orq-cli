@@ -156,20 +156,20 @@ controls on surface changes, whichever side they originate from.
 
 - **Added:** `orq traces thread`, which normalizes Chat Completions and
   Responses spans into one readable thread. It renders XML by default, or
-  Markdown, JSON, YAML, or TOON when selected with `--format`; `--slice`
-  selects Python-style message ranges, and dropped Responses content is shown
-  explicitly as `[content unavailable: N items]` rather than invented text.
-  `--format` outranks `-o` and accepts every serialization `-o` does, so a
-  shell that pins a global format can still ask this command for a different
-  render. The XML view escapes recorded content so a span cannot forge a turn;
-  the Markdown view deliberately does not, because escaping every heading and
-  code fence would defeat the readable view — read untrusted traces as XML.
-- **Fixed:** `orq traces thread -o table` renders the readable thread again
-  instead of a structured dump. The command branched on whether the format flag
-  had been set rather than on the resolved format, so an explicit `-o table`
-  silently produced a different render from the identical default. All four
-  routes to `table` — flag, `ORQ_OUTPUT_FORMAT`, config file, or nothing — now
-  reach the same render. `-o json`, `-o yaml` and `-o toon` are unchanged.
+  Markdown, JSON, YAML or TOON when `-o` names one; `--slice` selects
+  Python-style message ranges, and dropped Responses content is shown
+  explicitly as `[content unavailable: N items]` rather than invented text. The
+  XML view escapes recorded content so a span cannot forge a turn; the Markdown
+  view deliberately does not, because escaping every heading and code fence
+  would defeat the readable view — read untrusted traces as XML.
+- **Fixed:** `orq traces thread -o table` no longer prints a structured dump
+  where the identical default printed the readable thread. The command branched
+  on whether the format flag had been set rather than on the format it resolved
+  to, so asking for the CLI-wide default explicitly changed the output. A
+  conversation has no columns to lay out, so `table` is now an input error
+  wherever it comes from — flag, `ORQ_OUTPUT_FORMAT` or config file — naming
+  the formats this command does render, and asking for nothing still renders
+  XML. `-o json`, `-o yaml` and `-o toon` are unchanged.
 - **Fixed:** an invalid `orq traces thread --slice` expression reports the
   accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
   `strconv.Atoi` error, and an index too large to hold is reported as out of

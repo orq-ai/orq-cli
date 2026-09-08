@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -26,7 +27,7 @@ type TraceAPI struct {
 // NewTracesThreadCommand builds `orq traces thread`, rendering the newest
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
-	var slice, format string
+	var slice string
 	maxChars := 4000
 	reasoning := true
 	params := viper.New()
@@ -38,14 +39,15 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --slice 2",
 			"  orq traces thread tr_123 --slice 2:",
 			"  orq traces thread tr_123 --slice :-1",
-			"  orq traces thread tr_123 --format markdown",
+			"  orq traces thread tr_123 -o markdown",
+			"  orq traces thread tr_123 -o json",
 			"  orq traces thread tr_123 --reasoning=false",
 			"  orq traces thread tr_123 --max-chars 0",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			bartolocli.MarkPassedFlags(cmd, params)
-			resolved, err := resolveThreadFormat(format)
+			resolved, err := resolveThreadFormat(cmd)
 			if err != nil {
 				return err
 			}
@@ -57,7 +59,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 				thread, err = SliceThread(thread, slice)
 				if err != nil {
 					// A malformed --slice is a typed-it-wrong error, the same
-					// class as a --format the command does not know.
+					// class as an output format the command does not know.
 					return bartolocli.NewValueError(err)
 				}
 			}
@@ -72,8 +74,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			case threadFormatMarkdown:
 				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars)
 			}
-			// --format names the serialization for this render only; without
-			// this the formatter would still encode with the global -o value.
+			// The local flag is not the one viper is bound to, so the shared
+			// formatter still holds the global value; point it at what this
+			// run asked for, for this run only.
 			restore, err := bartolocli.SetOutputFormat(resolved)
 			if err != nil {
 				return err
@@ -84,7 +87,12 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
-	cmd.Flags().StringVar(&format, "format", "", fmt.Sprintf("Thread output format [%s] (default %s, which escapes recorded content; markdown does not; -o selects a serialization when unset)", strings.Join(threadFormats, ", "), threadFormatXML))
+	// A local -o shadowing the global one: same flag, two extra values. Cobra
+	// merges a parent's persistent flags only where the name is free, so this
+	// one answers here and the global keeps every other command. It stays out
+	// of viper deliberately — bartolo validates the bound value against its own
+	// list before this command runs, and `xml` is not on it.
+	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s, which escapes recorded content so a span cannot forge a turn; markdown does not) [env: ORQ_OUTPUT_FORMAT]", strings.Join(threadFormats, ", "), threadFormatXML))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
@@ -97,14 +105,17 @@ const (
 	// conversation — messages holding content parts, tool calls, reasoning —
 	// has no columns to lay out.
 	threadFormatTable = "table"
+	// threadFormatEnvVar is the environment spelling of -o, from bartolo's
+	// ORQ prefix and its `-` to `_` replacer.
+	threadFormatEnvVar = "ORQ_OUTPUT_FORMAT"
 )
 
-// threadFormats are the explicit --format values: the two reading views, then
-// whatever the CLI can serialize. The serializations are derived from bartolo's
-// own list rather than restated, so a serialization added there cannot be one
-// that `-o` accepts and `--format` calls invalid. That list is
-// [json yaml toon table]; `table` is filtered out here because it names a
-// layout, and this command has no table render to give it.
+// threadFormats are the values -o takes on this command: the two reading views,
+// then whatever the CLI can serialize. The serializations are derived from
+// bartolo's own list rather than restated, so one added there cannot become a
+// format the rest of the CLI accepts and this command calls invalid. That list
+// is [json yaml toon table]; `table` is filtered out because it names a layout
+// this command has no render for.
 var threadFormats = threadFormatList()
 
 func threadFormatList() []string {
@@ -117,34 +128,45 @@ func threadFormatList() []string {
 	return formats
 }
 
-// resolveThreadFormat picks one render from one resolved value, in precedence
-// order: --format, then the serialization -o resolved to, then the XML render.
+// resolveThreadFormat reads the format from the highest-precedence source that
+// actually named one — the flag, then the environment, then the config file —
+// and defaults to the XML render when none did.
 //
-// `table` is only ever resolved, never asked for. It is the CLI-wide default,
-// so the command has to decide what it means here — and a conversation is
-// nested, with no columns to lay out, so it means the XML render however it
-// arrived: -o, ORQ_OUTPUT_FORMAT, a config file, or nothing at all. That is the
-// whole point of resolving from the value: no route disagreeing with another.
-//
-// --format is a different question. It is this command's own vocabulary, asked
-// for explicitly, so a value outside it is a mistake and is reported as one —
-// answering `--format table` with a render the user did not name would be the
-// same silent substitution, just arriving through the other flag.
-func resolveThreadFormat(format string) (string, error) {
-	if strings.TrimSpace(format) == "" {
-		if resolved := bartolocli.OutputFormat(); resolved != threadFormatTable {
-			return resolved, nil
-		}
-		return threadFormatXML, nil
+// It reads those sources rather than the resolved viper value because the two
+// answer differently for exactly one word. `table` is the CLI-wide default, so
+// the resolved value cannot tell "the user asked for a table" from "the user
+// asked for nothing"; a conversation has no columns, and rendering something
+// else in silence for the first case is the bug this command had. Asked for, it
+// is an error. Left at the default, it is the reading view.
+func resolveThreadFormat(cmd *cobra.Command) (string, error) {
+	if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
+		return normalizeThreadFormat(flag.Value.String(), "--output-format")
 	}
-	normalized := strings.ToLower(strings.TrimSpace(format))
+	if value := strings.TrimSpace(os.Getenv(threadFormatEnvVar)); value != "" {
+		return normalizeThreadFormat(value, threadFormatEnvVar)
+	}
+	// viper holds the config file's value under the same key the global flag is
+	// bound to, and InConfig is what distinguishes a written entry from the
+	// default underneath it.
+	if viper.InConfig("output-format") {
+		if value := strings.TrimSpace(viper.GetString("output-format")); value != "" {
+			return normalizeThreadFormat(value, "output-format in the config file")
+		}
+	}
+	return threadFormatXML, nil
+}
+
+func normalizeThreadFormat(value, source string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
 	if slices.Contains(threadFormats, normalized) {
 		return normalized, nil
 	}
 	if normalized == threadFormatTable {
-		return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is the CLI-wide default for -o, not a thread render; a conversation has no columns to lay out. `-o table` renders %s here, and --format takes [%s]", format, threadFormatXML, strings.Join(threadFormats, ", ")))
+		return "", bartolocli.NewValueError(fmt.Errorf(
+			"%s: %q is the CLI-wide default layout, and a conversation has no columns to lay out. This command takes [%s]; %s is what it renders when you ask for nothing",
+			source, value, strings.Join(threadFormats, ", "), threadFormatXML))
 	}
-	return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is not one of [%s]", format, strings.Join(threadFormats, ", ")))
+	return "", bartolocli.NewValueError(fmt.Errorf("%s: %q is not one of [%s]", source, value, strings.Join(threadFormats, ", ")))
 }
 
 func optionalArg(args []string, index int) string {
