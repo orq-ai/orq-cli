@@ -201,6 +201,10 @@ changelog moves. Pick it for the user-visible effect, not the size of the diff:
 a large refactor with no observable change is `refactor`, and a one-line change
 to a flag's meaning is `feat!`.
 
+No tool attribution in PR descriptions: a PR body ends with its own content, not
+a "Generated with Claude Code" footer. Who wrote a change is not what a reviewer
+opens the PR to learn.
+
 Commit messages and PR titles follow the same convention, and a PR title is a
 merge gate — see [Pull request titles](#pull-request-titles). `CHANGELOG.md` is
 written by hand and stays the source of truth for the stability contract; the
