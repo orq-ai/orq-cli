@@ -133,8 +133,8 @@ controls on surface changes, whichever side they originate from.
   revoke was gone, leaving a credential valid for 90 days; and `--workspace`
   went back to being a silent no-op, because the rule that lets the exported
   `ORQ_API_KEY` defer to your login identifies that key by comparing it against
-  the session's copy. Agents already wired keep working throughout — `orq
-  connect` writes the key into their own configs.
+  the session's copy. Agents already wired keep working throughout: the key
+  they use is exported from `~/.orq/env`, which a login does not rewrite.
 
   A login as a different user still inherits none of it, and now says so: it
   names the dropped key id and how to revoke it, and warns that the previous

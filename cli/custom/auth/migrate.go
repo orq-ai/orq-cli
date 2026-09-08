@@ -351,9 +351,12 @@ func reportSupersededExportedKey(previous *Session) {
 	if who == "" {
 		who = "the previous user"
 	}
+	// Names the file rather than asserting the export: setup writes ~/.orq/env
+	// but leaves sourcing it to the user, so whether the key is live in this
+	// shell is not something this process can tell from here.
 	fmt.Fprintf(bartolocli.Stderr,
-		"the API key orq setup exported for %s is still in this environment and takes "+
-			"precedence over this login. Run 'orq setup' to replace it.\n", who)
+		"the API key orq setup exported for %s is still in ~/.orq/env, and takes precedence "+
+			"over this login in any shell that sources it. Run 'orq setup' to replace it.\n", who)
 }
 
 // profileEntryFold looks a profile up the way bartolo does: sanitizeProfileName
