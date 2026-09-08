@@ -42,7 +42,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the newest conversational span holding a whole conversation is read. --spans shows that selection: TRY is the order the spans are read in, not a ranking of the answer — the first one that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does. NOTE says why a span is passed over, or why one that looks unreadable is tried anyway.",
+			"Given a trace id alone, the newest conversational span holding a whole conversation is read. --spans shows that selection and marks the span it lands on with *. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -136,7 +136,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
-	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, with why each is passed over, instead of rendering a thread")
+	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering a thread")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
@@ -218,16 +218,10 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		return Thread{}, fmt.Errorf("trace API is unavailable")
 	}
 
-	traceResponse, err := api.GetTrace(traceID, params)
+	fallbackIDs, err := threadFallbackIDs(api, traceID, params)
 	if err != nil {
-		return Thread{}, fmt.Errorf("get trace %q: %w", traceID, err)
+		return Thread{}, err
 	}
-	trace := unwrapThreadEnvelope(traceResponse, "trace")
-	fallbackIDs := uniqueThreadIDs(
-		threadString(trace["leading_span_id"]),
-		threadString(trace["root_span_id"]),
-	)
-
 	candidates, excluded, listErr := listThreadCandidates(api, traceID, params)
 	if listErr != nil {
 		// Every path below can still return a span, from the partial listing or
@@ -236,6 +230,25 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		// answer. Say which pool the selection came from.
 		Warn("%v; selecting from the %d span(s) listed before the failure", listErr, len(candidates))
 	}
+	return selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr)
+}
+
+// threadFallbackIDs are the span ids the trace names itself, read when the
+// listing offers nothing that hydrates.
+func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
+	response, err := api.GetTrace(traceID, params)
+	if err != nil {
+		return nil, fmt.Errorf("get trace %q: %w", traceID, err)
+	}
+	trace := unwrapThreadEnvelope(response, "trace")
+	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
+}
+
+// selectThread reads the candidates in order, then the trace's own fallbacks,
+// and returns the conversation it settles on. It is separate from the paging
+// and the trace fetch so --spans can show that selection over the same listing
+// it already paid for, rather than running the whole thing twice.
+func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error) (Thread, error) {
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
 	var best *Thread
@@ -377,6 +390,11 @@ type ThreadSpan struct {
 	Order     int    `json:"order,omitempty"`
 	Skipped   string `json:"skipped,omitempty"`
 	Note      string `json:"note,omitempty"`
+	// Selected marks the span a plain `orq traces thread trace-id` reads. It
+	// is the answer selection actually reached, not the first in the try
+	// order: a span that hydrates with content dropped loses to a later one
+	// that kept more.
+	Selected bool `json:"selected,omitempty"`
 }
 
 func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
@@ -544,7 +562,7 @@ func unwrapThreadEnvelope(response map[string]any, key string) map[string]any {
 // a conversation they did not expect has no other way to see what it was chosen
 // between, or which span id to pass as the second argument.
 func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format string) error {
-	_, excluded, summaries, err := listThreadSpans(api, traceID, params)
+	candidates, excluded, summaries, err := listThreadSpans(api, traceID, params)
 	if err != nil {
 		// The same partial-listing rule as selection: report what was listed
 		// before the failure rather than claiming the trace has only these.
@@ -559,7 +577,16 @@ func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format
 		// wants, and they are not the same string.
 		Warn("no spans listed for trace %q; `orq traces search` returns both an `id` and a `trace_id`, and this command takes the trace_id", traceID)
 	}
-	summaries = appendThreadFallbacks(api, traceID, params, summaries, excluded)
+	fallbackIDs, traceErr := threadFallbackIDs(api, traceID, params)
+	if traceErr != nil {
+		// Selection would fail here too, but --spans is what a reader runs to
+		// find out why; report the listing rather than nothing.
+		Warn("%v; the trace's own leading and root span are not shown", traceErr)
+	}
+	summaries = orderThreadFallbacks(summaries, fallbackIDs, excluded)
+	if traceErr == nil {
+		summaries = markThreadSelection(api, traceID, params, candidates, fallbackIDs, excluded, err, summaries)
+	}
 	if format == threadFormatXML || format == threadFormatMarkdown {
 		printThreadSpans(summaries)
 		return nil
@@ -594,38 +621,28 @@ func printThreadSpans(summaries []ThreadSpan) {
 		if span.Note != "" {
 			note = span.Note
 		}
-		rows = append(rows, tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, note}})
+		row := tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, note}}
+		if span.Selected {
+			row.marker = paint(ansiOK, "*")
+		}
+		rows = append(rows, row)
 	}
 	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "NAME", "NOTE"}, rows)
 }
 
-// appendThreadFallbacks completes the try order with the spans the trace names
+// orderThreadFallbacks completes the try order with the spans the trace names
 // itself. Selection falls back to the leading and root span ids when the
 // listing offers nothing that hydrates, and it does so even for a span the
 // listing reported as having no detail — so a listing-only table calls a span
-// skipped that selection is willing to read. The trace fetch this costs is the
-// one the normal path already makes.
-func appendThreadFallbacks(api TraceAPI, traceID string, params *viper.Viper, summaries []ThreadSpan, excluded map[string]bool) []ThreadSpan {
-	if api.GetTrace == nil {
-		return summaries
-	}
-	response, err := api.GetTrace(traceID, params)
-	if err != nil {
-		// Selection would fail here too, but --spans is what a reader runs to
-		// find out why; report the listing rather than nothing.
-		Warn("get trace %q: %v; the trace's own leading and root span are not shown", traceID, err)
-		return summaries
-	}
-	trace := unwrapThreadEnvelope(response, "trace")
+// skipped that selection is willing to read.
+func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded map[string]bool) []ThreadSpan {
 	next := 0
-	for _, span := range summaries {
-		next = max(next, span.Order)
-	}
 	byID := make(map[string]int, len(summaries))
 	for index, span := range summaries {
+		next = max(next, span.Order)
 		byID[span.SpanID] = index
 	}
-	for _, id := range uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])) {
+	for _, id := range fallbackIDs {
 		if excluded[id] {
 			continue
 		}
@@ -647,5 +664,31 @@ func appendThreadFallbacks(api TraceAPI, traceID string, params *viper.Viper, su
 		}
 		return left < right
 	})
+	return summaries
+}
+
+// markThreadSelection runs the selection the reader is asking about and marks
+// what it reached. The try order alone cannot answer it: the first span is read
+// only if it hydrates whole, and a later one that kept more turns wins
+// otherwise. Running it costs what running the command costs, since selection
+// stops at the first span that answers.
+func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, summaries []ThreadSpan) []ThreadSpan {
+	thread, err := selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr)
+	if err != nil {
+		// The listing is still the useful half of the answer, and it is what
+		// says why nothing was readable.
+		Warn("no span selected: %v", err)
+		return summaries
+	}
+	found := false
+	for index := range summaries {
+		if summaries[index].SpanID == thread.Source.SpanID {
+			summaries[index].Selected = true
+			found = true
+		}
+	}
+	if !found && thread.Source.SpanID != "" {
+		summaries = append(summaries, ThreadSpan{SpanID: thread.Source.SpanID, Selected: true, Note: "read, but not in the listing this command saw"})
+	}
 	return summaries
 }

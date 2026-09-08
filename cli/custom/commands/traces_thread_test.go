@@ -1060,6 +1060,7 @@ func TestTracesThreadReportsAPartialSpanListing(t *testing.T) {
 func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
 	fake := &fakeTraceAPI{
 		trace: map[string]any{"trace": map[string]any{"leading_span_id": "new"}},
+		spans: map[string]map[string]any{"new": conversationalSpan("answered here")},
 		pages: map[string]map[string]any{"": {"data": []any{
 			map[string]any{"span_id": "old", "has_detail": true, "started_at": "2025-01-01T00:00:00Z", "name": "generation"},
 			map[string]any{"span_id": "new", "has_detail": true, "started_at": "2025-01-02T00:00:00Z", "name": "generation"},
@@ -1071,24 +1072,62 @@ func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, call := range fake.getCalls {
-		if strings.HasPrefix(call, "span:") {
-			t.Fatalf("--spans hydrated spans: %v", fake.getCalls)
-		}
-	}
-	// Newest first among the candidates, then the skipped ones with a reason.
+	// Newest first among the candidates, the selected one marked, then the
+	// skipped ones with a reason.
 	var rows [][]string
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n")[1:] {
 		rows = append(rows, strings.Fields(line))
 	}
 	want := [][]string{
-		{"1", "new", "2025-01-02T00:00:00Z", "generation"},
+		{"*", "1", "new", "2025-01-02T00:00:00Z", "generation"},
 		{"2", "old", "2025-01-01T00:00:00Z", "generation"},
 		{"-", "eval", "EVALUATOR", "2025-01-03T00:00:00Z", "evaluator"},
 		{"-", "thin", "2025-01-04T00:00:00Z", "no", "recorded", "detail"},
 	}
 	if fmt.Sprint(rows) != fmt.Sprint(want) {
 		t.Fatalf("--spans rows = %v, want %v", rows, want)
+	}
+	// The listing and the trace are read once between the table and the
+	// selection it reports, not once for each.
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:new"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if len(fake.listCalls) != 1 {
+		t.Fatalf("listed spans %d times, want 1", len(fake.listCalls))
+	}
+}
+
+// Selection is not the try order: a first span that hydrates with content
+// dropped loses to a later one that kept the turns, and the mark has to follow
+// the answer rather than the position.
+func TestTracesThreadMarksTheSelectedSpanNotTheFirstTried(t *testing.T) {
+	dropped := map[string]any{"span": map[string]any{"attributes": map[string]any{
+		"openresponses.input": map[string]any{"items": map[string]any{"count": 3}},
+	}}}
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "new"}},
+		spans: map[string]map[string]any{"new": dropped, "old": conversationalSpan("the whole conversation")},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "new", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			map[string]any{"span_id": "old", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	want := []ThreadSpan{
+		{SpanID: "new", Order: 1, StartedAt: "2025-01-02T00:00:00Z"},
+		{SpanID: "old", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Selected: true},
+	}
+	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
+		t.Fatalf("spans = %+v, want %+v", payload.Spans, want)
 	}
 }
 

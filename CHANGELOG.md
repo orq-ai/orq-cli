@@ -161,7 +161,10 @@ controls on surface changes, whichever side they originate from.
   previously invisible, and
   a reader who got a conversation they did not expect had no way to see what it
   was chosen between or which span id to pass as the second argument. Prints a
-  table for a person, and `{"spans": [...]}` under `-o json`. A trace that lists
+  The span the command settles on is marked `*` in the table and `"selected":
+  true` under `-o json` — which is not always the first one tried, since a span
+  that comes back with content dropped loses to a later one that kept the
+  turns. Prints a table for a person, and `{"spans": [...]}` under `-o json`. A trace that lists
   no spans says so on stderr: a trace summary carries both a record `id` and a
   `trace_id`, and this command takes the `trace_id`.
 
