@@ -60,8 +60,24 @@ var (
 // "session"). Called by the root PreRun before any command runs: once for the
 // explicit sources, again for the session host when none of them applied.
 func SetServer(url, source string) {
-	server = strings.TrimSpace(url)
+	server = NormalizeServer(url)
 	serverSource = source
+}
+
+// NormalizeServer fills in the scheme when a host is given without one, so
+// `--server aim.orq.ai` reaches the same place as `--server https://aim.orq.ai`.
+// A bare loopback host gets http: nobody runs TLS on a local dev server.
+func NormalizeServer(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" || strings.Contains(s, "://") {
+		return s
+	}
+	host, _, _ := strings.Cut(s, "/")
+	host, _, _ = strings.Cut(host, ":")
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return "http://" + s
+	}
+	return "https://" + s
 }
 
 // Server is the resolved host, or "" when nothing overrode the default.
@@ -98,7 +114,7 @@ func envDefaultAPIBase() string {
 	// means tests: no warning is printed here, and the persisted
 	// `orq server set` layer lives with viper in the PreRun.
 	if v, _ := ServerFromEnv(os.Getenv); v != "" {
-		return v
+		return NormalizeServer(v)
 	}
 	return DefaultAPIBaseURL
 }
