@@ -154,6 +154,14 @@ controls on surface changes, whichever side they originate from.
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
 
+- **Added:** `orq traces thread --only` keeps just the message types you name —
+  `system` (which covers `developer`), `user`, `assistant`, `tool` and
+  `reasoning`. A selection naming no role keeps every role, so `--only
+  reasoning` is the recorded thinking from all of them. It applies to every
+  render, `-o json` included. `--reasoning=false` still works as the shorthand
+  it always was; asking for both at once is an input error rather than a
+  silently empty thread.
+
 - **Added:** `orq traces thread` gains a `markdown` render alongside its
   existing XML default, reachable from `-o markdown`. Unlike XML, the
   Markdown view does not escape recorded content — escaping every heading and

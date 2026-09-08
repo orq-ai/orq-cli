@@ -8896,6 +8896,10 @@
           "type": "int"
         },
         {
+          "name": "only",
+          "type": "stringSlice"
+        },
+        {
           "name": "output-format",
           "shorthand": "o",
           "type": "string"

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -114,4 +115,68 @@ func SliceThread(thread Thread, expression string) (Thread, error) {
 	result := thread
 	result.Messages = append([]ThreadMessage{}, thread.Messages[start:stop]...)
 	return result, nil
+}
+
+// ThreadKinds are the kinds --only selects from: the four roles a reader sees
+// in the render, and reasoning, which is a section inside a message rather than
+// a message of its own. `system` covers the developer role, which the render
+// presents as an instruction the same way.
+var ThreadKinds = []string{"system", "user", "assistant", "tool", threadKindReasoning}
+
+const threadKindReasoning = "reasoning"
+
+// FilterThread keeps only the selected kinds. Role names decide whose messages
+// survive; reasoning decides whether the recorded thinking inside them does. A
+// selection naming no role keeps every role, so --only reasoning reads as "the
+// thinking, wherever it was recorded" rather than as nothing at all.
+//
+// A message the selection empties is dropped. One that was already empty
+// survives a role selection, because the render says "[content unavailable]"
+// for a turn that happened with nothing recorded and that is a fact about the
+// trace rather than something the filter was asked to hide — but not a
+// reasoning-only selection, which asked about sections and not about turns.
+func FilterThread(thread Thread, kinds []string) (Thread, error) {
+	selected := map[string]bool{}
+	roles := false
+	for _, kind := range kinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind == "" {
+			continue
+		}
+		if !slices.Contains(ThreadKinds, kind) {
+			return Thread{}, fmt.Errorf("unknown message type %q: expected one of %s", kind, strings.Join(ThreadKinds, ", "))
+		}
+		selected[kind] = true
+		roles = roles || kind != threadKindReasoning
+	}
+	if len(selected) == 0 {
+		return thread, nil
+	}
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
+		if roles && !selected[threadRoleKind(message.Role)] {
+			continue
+		}
+		had := len(message.Content) > 0 || len(message.Reasoning) > 0 || len(message.ToolCalls) > 0
+		if !selected[threadKindReasoning] {
+			message.Reasoning = nil
+		}
+		if !roles {
+			message.Content, message.ToolCalls = nil, nil
+		}
+		if (had || !roles) && len(message.Content) == 0 && len(message.Reasoning) == 0 && len(message.ToolCalls) == 0 {
+			continue
+		}
+		kept = append(kept, message)
+	}
+	result := thread
+	result.Messages = kept
+	return result, nil
+}
+
+func threadRoleKind(role string) string {
+	if isInstructionRole(role) {
+		return "system"
+	}
+	return role
 }

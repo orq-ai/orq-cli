@@ -27,6 +27,7 @@ type TraceAPI struct {
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
+	var only []string
 	maxChars := 4000
 	reasoning := true
 	params := viper.New()
@@ -44,6 +45,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --slice :-1",
 			"  orq traces thread tr_123 -o markdown",
 			"  orq traces thread tr_123 -o json",
+			"  orq traces thread tr_123 --only user,assistant",
+			"  orq traces thread tr_123 --only reasoning",
 			"  orq traces thread tr_123 --reasoning=false",
 			"  orq traces thread tr_123 --max-chars 0",
 		}, "\n"),
@@ -63,6 +66,15 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 				if err != nil {
 					// A malformed --slice is a typed-it-wrong error, the same
 					// class as an output format the command does not know.
+					return bartolocli.NewValueError(err)
+				}
+			}
+			if len(only) > 0 {
+				if !reasoning && slices.Contains(only, threadKindReasoning) {
+					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --only reasoning"))
+				}
+				thread, err = FilterThread(thread, only)
+				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
 			}
@@ -89,6 +101,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
+	cmd.Flags().StringSliceVar(&only, "only", nil, fmt.Sprintf("Keep only these message types [%s]; naming no role keeps every role, so --only reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this

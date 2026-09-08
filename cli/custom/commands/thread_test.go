@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1116,4 +1117,69 @@ func firstUnsupportedBlock(rendered string) string {
 		block = block[:end]
 	}
 	return block
+}
+
+func TestFilterThread(t *testing.T) {
+	text := []ThreadPart{{Type: "text", Text: "hi"}}
+	thread := Thread{Messages: []ThreadMessage{
+		{Index: 0, Role: "developer", Content: text},
+		{Index: 1, Role: "user", Content: text},
+		{Index: 2, Role: "assistant", Content: text, Reasoning: text},
+		{Index: 3, Role: "tool", Content: text},
+		{Index: 4, Role: "assistant"},
+	}}
+	tests := []struct {
+		name    string
+		kinds   []string
+		indices []int
+		wantErr string
+	}{
+		{"none keeps everything", nil, []int{0, 1, 2, 3, 4}, ""},
+		{"roles select messages", []string{"user", "assistant"}, []int{1, 2, 4}, ""},
+		{"system covers developer", []string{"system"}, []int{0}, ""},
+		{"reasoning alone spans every role", []string{"reasoning"}, []int{2}, ""},
+		{"case and spacing", []string{" Tool "}, []int{3}, ""},
+		{"unknown kind", []string{"toolcall"}, nil, "unknown message type"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := FilterThread(thread, tt.kinds)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("FilterThread() error = %v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("FilterThread() error = %v", err)
+			}
+			indices := []int{}
+			for _, message := range got.Messages {
+				indices = append(indices, message.Index)
+			}
+			if !slices.Equal(indices, tt.indices) {
+				t.Fatalf("FilterThread() kept %v, want %v", indices, tt.indices)
+			}
+		})
+	}
+}
+
+// A role selection carries the message's own reasoning only when the selection
+// asks for it: dropping the thinking is what --only user,assistant is for.
+func TestFilterThreadDropsReasoningNoRoleSelectionAskedFor(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{{
+		Role:      "assistant",
+		Content:   []ThreadPart{{Type: "text", Text: "answer"}},
+		Reasoning: []ThreadPart{{Type: "text", Text: "thinking"}},
+	}}}
+	got, err := FilterThread(thread, []string{"assistant"})
+	if err != nil {
+		t.Fatalf("FilterThread() error = %v", err)
+	}
+	if len(got.Messages) != 1 || got.Messages[0].Reasoning != nil {
+		t.Fatalf("FilterThread() kept reasoning: %+v", got.Messages)
+	}
+	if len(got.Messages[0].Content) != 1 {
+		t.Fatalf("FilterThread() dropped content: %+v", got.Messages)
+	}
 }
