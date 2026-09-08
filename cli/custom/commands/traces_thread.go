@@ -34,7 +34,11 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
 		Short: "Render a trace conversation as a thread",
-		Long:  "Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
+		Long: strings.Join([]string{
+			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
+			"",
+			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
+		}, "\n"),
 		Example: strings.Join([]string{
 			"  orq traces thread tr_123 --slice 2",
 			"  orq traces thread tr_123 --slice 2:",
@@ -95,7 +99,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// The annotation is how run.go recognizes this command before it runs; see
 	// RelaxOutputFormat.
 	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
-	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s, which escapes recorded content so a span cannot forge a turn; markdown does not) [env: ORQ_OUTPUT_FORMAT]", strings.Join(threadFormats, ", "), threadFormatXML))
+	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here) [env: %s]", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
@@ -103,14 +107,6 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 const (
 	threadFormatXML      = "xml"
 	threadFormatMarkdown = "markdown"
-	// threadFormatTable is bartolo's CLI-wide default. It is the one value in
-	// OutputFormats that names a layout rather than a serialization, and a
-	// conversation — messages holding content parts, tool calls, reasoning —
-	// has no columns to lay out.
-	threadFormatTable = "table"
-	// threadFormatEnvVar is the environment spelling of -o, from bartolo's
-	// ORQ prefix and its `-` to `_` replacer.
-	threadFormatEnvVar = "ORQ_OUTPUT_FORMAT"
 	// threadFormatAnnotation marks the command whose -o takes the two renders
 	// bartolo's own list does not have.
 	threadFormatAnnotation = "orq.thread-output-format"
@@ -128,8 +124,11 @@ const (
 // The substituted value is the CLI-wide default, which is what the rest of the
 // CLI would have used anyway; this command reads the environment and the config
 // itself rather than the merged value, so nothing downstream reads the
-// substitute as a request. It returns a restore func, and false when there is
-// nothing to relax.
+// substitute as a request. restore() puts viper back, and the process-local
+// format bartolo resolved from the substitute stays substituted — it is RunE's
+// own SetOutputFormat, called before every emit, that decides what this command
+// serializes. It returns a restore func, and false when there is nothing to
+// relax.
 func RelaxOutputFormat(cmd *cobra.Command) (func(), bool) {
 	if cmd == nil || cmd.Annotations[threadFormatAnnotation] == "" {
 		return nil, false
@@ -138,29 +137,30 @@ func RelaxOutputFormat(cmd *cobra.Command) (func(), bool) {
 	if value == "" || slices.Contains(bartolocli.OutputFormats, value) {
 		return nil, false
 	}
+	// Restore the tier the value came from, not just its text: viper.Set writes
+	// the override tier, so re-Setting a value that arrived from the
+	// environment or the config file would promote it above them, where it
+	// would outrank the very sources it came from. Dropping the override first
+	// is what tells the two apart — viper.Set(key, nil) is how an override is
+	// dropped, there is no Unset — since a value that survives the drop was
+	// never in the override tier.
 	previous := viper.Get("output-format")
-	viper.Set("output-format", threadFormatTable)
-	// viper.Set(key, nil) is how an override is dropped; there is no Unset.
-	return func() { viper.Set("output-format", previous) }, true
+	viper.Set("output-format", nil)
+	overridden := strings.ToLower(strings.TrimSpace(viper.GetString("output-format"))) != value
+	viper.Set("output-format", outputFormatTable)
+	return func() {
+		if overridden {
+			viper.Set("output-format", previous)
+			return
+		}
+		viper.Set("output-format", nil)
+	}, true
 }
 
 // threadFormats are the values -o takes on this command: the two reading views,
-// then whatever the CLI can serialize. The serializations are derived from
-// bartolo's own list rather than restated, so one added there cannot become a
-// format the rest of the CLI accepts and this command calls invalid. That list
-// is [json yaml toon table]; `table` is filtered out because it names a layout
-// this command has no render for.
-var threadFormats = threadFormatList()
-
-func threadFormatList() []string {
-	formats := []string{threadFormatXML, threadFormatMarkdown}
-	for _, format := range bartolocli.OutputFormats {
-		if format != threadFormatTable {
-			formats = append(formats, format)
-		}
-	}
-	return formats
-}
+// then the serializations of bartolo's OutputFormats — that list minus `table`,
+// which names a layout this command has no render for.
+var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yaml", "toon"}
 
 // resolveThreadFormat reads the format from the highest-precedence source that
 // actually named one — the flag, then the environment, then the config file —
@@ -172,20 +172,21 @@ func threadFormatList() []string {
 // asked for nothing"; a conversation has no columns, and rendering something
 // else in silence for the first case is the bug this command had. Asked for, it
 // is an error. Left at the default, it is the reading view.
+//
+// The flag and the environment ask per invocation, so `table` from either is an
+// error. The config file states a standing default instead — `orq default-format
+// table` is the documented way to write the CLI-wide one — and a standing
+// `table` is not a request for a layout this command cannot give, so it falls
+// through to the same render an unset config gets.
 func resolveThreadFormat(cmd *cobra.Command) (string, error) {
 	if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
 		return normalizeThreadFormat(flag.Value.String(), "--output-format")
 	}
-	if value := strings.TrimSpace(os.Getenv(threadFormatEnvVar)); value != "" {
-		return normalizeThreadFormat(value, threadFormatEnvVar)
+	if value := strings.TrimSpace(os.Getenv(outputFormatEnvVar)); value != "" {
+		return normalizeThreadFormat(value, outputFormatEnvVar)
 	}
-	// viper holds the config file's value under the same key the global flag is
-	// bound to, and InConfig is what distinguishes a written entry from the
-	// default underneath it.
-	if viper.InConfig("output-format") {
-		if value := strings.TrimSpace(viper.GetString("output-format")); value != "" {
-			return normalizeThreadFormat(value, "output-format in the config file")
-		}
+	if value := configuredOutputFormat(); value != "" && value != outputFormatTable {
+		return normalizeThreadFormat(value, "output-format in the config file")
 	}
 	return threadFormatXML, nil
 }
@@ -195,7 +196,7 @@ func normalizeThreadFormat(value, source string) (string, error) {
 	if slices.Contains(threadFormats, normalized) {
 		return normalized, nil
 	}
-	if normalized == threadFormatTable {
+	if normalized == outputFormatTable {
 		return "", bartolocli.NewValueError(fmt.Errorf(
 			"%s: %q is the CLI-wide default layout, and a conversation has no columns to lay out. This command takes [%s]; %s is what it renders when you ask for nothing",
 			source, value, strings.Join(threadFormats, ", "), threadFormatXML))
@@ -232,6 +233,13 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	)
 
 	candidates, excluded, listErr := listThreadCandidates(api, traceID, params)
+	if listErr != nil {
+		// Every path below can still return a span, from the partial listing or
+		// from the trace's own fallback IDs, so the paging failure would
+		// otherwise leave exit 0 saying an older conversation is the whole
+		// answer. Say which pool the selection came from.
+		Warn("%v; selecting from the %d span(s) listed before the failure", listErr, len(candidates))
+	}
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
 	var best *Thread

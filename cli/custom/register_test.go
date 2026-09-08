@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"orq/cli/custom/commands"
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
@@ -318,8 +319,12 @@ func TestMigrationRunsBeforeInMemoryProfileTypeRepair(t *testing.T) {
 // The global `--json` is gone: `-o json` is the only spelling. Keeping both
 // was two ways to ask for one thing, and `--json -o yaml` asked for two
 // formats at once.
-func TestJSONFlagIsGone(t *testing.T) {
-	binPath := filepath.Join(t.TempDir(), "orq-json-contract")
+// buildOrqBinary compiles the real `orq` and returns its path. A test that
+// needs bartolo's own root — its PersistentPreRunE, its viper wiring, its
+// config and env tiers — cannot get it from a synthetic cobra tree.
+func buildOrqBinary(t *testing.T) string {
+	t.Helper()
+	binPath := filepath.Join(t.TempDir(), "orq")
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller: could not determine this file's path")
@@ -328,8 +333,13 @@ func TestJSONFlagIsGone(t *testing.T) {
 	build := exec.Command("go", "build", "-o", binPath, "./cmd/orq")
 	build.Dir = moduleRoot
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build orq for JSON contract test: %v\n%s", err, out)
+		t.Fatalf("build orq: %v\n%s", err, out)
 	}
+	return binPath
+}
+
+func TestJSONFlagIsGone(t *testing.T) {
+	binPath := buildOrqBinary(t)
 
 	t.Run("rejects --json", func(t *testing.T) {
 		cmd := exec.Command(binPath, "--json", "version")
@@ -426,5 +436,62 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	// Listing logins must work before one exists.
 	if !profileExemptCommands["auth sessions"] {
 		t.Error("`auth sessions` must be exempt from the unknown-profile guard")
+	}
+}
+
+// bartolo's root validates viper's output-format against its own list before
+// any command runs, and that list has neither of the two renders this command
+// adds. Only the real binary runs that check: a synthetic cobra tree has no
+// PersistentPreRunE, so deleting run.go's wrapper would leave the unit tests
+// green while `ORQ_OUTPUT_FORMAT=markdown orq traces thread` told the user
+// markdown is not a format — by the one command that renders it.
+func TestThreadFormatFromTheEnvironmentSurvivesGlobalValidation(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	for _, format := range []string{"markdown", "xml"} {
+		t.Run(format, func(t *testing.T) {
+			cmd := exec.Command(binPath, "traces", "thread", "tr_x")
+			cmd.Dir = t.TempDir()
+			cmd.Env = append(os.Environ(),
+				"HOME="+t.TempDir(),
+				"NO_COLOR=",
+				"ORQ_NO_COLOR=",
+				"ORQ_OUTPUT_FORMAT="+format,
+			)
+			// No credentials and no network reachable from a temp HOME, so the
+			// run fails; what matters is which failure it is.
+			out, _ := cmd.CombinedOutput()
+			if strings.Contains(string(out), "is not one of") {
+				t.Fatalf("ORQ_OUTPUT_FORMAT=%s was rejected as a format: %s", format, out)
+			}
+		})
+	}
+	// The same check still refuses what the command has no render for.
+	t.Run("table", func(t *testing.T) {
+		cmd := exec.Command(binPath, "traces", "thread", "tr_x")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_OUTPUT_FORMAT=table")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("ORQ_OUTPUT_FORMAT=table succeeded: %s", out)
+		}
+		if !strings.Contains(string(out), "xml, markdown, json, yaml, toon") {
+			t.Fatalf("ORQ_OUTPUT_FORMAT=table = %s, want the formats this command takes", out)
+		}
+	})
+}
+
+// Nothing in this repository owns bartolo's PersistentPreRunE, so the wrapper
+// has to survive a bartolo release that moves the format check to the non-E
+// hook rather than nil-panicking every command.
+func TestRelaxOutputFormatBeforeToleratesNoValidation(t *testing.T) {
+	thread := commands.NewTracesThreadCommand(commands.TraceAPI{})
+	previous := viper.Get("output-format")
+	t.Cleanup(func() { viper.Set("output-format", previous) })
+	viper.Set("output-format", "markdown")
+	if err := relaxOutputFormatBefore(nil)(thread, nil); err != nil {
+		t.Fatalf("wrapping a nil validation: %v", err)
+	}
+	if got := viper.GetString("output-format"); got != "markdown" {
+		t.Fatalf("after the wrapper ran = %q, want the value it was handed", got)
 	}
 }

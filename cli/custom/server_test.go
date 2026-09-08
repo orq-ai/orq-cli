@@ -123,8 +123,11 @@ func TestConfigureAPIKeyUsageNotice(t *testing.T) {
 	cases := []struct {
 		name, envVar, profileKey, noNotice string
 		explicitKey, stderrTTY, stdoutTTY  bool
-		// format is the resolved -o value; empty means the CLI default.
-		format      string
+		// format is the -o value this case passes on the command line; empty
+		// means the flag was not used.
+		format string
+		// envFormat is the same request arriving as ORQ_OUTPUT_FORMAT.
+		envFormat   string
 		wantPending bool
 	}{
 		{name: "ORQ_API_KEY on a stderr tty", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
@@ -136,26 +139,21 @@ func TestConfigureAPIKeyUsageNotice(t *testing.T) {
 		{name: "opt out", envVar: "ORQ_API_KEY", explicitKey: true, noNotice: "1", stderrTTY: true, stdoutTTY: true},
 		{name: "stderr redirected", envVar: "ORQ_API_KEY", explicitKey: true, stdoutTTY: true},
 		{name: "machine format", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, format: "json"},
+		// -o is not the only way to ask; the notice has to stay off a shell
+		// that named the format in the environment too.
+		{name: "machine format from the environment", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, envFormat: "json"},
 		{name: "session bridge owns exported key", envVar: "ORQ_API_KEY", stderrTTY: true, stdoutTTY: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			prevProfile := viper.GetString("profile")
-			// machineFormatRequested reads output-format from viper, so an
-			// inherited value would silently turn every tty case into a
-			// machine-format one.
-			prevFormat := viper.GetString("output-format")
-			format := tc.format
-			if format == "" {
-				format = "toon"
-			}
 			viper.Set("profile", "default")
-			viper.Set("output-format", format)
-			t.Cleanup(func() {
-				viper.Set("profile", prevProfile)
-				viper.Set("output-format", prevFormat)
-			})
+			t.Cleanup(func() { viper.Set("profile", prevProfile) })
+			// machineFormatRequested reads the environment, so an inherited
+			// ORQ_OUTPUT_FORMAT would silently turn every tty case into a
+			// machine-format one.
+			t.Setenv("ORQ_OUTPUT_FORMAT", tc.envFormat)
 			t.Setenv("ORQ_NO_API_KEY_NOTICE", tc.noNotice)
 			for _, envVar := range apiKeyEnvVars {
 				t.Setenv(envVar, "")

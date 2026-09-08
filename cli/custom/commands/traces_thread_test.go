@@ -2,16 +2,17 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	toon "github.com/toon-format/toon-go"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 type fakeTraceAPI struct {
@@ -58,11 +59,9 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 	t.Helper()
 	oldOut, oldFormatter, oldRoot := bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root
 	oldHuman := humanOutput
-	oldFormat := viper.Get("output-format")
 	t.Cleanup(func() {
 		bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root = oldOut, oldFormatter, oldRoot
 		humanOutput = oldHuman
-		viper.Set("output-format", oldFormat)
 	})
 	humanOutput = func() bool { return false }
 	var out bytes.Buffer
@@ -73,8 +72,12 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// The global -o as the binary registers it, unbound: binding it would leave
+	// package-global viper pointing at a flag on a root this test is about to
+	// throw away, which is how `go test -run X` and a full-package run stop
+	// being the same experiment. Nothing under test reads the bound value —
+	// the command reads the flag, the environment and the config file itself.
 	root.PersistentFlags().StringP("output-format", "o", "table", "")
-	root.PersistentFlags().VisitAll(func(flag *pflag.Flag) { _ = viper.BindPFlag(flag.Name, flag) })
 	bartolocli.Root = root
 	root.AddCommand(NewTracesThreadCommand(api))
 	root.SetArgs(append([]string{"thread"}, args...))
@@ -526,14 +529,18 @@ func TestTracesThreadReturnsClearErrors(t *testing.T) {
 	})
 }
 
+// Each format gets its own decoder, not a shared substring: the three are
+// different serializations of one document, so asserting that the output
+// merely mentions "messages" passes every subtest even if all three emit YAML.
 func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 	formats := []struct {
-		name string
-		args []string
+		name   string
+		args   []string
+		decode func([]byte, any) error
 	}{
-		{name: "json", args: []string{"--output-format", "json"}},
-		{name: "yaml", args: []string{"--output-format", "yaml"}},
-		{name: "toon", args: []string{"--output-format", "toon"}},
+		{name: "json", args: []string{"--output-format", "json"}, decode: json.Unmarshal},
+		{name: "yaml", args: []string{"--output-format", "yaml"}, decode: yaml.Unmarshal},
+		{name: "toon", args: []string{"--output-format", "toon"}, decode: func(data []byte, v any) error { return toon.Unmarshal(data, v) }},
 	}
 	for _, format := range formats {
 		t.Run(format.name, func(t *testing.T) {
@@ -542,9 +549,11 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(out, "## USER") || !strings.Contains(out, "messages") {
-				t.Fatalf("machine output = %q", out)
+			var document map[string]any
+			if err := format.decode([]byte(out), &document); err != nil {
+				t.Fatalf("output is not %s (%v):\n%s", format.name, err, out)
 			}
+			assertCanonicalThread(t, document)
 		})
 	}
 	t.Run("slice", func(t *testing.T) {
@@ -564,6 +573,42 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 	})
 }
 
+// assertCanonicalThread checks a decoded machine document against the thread
+// conversationalSpan("first") describes: the source that identifies the span,
+// and both turns with their text where the schema says it lives.
+func assertCanonicalThread(t *testing.T, document map[string]any) {
+	t.Helper()
+	source, ok := document["source"].(map[string]any)
+	if !ok {
+		t.Fatalf("no source object: %#v", document)
+	}
+	if fmt.Sprint(source["trace_id"]) != "trace-1" || fmt.Sprint(source["span_id"]) != "chosen" {
+		t.Fatalf("source = %#v", source)
+	}
+	messages, ok := document["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages = %#v", document["messages"])
+	}
+	wantRoles, wantText := []string{"user", "assistant"}, []string{"first", "answer"}
+	for index, message := range messages {
+		fields, ok := message.(map[string]any)
+		if !ok {
+			t.Fatalf("message %d = %#v", index, message)
+		}
+		if fmt.Sprint(fields["index"]) != fmt.Sprint(index) || fmt.Sprint(fields["role"]) != wantRoles[index] {
+			t.Fatalf("message %d = %#v", index, fields)
+		}
+		content, ok := fields["content"].([]any)
+		if !ok || len(content) != 1 {
+			t.Fatalf("message %d content = %#v", index, fields["content"])
+		}
+		part, ok := content[0].(map[string]any)
+		if !ok || fmt.Sprint(part["type"]) != "text" || fmt.Sprint(part["text"]) != wantText[index] {
+			t.Fatalf("message %d part = %#v", index, content[0])
+		}
+	}
+}
+
 func partialSpan() map[string]any {
 	return map[string]any{"span": map[string]any{"attributes": map[string]any{
 		"openresponses.instructions": "be brief",
@@ -575,9 +620,9 @@ func partialSpan() map[string]any {
 // Asking for `table` is not the same as asking for nothing, and the command
 // used to answer the two differently by accident: it branched on whether the
 // flag was set rather than on the value, so an explicit `-o table` swapped the
-// reading view for a structured dump. Every source that can name a format has
-// to reach the same answer, and a conversation has no columns, so that answer
-// is an error.
+// reading view for a structured dump. A conversation has no columns, so a
+// per-invocation ask for one is an error, whichever of the two sources that ask
+// arrives from.
 func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 	routes := []struct {
 		name  string
@@ -586,8 +631,7 @@ func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 	}{
 		{name: "flag", args: []string{"--output-format", "table"}},
 		{name: "shorthand", args: []string{"-o", "table"}},
-		{name: "environment", setup: func(t *testing.T) { t.Setenv(threadFormatEnvVar, "table") }},
-		{name: "config", setup: func(t *testing.T) { writeOutputFormatConfig(t, "table") }},
+		{name: "environment", setup: func(t *testing.T) { t.Setenv(outputFormatEnvVar, "table") }},
 	}
 	for _, route := range routes {
 		t.Run(route.name, func(t *testing.T) {
@@ -614,6 +658,33 @@ func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 		}
 		if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
 			t.Fatalf("output = %q", out)
+		}
+	})
+	// The config file is not an ask, it is the standing default: `orq
+	// default-format table` writes the CLI-wide one, and answering it with an
+	// error would tell the user to ask for nothing when asking for nothing is
+	// exactly what they did at the command line.
+	t.Run("config renders xml", func(t *testing.T) {
+		writeOutputFormatConfig(t, "table")
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+		if err != nil {
+			t.Fatalf("a config-file default bricked the command: %v", err)
+		}
+		if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+			t.Fatalf("output = %q", out)
+		}
+	})
+	// Every other format the config names is still honoured.
+	t.Run("config selects a format it can render", func(t *testing.T) {
+		writeOutputFormatConfig(t, "json")
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
+			t.Fatalf("config json = %q", out)
 		}
 	})
 }
@@ -648,7 +719,7 @@ func writeOutputFormatConfig(t *testing.T, value string) {
 // The environment must be genuinely what answers, so pin a value neither the
 // flag default nor the config can supply.
 func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
-	t.Setenv(threadFormatEnvVar, "json")
+	t.Setenv(outputFormatEnvVar, "json")
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
 	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
 	if err != nil {
@@ -659,10 +730,26 @@ func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
 	}
 }
 
+// The environment is a per-invocation ask and the config file a standing
+// default, so the environment answers over it. Swapping the two branches in
+// resolveThreadFormat breaks nothing without this.
+func TestTracesThreadEnvironmentOutranksTheConfigFile(t *testing.T) {
+	writeOutputFormatConfig(t, "markdown")
+	t.Setenv(outputFormatEnvVar, "json")
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"messages"`) || strings.Contains(out, "## USER") {
+		t.Fatalf("environment json = %q", out)
+	}
+}
+
 // The flag is the nearest source, so it answers over an environment or a
 // config that named something else.
 func TestTracesThreadFlagOutranksTheEnvironment(t *testing.T) {
-	t.Setenv(threadFormatEnvVar, "table")
+	t.Setenv(outputFormatEnvVar, "table")
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
 	out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen")
 	if err != nil {
@@ -716,19 +803,6 @@ func TestTracesThreadOutputFormat(t *testing.T) {
 		_, err := runTracesThread(t, traceAPI(fake), "-o", "csv", "trace-1", "chosen")
 		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
 			t.Fatalf("err = %v", err)
-		}
-	})
-	// This -o is the global one with two values added, never with any taken
-	// away, so a serialization bartolo gains cannot be one this command calls
-	// invalid.
-	t.Run("offers every global serialization", func(t *testing.T) {
-		for _, format := range bartolocli.OutputFormats {
-			if format == threadFormatTable {
-				continue
-			}
-			if !slices.Contains(threadFormats, format) {
-				t.Fatalf("-o does not accept %q here, which it does elsewhere", format)
-			}
 		}
 	})
 	t.Run("caps both renders", func(t *testing.T) {
@@ -911,13 +985,125 @@ func TestRelaxOutputFormat(t *testing.T) {
 			if !relaxed {
 				return
 			}
-			if got := viper.GetString("output-format"); got != threadFormatTable {
-				t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, threadFormatTable)
+			if got := viper.GetString("output-format"); got != outputFormatTable {
+				t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, outputFormatTable)
 			}
 			restore()
 			if got := viper.GetString("output-format"); got != tc.value {
 				t.Fatalf("after restore = %q, want %q", got, tc.value)
 			}
 		})
+	}
+}
+
+// The relaxed value came from a tier below the override, and restore() has to
+// put it back in that tier rather than re-Set it: viper.Set writes the override
+// tier, which outranks the environment and the config file, so restoring by Set
+// promotes the value above the source it came from and pins it there for the
+// rest of the process.
+func TestRelaxOutputFormatRestoresTheTierTheValueCameFrom(t *testing.T) {
+	thread := NewTracesThreadCommand(TraceAPI{})
+	writeOutputFormatConfig(t, "markdown")
+
+	restore, relaxed := RelaxOutputFormat(thread)
+	if !relaxed {
+		t.Fatal("a config-file markdown was not relaxed, so bartolo's check would reject it")
+	}
+	if got := viper.GetString("output-format"); got != outputFormatTable {
+		t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, outputFormatTable)
+	}
+	restore()
+	if got := viper.GetString("output-format"); got != "markdown" {
+		t.Fatalf("after restore = %q, want the config file's value back", got)
+	}
+
+	// Reading a new config is what tells the tiers apart: the config tier
+	// answers with the new value, an override left behind keeps shadowing it.
+	viper.SetConfigType("yaml")
+	if err := viper.ReadConfig(strings.NewReader("output-format: xml\n")); err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+	if got := viper.GetString("output-format"); got != "xml" {
+		t.Fatalf("after restore the config file no longer answers (%q): the value was promoted into viper's override tier", got)
+	}
+}
+
+// Whether a machine format was asked for is a question about the sources, not
+// about a value: this command registers its own -o with its own default, and
+// comparing the resolved value against that default made every run of it a
+// machine-format request — which drops the which-credential notice and the
+// update check on a person who is reading the XML view at a terminal.
+func TestMachineFormatRequestedFollowsTheSourceNotTheFlagDefault(t *testing.T) {
+	// What the bound global -o resolves to when nobody names a format: the
+	// CLI-wide default. It is the value the comparison used to read as a
+	// request on this command.
+	previous := viper.Get("output-format")
+	t.Cleanup(func() { viper.Set("output-format", previous) })
+	viper.Set("output-format", outputFormatTable)
+
+	t.Run("nobody named one", func(t *testing.T) {
+		t.Setenv(outputFormatEnvVar, "")
+		if machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
+			t.Fatal("a bare `orq traces thread` counts as a machine-format request")
+		}
+	})
+	t.Run("the flag named one", func(t *testing.T) {
+		t.Setenv(outputFormatEnvVar, "")
+		cmd := NewTracesThreadCommand(TraceAPI{})
+		if err := cmd.Flags().Set("output-format", "json"); err != nil {
+			t.Fatal(err)
+		}
+		if !machineFormatRequested(cmd) {
+			t.Fatal("-o json is not a machine-format request")
+		}
+	})
+	t.Run("the environment named one", func(t *testing.T) {
+		t.Setenv(outputFormatEnvVar, "json")
+		if !machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
+			t.Fatal("ORQ_OUTPUT_FORMAT=json is not a machine-format request")
+		}
+	})
+	t.Run("a config-file machine format is a request", func(t *testing.T) {
+		t.Setenv(outputFormatEnvVar, "")
+		writeOutputFormatConfig(t, "json")
+		if !machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
+			t.Fatal("a configured json is not a machine-format request")
+		}
+	})
+	// `orq default-format table` writes the value the CLI already defaults to.
+	// Reading that as a request would take the human view away from every
+	// command for a user who changed nothing.
+	t.Run("a config-file table is not", func(t *testing.T) {
+		t.Setenv(outputFormatEnvVar, "")
+		writeOutputFormatConfig(t, "table")
+		if machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
+			t.Fatal("a configured CLI-wide default counts as a machine-format request")
+		}
+	})
+}
+
+// A paging failure still leaves candidates and the trace's own fallback IDs to
+// hydrate, so the command can return an older span and exit 0. Say on stderr
+// that the pool was partial rather than presenting it as the whole trace.
+func TestTracesThreadReportsAPartialSpanListing(t *testing.T) {
+	previous := bartolocli.Stderr
+	var stderr bytes.Buffer
+	bartolocli.Stderr = &stderr
+	t.Cleanup(func() { bartolocli.Stderr = previous })
+
+	fake := &fakeTraceAPI{
+		trace:   map[string]any{"trace": map[string]any{"leading_span_id": "lead"}},
+		spans:   map[string]map[string]any{"lead": conversationalSpan("leading fallback")},
+		listErr: errors.New("listing unavailable"),
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "leading fallback") {
+		t.Fatalf("output = %q", out)
+	}
+	if !strings.Contains(stderr.String(), "listing unavailable") || !strings.Contains(stderr.String(), "0 span(s)") {
+		t.Fatalf("stderr = %q, want the listing failure and how many spans were seen", stderr.String())
 	}
 }

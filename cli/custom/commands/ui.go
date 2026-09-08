@@ -79,23 +79,50 @@ func wantsHumanView(cmd *cobra.Command) bool {
 	return humanOutput() && !machineFormatRequested(cmd)
 }
 
+const (
+	// outputFormatEnvVar is the environment spelling of -o, from bartolo's ORQ
+	// prefix and its `-` to `_` replacer.
+	outputFormatEnvVar = "ORQ_OUTPUT_FORMAT"
+	// outputFormatTable is bartolo's CLI-wide default. It is the one value in
+	// OutputFormats that names a layout rather than a serialization.
+	outputFormatTable = "table"
+)
+
 // machineFormatRequested reports whether the user asked for a machine format
-// via -o/--output-format. The flag is a viper-bound global, so the request can
-// arrive as a flag, an env var (ORQ_OUTPUT_FORMAT) or a config-file entry -
-// Flag.Changed alone misses everything but the flag, which silently gave the
-// human view to exactly the users who configured a machine format.
+// via -o/--output-format, from any source that can name one: the flag, the
+// environment (ORQ_OUTPUT_FORMAT) or a config-file entry. Flag.Changed alone
+// misses everything but the flag, which silently gave the human view to
+// exactly the users who configured a machine format.
+//
+// It asks which source named a format rather than comparing the resolved value
+// against the flag's default, because the default is per-command: `orq traces
+// thread` registers its own -o, and a value comparison reads every one of that
+// command's runs as a request.
+//
+// The flag and the environment name a format for one invocation. A config-file
+// entry is a standing default instead, so the value the whole CLI already
+// defaults to - `table`, what `orq default-format table` writes - is not a
+// request there.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	if f := cmd.Flags().Lookup("output-format"); f != nil {
-		if f.Changed {
-			return true
-		}
-		// The resolved viper value differs from the flag default only when an
-		// env var or config file set it; the implicit default is not a request.
-		if v := strings.TrimSpace(viper.GetString("output-format")); v != "" && !strings.EqualFold(v, f.DefValue) {
-			return true
-		}
+	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
+		return true
 	}
-	return false
+	if strings.TrimSpace(os.Getenv(outputFormatEnvVar)) != "" {
+		return true
+	}
+	configured := configuredOutputFormat()
+	return configured != "" && configured != outputFormatTable
+}
+
+// configuredOutputFormat is the format the config file names, lowercased, or ""
+// when it names none. viper holds the config file's value under the same key
+// the global flag is bound to, and InConfig is what distinguishes a written
+// entry from the default underneath it.
+func configuredOutputFormat() string {
+	if !viper.InConfig("output-format") {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(viper.GetString("output-format")))
 }
 
 // MachineFormatRequested exposes the shared human/machine output decision to
