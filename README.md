@@ -248,9 +248,8 @@ orq doctor --fix           # chmod the credential paths the permissions check fl
 ```sh
 orq agents list                             # table at a terminal, TOON when piped
 orq agents list --output-format toon        # TOON
-orq agents list --output-format json        # JSON
+orq agents list --output-format json        # JSON (or the -o json shorthand)
 orq agents list --output-format yaml        # YAML
-orq agents list -o json                     # machine-readable
 orq agents list --columns id,display_name   # pick table columns
 orq agents list -j 'data[].display_name'    # JMESPath query
 ```
@@ -260,6 +259,11 @@ Persist a new default:
 ```sh
 orq default-format json
 ```
+
+`orq traces thread` is the one command where `-o` takes a different set of
+formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
+and `toon`. It refuses `table` — a conversation is nested (messages holding
+content parts, tool calls, reasoning) and has no columns to lay out.
 
 ### Stability: what scripts may depend on
 

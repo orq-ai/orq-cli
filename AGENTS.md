@@ -14,8 +14,17 @@ go run ./cmd/orq -o json doctor     # or: make doctor
 ```
 
 CI additionally runs, and these are worth reproducing locally when you touch what
-they cover: `dash -n install.sh` (the installer must stay POSIX — macOS `/bin/sh`
-is bash in POSIX mode and accepts things dash rejects), and
+they cover: `go run ./cmd/orq -o json version | jq .` (the `-o json` contract —
+catches a flag rename or removal that breaks the machine format before it hits
+main), a diff of the `bartolo` version pinned in the root `go.mod` against
+`packages/orq-rc/go.mod` (the two modules must not drift), `dash -n install.sh`
+plus the installer's dash-run fixture and upgrade/rollback tests (the installer
+must stay POSIX — macOS `/bin/sh` is bash in POSIX mode and accepts things dash
+rejects), `go test ./cli/custom/skills/` on Windows (the OS-specific half of
+that package), the release-packaging stamp check
+(`scripts/release-build.sh --stamp-only`), `node .github/scripts/check-release-label-config.js`
+and `node --test .github/scripts/label-pr.test.js` (release-label and PR-title
+tooling), `actionlint` over `.github/workflows/*.yml`, and
 `python3 scripts/stamp-changelog.py --self-test`.
 
 The second module has its own checks: `cd packages/orq-rc && go build ./... && go vet ./...`.
