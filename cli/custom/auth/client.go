@@ -361,7 +361,18 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 			return nil, err
 		}
 	}
+	// Read before resolving the workspace: when the user chose none, the
+	// previous session's active workspace is a better answer than the server
+	// preference, which `orq workspace use` never PATCHes and which therefore
+	// drifts. resolveWorkspace (setup.go) already prefers it this way.
+	previous := c.previousSession(profile.ID, true)
+	chosen := strings.TrimSpace(workspaceKey) != ""
 	resolvedKey := resolveWorkspaceKey(profile, workspaceKey)
+	if !chosen {
+		if k := workspaceKeyOf(previous); k != "" {
+			resolvedKey = k
+		}
+	}
 	workspaceTokens := map[string]StoredAccessToken{}
 	if resolvedKey != "" {
 		tok, err := c.ExchangeAccessToken(approved.RefreshToken, resolvedKey)
@@ -374,30 +385,129 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 	if err != nil {
 		return nil, err
 	}
-	session := &Session{
-		Version:        1,
-		APIBaseURL:     c.URLs.APIBaseURL,
-		V1BaseURL:      c.URLs.V1BaseURL,
-		AuthBaseURL:    c.URLs.AuthBaseURL,
-		ProfileBaseURL: c.URLs.ProfileBaseURL,
-		User: &SessionUser{
-			ID:          profile.ID,
-			Email:       profile.Email,
-			DisplayName: resolveDisplayName(profile),
-		},
-		Workspaces:         profile.Workspaces,
-		ActiveWorkspaceKey: stringPtr(resolvedKey),
-		RefreshToken:       approved.RefreshToken,
-		BootstrapToken: StoredAccessToken{
-			Token:     approved.AccessToken,
-			ExpiresAt: formatISO(bootstrapExp),
-		},
-		WorkspaceTokens: workspaceTokens,
+	// Re-read immediately before the write. The login blocks on browser
+	// approval, and an `orq setup` landing in that window writes a gateway key
+	// this session was built before; saving the older copy would lose it, which
+	// is the class of loss this whole function exists to prevent.
+	// mergeWorkspaceToken guards the same hazard the same way. The general fix,
+	// one UpdateSession helper for all eight SaveSession callers, is RES-1532.
+	if latest := c.previousSession(profile.ID, false); latest != nil {
+		previous = latest
 	}
+	session := sessionForLogin(previous)
+	session.Version = 1
+	session.APIBaseURL = c.URLs.APIBaseURL
+	session.V1BaseURL = c.URLs.V1BaseURL
+	session.AuthBaseURL = c.URLs.AuthBaseURL
+	session.ProfileBaseURL = c.URLs.ProfileBaseURL
+	session.User = &SessionUser{
+		ID:          profile.ID,
+		Email:       profile.Email,
+		DisplayName: resolveDisplayName(profile),
+	}
+	session.Workspaces = profile.Workspaces
+	session.RefreshToken = approved.RefreshToken
+	session.BootstrapToken = StoredAccessToken{
+		Token:     approved.AccessToken,
+		ExpiresAt: formatISO(bootstrapExp),
+	}
+	// Deliberately only the token this login just issued. The cached entries
+	// were exchanged from the refresh token this login replaces, and carrying
+	// them would leave later commands authenticating with a credential from
+	// before the login the user just performed.
+	session.WorkspaceTokens = workspaceTokens
+	// The active project belongs to the workspace it was chosen in: UseWorkspace
+	// clears the pair on a change and switch.go repeats the rule. Only a chosen
+	// workspace can be a change — an unchosen one resolved to the previous
+	// session's own key above, so there is nothing to move away from.
+	if chosen && workspaceKeyOf(previous) != strings.TrimSpace(resolvedKey) {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
+	session.ActiveWorkspaceKey = stringPtr(resolvedKey)
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
 	return session, nil
+}
+
+// sessionForLogin is the session the login builds on. Starting from the
+// previous one and overwriting what the login issues makes "kept" the default:
+// the alternative, building from zero and copying seven fields back, regresses
+// silently the next time anyone adds a durable field to Session.
+func sessionForLogin(previous *Session) *Session {
+	if previous == nil {
+		return &Session{}
+	}
+	kept := *previous
+	return &kept
+}
+
+// previousSession is the session on disk this login may build on: the same
+// user's, whatever state the file is in. Everything else returns nil, and the
+// paths that discard a live gateway key say so — the key stays valid for 90
+// days, and after the save there is nothing left on disk naming it.
+//
+// warn is false for the re-read immediately before the write, which must not
+// repeat a message the first read already printed.
+func (c *Client) previousSession(userID string, warn bool) *Session {
+	host := SessionHost(c.URLs.APIBaseURL)
+	r := InspectSession()
+	var previous *Session
+	switch r.Status {
+	case StatusMissing:
+		// A first login on this machine. Nothing to keep, nothing to lose.
+		return nil
+	case StatusOK:
+		previous = r.Session
+	case StatusInvalid:
+		// Invalid for *use* is not invalid as a source: validateSession rejects
+		// a session missing a URL, a refresh token or a bootstrap token, and
+		// those are the fields this login supplies. Only bytes that do not
+		// parse leave nothing to carry.
+		var err error
+		previous, err = readSessionFile(r.Path)
+		if err != nil || previous == nil {
+			if warn {
+				reportUnreadableGatewayKey(host, r.Path)
+			}
+			return nil
+		}
+	default: // StatusUnreadable
+		if warn {
+			reportUnreadableGatewayKey(host, r.Path)
+		}
+		return nil
+	}
+	if sameSessionUser(previous, userID) {
+		return previous
+	}
+	if warn {
+		// A different account. Inheriting the key would bill and scope its
+		// calls to the previous user and make `logout` name a key id that is
+		// not theirs, so it is dropped — out loud, because the save below is
+		// what removes the last record of it.
+		reportDroppedGatewayKey(host, previous.GatewayKey, previous.GatewayKeyID,
+			"a different user signed in on this machine")
+		reportSupersededExportedKey(previous)
+	}
+	return nil
+}
+
+// sameSessionUser requires both ids to be present. Two unknown users are not
+// the same user, and treating them as one hands a minted key to whoever logs
+// in next.
+func sameSessionUser(previous *Session, userID string) bool {
+	if previous == nil || previous.User == nil {
+		return false
+	}
+	return previous.User.ID != "" && userID != "" && previous.User.ID == userID
+}
+
+func workspaceKeyOf(s *Session) string {
+	if s == nil || s.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	return strings.TrimSpace(*s.ActiveWorkspaceKey)
 }
 
 func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {

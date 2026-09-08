@@ -282,7 +282,8 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 		// nowhere to attach is dead weight, not a failure. Say so out loud:
 		// logout never revoked the key server-side, so the id being dropped
 		// here is the last local record of a credential that still works.
-		reportDroppedGatewayKey(host, fields)
+		reportDroppedGatewayKey(host, fields["gateway_key"], fields["gateway_key_id"],
+			"there is no login left to attach it to")
 		return nil
 	}
 	changed := false
@@ -303,23 +304,56 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 	return saveSessionTo(path, s)
 }
 
-// reportDroppedGatewayKey names a gateway key the migration is discarding and
-// how to revoke it. Anything quieter leaves a live key in the workspace with
-// nothing on disk left to identify it by.
-func reportDroppedGatewayKey(host string, fields map[string]string) {
-	id := strings.TrimSpace(fields["gateway_key_id"])
-	if id == "" && strings.TrimSpace(fields["gateway_key"]) == "" {
+// reportDroppedGatewayKey names a gateway key being discarded and how to revoke
+// it. Anything quieter leaves a live key in the workspace with nothing on disk
+// left to identify it by. why completes "dropped the gateway key for <host>:
+// <why>."
+func reportDroppedGatewayKey(host, key, id, why string) {
+	id = strings.TrimSpace(id)
+	if id == "" && strings.TrimSpace(key) == "" {
 		return
 	}
 	if id == "" {
 		fmt.Fprintf(bartolocli.Stderr,
-			"dropped a gateway key for %s: there is no login left to attach it to, and no key id was recorded. "+
-				"It still works; revoke it from the API keys page.\n", host)
+			"dropped a gateway key for %s: %s, and no key id was recorded. "+
+				"It still works; revoke it from the API keys page.\n", host, why)
 		return
 	}
 	fmt.Fprintf(bartolocli.Stderr,
-		"dropped the gateway key for %s: there is no login left to attach it to. "+
-			"It still works; revoke it with: orq api-keys delete %s\n", host, id)
+		"dropped the gateway key for %s: %s. "+
+			"It still works; revoke it with: orq api-keys delete %s\n", host, why, id)
+}
+
+// reportUnreadableGatewayKey is the same warning for a session whose contents
+// could not be read at all. It cannot name a key or say one existed, and the
+// write that follows removes the file, so it reports the possibility rather
+// than staying silent about a credential that may still be live.
+func reportUnreadableGatewayKey(host, path string) {
+	fmt.Fprintf(bartolocli.Stderr,
+		"could not read the previous session for %s (%s). Any gateway key it held is now "+
+			"unreferenced; it still works, so revoke it from the API keys page.\n", host, path)
+}
+
+// reportSupersededExportedKey warns that the account that just signed in is not
+// the account whose key is still exported. ownExportedKey compares the exported
+// ORQ_API_KEY against the session's GatewayKey, so a key belonging to the
+// previous user now reads as foreign and outranks this login: commands would
+// authenticate as them. Pre-existing and outside RES-1529 to fix, but silence
+// here is the same failure this carry-over exists to prevent.
+func reportSupersededExportedKey(previous *Session) {
+	if previous == nil || strings.TrimSpace(previous.GatewayKey) == "" {
+		return
+	}
+	who := ""
+	if previous.User != nil {
+		who = strings.TrimSpace(previous.User.Email)
+	}
+	if who == "" {
+		who = "the previous user"
+	}
+	fmt.Fprintf(bartolocli.Stderr,
+		"the API key orq setup exported for %s is still in this environment and takes "+
+			"precedence over this login. Run 'orq setup' to replace it.\n", who)
 }
 
 // profileEntryFold looks a profile up the way bartolo does: sanitizeProfileName

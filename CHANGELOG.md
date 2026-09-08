@@ -127,6 +127,25 @@ controls on surface changes, whichever side they originate from.
   (`GET /v2/api/me`). A 401 or a 5xx from the RPC keeps its own error, so a dead
   credential is still reported as one.
 
+- **Fixed: `orq auth login` no longer discards what `orq setup` recorded.** A
+  second login rewrote the session from scratch, dropping the gateway key minted
+  for the coding agents, its id, expiry and scope, and the active project. Three
+  things followed: `orq setup` stopped reusing the key and minted a fresh one on
+  every login, orphaning the last; the key id `orq auth logout` reads to offer a
+  revoke was gone, leaving a credential valid for 90 days; and `--workspace`
+  went back to being a silent no-op, because the rule that lets the exported
+  `ORQ_API_KEY` defer to your login identifies that key by comparing it against
+  the session's copy. Agents already wired keep working throughout — `orq
+  connect` writes the key into their own configs.
+
+  A login as a different user still inherits none of it, and now says so: it
+  names the dropped key id and how to revoke it, and warns that the previous
+  user's exported key still takes precedence until you run `orq setup`. A login
+  that moves workspace keeps the gateway key, whose own workspace is recorded
+  with it, but not the active project, which belongs to the workspace it was
+  chosen in. A session file that cannot be read is reported rather than
+  overwritten in silence.
+
 ## [8.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.0) — 2026-09-07
 
 - **Removed: `orq auth add-profile` and `orq auth list-profiles`**, the
