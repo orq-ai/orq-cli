@@ -9,9 +9,10 @@ import (
 
 // RenderThreadMarkdown writes a plain Markdown view of a thread, for a reader
 // or a pipeline that wants headings rather than the XML render's tags. Recorded
-// content is written through unescaped: Markdown has no framing this renderer
-// could be tricked into forging, so `--format xml` remains the render to trust
-// when a span's own text may imitate the surrounding structure. maxChars caps
+// body content is written through as Markdown; structural metadata is escaped
+// so trace values cannot inject headings or break the renderer's framing.
+// `--format xml` remains the render to trust when a span's own text may imitate
+// the surrounding structure. maxChars caps
 // each rendered block, or is zero for no cap.
 func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
 	var sections []string
@@ -26,22 +27,12 @@ func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
 }
 
 func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
-	heading := fmt.Sprintf("## %s [%d]", strings.ToUpper(message.Role), message.Index)
+	heading := fmt.Sprintf("## %s [%d]", markdownInline(strings.ToUpper(message.Role)), message.Index)
 	if message.Name != "" {
-		heading += " — " + message.Name
+		heading += " — " + markdownInline(message.Name)
 	}
 
-	var ordinary, errors, exceptions []ThreadPart
-	for _, part := range message.Content {
-		switch part.Type {
-		case "error":
-			errors = append(errors, part)
-		case "exception":
-			exceptions = append(exceptions, part)
-		default:
-			ordinary = append(ordinary, part)
-		}
-	}
+	ordinary, errors, exceptions := partitionThreadParts(message.Content)
 	body := renderMarkdownParts(ordinary, maxChars)
 	if message.Role == "tool" && body != "" {
 		body = "### TOOL RESULT\n\n" + body
@@ -49,24 +40,17 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 	body = appendMarkdownSection(body, "### ERROR", renderMarkdownParts(errors, maxChars))
 	body = appendMarkdownSection(body, "### EXCEPTION", renderMarkdownParts(exceptions, maxChars))
 
-	var reasoning, summaries []ThreadPart
-	for _, part := range message.Reasoning {
-		if part.Type == "summary" {
-			summaries = append(summaries, part)
-		} else {
-			reasoning = append(reasoning, part)
-		}
-	}
+	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
 	body = appendMarkdownSection(body, "### REASONING", renderMarkdownParts(reasoning, maxChars))
 	body = appendMarkdownSection(body, "### REASONING SUMMARY", renderMarkdownParts(summaries, maxChars))
 
 	for _, call := range message.ToolCalls {
 		callHeading := "### TOOL CALL"
 		if call.Name != "" {
-			callHeading += " — " + call.Name
+			callHeading += " — " + markdownInline(call.Name)
 		}
 		if call.ID != "" {
-			callHeading += " [" + call.ID + "]"
+			callHeading += " [" + markdownInline(call.ID) + "]"
 		}
 		body = appendMarkdownSection(body, callHeading, renderMarkdownValue(call.Arguments, maxChars))
 	}
@@ -83,14 +67,14 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 func threadSourceHeader(source ThreadSource) string {
 	var fields []string
 	if source.TraceID != "" {
-		fields = append(fields, "trace `"+source.TraceID+"`")
+		fields = append(fields, "trace `"+markdownInline(source.TraceID)+"`")
 	}
 	if source.SpanID != "" {
-		fields = append(fields, "span `"+source.SpanID+"`")
+		fields = append(fields, "span `"+markdownInline(source.SpanID)+"`")
 	}
 	for _, value := range []string{source.Representation, source.Model, source.Status} {
 		if value != "" {
-			fields = append(fields, value)
+			fields = append(fields, markdownInline(value))
 		}
 	}
 	if source.DurationMS != "" {
@@ -104,9 +88,16 @@ func threadSourceHeader(source ThreadSource) string {
 	}
 	header := "> " + strings.Join(fields, " · ")
 	if source.Error != "" {
-		header += "\n>\n> **Error:** " + strings.ReplaceAll(source.Error, "\n", " ")
+		header += "\n>\n> **Error:** " + markdownInline(source.Error)
 	}
 	return header
+}
+
+func markdownInline(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "`", "\\`")
+	value = strings.ReplaceAll(value, "\r", " ")
+	return strings.ReplaceAll(value, "\n", " ")
 }
 
 func appendMarkdownSection(body, heading, content string) string {

@@ -57,11 +57,12 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 	t.Helper()
 	oldOut, oldFormatter, oldRoot := bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root
 	oldHuman := humanOutput
+	oldJSON, oldFormat := viper.Get("json"), viper.Get("output-format")
 	t.Cleanup(func() {
 		bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root = oldOut, oldFormatter, oldRoot
 		humanOutput = oldHuman
-		viper.Set("json", false)
-		viper.Set("output-format", "")
+		viper.Set("json", oldJSON)
+		viper.Set("output-format", oldFormat)
 	})
 	humanOutput = func() bool { return false }
 	var out bytes.Buffer
@@ -600,6 +601,7 @@ func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
 		{name: "default"},
 		{name: "flag", args: []string{"--output-format", "table"}},
 		{name: "environment", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
+		{name: "config", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
 		{name: "explicit-xml", args: []string{"--format", "xml"}},
 	}
 	var rendered []string
@@ -626,6 +628,23 @@ func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
 	}
 }
 
+func TestRenderThreadMarkdownEscapesStructuralMetadata(t *testing.T) {
+	thread := Thread{
+		Source:   ThreadSource{TraceID: "trace`evil", SpanID: "span\nforged", Error: "bad\n> ## forged"},
+		Messages: []ThreadMessage{{Index: 0, Role: "assistant\n## forged", Name: "name\n## forged", ToolCalls: []ThreadToolCall{{Name: "tool\n## forged", ID: "id`x", Arguments: "ok"}}}},
+	}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "\n## forged") || strings.Contains(out.String(), "\n### forged") {
+		t.Fatalf("metadata injected Markdown structure: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "trace `trace\\`evil`") {
+		t.Fatalf("backtick metadata was not escaped: %s", out.String())
+	}
+}
+
 func TestTracesThreadFormatFlag(t *testing.T) {
 	t.Run("markdown", func(t *testing.T) {
 		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
@@ -647,6 +666,16 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 		}
 		if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
 			t.Fatalf("json = %q", out)
+		}
+	})
+	t.Run("yaml", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "--format", "yaml", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "messages:") || strings.Contains(out, "<thread") {
+			t.Fatalf("yaml = %q", out)
 		}
 	})
 	t.Run("rejects table", func(t *testing.T) {

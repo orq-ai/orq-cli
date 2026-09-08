@@ -139,6 +139,14 @@ controls on surface changes, whichever side they originate from.
   own text may imitate the surrounding structure, since it escapes framing.
   `--format` outranks `-o`, so a shell that pins a global format can still ask
   this command for something else.
+
+- **Added:** `orq traces thread`, which normalizes Chat Completions and
+  Responses spans into one readable thread. It renders XML by default, or
+  Markdown, JSON, YAML, or TOON when selected; `--slice` selects Python-style
+  message ranges, and dropped Responses content is shown explicitly as
+  `[content unavailable: N items]` rather than invented text. `--format`
+  outranks `-o`, so a shell that pins a global format can still ask this
+  command for a different render.
 - **Fixed:** `orq traces thread -o table` renders the readable thread again
   instead of a structured dump. The command branched on whether the format flag
   had been set rather than on the resolved format, so an explicit `-o table`

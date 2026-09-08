@@ -92,8 +92,8 @@ const (
 	threadFormatMarkdown = "markdown"
 )
 
-// threadFormats are the renders this command produces: two reading views and
-// the serializations of the canonical thread.
+// threadFormats are the explicit --format values. XML is also the command's
+// implicit default.
 var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yaml", "toon"}
 
 // resolveThreadFormat picks one render from one resolved value. A conversation
@@ -133,7 +133,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if spanID != "" {
 		return hydrateThread(api, traceID, spanID, params)
 	}
-	if api.GetTrace == nil || api.ListSpans == nil {
+	if api.GetTrace == nil {
 		return Thread{}, fmt.Errorf("trace API is unavailable")
 	}
 
@@ -278,6 +278,13 @@ type threadCandidate struct {
 }
 
 func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
+	if api.ListSpans == nil {
+		// Listing improves selection but is not required: the trace response
+		// still provides leading/root fallback IDs.
+		return nil, map[string]bool{}, nil
+	}
+	initialPageToken := params.GetString("page-token")
+	defer params.Set("page-token", initialPageToken)
 	var spans []map[string]any
 	seenTokens := map[string]bool{}
 	var listErr error

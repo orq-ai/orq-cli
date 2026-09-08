@@ -33,29 +33,12 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 		attributes = append(attributes, "tool_call_id="+threadAttribute(message.ToolCallID))
 	}
 
-	var ordinary, errors, exceptions []ThreadPart
-	for _, part := range message.Content {
-		switch part.Type {
-		case "error":
-			errors = append(errors, part)
-		case "exception":
-			exceptions = append(exceptions, part)
-		default:
-			ordinary = append(ordinary, part)
-		}
-	}
+	ordinary, errors, exceptions := partitionThreadParts(message.Content)
 	body := renderThreadParts(ordinary, maxChars)
 	body = appendThreadElement(body, "error", renderThreadParts(errors, maxChars))
 	body = appendThreadElement(body, "exception", renderThreadParts(exceptions, maxChars))
 
-	var reasoning, summaries []ThreadPart
-	for _, part := range message.Reasoning {
-		if part.Type == "summary" {
-			summaries = append(summaries, part)
-		} else {
-			reasoning = append(reasoning, part)
-		}
-	}
+	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
 	body = appendThreadElement(body, "reasoning", renderThreadParts(reasoning, maxChars))
 	body = appendThreadElement(body, "reasoning_summary", renderThreadParts(summaries, maxChars))
 
@@ -73,6 +56,34 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 		body = "[content unavailable]"
 	}
 	return "<message " + strings.Join(attributes, " ") + ">\n" + body + "\n</message>"
+}
+
+// partitionThreadParts keeps the XML and Markdown renderers' treatment of
+// error and exception content identical while allowing each renderer to choose
+// its own framing.
+func partitionThreadParts(parts []ThreadPart) (ordinary, errors, exceptions []ThreadPart) {
+	for _, part := range parts {
+		switch part.Type {
+		case "error":
+			errors = append(errors, part)
+		case "exception":
+			exceptions = append(exceptions, part)
+		default:
+			ordinary = append(ordinary, part)
+		}
+	}
+	return ordinary, errors, exceptions
+}
+
+func partitionThreadReasoning(parts []ThreadPart) (reasoning, summaries []ThreadPart) {
+	for _, part := range parts {
+		if part.Type == "summary" {
+			summaries = append(summaries, part)
+		} else {
+			reasoning = append(reasoning, part)
+		}
+	}
+	return reasoning, summaries
 }
 
 // threadOpenTag names the span the thread was read from, and the span facts a
@@ -179,6 +190,9 @@ var threadAttributeEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">",
 var threadTagPattern = regexp.MustCompile(`</?(?:thread|message|reasoning|reasoning_summary|tool_call|error|exception|span_error)\b`)
 
 func escapeThreadTags(text string) string {
+	// XML text cannot contain a raw ampersand. Escape it before inserting the
+	// framing escapes so the generated entities are not escaped a second time.
+	text = strings.ReplaceAll(text, "&", "&amp;")
 	return threadTagPattern.ReplaceAllStringFunc(text, func(match string) string {
 		return "&lt;" + strings.TrimPrefix(match, "<")
 	})
@@ -189,15 +203,15 @@ func escapeThreadTags(text string) string {
 // message stays well-formed. A trace can hold one tool result larger than the
 // context it is being read in.
 func truncateThreadText(text string, maxChars int) string {
-	if maxChars <= 0 || len(text) <= maxChars {
+	if maxChars <= 0 || len([]rune(text)) <= maxChars {
 		return text
 	}
-	kept := text[:maxChars]
-	// Never split a rune; a cut multi-byte character renders as garbage.
-	for len(kept) > 0 && !isThreadRuneStart(text[len(kept)]) {
-		kept = kept[:len(kept)-1]
+	kept := string([]rune(text)[:maxChars])
+	// XML framing is escaped before this function is called. Do not leave a
+	// generated entity such as "&lt;" half-written in the output.
+	if ampersand := strings.LastIndex(kept, "&"); ampersand >= 0 && !strings.Contains(kept[ampersand:], ";") {
+		kept = kept[:ampersand]
 	}
-	return kept + fmt.Sprintf("\n[truncated: %d more characters]", len(text)-len(kept))
+	remaining := len([]rune(text)) - len([]rune(kept))
+	return kept + fmt.Sprintf("\n[truncated: %d more characters]", remaining)
 }
-
-func isThreadRuneStart(b byte) bool { return b&0xC0 != 0x80 }

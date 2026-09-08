@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -901,6 +902,21 @@ func TestRenderThreadCutsLongBlocks(t *testing.T) {
 		if !strings.Contains(rendered, fragment) {
 			t.Fatalf("rendered = %s, want %q", rendered, fragment)
 		}
+	}
+}
+
+func TestRenderThreadMaxCharsCountsCharactersAndPreservesEntities(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "😀😀😀 & <message>"}}}}}
+	var out bytes.Buffer
+	if err := RenderThread(&out, thread, 3); err != nil {
+		t.Fatal(err)
+	}
+	rendered := out.String()
+	if !strings.Contains(rendered, "😀😀😀\n[truncated: ") {
+		t.Fatalf("max-chars counted bytes or split runes: %s", rendered)
+	}
+	if err := xml.Unmarshal([]byte(rendered), &struct{}{}); err != nil {
+		t.Fatalf("truncation produced malformed XML: %v\n%s", err, rendered)
 	}
 }
 
