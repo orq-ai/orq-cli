@@ -16,7 +16,9 @@ go run ./cmd/orq -o json doctor     # or: make doctor
 CI additionally runs, and these are worth reproducing locally when you touch what
 they cover: `go run ./cmd/orq -o json version | jq .` (the `-o json` contract —
 catches a flag rename or removal that breaks the machine format before it hits
-main), a diff of the `bartolo` version pinned in the root `go.mod` against
+main), `go run ./cmd/surface-dump -check` (the command-surface gate, listed
+above under Commands but also a CI step in its own right), a diff of the
+`bartolo` version pinned in the root `go.mod` against
 `packages/orq-rc/go.mod` (the two modules must not drift), `dash -n install.sh`
 plus the installer's dash-run fixture and upgrade/rollback tests (the installer
 must stay POSIX — macOS `/bin/sh` is bash in POSIX mode and accepts things dash

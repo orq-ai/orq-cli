@@ -262,8 +262,11 @@ orq default-format json
 
 `orq traces thread` is the one command where `-o` takes a different set of
 formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
-and `toon`. It refuses `table` — a conversation is nested (messages holding
-content parts, tool calls, reasoning) and has no columns to lay out.
+and `toon`. It refuses `table` from `-o` or `ORQ_OUTPUT_FORMAT` — a
+conversation is nested (messages holding content parts, tool calls, reasoning)
+and has no columns to lay out — but a config-file default of `table` (what
+`orq default-format table` writes) is treated as unset and still renders the
+default `xml`.
 
 ### Stability: what scripts may depend on
 
