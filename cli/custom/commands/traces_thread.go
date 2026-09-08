@@ -101,10 +101,10 @@ const (
 
 // threadFormats are the explicit --format values: the two reading views, then
 // whatever the CLI can serialize. The serializations are derived from bartolo's
-// own list rather than restated, so a format added there cannot be one that
-// `-o` accepts and `--format` calls invalid. `table` is accepted too and means
-// the XML render, for the same reason `-o table` does — one word, one answer,
-// whichever flag it arrives on.
+// own list rather than restated, so a serialization added there cannot be one
+// that `-o` accepts and `--format` calls invalid. That list is
+// [json yaml toon table]; `table` is filtered out here because it names a
+// layout, and this command has no table render to give it.
 var threadFormats = threadFormatList()
 
 func threadFormatList() []string {
@@ -119,27 +119,32 @@ func threadFormatList() []string {
 
 // resolveThreadFormat picks one render from one resolved value, in precedence
 // order: --format, then the serialization -o resolved to, then the XML render.
-// `table` is not a shape a conversation has, so it means XML however it
-// arrived — -o, ORQ_OUTPUT_FORMAT, a config file, --format, or nothing at all.
-// That is the whole point: one resolved value, one render, no route disagreeing
-// with another. --format is the per-command override, and the only way to ask
-// for Markdown, which the global flag does not accept.
+//
+// `table` is only ever resolved, never asked for. It is the CLI-wide default,
+// so the command has to decide what it means here — and a conversation is
+// nested, with no columns to lay out, so it means the XML render however it
+// arrived: -o, ORQ_OUTPUT_FORMAT, a config file, or nothing at all. That is the
+// whole point of resolving from the value: no route disagreeing with another.
+//
+// --format is a different question. It is this command's own vocabulary, asked
+// for explicitly, so a value outside it is a mistake and is reported as one —
+// answering `--format table` with a render the user did not name would be the
+// same silent substitution, just arriving through the other flag.
 func resolveThreadFormat(format string) (string, error) {
 	if strings.TrimSpace(format) == "" {
-		return threadRenderFor(bartolocli.OutputFormat()), nil
+		if resolved := bartolocli.OutputFormat(); resolved != threadFormatTable {
+			return resolved, nil
+		}
+		return threadFormatXML, nil
 	}
 	normalized := strings.ToLower(strings.TrimSpace(format))
-	if slices.Contains(threadFormats, normalized) || normalized == threadFormatTable {
-		return threadRenderFor(normalized), nil
+	if slices.Contains(threadFormats, normalized) {
+		return normalized, nil
+	}
+	if normalized == threadFormatTable {
+		return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is the CLI-wide default for -o, not a thread render; a conversation has no columns to lay out. `-o table` renders %s here, and --format takes [%s]", format, threadFormatXML, strings.Join(threadFormats, ", ")))
 	}
 	return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is not one of [%s]", format, strings.Join(threadFormats, ", ")))
-}
-
-func threadRenderFor(format string) string {
-	if format == threadFormatTable {
-		return threadFormatXML
-	}
-	return format
 }
 
 func optionalArg(args []string, index int) string {

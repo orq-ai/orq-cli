@@ -597,7 +597,6 @@ func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
 		// The config file resolves through the same viper key as everything
 		// else, which is the tier viper.Set writes.
 		{name: "config", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
-		{name: "explicit-table", args: []string{"--format", "table"}},
 		{name: "explicit-xml", args: []string{"--format", "xml"}},
 	}
 	var rendered []string
@@ -704,6 +703,19 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 		}
 		if !strings.Contains(out, "messages:") || strings.Contains(out, "<thread") {
 			t.Fatalf("yaml = %q", out)
+		}
+	})
+	// Answering an explicit `--format table` with the XML render would be the
+	// same silent substitution the resolution fix removed, arriving through
+	// the other flag.
+	t.Run("rejects table", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		_, err := runTracesThread(t, traceAPI(fake), "--format", "table", "trace-1", "chosen")
+		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
+			t.Fatalf("err = %v", err)
+		}
+		if !strings.Contains(err.Error(), "-o table` renders xml") {
+			t.Fatalf("error does not say where table went: %v", err)
 		}
 	})
 	t.Run("rejects an unknown format", func(t *testing.T) {
