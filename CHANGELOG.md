@@ -121,11 +121,22 @@ controls on surface changes, whichever side they originate from.
 
 - **Fixed:** `orq setup --server <host>` no longer dies with a raw nginx `405 Not
   Allowed` page right after the browser approval on a deployment that does not
-  route the identity RPC. The profile fetch calls
-  `POST /v3/rpc/identity/.../GetProfile` first and, only when the host answers
-  that route with a 404 or 405, falls back to the REST endpoint it replaced
-  (`GET /v2/api/me`). A 401 or a 5xx from the RPC keeps its own error, so a dead
-  credential is still reported as one.
+  route the identity RPC. The profile is read from whichever endpoint the host
+  serves — `POST /v3/rpc/identity/.../GetProfile`, or the REST endpoint it
+  replaced (`GET /v2/api/me`) when the first answers 404 or 405. A 401 or a 5xx
+  is the service itself talking and keeps its own error, so a dead credential is
+  still reported as one, and a host routing neither endpoint now gets a message
+  naming both URLs and both statuses instead of the proxy's HTML page.
+- **Changed:** the endpoint that answered is recorded on the session
+  (`profileTransport`) and used first from then on, so a host without the
+  identity RPC no longer pays a failing request before every profile fetch —
+  this runs on `orq whoami`, `orq workspace use` and every command that resolves
+  a workspace token, not only on setup. Sessions written before this field
+  existed try the RPC first, exactly as they did.
+- **Added:** `orq doctor` reports `config.profile_transport` and, on a host that
+  does not route the identity RPC, warns on `profile_base_url` instead of
+  calling a 404/405 there "Reachable" and adds a `profile_legacy_url` check for
+  the endpoint actually in use.
 
 - **Fixed: `orq auth login` no longer discards what `orq setup` recorded.** A
   second login rewrote the session from scratch, dropping the gateway key minted

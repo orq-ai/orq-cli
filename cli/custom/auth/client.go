@@ -26,6 +26,10 @@ type Client struct {
 	// projectID narrows every access token this client mints to one project.
 	// Empty means all projects the user can see.
 	projectID string
+	// profileTransport is the profile endpoint this host is known to serve,
+	// carried across invocations on the session so a host without the identity
+	// RPC does not pay a failing request before every profile fetch.
+	profileTransport string
 }
 
 func NewClient(apiBase string) *Client {
@@ -41,6 +45,21 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 	c.ctx = ctx
 	return c
 }
+
+// WithProfileTransport tells the client which profile endpoint this host was
+// last seen to serve, so it starts with that one. Returns the client for
+// chaining.
+func (c *Client) WithProfileTransport(transport string) *Client {
+	if transport == ProfileTransportRPC || transport == ProfileTransportREST {
+		c.profileTransport = transport
+	}
+	return c
+}
+
+// ProfileTransport names the profile endpoint that last answered, "" until one
+// has. Callers holding a session persist it so the next invocation skips the
+// endpoint this host does not route.
+func (c *Client) ProfileTransport() string { return c.profileTransport }
 
 // WithProject narrows the access tokens this client mints to one project, so
 // the server scopes both reads and creates to it. Returns the client for
@@ -218,29 +237,86 @@ type Profile struct {
 	} `json:"preferences"`
 }
 
-// FetchProfile calls the identity-api ProfileService.GetProfile Connect RPC,
-// falling back to the REST endpoint it replaced (GET <v1>/me) on deployments
-// that do not serve it. Both are live: api/my.orq.ai route the RPC, while a
-// deployment whose ingress has no /v3/rpc route answers the POST with an HTML
-// 404/405 from the proxy — which used to end setup right after the browser
-// approval, with nginx markup for an error message.
+// Which profile endpoint a host serves. `orq doctor` reports it and the
+// session stores it, so both spell it the same way.
+const (
+	ProfileTransportRPC  = "rpc"
+	ProfileTransportREST = "rest"
+)
+
+// FetchProfile reads the profile from whichever endpoint this host serves: the
+// identity-api ProfileService.GetProfile Connect RPC, or the REST endpoint it
+// replaced (GET <v1>/me). Both are live — api/my.orq.ai route the RPC, while a
+// deployment whose ingress has no /v3/rpc route answers the POST with a 404/405
+// from the proxy, which used to end setup right after the browser approval.
+//
+// The endpoint that answered is recorded on the client and persisted by the
+// session, so the wrong one is attempted at most once per host rather than
+// before every profile fetch — this runs on `whoami`, `workspace use` and every
+// command that resolves a workspace token, not only on setup.
 func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
-	profile, rpcErr := c.fetchProfileRPC(accessToken)
-	if rpcErr == nil {
+	first, second := ProfileTransportRPC, ProfileTransportREST
+	if c.profileTransport == ProfileTransportREST {
+		first, second = second, first
+	}
+	profile, firstErr := c.fetchProfileVia(first, accessToken)
+	if firstErr == nil {
+		c.profileTransport = first
 		return profile, nil
 	}
-	// Only a routing answer means "this host does not have the RPC". A 401 or a
-	// 5xx is the RPC itself talking, and retrying the old endpoint would trade a
-	// precise error for a confusing one.
+	// Only a routing answer means "this host does not serve that endpoint". A
+	// 401 or a 5xx is the service itself talking, and retrying the other
+	// endpoint would trade a precise error for a confusing one.
+	if !isRoutingError(firstErr) {
+		return nil, firstErr
+	}
+	profile, secondErr := c.fetchProfileVia(second, accessToken)
+	if secondErr == nil {
+		c.profileTransport = second
+		return profile, nil
+	}
+	// Statuses and URLs only. Both errors carry whatever body the proxy sent,
+	// and folding two of those into one message is how this bug looked to the
+	// user in the first place: a page of nginx markup where an error belongs.
+	return nil, fmt.Errorf("could not read your profile from %s: neither endpoint answered (%s; %s)",
+		c.URLs.APIBaseURL,
+		describeProfileAttempt(c.ProfileURL(first), firstErr),
+		describeProfileAttempt(c.ProfileURL(second), secondErr))
+}
+
+// isRoutingError reports whether err is the host saying it has no such route,
+// rather than the service behind it answering.
+func isRoutingError(err error) bool {
 	var apiErr *APIError
-	if !errors.As(rpcErr, &apiErr) || (apiErr.Status != http.StatusNotFound && apiErr.Status != http.StatusMethodNotAllowed) {
-		return nil, rpcErr
+	return errors.As(err, &apiErr) &&
+		(apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed)
+}
+
+// describeProfileAttempt renders one failed attempt without its response body,
+// which on a misrouted host is a proxy's HTML error page.
+func describeProfileAttempt(url string, err error) string {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return fmt.Sprintf("%s: HTTP %d", url, apiErr.Status)
 	}
-	profile, restErr := c.fetchProfileREST(accessToken)
-	if restErr != nil {
-		return nil, fmt.Errorf("%w (and the legacy profile endpoint failed too: %v)", rpcErr, restErr)
+	return fmt.Sprintf("%s: %v", url, err)
+}
+
+// ProfileURL is the endpoint a transport reads the profile from. Exported so
+// `orq doctor` probes the same URLs this client calls rather than rebuilding
+// them.
+func (c *Client) ProfileURL(transport string) string {
+	if transport == ProfileTransportREST {
+		return c.URLs.V1BaseURL + "/me"
 	}
-	return profile, nil
+	return c.URLs.ProfileBaseURL
+}
+
+func (c *Client) fetchProfileVia(transport, accessToken string) (*Profile, error) {
+	if transport == ProfileTransportREST {
+		return c.fetchProfileREST(accessToken)
+	}
+	return c.fetchProfileRPC(accessToken)
 }
 
 // fetchProfileRPC is the Connect unary call: a POST with a JSON request
@@ -262,7 +338,7 @@ func (c *Client) fetchProfileRPC(accessToken string) (*Profile, error) {
 // fetchProfileREST is the pre-identity-api endpoint: a GET answering with the
 // profile unwrapped.
 func (c *Client) fetchProfileREST(accessToken string) (*Profile, error) {
-	url := c.URLs.V1BaseURL + "/me"
+	url := c.ProfileURL(ProfileTransportREST)
 	var profile Profile
 	if err := c.jsonRequest(http.MethodGet, url, accessToken, nil, &profile); err != nil {
 		return nil, err
@@ -424,6 +500,7 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 		session.ActiveProjectID, session.ActiveProjectName = "", ""
 	}
 	session.ActiveWorkspaceKey = stringPtr(resolvedKey)
+	session.ProfileTransport = c.profileTransport
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
@@ -530,10 +607,12 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.WithProfileTransport(session.ProfileTransport)
 	profile, err := c.FetchProfile(session.BootstrapToken.Token)
 	if err != nil {
 		return nil, err
 	}
+	session.ProfileTransport = c.profileTransport
 	var activeKey *string
 	if session.ActiveWorkspaceKey != nil {
 		for _, w := range profile.Workspaces {

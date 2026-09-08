@@ -48,6 +48,13 @@ type Session struct {
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
 
+	// ProfileTransport records which profile endpoint this host answered on
+	// ("rpc" or "rest"), so a deployment whose ingress does not route the
+	// identity RPC is not re-probed before every profile fetch. Empty on
+	// sessions written before it existed, and on those the RPC is tried first
+	// exactly as it was then.
+	ProfileTransport string `json:"profileTransport,omitempty"`
+
 	// The gateway key `orq setup` minted from this login for coding agents,
 	// its id (the handle for revoking it), its expiry, and the workspace it
 	// was minted for. Not a credential for the platform API, so never a
