@@ -54,7 +54,7 @@ func TestVersionFlagPrintsAPIVersionVerbatim(t *testing.T) {
 	}
 }
 
-// `--json` on stdout is the machine contract, so the key set is pinned: a
+// `-o json` on stdout is the machine contract, so the key set is pinned: a
 // renamed or dropped key is a breaking change and has to show up as a failing
 // test rather than in someone's broken script.
 func TestVersionCommandJSONShape(t *testing.T) {
@@ -76,7 +76,7 @@ func TestVersionCommandJSONShape(t *testing.T) {
 	}
 	want := map[string]any{"cli": "5.0.0", "api_version": "4.13.22", "install_method": "installer"}
 	if !reflect.DeepEqual(captured.value, want) {
-		t.Fatalf("version --json = %#v, want %#v", captured.value, want)
+		t.Fatalf("version `-o json` = %#v, want %#v", captured.value, want)
 	}
 }
 

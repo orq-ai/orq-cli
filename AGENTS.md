@@ -10,7 +10,7 @@ make test                           # go test ./cli/custom/...
 go test ./cli/custom/commands -run TestVersionCommandReportsBothVersions   # one test
 go test ./... && go vet ./... && gofmt -l $(git ls-files '*.go')            # what CI runs
 go run ./cmd/surface-dump -check    # command-surface gate; -write to accept a change
-go run ./cmd/orq --json doctor      # or: make doctor
+go run ./cmd/orq -o json doctor     # or: make doctor
 ```
 
 CI additionally runs, and these are worth reproducing locally when you touch what
@@ -225,7 +225,7 @@ major:
 
 - **Is it breaking at all?** Only a documented part of the [stability
   contract](CHANGELOG.md#stability-contract) changing under a caller counts: a
-  changed `--json` shape, a changed exit code, an existing invocation that now
+  changed `-o json` shape, a changed exit code, an existing invocation that now
   does something else, or a command or flag pulled without a deprecation
   period. New behaviour behind a new flag, a TOON rendering change, and a
   generator or internal change that leaves `surface.json` untouched are not.
@@ -274,7 +274,7 @@ correct state; a changelog padded with refactors is not.
 
 `CHANGELOG.md`'s [Stability contract](CHANGELOG.md#stability-contract) is
 binding, not aspirational. The parts that most often catch a change out:
-`--json` on stdout is the machine contract and mirrors the API response shape;
+`-o json` on stdout is the machine contract and mirrors the API response shape;
 TOON (the default terminal format) is presentation-only and may change; errors
 go to stderr and results to stdout; and removing or renaming a command or flag
 is a breaking change that must be announced at least one release ahead.

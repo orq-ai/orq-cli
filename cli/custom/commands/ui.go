@@ -15,7 +15,7 @@ import (
 
 // Human-facing status lines. These go to STDERR so the structured result on
 // stdout (toon/json/yaml) stays clean for scripts, and they only render on an
-// interactive terminal — a piped or --json invocation sees none of this. Color
+// interactive terminal — a piped or `-o json` invocation sees none of this. Color
 // follows the same --no-color / NO_COLOR rules as the rest of the CLI.
 
 const (
@@ -73,22 +73,18 @@ func StderrIsTerminal() bool { return stderrIsTerminal() }
 
 // wantsHumanView reports whether a command should render its friendly view
 // instead of the structured payload: a person at a terminal who did not ask
-// for a machine format. Scripts (non-TTY) and explicit --json/-o always get
-// the structured output, so nothing automated changes.
+// for a machine format. Scripts (non-TTY) and an explicit -o always get the
+// structured output, so nothing automated changes.
 func wantsHumanView(cmd *cobra.Command) bool {
 	return humanOutput() && !machineFormatRequested(cmd)
 }
 
 // machineFormatRequested reports whether the user asked for a machine format
-// via --json or -o/--output-format. Both flags are viper-bound globals, so the
-// request can arrive as a flag, an env var (ORQ_JSON / ORQ_OUTPUT_FORMAT) or a
-// config-file entry - Flag.Changed alone misses everything but the flag, which
-// silently gave the human view to exactly the users who configured a machine
-// format.
+// via -o/--output-format. The flag is a viper-bound global, so the request can
+// arrive as a flag, an env var (ORQ_OUTPUT_FORMAT) or a config-file entry -
+// Flag.Changed alone misses everything but the flag, which silently gave the
+// human view to exactly the users who configured a machine format.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	if viper.GetBool("json") {
-		return true
-	}
 	if f := cmd.Flags().Lookup("output-format"); f != nil {
 		if f.Changed {
 			return true

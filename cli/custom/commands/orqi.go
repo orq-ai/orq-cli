@@ -39,7 +39,7 @@ var orqiFlagNames = []string{"-h", "--help", "--install"}
 // The set orq recognizes at the front is larger than the two flags this
 // scanner owns: splitPassthroughGlobals (cli/custom/launchargs.go) lifts
 // every root persistent flag off the front of an orqi line before cobra
-// dispatches — --profile, --no-input, --json, --server, --workspace,
+// dispatches — --profile, --no-input, --output-format, --server, --workspace,
 // --verbose, --no-color, --raw, -o and -j. So a flag orqi grows later that is
 // named like one of those, or like -h/--help/--install, is shadowed unless the
 // user writes it after a positional argument or after `--`.

@@ -15,10 +15,6 @@
           "type": "string"
         },
         {
-          "name": "json",
-          "type": "bool"
-        },
-        {
           "name": "no-color",
           "type": "bool"
         },

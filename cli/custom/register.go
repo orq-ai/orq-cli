@@ -28,7 +28,6 @@ import (
 var apiKeyEnvVars = commands.APIKeyEnvVars
 
 var (
-	setOutputFormat  = bartolocli.SetOutputFormat
 	stdoutIsTerminal = commands.StdoutIsTerminal
 	stderrIsTerminal = commands.StderrIsTerminal
 )
@@ -114,27 +113,6 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
 	bartolocli.AddGlobalFlag("project", "", "Project id, key or name to use for this invocation (overrides the session's active project)", "")
-	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
-	// as an alias because it is the machine contract this CLI shipped and
-	// documented; applyJSONAlias below turns it into --output-format json.
-	bartolocli.AddGlobalFlag("json", "", "Alias for --output-format json", false)
-}
-
-// applyJSONAlias makes --json mean `-o json` unless the user also passed an
-// explicit --output-format, which wins as the more specific request. It goes
-// into both stores: bartolo resolves its process-local format in its own
-// PersistentPreRunE before this hook, while this repo's custom renderers read
-// viper directly.
-func applyJSONAlias(cmd *cobra.Command) error {
-	if !viper.GetBool("json") {
-		return nil
-	}
-	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
-		return nil
-	}
-	viper.Set("output-format", "json")
-	_, err := setOutputFormat("json")
-	return err
 }
 
 // annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
@@ -165,9 +143,6 @@ func installSessionPreRun() {
 			}
 		}
 		applyNoColor()
-		if err := applyJSONAlias(cmd); err != nil {
-			return err
-		}
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(

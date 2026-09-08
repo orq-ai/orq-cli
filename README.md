@@ -97,7 +97,7 @@ Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Nam
 `orq connect --status` emits the abbreviated installed bundle version only when
 `skills` is requested and a selected agent has a recorded permanent link visible
 in the current global or local view. `orq doctor` shows the same version in its
-skills check, and `orq doctor --json` returns the full value at
+skills check, and `orq doctor -o json` returns the full value at
 `checks[id=skills].details.version`.
 
 **Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
@@ -226,7 +226,7 @@ Without a terminal, `orq switch` needs both halves named — `orq switch <worksp
 
 ```sh
 orq doctor
-orq doctor --json          # machine-readable
+orq doctor -o json        # machine-readable
 orq doctor --fix           # chmod the credential paths the permissions check flags (Unix; exits 1 if a repair fails)
 ```
 
@@ -250,7 +250,7 @@ orq agents list                             # table at a terminal, TOON when pip
 orq agents list --output-format toon        # TOON
 orq agents list --output-format json        # JSON
 orq agents list --output-format yaml        # YAML
-orq agents list --json                      # shortcut for JSON
+orq agents list -o json                     # machine-readable
 orq agents list --columns id,display_name   # pick table columns
 orq agents list -j 'data[].display_name'    # JMESPath query
 ```
@@ -263,7 +263,7 @@ orq default-format json
 
 ### Stability: what scripts may depend on
 
-`--json` on stdout is the only stability-guaranteed machine contract; its
+`-o json` on stdout is the only stability-guaranteed machine contract; its
 shape follows the orq API response behind the command. The table a terminal
 gets, and TOON, are presentation-only and may change rendering between
 releases. Exit codes are `0` success, `1` failure, `130`/`143` on
@@ -467,7 +467,7 @@ so and stops.
 ### Versions
 
 `orq version` prints the CLI version, the orq API version the build was
-generated against, and the install method it was installed through; `--json`
+generated against, and the install method it was installed through; `-o json`
 gives `cli`, `api_version` and `install_method`. `orq --version` remains the
 compact CLI-version line used by installers and scripts.
 
@@ -492,7 +492,7 @@ dist-tag for its release line and prints a single stderr line if a newer version
 exists, telling you to run `orq update`. The only request is a `GET` of the
 public `registry.npmjs.org` dist-tags document: no version, platform or
 identifier is sent anywhere. Nothing is printed when `ORQ_NO_UPDATE_CHECK` or
-`CI` is set, when output is piped, when `--json`/`-o` requested a machine
+`CI` is set, when output is piped, when `-o` requested a machine
 format, or when the check fails.
 
 ---

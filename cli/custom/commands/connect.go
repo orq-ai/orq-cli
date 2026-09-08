@@ -631,7 +631,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	return nil
 }
 
-// mcpResult is one agent's MCP outcome for --json. It is not folded into
+// mcpResult is one agent's MCP outcome for `-o json`. It is not folded into
 // agentResult: that struct describes the gateway wire, and an MCP entry has no
 // credential, no model count, and a scope of its own.
 type mcpResult struct {
@@ -1029,7 +1029,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 			payload[capSkills] = map[string]any{"removed": len(skillsRemoved)}
 		}
 		// The terminal gets this as an advisory line; a script needs it too, or
-		// --json reads as a clean removal.
+		// `-o json` reads as a clean removal.
 		if saved, _ := savedAPIKey(); saved != "" {
 			retained := map[string]any{"retained": true}
 			if id := savedGatewayKeyID(); id != "" {
@@ -1282,7 +1282,7 @@ type disconnectRow struct {
 // removeWiring is the removal itself, with no prompting, reporting of the
 // surviving credential, or payload emission around it. Split out so `orq auth
 // logout` can offer the same removal without inheriting disconnect's own
-// confirmation or its --json body.
+// confirmation or its `-o json` body.
 //
 // pathShown says a preview already listed the files, so the result names the
 // agent instead of repeating the path the user just read and approved.

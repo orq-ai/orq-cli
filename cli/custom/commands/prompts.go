@@ -12,7 +12,7 @@ import (
 )
 
 // promptStdio routes survey prompts to stderr. A prompt is interaction, not
-// output: survey defaults to os.Stdout, so `orq ... --json > out.json` at a
+// output: survey defaults to os.Stdout, so `orq ... -o json > out.json` at a
 // terminal would write the question into the JSON payload. Read from stdin,
 // write the prompt and the typed echo to stderr, leaving stdout for the result.
 func promptStdio() survey.AskOpt {

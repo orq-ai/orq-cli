@@ -211,7 +211,7 @@ func NewDoctorCommand() *cobra.Command {
 			}
 			// A person at a terminal gets the scannable colored checklist; the
 			// full structured report is verbose diagnostic data meant for
-			// machines and for `--json`/`-o`. Scripts (non-TTY) and an explicit
+			// machines and for `-o json`. Scripts (non-TTY) and an explicit
 			// format request always get the structured report.
 			// The report goes out first either way: a failed --fix has to name
 			// which path it could not repair before the error ends the run.
@@ -268,7 +268,7 @@ func emitBugReport(cmd *cobra.Command) error {
 
 // printDoctorSummary is the scannable, colored checklist a person sees at a
 // terminal. It is the primary output in that mode (the verbose structured
-// report is reserved for scripts and --json/-o), so it writes to stdout.
+// report is reserved for scripts and `-o json`), so it writes to stdout.
 func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCheck) {
 	out := bartolocli.Stdout
 	// Names the host every *_base_url row below probes, once instead of per row.
@@ -281,7 +281,7 @@ func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCh
 		authLine = "authenticated as " + userEmail
 	}
 	// Healthy per-agent rows collapse into the coding_agents summary; only
-	// fault rows earn their own line. --json keeps every row.
+	// fault rows earn their own line. `-o json` keeps every row.
 	rows := []tableRow{{marker: statusGlyph(authStatusToCheck(authStatus)), cells: []string{"auth", authLine}}}
 	for _, c := range checks {
 		// A clean credential-permissions check is retained in structured
@@ -296,7 +296,7 @@ func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCh
 		rows = append(rows, tableRow{marker: statusGlyph(c.Status), cells: []string{c.ID, c.Message}})
 	}
 	printTable(out, []string{"CHECK", "RESULT"}, rows)
-	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor --json` for full details."))
+	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor -o json` for full details."))
 }
 
 func authStatusToCheck(status string) string {
@@ -642,7 +642,7 @@ type credPermCandidate struct {
 
 // credPermResult is one candidate's finding. humanPath is the tilde'd,
 // shell-quoted form printed in messages; path stays the raw absolute path for
-// --json's Details.
+// the `-o json` Details.
 type credPermResult struct {
 	path      string
 	humanPath string

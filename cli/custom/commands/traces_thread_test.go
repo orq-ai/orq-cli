@@ -58,11 +58,10 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 	t.Helper()
 	oldOut, oldFormatter, oldRoot := bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root
 	oldHuman := humanOutput
-	oldJSON, oldFormat := viper.Get("json"), viper.Get("output-format")
+	oldFormat := viper.Get("output-format")
 	t.Cleanup(func() {
 		bartolocli.Stdout, bartolocli.Formatter, bartolocli.Root = oldOut, oldFormatter, oldRoot
 		humanOutput = oldHuman
-		viper.Set("json", oldJSON)
 		viper.Set("output-format", oldFormat)
 	})
 	humanOutput = func() bool { return false }
@@ -74,22 +73,15 @@ func runTracesThread(t *testing.T, api TraceAPI, args ...string) (string, error)
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Mirrors how the real root resolves the global format before RunE:
-		// the flag, then --json as its alias, land in viper for the command to
-		// read. Anything the flag did not set stays at the CLI-wide default.
+		// the flag lands in viper for the command to read, and anything it did
+		// not set stays at the CLI-wide default.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
 				viper.Set("output-format", flag.Value.String())
 			}
-			if flag := cmd.Flags().Lookup("json"); flag != nil && flag.Changed && flag.Value.String() == "true" {
-				viper.Set("json", true)
-				if f := cmd.Flags().Lookup("output-format"); f == nil || !f.Changed {
-					viper.Set("output-format", "json")
-				}
-			}
 			return nil
 		},
 	}
-	root.PersistentFlags().Bool("json", false, "")
 	root.PersistentFlags().StringP("output-format", "o", "table", "")
 	root.PersistentFlags().VisitAll(func(flag *pflag.Flag) { _ = viper.BindPFlag(flag.Name, flag) })
 	bartolocli.Root = root
@@ -548,7 +540,7 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "json", args: []string{"--json"}},
+		{name: "json", args: []string{"--output-format", "json"}},
 		{name: "yaml", args: []string{"--output-format", "yaml"}},
 		{name: "toon", args: []string{"--output-format", "toon"}},
 	}
@@ -731,18 +723,6 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 			if !slices.Contains(threadFormats, format) {
 				t.Fatalf("--format does not accept %q, which -o does", format)
 			}
-		}
-	})
-	// Contradictory input: --json is an alias for `-o json`, and applyJSONAlias
-	// yields to an explicit -o. The explicit flag wins, so this renders XML.
-	t.Run("explicit output-format beats --json", func(t *testing.T) {
-		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		out, err := runTracesThread(t, traceAPI(fake), "--json", "--output-format", "table", "trace-1", "chosen")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(out, "<thread ") {
-			t.Fatalf("--json -o table = %q", out)
 		}
 	})
 	t.Run("caps both renders", func(t *testing.T) {

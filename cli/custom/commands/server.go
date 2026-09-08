@@ -16,7 +16,7 @@ import (
 // gives a removed flag one release of warning before it disappears.
 //
 // Hidden, but not cobra's MarkDeprecated: pflag prints that notice through the
-// command's own writer, which lands on stdout and corrupts `--json` output.
+// command's own writer, which lands on stdout and corrupts `-o json` output.
 // custom.resolveServer reads the value and warns on stderr instead. Remove the
 // flag, that branch and this function together after one release.
 func DeprecatedAPIBaseFlag(cmd *cobra.Command) {

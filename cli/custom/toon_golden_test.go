@@ -9,7 +9,7 @@ import (
 )
 
 // TOON is the CLI's default human-facing output format, but it is
-// presentation-only: the stability-guaranteed machine contract is --json (see
+// presentation-only: the stability-guaranteed machine contract is -o json (see
 // CHANGELOG.md). toon-go has no tagged releases, so the dependency is pinned
 // to an exact pseudo-version in go.mod. This golden test is the tripwire for
 // bumping that pin: if a newer toon-go renders differently, the test fails

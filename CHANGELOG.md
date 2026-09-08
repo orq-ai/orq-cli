@@ -8,15 +8,15 @@ changes scripts could observe. Internal refactors do not.
 
 What you may depend on, and what you may not:
 
-- **`--json` output on stdout is the machine contract.** For commands backed
+- **`-o json` output on stdout is the machine contract.** For commands backed
   directly by an orq API endpoint, field names and structure follow that
   endpoint's response. Documented transformation commands may instead expose
   their own documented derived schema; for example, `orq traces thread`
-  returns a canonical normalized thread. Scripts should parse `--json` and
+  returns a canonical normalized thread. Scripts should parse `-o json` and
   nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
-  regeneration into `--json` with nothing in CI failing, so response
+  regeneration into `-o json` with nothing in CI failing, so response
   field-shape changes are announced here by hand, not caught automatically.
   Fingerprinting response types per command so the gate covers them too is
   tracked in RES-1133.
@@ -103,10 +103,10 @@ at release time, so they have to already exist.
 The orq API version a build was generated against is recorded, not encoded:
 
 - `orq --version` prints it under the CLI version, and `orq version` reports
-  both plus the install method (`--json` for scripts).
+  both plus the install method (`-o json` for scripts).
 - Every GitHub release's notes open with **Built against orq API <version>**.
 - `orq doctor` carries it as `binary.api_version` in the structured report
-  (`--json`) and in the `--report` bug-report body.
+  (`-o json`) and in the `--report` bug-report body.
 - `npm view @orq-ai/cli orqApiVersion` reads it off the published package.
 
 A release is now cut for any change that reaches a binary, including
@@ -140,6 +140,13 @@ controls on surface changes, whichever side they originate from.
   `--format` outranks `-o`, so a shell that pins a global format can still ask
   this command for something else.
 
+- **Removed: the global `--json` flag.** Use `-o json`, which it was an alias
+  for. Two spellings for one request meant `--json -o yaml` asked for two
+  formats at once, and the alias had to guess which one won. `ORQ_JSON` goes
+  with it; `ORQ_OUTPUT_FORMAT=json` is the environment spelling. Removed
+  without the usual release of notice because the CLI has not been announced
+  yet and no published script depends on it.
+
 - **Added:** `orq traces thread`, which normalizes Chat Completions and
   Responses spans into one readable thread. It renders XML by default, or
   Markdown, JSON, YAML, or TOON when selected with `--format`; `--slice`
@@ -155,7 +162,7 @@ controls on surface changes, whichever side they originate from.
   had been set rather than on the resolved format, so an explicit `-o table`
   silently produced a different render from the identical default. All four
   routes to `table` — flag, `ORQ_OUTPUT_FORMAT`, config file, or nothing — now
-  reach the same render. `--json`, `-o yaml` and `-o toon` are unchanged.
+  reach the same render. `-o json`, `-o yaml` and `-o toon` are unchanged.
 - **Fixed:** an invalid `orq traces thread --slice` expression reports the
   accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
   `strconv.Atoi` error, and an index too large to hold is reported as out of

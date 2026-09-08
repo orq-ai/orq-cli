@@ -3,7 +3,6 @@ package custom
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.yaml.in/yaml/v3"
 )
 
 // A machine that never ran `orq connect` has no manifest. The sweep half of
@@ -250,21 +248,6 @@ func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
 	}
 }
 
-func TestApplyJSONAliasReturnsFormatterErrors(t *testing.T) {
-	previous := setOutputFormat
-	t.Cleanup(func() { setOutputFormat = previous })
-	want := errors.New("formatter unavailable")
-	setOutputFormat = func(string) (func(), error) { return nil, want }
-	viper.Set("json", true)
-	t.Cleanup(func() { viper.Set("json", false) })
-
-	cmd := &cobra.Command{Use: "doctor"}
-	cmd.Flags().String("output-format", "toon", "")
-	if err := applyJSONAlias(cmd); !errors.Is(err, want) {
-		t.Fatalf("applyJSONAlias error = %v, want %v", err, want)
-	}
-}
-
 func TestApplyNoColorPreservesTerminalTableRendering(t *testing.T) {
 	previousTerminal := stdoutIsTerminal
 	previousFormatter := bartolocli.Formatter
@@ -332,7 +315,10 @@ func TestMigrationRunsBeforeInMemoryProfileTypeRepair(t *testing.T) {
 	}
 }
 
-func TestJSONAliasAndExplicitOutputFormatPrecedence(t *testing.T) {
+// The global `--json` is gone: `-o json` is the only spelling. Keeping both
+// was two ways to ask for one thing, and `--json -o yaml` asked for two
+// formats at once.
+func TestJSONFlagIsGone(t *testing.T) {
 	binPath := filepath.Join(t.TempDir(), "orq-json-contract")
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -345,38 +331,31 @@ func TestJSONAliasAndExplicitOutputFormatPrecedence(t *testing.T) {
 		t.Fatalf("build orq for JSON contract test: %v\n%s", err, out)
 	}
 
-	for _, tc := range []struct {
-		name string
-		args []string
-		json bool
-	}{
-		{name: "explicit yaml wins", args: []string{"--json", "-o", "yaml", "version"}},
-		{name: "json alias", args: []string{"--json", "version"}, json: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(binPath, tc.args...)
-			cmd.Dir = t.TempDir()
-			cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
-			out, err := cmd.Output()
-			if err != nil {
-				t.Fatalf("orq %v: %v", tc.args, err)
-			}
-			if tc.json {
-				var payload map[string]any
-				if err := json.Unmarshal(out, &payload); err != nil {
-					t.Fatalf("--json output is not JSON: %v\n%s", err, out)
-				}
-				return
-			}
-			var payload map[string]any
-			if err := yaml.Unmarshal(out, &payload); err != nil {
-				t.Fatalf("explicit YAML output is not YAML: %v\n%s", err, out)
-			}
-			if json.Valid(out) {
-				t.Fatalf("--json overrode explicit -o yaml: %s", out)
-			}
-		})
-	}
+	t.Run("rejects --json", func(t *testing.T) {
+		cmd := exec.Command(binPath, "--json", "version")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("orq --json version succeeded: %s", out)
+		}
+		if !strings.Contains(string(out), "unknown flag: --json") {
+			t.Fatalf("orq --json version = %s, want an unknown-flag error", out)
+		}
+	})
+	t.Run("serializes with -o json", func(t *testing.T) {
+		cmd := exec.Command(binPath, "-o", "json", "version")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("orq -o json version: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(out, &payload); err != nil {
+			t.Fatalf("-o json output is not JSON: %v\n%s", err, out)
+		}
+	})
 }
 
 func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
