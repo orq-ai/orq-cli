@@ -8892,6 +8892,11 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "include",
+          "shorthand": "i",
+          "type": "stringSlice"
+        },
+        {
           "name": "match",
           "type": "string"
         },
@@ -8907,10 +8912,6 @@
         {
           "name": "reasoning",
           "type": "bool"
-        },
-        {
-          "name": "show",
-          "type": "stringSlice"
         },
         {
           "name": "slice",

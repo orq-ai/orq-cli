@@ -118,7 +118,7 @@ func SliceThread(thread Thread, expression string) (Thread, error) {
 	return result, nil
 }
 
-// ThreadKinds are the kinds --show selects from: the four roles a reader sees
+// ThreadKinds are the kinds --include selects from: the four roles a reader sees
 // in the render, and reasoning, which is a section inside a message rather than
 // a message of its own. `system` covers the developer role, which the render
 // presents as an instruction the same way.
@@ -128,7 +128,7 @@ const threadKindReasoning = "reasoning"
 
 // FilterThread keeps only the selected kinds. Role names decide whose messages
 // survive; reasoning decides whether the recorded thinking inside them does. A
-// selection naming no role keeps every role, so --show reasoning reads as "the
+// selection naming no role keeps every role, so --include reasoning reads as "the
 // thinking, wherever it was recorded" rather than as nothing at all.
 //
 // A message the selection empties is dropped. One that was already empty

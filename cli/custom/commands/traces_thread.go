@@ -28,7 +28,7 @@ type TraceAPI struct {
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
-	var show []string
+	var include []string
 	var match string
 	var spans bool
 	maxChars := 4000
@@ -41,19 +41,34 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
+			"",
+			"Given a trace id alone, the newest conversational span is read. --spans lists what that choice was made between, why each other span was passed over, and the span id to pass as the second argument to read one yourself.",
+			"",
+			"Three filters narrow a long conversation, and they apply in this order:",
+			"",
+			"  --slice     a position range over the messages as recorded, Python-style: 2, 2:, :-1, -3:",
+			"  --match     keep the messages whose recorded text matches a regular expression, searching what a render shows: message text, reasoning, JSON values, and tool calls by name, id and arguments",
+			"  --include   render only these parts of what is left: system (which covers developer), user, assistant, tool, reasoning",
+			"",
+			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it.",
+			"",
+			"--max-chars cuts each rendered block and says how much it left out; 0 renders everything. It is the last thing applied, so a match is found in the full text even when the render shows a cut of it.",
 		}, "\n"),
 		Example: strings.Join([]string{
-			"  orq traces thread tr_123 --slice 2",
-			"  orq traces thread tr_123 --slice 2:",
-			"  orq traces thread tr_123 --slice :-1",
-			"  orq traces thread tr_123 -o markdown",
-			"  orq traces thread tr_123 -o json",
-			"  orq traces thread tr_123 --spans",
-			"  orq traces thread tr_123 --match search_docs",
-			"  orq traces thread tr_123 --show user,assistant",
-			"  orq traces thread tr_123 --show reasoning",
-			"  orq traces thread tr_123 --reasoning=false",
-			"  orq traces thread tr_123 --max-chars 0",
+			"  orq traces thread tr_123                           # the newest conversational span",
+			"  orq traces thread tr_123 --spans                   # which span that is, and the alternatives",
+			"  orq traces thread tr_123 span_456                  # read one of them yourself",
+			"",
+			"  orq traces thread tr_123 -o markdown               # to paste into a ticket or chat",
+			"  orq traces thread tr_123 -o json                   # the canonical thread, for scripts",
+			"",
+			"  orq traces thread tr_123 --slice -4:               # the last four messages",
+			"  orq traces thread tr_123 --match search_docs       # the turns that mention a tool",
+			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
+			"  orq traces thread tr_123 -i reasoning              # only the thinking",
+			"  orq traces thread tr_123 --reasoning=false         # same as -i for every role but reasoning",
+			"",
+			"  orq traces thread tr_123 --match error -i tool --max-chars 0",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -72,12 +87,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if match != "" {
-				thread, err = MatchThread(thread, match)
-				if err != nil {
-					return bartolocli.NewValueError(err)
-				}
-			}
+			// Position, then content, then parts. --slice runs first so its
+			// indices mean what the thread recorded: a slice of whatever
+			// --match happened to keep would move under the pattern.
 			if slice != "" {
 				thread, err = SliceThread(thread, slice)
 				if err != nil {
@@ -86,11 +98,17 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if len(show) > 0 {
-				if !reasoning && slices.Contains(show, threadKindReasoning) {
-					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --show reasoning"))
+			if match != "" {
+				thread, err = MatchThread(thread, match)
+				if err != nil {
+					return bartolocli.NewValueError(err)
 				}
-				thread, err = FilterThread(thread, show)
+			}
+			if len(include) > 0 {
+				if !reasoning && slices.Contains(include, threadKindReasoning) {
+					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --include reasoning"))
+				}
+				thread, err = FilterThread(thread, include)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
@@ -120,7 +138,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans and which one this command would read, instead of rendering a thread")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
-	cmd.Flags().StringSliceVar(&show, "show", nil, fmt.Sprintf("Show only these parts of the conversation [%s]; naming no role shows every role, so --show reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
+	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this
@@ -534,9 +552,20 @@ func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format
 		}
 		Warn("%v; listing the %d span(s) read before the failure", err, len(summaries))
 	}
+	if len(summaries) == 0 {
+		// A trace id that lists nothing is nearly always the wrong id: a trace
+		// summary carries both a record `id` and the `trace_id` this command
+		// wants, and they are not the same string.
+		Warn("no spans listed for trace %q; `orq traces search` returns both an `id` and a `trace_id`, and this command takes the trace_id", traceID)
+	}
 	if format == threadFormatXML || format == threadFormatMarkdown {
 		printThreadSpans(summaries)
 		return nil
+	}
+	if summaries == nil {
+		// An absent list and an empty one are the same fact to a reader, and
+		// `null` is the one a script has to special-case.
+		summaries = []ThreadSpan{}
 	}
 	restore, err := bartolocli.SetOutputFormat(format)
 	if err != nil {

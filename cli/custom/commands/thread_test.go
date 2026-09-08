@@ -1165,7 +1165,7 @@ func TestFilterThread(t *testing.T) {
 }
 
 // A role selection carries the message's own reasoning only when the selection
-// asks for it: dropping the thinking is what --show user,assistant is for.
+// asks for it: dropping the thinking is what --include user,assistant is for.
 func TestFilterThreadDropsReasoningNoRoleSelectionAskedFor(t *testing.T) {
 	thread := Thread{Messages: []ThreadMessage{{
 		Role:      "assistant",

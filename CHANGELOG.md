@@ -159,18 +159,20 @@ controls on surface changes, whichever side they originate from.
   (`evaluator`, `no recorded detail`) — the pick was previously invisible, and
   a reader who got a conversation they did not expect had no way to see what it
   was chosen between or which span id to pass as the second argument. Prints a
-  table for a person, and `{"spans": [...]}` under `-o json`.
+  table for a person, and `{"spans": [...]}` under `-o json`. A trace that lists
+  no spans says so on stderr: a trace summary carries both a record `id` and a
+  `trace_id`, and this command takes the `trace_id`.
 
 - **Added:** `orq traces thread --match <regex>` keeps the messages whose
   recorded text matches, searching everything a render shows — message text,
   reasoning, JSON values, and tool calls by name, id and arguments. Matching is
   case-insensitive; use the inline `(?-i)` flag to respect case. Composes with
-  `--show` and `--slice`.
+  `--include` and `--slice`.
 
-- **Added:** `orq traces thread --show` renders just the parts of the
+- **Added:** `orq traces thread --include` (`-i`) renders just the parts of the
   conversation you name — `system` (which covers `developer`), `user`,
-  `assistant`, `tool` and `reasoning`. A selection naming no role shows every
-  role, so `--show reasoning` is the recorded thinking from all of them. It applies to every
+  `assistant`, `tool` and `reasoning`. A selection naming no role keeps every
+  role, so `-i reasoning` is the recorded thinking from all of them. It applies to every
   render, `-o json` included. `--reasoning=false` still works as the shorthand
   it always was; asking for both at once is an input error rather than a
   silently empty thread.

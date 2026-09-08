@@ -1137,3 +1137,37 @@ func TestTracesThreadMatchesTheRenderedThread(t *testing.T) {
 		t.Fatalf("--match kept the wrong messages: %q", out)
 	}
 }
+
+// --slice indexes the thread as recorded, so it runs before --match: a slice of
+// the matches would move under the pattern, which is not what a position means.
+func TestTracesThreadSlicesBeforeItMatches(t *testing.T) {
+	span := map[string]any{"span": map[string]any{"attributes": map[string]any{
+		"gen_ai.input": []any{
+			map[string]any{"role": "user", "content": "alpha"},
+			map[string]any{"role": "assistant", "content": "bravo"},
+			map[string]any{"role": "user", "content": "charlie"},
+		},
+		"gen_ai.output": map[string]any{"role": "assistant", "content": "delta"},
+	}}}
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": span}}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--slice", "2:", "--match", "bravo|charlie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "charlie") || strings.Contains(out, "bravo") {
+		t.Fatalf("slice ran after the match: %q", out)
+	}
+}
+
+// A wrong id is the usual reason a trace lists no spans, so --spans says so on
+// stderr and still emits a list a script can parse rather than a null.
+func TestTracesThreadReportsATraceWithNoSpans(t *testing.T) {
+	fake := &fakeTraceAPI{pages: map[string]map[string]any{"": {"data": []any{}}}}
+	out, err := runTracesThread(t, traceAPI(fake), "01M1W1HGV4HR3MAZWD0N222D1E", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"spans": []`) {
+		t.Fatalf("--spans = %q, want an empty list", out)
+	}
+}
