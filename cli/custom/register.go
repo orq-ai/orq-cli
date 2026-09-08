@@ -612,6 +612,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	attachTracesThread(root, traceAPI)
+	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewOrqiCommand())
@@ -903,4 +904,73 @@ func improveArgErrors(cmd *cobra.Command) {
 	for _, sub := range cmd.Commands() {
 		improveArgErrors(sub)
 	}
+}
+
+// defaultTimeWindow is the window the time-scoped query commands assume when
+// the caller names neither end. Their APIs require `from` and `to`, and "no
+// window" is never what someone typing a bare search meant.
+const defaultTimeWindow = "7d"
+
+// timeWindowedCommands are the commands that take a `from`/`to` body window:
+// every trace, log and reporting query. Listed by path rather than detected by
+// flag name so a future generated command with an unrelated --from is not
+// silently given a window it never asked for.
+var timeWindowedCommands = [][]string{
+	{"traces", "search"},
+	{"traces", "query-oql"},
+	{"traces", "aggregate"},
+	{"logs", "search"},
+	{"logs", "query"},
+	{"logs", "aggregate"},
+	{"logs", "get-patterns"},
+	{"logs", "get-context"},
+	{"reporting", "query"},
+}
+
+// applyDefaultTimeWindow gives those commands a default `from`/`to` of the last
+// 7 days. Only when the body is being built from flags: a body piped in or read
+// with --from-file is machine-written and sent as given, and an end the user
+// named always wins.
+func applyDefaultTimeWindow(root *cobra.Command) {
+	for _, path := range timeWindowedCommands {
+		cmd := root
+		for _, name := range path {
+			cmd = childCommand(cmd, name)
+			if cmd == nil {
+				break
+			}
+		}
+		if cmd == nil || cmd.RunE == nil {
+			continue
+		}
+		cmd.Long += "\n\nWith no `from`/`to`, the window is the last 7 days. " +
+			"A body piped in or read with --from-file is sent as given."
+		run := cmd.RunE
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if !bodyFromFlagsOnly(cmd) {
+				return run(cmd, args)
+			}
+			for name, value := range map[string]string{"from": defaultTimeWindow, "to": "now"} {
+				if f := cmd.Flags().Lookup(name); f != nil && !f.Changed {
+					if err := cmd.Flags().Set(name, value); err != nil {
+						return err
+					}
+				}
+			}
+			return run(cmd, args)
+		}
+	}
+}
+
+// bodyFromFlagsOnly reports whether the request body will be assembled from
+// flags alone — no --from-file, no piped or redirected stdin.
+func bodyFromFlagsOnly(cmd *cobra.Command) bool {
+	if f := cmd.Flags().Lookup("from-file"); f != nil && f.Changed {
+		return false
+	}
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }

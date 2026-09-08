@@ -181,6 +181,14 @@ add-before-remove ordering.
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.
 
+## Working tree
+
+Never run `git checkout`, `git restore` or `git stash` on files you did not
+change. Other agents work in this checkout at the same time, and their
+uncommitted edits are unrecoverable once discarded. To decide whether a failure
+is yours, reproduce it in a throwaway worktree
+(`git worktree add -d /tmp/head HEAD`) instead of reverting files in place.
+
 ## Commits
 
 Conventional commits: `type(scope): subject`. Types in use here are `feat`,

@@ -147,6 +147,13 @@ controls on surface changes, whichever side they originate from.
   without the usual release of notice because the CLI has not been announced
   yet and no published script depends on it.
 
+- **Changed:** the time-scoped query commands default to the last 7 days when
+  neither `--from` nor `--to` is given, instead of failing on the required
+  fields: `traces search`, `traces query-oql`, `traces aggregate`, `logs
+  search`, `logs query`, `logs aggregate`, `logs get-patterns`, `logs
+  get-context` and `reporting query`. An end you pass yourself is untouched,
+  and a body supplied on stdin or with `--from-file` is sent exactly as given.
+
 - **Added:** `orq traces thread`, which normalizes Chat Completions and
   Responses spans into one readable thread. It renders XML by default, or
   Markdown, JSON, YAML, or TOON when selected with `--format`; `--slice`
