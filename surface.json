@@ -8892,6 +8892,10 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "match",
+          "type": "string"
+        },
+        {
           "name": "max-chars",
           "type": "int"
         },
@@ -8911,6 +8915,10 @@
         {
           "name": "slice",
           "type": "string"
+        },
+        {
+          "name": "spans",
+          "type": "bool"
         }
       ]
     },

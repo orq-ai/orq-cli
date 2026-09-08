@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -179,4 +180,57 @@ func threadRoleKind(role string) string {
 		return "system"
 	}
 	return role
+}
+
+// MatchThread keeps the messages whose recorded text matches. Everything a
+// render puts on the page is searched, tool calls included: a call's name and
+// its arguments are recorded text like any other, and "where did it call
+// search_docs" is the question this exists to answer. Matching is
+// case-insensitive; a pattern that means the case it wrote says so with the
+// inline `(?-i)` flag.
+func MatchThread(thread Thread, pattern string) (Thread, error) {
+	expression, err := regexp.Compile("(?i)" + pattern)
+	if err != nil {
+		return Thread{}, fmt.Errorf("invalid match pattern %q: %w", pattern, err)
+	}
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
+		if messageMatches(message, expression) {
+			kept = append(kept, message)
+		}
+	}
+	result := thread
+	result.Messages = kept
+	return result, nil
+}
+
+func messageMatches(message ThreadMessage, expression *regexp.Regexp) bool {
+	// The result of a call carries the call's id and nothing else that names
+	// it, so searching for that id has to find both sides of the pair.
+	if expression.MatchString(message.Name) || expression.MatchString(message.ToolCallID) {
+		return true
+	}
+	for _, parts := range [][]ThreadPart{message.Content, message.Reasoning} {
+		for _, part := range parts {
+			if expression.MatchString(part.Text) || expression.MatchString(part.UnsupportedType) {
+				return true
+			}
+			if part.Value != nil {
+				if encoded, _ := encodeThreadValue(part.Value); expression.MatchString(encoded) {
+					return true
+				}
+			}
+		}
+	}
+	for _, call := range message.ToolCalls {
+		if expression.MatchString(call.Name) || expression.MatchString(call.ID) {
+			return true
+		}
+		if call.Arguments != nil {
+			if encoded, _ := encodeThreadValue(call.Arguments); expression.MatchString(encoded) {
+				return true
+			}
+		}
+	}
+	return false
 }

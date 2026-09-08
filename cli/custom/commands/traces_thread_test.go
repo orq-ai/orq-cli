@@ -1056,3 +1056,84 @@ func TestTracesThreadReportsAPartialSpanListing(t *testing.T) {
 		t.Fatalf("stderr = %q, want the listing failure and how many spans were seen", stderr.String())
 	}
 }
+
+func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "new"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "old", "has_detail": true, "started_at": "2025-01-01T00:00:00Z", "name": "generation"},
+			map[string]any{"span_id": "new", "has_detail": true, "started_at": "2025-01-02T00:00:00Z", "name": "generation"},
+			map[string]any{"span_id": "eval", "type": "EVALUATOR", "has_detail": true, "started_at": "2025-01-03T00:00:00Z"},
+			map[string]any{"span_id": "thin", "has_detail": false, "started_at": "2025-01-04T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.getCalls) != 0 {
+		t.Fatalf("--spans hydrated spans: %v", fake.getCalls)
+	}
+	// Newest first among the candidates, then the skipped ones with a reason.
+	var rows [][]string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n")[1:] {
+		rows = append(rows, strings.Fields(line))
+	}
+	want := [][]string{
+		{"1", "new", "2025-01-02T00:00:00Z", "generation"},
+		{"2", "old", "2025-01-01T00:00:00Z", "generation"},
+		{"-", "eval", "EVALUATOR", "2025-01-03T00:00:00Z", "evaluator"},
+		{"-", "thin", "2025-01-04T00:00:00Z", "no", "recorded", "detail"},
+	}
+	if fmt.Sprint(rows) != fmt.Sprint(want) {
+		t.Fatalf("--spans rows = %v, want %v", rows, want)
+	}
+}
+
+func TestTracesThreadListsSpansAsJSON(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "new"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "new", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			map[string]any{"span_id": "eval", "type": "evaluator", "has_detail": true},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	if len(payload.Spans) != 2 {
+		t.Fatalf("spans = %+v", payload.Spans)
+	}
+	if payload.Spans[0].SpanID != "new" || payload.Spans[0].Order != 1 {
+		t.Fatalf("first span = %+v", payload.Spans[0])
+	}
+	if payload.Spans[1].Skipped != "evaluator" || payload.Spans[1].Order != 0 {
+		t.Fatalf("skipped span = %+v", payload.Spans[1])
+	}
+}
+
+func TestTracesThreadRefusesASpanArgumentWithSpans(t *testing.T) {
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("explicit")}}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--spans")
+	if err == nil || !strings.Contains(err.Error(), "no span-id argument") {
+		t.Fatalf("error = %v, want the --spans argument refusal", err)
+	}
+}
+
+func TestTracesThreadMatchesTheRenderedThread(t *testing.T) {
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("the question")}}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--match", "question")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "the question") || strings.Contains(out, "answer") {
+		t.Fatalf("--match kept the wrong messages: %q", out)
+	}
+}

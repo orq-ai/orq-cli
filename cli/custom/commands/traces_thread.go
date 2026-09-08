@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -28,6 +29,8 @@ type TraceAPI struct {
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
 	var only []string
+	var match string
+	var spans bool
 	maxChars := 4000
 	reasoning := true
 	params := viper.New()
@@ -45,6 +48,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --slice :-1",
 			"  orq traces thread tr_123 -o markdown",
 			"  orq traces thread tr_123 -o json",
+			"  orq traces thread tr_123 --spans",
+			"  orq traces thread tr_123 --match search_docs",
 			"  orq traces thread tr_123 --only user,assistant",
 			"  orq traces thread tr_123 --only reasoning",
 			"  orq traces thread tr_123 --reasoning=false",
@@ -57,9 +62,21 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if spans {
+				if optionalArg(args, 1) != "" {
+					return bartolocli.NewValueError(errors.New("--spans lists the spans to choose between, so it takes no span-id argument"))
+				}
+				return renderThreadSpans(api, args[0], params, resolved)
+			}
 			thread, err := resolveTraceThread(api, args[0], optionalArg(args, 1), params)
 			if err != nil {
 				return err
+			}
+			if match != "" {
+				thread, err = MatchThread(thread, match)
+				if err != nil {
+					return bartolocli.NewValueError(err)
+				}
 			}
 			if slice != "" {
 				thread, err = SliceThread(thread, slice)
@@ -101,6 +118,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
+	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans and which one this command would read, instead of rendering a thread")
+	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this regular expression, tool calls included (case-insensitive; `(?-i)` to respect case)")
 	cmd.Flags().StringSliceVar(&only, "only", nil, fmt.Sprintf("Keep only these message types [%s]; naming no role keeps every role, so --only reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
@@ -328,12 +347,34 @@ type threadCandidate struct {
 	order     int
 }
 
+// ThreadSpan is one row of --spans: a span of the trace, and whether this
+// command would read the conversation from it. Order is its 1-based position in
+// the try order and is zero on a skipped span, so the two are one sorted list
+// rather than two lists a reader has to merge.
+type ThreadSpan struct {
+	SpanID    string `json:"span_id"`
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type,omitempty"`
+	StartedAt string `json:"started_at,omitempty"`
+	Order     int    `json:"order,omitempty"`
+	Skipped   string `json:"skipped,omitempty"`
+}
+
 func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
+	candidates, excluded, _, err := listThreadSpans(api, traceID, params)
+	return candidates, excluded, err
+}
+
+// listThreadSpans pages the trace's spans once and reports both what selection
+// will try, newest first, and every span it summarised — the skipped ones
+// included, since --spans exists to show what the pick was made between.
+func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, []ThreadSpan, error) {
 	if api.ListSpans == nil {
 		// Listing improves selection but is not required: the trace response
 		// still provides leading/root fallback IDs.
-		return nil, map[string]bool{}, nil
+		return nil, map[string]bool{}, nil, nil
 	}
+	var summaries []ThreadSpan
 	initialPageToken := params.GetString("page-token")
 	defer params.Set("page-token", initialPageToken)
 	var spans []map[string]any
@@ -359,11 +400,27 @@ func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]
 	seenIDs := make(map[string]bool, len(spans))
 	for index, span := range spans {
 		id := threadString(span["span_id"])
-		if id == "" || seenIDs[id] || excluded[id] || span["has_detail"] == false {
+		if id == "" || seenIDs[id] {
 			continue
 		}
 		seenIDs[id] = true
-		startedAt, _ := time.Parse(time.RFC3339Nano, threadString(span["started_at"]))
+		summary := ThreadSpan{
+			SpanID:    id,
+			Name:      threadString(span["name"]),
+			Type:      threadString(span["type"]),
+			StartedAt: threadString(span["started_at"]),
+		}
+		switch {
+		case excluded[id]:
+			summary.Skipped = "evaluator"
+		case span["has_detail"] == false:
+			summary.Skipped = "no recorded detail"
+		}
+		summaries = append(summaries, summary)
+		if summary.Skipped != "" {
+			continue
+		}
+		startedAt, _ := time.Parse(time.RFC3339Nano, summary.StartedAt)
 		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, order: index})
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
@@ -372,7 +429,21 @@ func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]
 		}
 		return candidates[i].startedAt.After(candidates[j].startedAt)
 	})
-	return candidates, excluded, listErr
+	tryOrder := make(map[string]int, len(candidates))
+	for index, candidate := range candidates {
+		tryOrder[candidate.id] = index + 1
+	}
+	for index := range summaries {
+		summaries[index].Order = tryOrder[summaries[index].SpanID]
+	}
+	sort.SliceStable(summaries, func(i, j int) bool {
+		left, right := summaries[i].Order, summaries[j].Order
+		if (left == 0) != (right == 0) {
+			return right == 0
+		}
+		return left < right
+	})
+	return candidates, excluded, summaries, listErr
 }
 
 func listSpanData(response map[string]any) []map[string]any {
@@ -447,4 +518,48 @@ func unwrapThreadEnvelope(response map[string]any, key string) map[string]any {
 		return value
 	}
 	return response
+}
+
+// renderThreadSpans answers --spans: the spans of the trace, in the order
+// selection would try them, with the skipped ones and why. The reader who gets
+// a conversation they did not expect has no other way to see what it was chosen
+// between, or which span id to pass as the second argument.
+func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format string) error {
+	_, _, summaries, err := listThreadSpans(api, traceID, params)
+	if err != nil {
+		// The same partial-listing rule as selection: report what was listed
+		// before the failure rather than claiming the trace has only these.
+		if len(summaries) == 0 {
+			return err
+		}
+		Warn("%v; listing the %d span(s) read before the failure", err, len(summaries))
+	}
+	if format == threadFormatXML || format == threadFormatMarkdown {
+		printThreadSpans(summaries)
+		return nil
+	}
+	restore, err := bartolocli.SetOutputFormat(format)
+	if err != nil {
+		return err
+	}
+	defer restore()
+	return emit(struct {
+		Spans []ThreadSpan `json:"spans"`
+	}{summaries})
+}
+
+func printThreadSpans(summaries []ThreadSpan) {
+	if len(summaries) == 0 {
+		fmt.Fprintln(bartolocli.Stdout, "No spans listed for this trace.")
+		return
+	}
+	rows := make([]tableRow, 0, len(summaries))
+	for _, span := range summaries {
+		order := "-"
+		if span.Order > 0 {
+			order = strconv.Itoa(span.Order)
+		}
+		rows = append(rows, tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, span.Skipped}})
+	}
+	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "NAME", "SKIPPED"}, rows)
 }

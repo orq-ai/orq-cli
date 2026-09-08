@@ -1183,3 +1183,48 @@ func TestFilterThreadDropsReasoningNoRoleSelectionAskedFor(t *testing.T) {
 		t.Fatalf("FilterThread() dropped content: %+v", got.Messages)
 	}
 }
+
+func TestMatchThread(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{
+		{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Where are the DOCS?"}}},
+		{Index: 1, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "call_1", Name: "search_docs", Arguments: map[string]any{"query": "pricing"}}}},
+		{Index: 2, Role: "tool", ToolCallID: "call_1", Content: []ThreadPart{{Type: "json", Value: map[string]any{"hits": 3}}}},
+		{Index: 3, Role: "assistant", Reasoning: []ThreadPart{{Type: "text", Text: "the user wants pricing"}}},
+		{Index: 4, Role: "assistant", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: "video_url"}}},
+	}}
+	tests := []struct {
+		pattern string
+		indices []int
+		wantErr string
+	}{
+		{"docs", []int{0, 1}, ""},
+		{"(?-i)DOCS", []int{0}, ""},
+		{"pricing", []int{1, 3}, ""},
+		{"call_1", []int{1, 2}, ""},
+		{"hits", []int{2}, ""},
+		{"video_url", []int{4}, ""},
+		{"absent", []int{}, ""},
+		{"th(is", nil, "invalid match pattern"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.pattern, func(t *testing.T) {
+			got, err := MatchThread(thread, tt.pattern)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("MatchThread() error = %v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("MatchThread() error = %v", err)
+			}
+			indices := []int{}
+			for _, message := range got.Messages {
+				indices = append(indices, message.Index)
+			}
+			if !slices.Equal(indices, tt.indices) {
+				t.Fatalf("MatchThread(%q) kept %v, want %v", tt.pattern, indices, tt.indices)
+			}
+		})
+	}
+}
