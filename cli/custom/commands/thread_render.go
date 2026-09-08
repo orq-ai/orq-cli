@@ -34,29 +34,104 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 		attributes = append(attributes, "tool_call_id="+threadAttribute(message.ToolCallID))
 	}
 
-	ordinary, errors, exceptions := partitionThreadParts(message.Content)
-	body := renderThreadParts(ordinary, maxChars)
-	body = appendThreadElement(body, "error", renderThreadParts(errors, maxChars))
-	body = appendThreadElement(body, "exception", renderThreadParts(exceptions, maxChars))
-
-	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
-	body = appendThreadElement(body, "reasoning", renderThreadParts(reasoning, maxChars))
-	body = appendThreadElement(body, "reasoning_summary", renderThreadParts(summaries, maxChars))
-
-	for _, call := range message.ToolCalls {
-		tag := "tool_call"
-		if call.ID != "" {
-			tag += " id=" + threadAttribute(call.ID)
+	blocks := threadMessageBlocks(message, maxChars, escapeThreadTags, renderThreadValue)
+	rendered := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Section {
+		case threadSectionBody, threadSectionToolResult:
+			// A tool result is the message's own content here; the role
+			// attribute already says whose it is.
+			rendered = append(rendered, block.Content)
+		case threadSectionToolCall:
+			rendered = append(rendered, threadElement(threadToolCallTag(block.Call), block.Content))
+		default:
+			rendered = append(rendered, threadElement(threadElementNames[block.Section], block.Content))
 		}
-		if call.Name != "" {
-			tag += " name=" + threadAttribute(call.Name)
-		}
-		body = appendThreadElement(body, tag, renderThreadValue(call.Arguments, maxChars))
 	}
+	body := strings.Join(rendered, "\n\n")
 	if body == "" {
 		body = "[content unavailable]"
 	}
 	return "<message " + strings.Join(attributes, " ") + ">\n" + body + "\n</message>"
+}
+
+// threadSection names a block inside a message. Which blocks a message has, and
+// the order they appear in, is the same in both renders — only the label and
+// the framing around each differ, so threadMessageBlocks decides what exists
+// and each renderer decides how it looks. A section added here reaches both
+// views or neither.
+type threadSection int
+
+const (
+	threadSectionBody threadSection = iota
+	threadSectionToolResult
+	threadSectionError
+	threadSectionException
+	threadSectionReasoning
+	threadSectionReasoningSummary
+	threadSectionToolCall
+)
+
+// threadBlock is one rendered block of a message: its section, its already
+// capped and escaped content, and — for a tool call — the call it came from,
+// since both renders label a call with its name and id.
+type threadBlock struct {
+	Section threadSection
+	Call    ThreadToolCall
+	Content string
+}
+
+// threadMessageBlocks walks a message into the blocks both renders show, in the
+// order both show them, dropping the ones with nothing to say. escape and value
+// are the caller's framing, threaded down to the part walk.
+func threadMessageBlocks(message ThreadMessage, maxChars int, escape func(string) string, value func(any, int) string) []threadBlock {
+	parts := func(parts []ThreadPart) string {
+		return renderThreadPartsWith(parts, maxChars, escape, value)
+	}
+	ordinary, errors, exceptions := partitionThreadParts(message.Content)
+	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
+
+	body := threadSectionBody
+	if message.Role == "tool" {
+		body = threadSectionToolResult
+	}
+
+	blocks := make([]threadBlock, 0, 5+len(message.ToolCalls))
+	for _, block := range []threadBlock{
+		{Section: body, Content: parts(ordinary)},
+		{Section: threadSectionError, Content: parts(errors)},
+		{Section: threadSectionException, Content: parts(exceptions)},
+		{Section: threadSectionReasoning, Content: parts(reasoning)},
+		{Section: threadSectionReasoningSummary, Content: parts(summaries)},
+	} {
+		if block.Content != "" {
+			blocks = append(blocks, block)
+		}
+	}
+	for _, call := range message.ToolCalls {
+		if content := value(call.Arguments, maxChars); content != "" {
+			blocks = append(blocks, threadBlock{Section: threadSectionToolCall, Call: call, Content: content})
+		}
+	}
+	return blocks
+}
+
+var threadElementNames = map[threadSection]string{
+	threadSectionError:            "error",
+	threadSectionException:        "exception",
+	threadSectionReasoning:        "reasoning",
+	threadSectionReasoningSummary: "reasoning_summary",
+}
+
+func threadToolCallTag(call ThreadToolCall) string {
+	tag := "tool_call"
+	if call.ID != "" {
+		tag += " id=" + threadAttribute(call.ID)
+	}
+	if call.Name != "" {
+		tag += " name=" + threadAttribute(call.Name)
+	}
+	return tag
 }
 
 // partitionThreadParts keeps the XML and Markdown renderers' treatment of
@@ -141,20 +216,9 @@ func threadSourceFields(source ThreadSource) []threadSourceField {
 	return fields
 }
 
-func appendThreadElement(body, tag, content string) string {
-	if content == "" {
-		return body
-	}
+func threadElement(tag, content string) string {
 	name, _, _ := strings.Cut(tag, " ")
-	element := "<" + tag + ">\n" + content + "\n</" + name + ">"
-	if body == "" {
-		return element
-	}
-	return body + "\n\n" + element
-}
-
-func renderThreadParts(parts []ThreadPart, maxChars int) string {
-	return renderThreadPartsWith(parts, maxChars, escapeThreadTags, renderThreadValue)
+	return "<" + tag + ">\n" + content + "\n</" + name + ">"
 }
 
 // renderThreadPartsWith walks the part types once for both renderers. Only the

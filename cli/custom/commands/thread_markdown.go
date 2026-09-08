@@ -40,32 +40,46 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 		heading += " [" + markdownInline(message.ToolCallID) + "]"
 	}
 
-	ordinary, errors, exceptions := partitionThreadParts(message.Content)
-	body := renderMarkdownParts(ordinary, maxChars)
-	if message.Role == "tool" && body != "" {
-		body = "### TOOL RESULT\n\n" + body
-	}
-	body = appendMarkdownSection(body, "### ERROR", renderMarkdownParts(errors, maxChars))
-	body = appendMarkdownSection(body, "### EXCEPTION", renderMarkdownParts(exceptions, maxChars))
-
-	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
-	body = appendMarkdownSection(body, "### REASONING", renderMarkdownParts(reasoning, maxChars))
-	body = appendMarkdownSection(body, "### REASONING SUMMARY", renderMarkdownParts(summaries, maxChars))
-
-	for _, call := range message.ToolCalls {
-		callHeading := "### TOOL CALL"
-		if call.Name != "" {
-			callHeading += " — " + markdownInline(call.Name)
+	blocks := threadMessageBlocks(message, maxChars, markdownText, renderMarkdownValue)
+	rendered := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Section {
+		case threadSectionBody:
+			rendered = append(rendered, block.Content)
+		case threadSectionToolCall:
+			rendered = append(rendered, markdownSection(markdownToolCallHeading(block.Call), block.Content))
+		default:
+			rendered = append(rendered, markdownSection(markdownHeadings[block.Section], block.Content))
 		}
-		if call.ID != "" {
-			callHeading += " [" + markdownInline(call.ID) + "]"
-		}
-		body = appendMarkdownSection(body, callHeading, renderMarkdownValue(call.Arguments, maxChars))
 	}
+	body := strings.Join(rendered, "\n\n")
 	if body == "" {
 		body = "[content unavailable]"
 	}
 	return heading + "\n\n" + body
+}
+
+// markdownHeadings labels the sections the XML render names with a tag. A tool
+// result gets a heading here and none there: the XML message carries role as an
+// attribute a reader can see, while these headings are all the structure the
+// Markdown render has.
+var markdownHeadings = map[threadSection]string{
+	threadSectionToolResult:       "### TOOL RESULT",
+	threadSectionError:            "### ERROR",
+	threadSectionException:        "### EXCEPTION",
+	threadSectionReasoning:        "### REASONING",
+	threadSectionReasoningSummary: "### REASONING SUMMARY",
+}
+
+func markdownToolCallHeading(call ThreadToolCall) string {
+	heading := "### TOOL CALL"
+	if call.Name != "" {
+		heading += " — " + markdownInline(call.Name)
+	}
+	if call.ID != "" {
+		heading += " [" + markdownInline(call.ID) + "]"
+	}
+	return heading
 }
 
 // threadSourceHeader is threadOpenTag's Markdown counterpart; see there for why
@@ -111,22 +125,13 @@ func markdownInline(value string) string {
 	return strings.ReplaceAll(value, "\n", " ")
 }
 
-func appendMarkdownSection(body, heading, content string) string {
-	if content == "" {
-		return body
-	}
-	section := heading + "\n\n" + content
-	if body == "" {
-		return section
-	}
-	return body + "\n\n" + section
+func markdownSection(heading, content string) string {
+	return heading + "\n\n" + content
 }
 
-// renderMarkdownParts is renderThreadParts' Markdown twin: the same walk, no
-// escaping of recorded text, and values delimited by a fence instead of a tag.
-func renderMarkdownParts(parts []ThreadPart, maxChars int) string {
-	return renderThreadPartsWith(parts, maxChars, func(text string) string { return text }, renderMarkdownValue)
-}
+// markdownText is the Markdown render's escaper: recorded text is written as
+// it was recorded, where the XML render has to escape it.
+func markdownText(text string) string { return text }
 
 // renderMarkdownValue fences an encoded value; a value that was recorded as a
 // string is written as prose instead, since fencing it would claim a structure
