@@ -154,6 +154,12 @@ controls on surface changes, whichever side they originate from.
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
 
+- **Changed:** `orq traces thread` picks the span to read by depth in the span
+  tree first — the model call under an agent under the trace — and only then by
+  start time between siblings. It went by start time alone, which compares
+  clocks across services: a root span whose recorded start lands after its own
+  children was read instead of the model call inside it.
+
 - **Added:** `orq traces thread --spans` lists the trace's spans in the order
   selection reads them, with a note on each it passes over (`evaluator`, `no
   recorded detail`) or reads despite that (a span the trace names as its
@@ -161,6 +167,9 @@ controls on surface changes, whichever side they originate from.
   previously invisible, and
   a reader who got a conversation they did not expect had no way to see what it
   was chosen between or which span id to pass as the second argument. Prints a
+  A span that was read and passed over says why in the same column (`no
+  conversation recorded`, `content dropped by the collector`, `could not be
+  read`), which is the usual question a surprising thread raises.
   The span the command settles on is marked `*` in the table and `"selected":
   true` under `-o json` — which is not always the first one tried, since a span
   that comes back with content dropped loses to a later one that kept the

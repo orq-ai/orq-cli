@@ -1123,7 +1123,7 @@ func TestTracesThreadMarksTheSelectedSpanNotTheFirstTried(t *testing.T) {
 		t.Fatalf("unmarshal %q: %v", out, err)
 	}
 	want := []ThreadSpan{
-		{SpanID: "new", Order: 1, StartedAt: "2025-01-02T00:00:00Z"},
+		{SpanID: "new", Order: 1, StartedAt: "2025-01-02T00:00:00Z", Note: "content dropped by the collector"},
 		{SpanID: "old", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Selected: true},
 	}
 	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
@@ -1235,11 +1235,51 @@ func TestTracesThreadOrdersTheTraceFallbackAfterTheListing(t *testing.T) {
 		t.Fatalf("unmarshal %q: %v", out, err)
 	}
 	want := []ThreadSpan{
-		{SpanID: "listed", Order: 1, StartedAt: "2025-01-02T00:00:00Z"},
+		{SpanID: "listed", Order: 1, StartedAt: "2025-01-02T00:00:00Z", Note: "no conversation recorded"},
 		{SpanID: "thin", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Note: "tried anyway: no recorded detail"},
 		{SpanID: "unlisted", Order: 3, Note: "named by the trace, not in its span listing"},
 	}
 	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
 		t.Fatalf("spans = %+v, want %+v", payload.Spans, want)
+	}
+}
+
+// Depth decides the try order before time does. The conversation lives in the
+// most specific span that recorded one, and a clock that says the parent
+// started last — skew between two services, or a root closed after its
+// children — must not put the trace span ahead of the model call under it.
+func TestTracesThreadTriesTheDeepestSpanFirstDespiteTheClock(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "root"}},
+		spans: map[string]map[string]any{"completion": conversationalSpan("the conversation")},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "root", "type": "trace", "has_detail": true, "started_at": "2025-01-01T00:00:09Z"},
+			map[string]any{"span_id": "agent", "type": "span.agent_execution", "parent_span_id": "root", "has_detail": true, "started_at": "2025-01-01T00:00:05Z"},
+			map[string]any{"span_id": "completion", "type": "span.chat_completion", "parent_span_id": "agent", "has_detail": true, "started_at": "2025-01-01T00:00:01Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	order := []string{}
+	for _, span := range payload.Spans {
+		order = append(order, span.SpanID)
+	}
+	if fmt.Sprint(order) != fmt.Sprint([]string{"completion", "agent", "root"}) {
+		t.Fatalf("try order = %v, want the deepest span first", order)
+	}
+	if !payload.Spans[0].Selected {
+		t.Fatalf("selected = %+v, want the model call", payload.Spans)
+	}
+	// Only the span that answered is read; the shallower two are never fetched.
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:completion"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want %v", got, want)
 	}
 }

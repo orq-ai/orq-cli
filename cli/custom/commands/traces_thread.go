@@ -42,7 +42,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the newest conversational span holding a whole conversation is read. --spans shows that selection and marks the span it lands on with *. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
+			"Given a trace id alone, the most specific span holding a whole conversation is read — deepest in the span tree first, and the later of two siblings. --spans shows that selection and marks the span it lands on with *. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -230,7 +230,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		// answer. Say which pool the selection came from.
 		Warn("%v; selecting from the %d span(s) listed before the failure", listErr, len(candidates))
 	}
-	return selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr)
+	return selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr, nil)
 }
 
 // threadFallbackIDs are the span ids the trace names itself, read when the
@@ -248,7 +248,12 @@ func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]str
 // and returns the conversation it settles on. It is separate from the paging
 // and the trace fetch so --spans can show that selection over the same listing
 // it already paid for, rather than running the whole thing twice.
-func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error) (Thread, error) {
+func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, outcomes map[string]string) (Thread, error) {
+	record := func(spanID, outcome string) {
+		if outcomes != nil {
+			outcomes[spanID] = outcome
+		}
+	}
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
 	var best *Thread
@@ -259,8 +264,13 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 	consider := func(spanID string) *Thread {
 		thread, err := hydrateThread(api, traceID, spanID, params)
 		if err != nil {
-			if !errors.Is(err, ErrUnsupportedConversation) && operationalErr == nil {
-				operationalErr = err
+			if errors.Is(err, ErrUnsupportedConversation) {
+				record(spanID, "no conversation recorded")
+			} else {
+				record(spanID, "could not be read")
+				if operationalErr == nil {
+					operationalErr = err
+				}
 			}
 			return nil
 		}
@@ -268,6 +278,7 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 			best = &thread
 		}
 		if !threadIsWhole(thread) {
+			record(spanID, "content dropped by the collector")
 			degraded = true
 		} else if !degraded {
 			return best
@@ -375,6 +386,7 @@ func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (T
 type threadCandidate struct {
 	id        string
 	startedAt time.Time
+	depth     int
 	order     int
 }
 
@@ -433,6 +445,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 	}
 
 	excluded := evaluatorExclusions(spans)
+	depths := threadSpanDepths(spans)
 	candidates := make([]threadCandidate, 0, len(spans))
 	seenIDs := make(map[string]bool, len(spans))
 	for index, span := range spans {
@@ -458,9 +471,17 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 			continue
 		}
 		startedAt, _ := time.Parse(time.RFC3339Nano, summary.StartedAt)
-		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, order: index})
+		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, depth: depths[id], order: index})
 	}
+	// Depth first, and only then time. The conversation lives in the most
+	// specific span that recorded one — a model call under an agent under the
+	// trace — and depth reads that off the parent links, which no clock can
+	// skew. Start time still separates siblings, where one process wrote both
+	// timestamps and the later call holds the longer history.
 	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].depth != candidates[j].depth {
+			return candidates[i].depth > candidates[j].depth
+		}
 		if candidates[i].startedAt.Equal(candidates[j].startedAt) {
 			return candidates[i].order < candidates[j].order
 		}
@@ -673,7 +694,18 @@ func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded
 // otherwise. Running it costs what running the command costs, since selection
 // stops at the first span that answers.
 func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, summaries []ThreadSpan) []ThreadSpan {
-	thread, err := selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr)
+	outcomes := map[string]string{}
+	thread, err := selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr, outcomes)
+	for index := range summaries {
+		if summaries[index].SpanID == thread.Source.SpanID {
+			// The span that answered explains itself; an outcome recorded on
+			// the way to it would read as a reason it lost.
+			continue
+		}
+		if outcome := outcomes[summaries[index].SpanID]; outcome != "" && summaries[index].Note == "" {
+			summaries[index].Note = outcome
+		}
+	}
 	if err != nil {
 		// The listing is still the useful half of the answer, and it is what
 		// says why nothing was readable.
@@ -691,4 +723,29 @@ func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, cand
 		summaries = append(summaries, ThreadSpan{SpanID: thread.Source.SpanID, Selected: true, Note: "read, but not in the listing this command saw"})
 	}
 	return summaries
+}
+
+// threadSpanDepths counts each span's distance from its root through the parent
+// links. A cycle or a parent the listing never returned stops the walk, so a
+// truncated page costs depth rather than a hang.
+func threadSpanDepths(spans []map[string]any) map[string]int {
+	parents := make(map[string]string, len(spans))
+	for _, span := range spans {
+		if id := threadString(span["span_id"]); id != "" {
+			parents[id] = threadString(span["parent_span_id"])
+		}
+	}
+	depths := make(map[string]int, len(spans))
+	for id := range parents {
+		depth, seen := 0, map[string]bool{id: true}
+		for parent := parents[id]; parent != "" && !seen[parent]; parent = parents[parent] {
+			seen[parent] = true
+			depth++
+			if _, listed := parents[parent]; !listed {
+				break
+			}
+		}
+		depths[id] = depth
+	}
+	return depths
 }
