@@ -94,30 +94,51 @@ const (
 // misses everything but the flag, which silently gave the human view to
 // exactly the users who configured a machine format.
 //
-// It asks which source named a format rather than comparing the resolved value
-// against the flag's default, because the default is per-command: `orq traces
-// thread` registers its own -o, and a value comparison reads every one of that
-// command's runs as a request.
+// It asks which source named a format, and what it named, rather than comparing
+// the resolved value against the flag's default: that default is per-command —
+// `orq traces thread` registers its own -o — so a comparison reads every one of
+// that command's runs as a request.
 //
-// The flag and the environment name a format for one invocation. A config-file
-// entry is a standing default instead, so the value the whole CLI already
-// defaults to - `table`, what `orq default-format table` writes - is not a
-// request there.
+// The flag names a format for one invocation. The environment and the config
+// file state a standing default instead, so the value the whole CLI already
+// defaults to - `table`, what `orq default-format table` writes and what an
+// exported ORQ_OUTPUT_FORMAT usually repeats - is not a request there.
 func machineFormatRequested(cmd *cobra.Command) bool {
 	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
-		return true
+		return namesMachineFormat(f.Value.String())
 	}
-	if strings.TrimSpace(os.Getenv(outputFormatEnvVar)) != "" {
-		return true
+	if value := strings.TrimSpace(os.Getenv(outputFormatEnvVar)); value != "" {
+		return standingDefaultIsMachineFormat(value)
 	}
-	configured := configuredOutputFormat()
-	return configured != "" && configured != outputFormatTable
+	return standingDefaultIsMachineFormat(configuredOutputFormat())
 }
 
-// configuredOutputFormat is the format the config file names, lowercased, or ""
-// when it names none. viper holds the config file's value under the same key
-// the global flag is bound to, and InConfig is what distinguishes a written
-// entry from the default underneath it.
+// namesMachineFormat reports whether a named format is a serialization for a
+// program to read. `xml` and `markdown`, the two renders `orq traces thread`
+// adds, are reading views for a person: naming one is not a reason to drop the
+// notices and friendly views that exist for the person doing the reading.
+func namesMachineFormat(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", threadFormatXML, threadFormatMarkdown:
+		return false
+	}
+	return true
+}
+
+// standingDefaultIsMachineFormat answers for the two sources that state a
+// default rather than ask per invocation. `table` standing in one of those says
+// nothing about this run; passed to -o it is a request for the table layout,
+// which is why the flag does not go through here.
+func standingDefaultIsMachineFormat(value string) bool {
+	return !strings.EqualFold(strings.TrimSpace(value), outputFormatTable) && namesMachineFormat(value)
+}
+
+// configuredOutputFormat is viper's merged value, lowercased, gated on the
+// config file having named the key at all: InConfig is what distinguishes a
+// written entry from the default underneath it, and GetString then returns
+// whichever tier won rather than the file's own text. Inside
+// RelaxOutputFormat's window that is the masked `table` — and every value it
+// masks is one no source counts as a machine format, so both readings agree.
 func configuredOutputFormat() string {
 	if !viper.InConfig("output-format") {
 		return ""

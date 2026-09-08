@@ -537,8 +537,12 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 		name   string
 		args   []string
 		decode func([]byte, any) error
+		// wantJSON pins the syntax, which the decoder alone cannot: YAML is a
+		// superset of JSON, so yaml.Unmarshal accepts the JSON render and the
+		// yaml subtest would pass on output that is really JSON.
+		wantJSON bool
 	}{
-		{name: "json", args: []string{"--output-format", "json"}, decode: json.Unmarshal},
+		{name: "json", args: []string{"--output-format", "json"}, decode: json.Unmarshal, wantJSON: true},
 		{name: "yaml", args: []string{"--output-format", "yaml"}, decode: yaml.Unmarshal},
 		{name: "toon", args: []string{"--output-format", "toon"}, decode: func(data []byte, v any) error { return toon.Unmarshal(data, v) }},
 	}
@@ -548,6 +552,9 @@ func TestTracesThreadUsesCanonicalMachineFormatsAndSlices(t *testing.T) {
 			out, err := runTracesThread(t, traceAPI(fake), append(format.args, "trace-1", "chosen")...)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if got := json.Valid([]byte(out)); got != format.wantJSON {
+				t.Fatalf("output is JSON = %v, want %v for %s:\n%s", got, format.wantJSON, format.name, out)
 			}
 			var document map[string]any
 			if err := format.decode([]byte(out), &document); err != nil {
@@ -1041,45 +1048,52 @@ func TestMachineFormatRequestedFollowsTheSourceNotTheFlagDefault(t *testing.T) {
 	t.Cleanup(func() { viper.Set("output-format", previous) })
 	viper.Set("output-format", outputFormatTable)
 
-	t.Run("nobody named one", func(t *testing.T) {
-		t.Setenv(outputFormatEnvVar, "")
-		if machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
-			t.Fatal("a bare `orq traces thread` counts as a machine-format request")
-		}
-	})
-	t.Run("the flag named one", func(t *testing.T) {
-		t.Setenv(outputFormatEnvVar, "")
-		cmd := NewTracesThreadCommand(TraceAPI{})
-		if err := cmd.Flags().Set("output-format", "json"); err != nil {
-			t.Fatal(err)
-		}
-		if !machineFormatRequested(cmd) {
-			t.Fatal("-o json is not a machine-format request")
-		}
-	})
-	t.Run("the environment named one", func(t *testing.T) {
-		t.Setenv(outputFormatEnvVar, "json")
-		if !machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
-			t.Fatal("ORQ_OUTPUT_FORMAT=json is not a machine-format request")
-		}
-	})
-	t.Run("a config-file machine format is a request", func(t *testing.T) {
-		t.Setenv(outputFormatEnvVar, "")
-		writeOutputFormatConfig(t, "json")
-		if !machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
-			t.Fatal("a configured json is not a machine-format request")
-		}
-	})
-	// `orq default-format table` writes the value the CLI already defaults to.
-	// Reading that as a request would take the human view away from every
-	// command for a user who changed nothing.
-	t.Run("a config-file table is not", func(t *testing.T) {
-		t.Setenv(outputFormatEnvVar, "")
-		writeOutputFormatConfig(t, "table")
-		if machineFormatRequested(NewTracesThreadCommand(TraceAPI{})) {
-			t.Fatal("a configured CLI-wide default counts as a machine-format request")
-		}
-	})
+	cases := []struct {
+		name        string
+		flag        string
+		env         string
+		config      string
+		wantMachine bool
+	}{
+		{name: "nobody named one"},
+		{name: "the flag named a serialization", flag: "json", wantMachine: true},
+		// -o table is a per-invocation ask for the layout bartolo lays out,
+		// which is the structured view, not this CLI's friendly one.
+		{name: "the flag named the table layout", flag: "table", wantMachine: true},
+		// The reading views this command adds are for a person, so naming one
+		// is not a reason to drop the notices written for that person.
+		{name: "the flag named a reading view", flag: "markdown"},
+		{name: "the environment named a serialization", env: "json", wantMachine: true},
+		{name: "the environment named a reading view", env: "markdown"},
+		{name: "the environment named the xml render", env: "xml"},
+		// An exported ORQ_OUTPUT_FORMAT=table is a standing default like the
+		// config file's, not a request; usually it just repeats what the CLI
+		// already does.
+		{name: "the environment named the CLI-wide default", env: "table"},
+		{name: "the config named a serialization", config: "json", wantMachine: true},
+		{name: "the config named a reading view", config: "markdown"},
+		// `orq default-format table` writes the value the CLI already defaults
+		// to. Reading that as a request would take the human view away from
+		// every command for a user who changed nothing.
+		{name: "the config named the CLI-wide default", config: "table"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(outputFormatEnvVar, tc.env)
+			if tc.config != "" {
+				writeOutputFormatConfig(t, tc.config)
+			}
+			cmd := NewTracesThreadCommand(TraceAPI{})
+			if tc.flag != "" {
+				if err := cmd.Flags().Set("output-format", tc.flag); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := machineFormatRequested(cmd); got != tc.wantMachine {
+				t.Fatalf("machineFormatRequested = %v, want %v", got, tc.wantMachine)
+			}
+		})
+	}
 }
 
 // A paging failure still leaves candidates and the trace's own fallback IDs to

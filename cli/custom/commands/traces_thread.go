@@ -146,6 +146,9 @@ func RelaxOutputFormat(cmd *cobra.Command) (func(), bool) {
 	// never in the override tier.
 	previous := viper.Get("output-format")
 	viper.Set("output-format", nil)
+	// An override holding what the tier below it already holds reads as absent
+	// and is dropped rather than put back; in-process the resolved value is the
+	// same either way, which is all anything downstream can see.
 	overridden := strings.ToLower(strings.TrimSpace(viper.GetString("output-format"))) != value
 	viper.Set("output-format", outputFormatTable)
 	return func() {
