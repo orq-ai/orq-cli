@@ -65,7 +65,7 @@ func SetServer(url, source string) {
 }
 
 // NormalizeServer fills in the scheme when a host is given without one, so
-// `--server aim.orq.ai` reaches the same place as `--server https://aim.orq.ai`.
+// `--server orq.example.com` reaches the same place as the https:// spelling.
 // A bare loopback host gets http: nobody runs TLS on a local dev server.
 func NormalizeServer(raw string) string {
 	s := strings.TrimSpace(raw)
