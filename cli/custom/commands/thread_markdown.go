@@ -143,8 +143,34 @@ func renderMarkdownValue(value any, maxChars int) string {
 		return truncateThreadText(text, maxChars)
 	}
 	encoded, ok := encodeThreadValue(value)
+	body := truncateThreadText(encoded, maxChars)
 	if !ok {
-		return "```\n" + unencodableThreadValue + "\n" + truncateThreadText(encoded, maxChars) + "\n```"
+		body = unencodableThreadValue + "\n" + body
+		fence := markdownFence(body)
+		return fence + "\n" + body + "\n" + fence
 	}
-	return "```json\n" + truncateThreadText(encoded, maxChars) + "\n```"
+	fence := markdownFence(body)
+	return fence + "json\n" + body + "\n" + fence
+}
+
+// markdownFence sizes a fence to outrun its content. A recorded value can
+// contain a run of backticks of its own — a JSON string holding a fenced code
+// block, say — and a fence no longer than that run ends the block early, which
+// spills the rest of the value, and the rest of the thread, back into prose.
+func markdownFence(content string) string {
+	longest, run := 0, 0
+	for _, character := range content {
+		if character != '`' {
+			run = 0
+			continue
+		}
+		run++
+		if run > longest {
+			longest = run
+		}
+	}
+	if longest < 3 {
+		return "```"
+	}
+	return strings.Repeat("`", longest+1)
 }

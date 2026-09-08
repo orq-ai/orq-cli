@@ -240,12 +240,14 @@ var threadAttributeEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">",
 // renderer writes itself.
 var threadTagPattern = regexp.MustCompile(`</?(?:thread|message|reasoning|reasoning_summary|tool_call|error|exception|span_error)\b`)
 
-// escapeThreadTags is the whole of what this render escapes in recorded
-// content: the opening "<" of a framing tag becomes "&lt;", so a span whose
-// text contains "</message>" cannot forge a turn. Nothing else is touched. The
-// render is a readable text view with forge-proof framing, not a parseable XML
-// document — recorded "<div>", "Tom & Jerry", "a < b" and "?a=1&b=2" are
-// reproduced character for character, as the reader recorded them.
+// escapeThreadTags is the whole of what this render escapes in recorded body
+// text: the opening "<" of a framing tag becomes "&lt;", so a span whose text
+// contains "</message>" cannot forge a turn. Nothing else in a body is touched.
+// The render is a readable text view with forge-proof framing, not a parseable
+// XML document — recorded "<div>", "Tom & Jerry", "a < b" and "?a=1&b=2" are
+// reproduced character for character, as the reader recorded them. Recorded
+// values that appear inside a tag rather than in a body are escaped more
+// heavily; see threadAttribute for why.
 func escapeThreadTags(text string) string {
 	return threadTagPattern.ReplaceAllStringFunc(text, func(match string) string {
 		return "&lt;" + strings.TrimPrefix(match, "<")
