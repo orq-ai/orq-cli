@@ -133,23 +133,38 @@ func appendThreadElement(body, tag, content string) string {
 }
 
 func renderThreadParts(parts []ThreadPart, maxChars int) string {
+	return renderThreadPartsWith(parts, maxChars, escapeThreadTags, func(value any, maxChars int) string {
+		return truncateThreadText(renderThreadValue(value), maxChars)
+	})
+}
+
+// renderThreadPartsWith walks the part types once for both renderers. Only the
+// framing differs between them — whether recorded text is escaped, how a value
+// is delimited — so the walk itself lives in one place and a ThreadPart type
+// added to it reaches both views or neither. value returns text that is already
+// capped, since a renderer that wraps it (a Markdown fence) has to cap inside
+// its own delimiters.
+func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string) string, value func(any, int) string) string {
 	sections := make([]string, 0, len(parts))
 	for _, part := range parts {
 		var rendered string
 		switch part.Type {
 		case "text", "summary", "error", "exception":
-			rendered = escapeThreadTags(part.Text)
+			rendered = escape(part.Text)
 		case "json":
-			rendered = renderThreadValue(part.Value)
+			if delimited := value(part.Value, maxChars); delimited != "" {
+				sections = append(sections, delimited)
+			}
+			continue
 		case "state":
 			rendered = "[" + part.State + "]"
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "unsupported":
 			// Both halves are recorded span text, so both can carry framing.
-			rendered = "[unsupported content: " + escapeThreadTags(part.UnsupportedType)
+			rendered = "[unsupported content: " + escape(part.UnsupportedType)
 			if part.Text != "" {
-				rendered += " — " + escapeThreadTags(part.Text)
+				rendered += " — " + escape(part.Text)
 			}
 			rendered += "]"
 		}

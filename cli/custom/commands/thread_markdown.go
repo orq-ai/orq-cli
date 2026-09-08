@@ -118,36 +118,10 @@ func appendMarkdownSection(body, heading, content string) string {
 	return body + "\n\n" + section
 }
 
+// renderMarkdownParts is renderThreadParts' Markdown twin: the same walk, no
+// escaping of recorded text, and values delimited by a fence instead of a tag.
 func renderMarkdownParts(parts []ThreadPart, maxChars int) string {
-	sections := make([]string, 0, len(parts))
-	for _, part := range parts {
-		var rendered string
-		switch part.Type {
-		case "text", "summary", "error", "exception":
-			rendered = part.Text
-		case "json":
-			// Capped by renderMarkdownValue, which caps inside the fence it
-			// adds; re-capping here would cut a closing fence off.
-			if fenced := renderMarkdownValue(part.Value, maxChars); fenced != "" {
-				sections = append(sections, fenced)
-			}
-			continue
-		case "state":
-			rendered = "[" + part.State + "]"
-		case "unavailable":
-			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
-		case "unsupported":
-			rendered = "[unsupported content: " + part.UnsupportedType
-			if part.Text != "" {
-				rendered += " — " + part.Text
-			}
-			rendered += "]"
-		}
-		if rendered != "" {
-			sections = append(sections, truncateThreadText(rendered, maxChars))
-		}
-	}
-	return strings.Join(sections, "\n\n")
+	return renderThreadPartsWith(parts, maxChars, func(text string) string { return text }, renderMarkdownValue)
 }
 
 // renderMarkdownValue fences an encoded value; a value that was recorded as a
