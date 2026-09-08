@@ -153,10 +153,6 @@ controls on surface changes, whichever side they originate from.
   search`, `logs query`, `logs aggregate`, `logs get-patterns`, `logs
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
-  Being handed a pipe is not the same as being handed a body: an open stdin
-  that nothing writes to — what CI runners, task runners and
-  `subprocess.Popen` give a child by default — no longer counts as one, so
-  those runs get the default window instead of the "from is required" failure.
 
 - **Added:** `orq traces thread` gains a `markdown` render alongside its
   existing XML default, reachable from `-o markdown`. Unlike XML, the

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
@@ -964,48 +963,22 @@ func applyDefaultTimeWindow(root *cobra.Command) {
 }
 
 // bodyFromFlagsOnly reports whether the request body will be assembled from
-// flags alone: nobody named a file for it, and nothing is waiting on stdin.
+// flags alone — no --from-file, no piped or redirected stdin.
 //
-// Being handed a pipe is not the same as being handed a body. CI runners, task
-// runners and subprocess.Popen give a child an open stdin nobody ever writes
-// to, and `some-cmd | orq traces search` is the same shape, so a char-device
-// test reads every one of those as a body and drops the default window that
-// makes the bare command work.
+// Known limitation: an idle inherited pipe (a CI runner's or subprocess.Popen's
+// stdin that nobody writes to) reads as a body here and skips the default
+// window. Waiting to see whether a byte arrives is what breaks a slow producer:
+// setting from/to marks them Changed, which flips bartolo's bodySuppliedElsewhere
+// and turns its stdin read into a 250ms grace that discards a body arriving
+// after it, so `(sleep 0.35; cat body.json) | orq traces search` would silently
+// send the injected window instead of the user's query.
 func bodyFromFlagsOnly(cmd *cobra.Command) bool {
-	// --from-file names the body, and --stdin insists on one however long it
-	// takes to arrive; either way the body is not this window's to fill in.
-	for _, name := range []string{"from-file", "stdin"} {
-		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
-			return false
-		}
+	if f := cmd.Flags().Lookup("from-file"); f != nil && f.Changed {
+		return false
 	}
-	return !stdinHasBody()
-}
-
-// stdinHasBody answers the same question bartolo's own loadBaseBody asks
-// before it reads: a terminal has nothing to give, a redirect from a file is
-// read as given, and a pipe counts only once something is actually pending on
-// it — bartolo waits out the same kind of grace window and falls back to the
-// flags when nothing arrives. Nothing here consumes stdin: bartolo still does
-// the reading.
-//
-// Variable so tests can put a stdin under it that a test process does not have.
-var stdinHasBody = func() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {
-		// Unreadable stdin is not a licence to rewrite a body that may be
-		// there; leave the request as the caller built it.
-		return true
-	}
-	switch {
-	case info.Mode()&os.ModeCharDevice != 0:
 		return false
-	case info.Mode().IsRegular():
-		return info.Size() > 0
 	}
-	return stdinPending(stdinPipeGrace)
+	return info.Mode()&os.ModeCharDevice != 0
 }
-
-// stdinPipeGrace is how long a pipe gets to produce its first byte before the
-// window defaults are filled in. It matches bartolo's own grace window.
-const stdinPipeGrace = 250 * time.Millisecond
