@@ -53,14 +53,14 @@ func TestServerFromEnv(t *testing.T) {
 
 func TestNormalizeServer(t *testing.T) {
 	cases := map[string]string{
-		"aim.orq.ai":         "https://aim.orq.ai",
-		"https://aim.orq.ai": "https://aim.orq.ai",
-		"http://aim.orq.ai":  "http://aim.orq.ai",
-		"aim.orq.ai/base":    "https://aim.orq.ai/base",
-		"localhost:3000":     "http://localhost:3000",
-		"127.0.0.1:4200":     "http://127.0.0.1:4200",
-		"  aim.orq.ai  ":     "https://aim.orq.ai",
-		"":                   "",
+		"orq.example.com":         "https://orq.example.com",
+		"https://orq.example.com": "https://orq.example.com",
+		"http://orq.example.com":  "http://orq.example.com",
+		"orq.example.com/base":    "https://orq.example.com/base",
+		"localhost:3000":          "http://localhost:3000",
+		"127.0.0.1:4200":          "http://127.0.0.1:4200",
+		"  orq.example.com  ":     "https://orq.example.com",
+		"":                        "",
 	}
 	for in, want := range cases {
 		if got := NormalizeServer(in); got != want {
