@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.1) — 2026-09-08
+
 - **Fixed:** `orq setup --server <host>` no longer dies with a raw nginx `405 Not
   Allowed` page right after the browser approval on a deployment that does not
   route the identity RPC. The profile fetch calls
