@@ -28,7 +28,7 @@ type TraceAPI struct {
 // conversational span selected from a trace as a portable Thread.
 func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var slice string
-	var only []string
+	var show []string
 	var match string
 	var spans bool
 	maxChars := 4000
@@ -50,8 +50,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 -o json",
 			"  orq traces thread tr_123 --spans",
 			"  orq traces thread tr_123 --match search_docs",
-			"  orq traces thread tr_123 --only user,assistant",
-			"  orq traces thread tr_123 --only reasoning",
+			"  orq traces thread tr_123 --show user,assistant",
+			"  orq traces thread tr_123 --show reasoning",
 			"  orq traces thread tr_123 --reasoning=false",
 			"  orq traces thread tr_123 --max-chars 0",
 		}, "\n"),
@@ -86,11 +86,11 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if len(only) > 0 {
-				if !reasoning && slices.Contains(only, threadKindReasoning) {
-					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --only reasoning"))
+			if len(show) > 0 {
+				if !reasoning && slices.Contains(show, threadKindReasoning) {
+					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --show reasoning"))
 				}
-				thread, err = FilterThread(thread, only)
+				thread, err = FilterThread(thread, show)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
@@ -119,8 +119,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans and which one this command would read, instead of rendering a thread")
-	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this regular expression, tool calls included (case-insensitive; `(?-i)` to respect case)")
-	cmd.Flags().StringSliceVar(&only, "only", nil, fmt.Sprintf("Keep only these message types [%s]; naming no role keeps every role, so --only reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
+	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
+	cmd.Flags().StringSliceVar(&show, "show", nil, fmt.Sprintf("Show only these parts of the conversation [%s]; naming no role shows every role, so --show reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this

@@ -165,12 +165,12 @@ controls on surface changes, whichever side they originate from.
   recorded text matches, searching everything a render shows — message text,
   reasoning, JSON values, and tool calls by name, id and arguments. Matching is
   case-insensitive; use the inline `(?-i)` flag to respect case. Composes with
-  `--only` and `--slice`.
+  `--show` and `--slice`.
 
-- **Added:** `orq traces thread --only` keeps just the message types you name —
-  `system` (which covers `developer`), `user`, `assistant`, `tool` and
-  `reasoning`. A selection naming no role keeps every role, so `--only
-  reasoning` is the recorded thinking from all of them. It applies to every
+- **Added:** `orq traces thread --show` renders just the parts of the
+  conversation you name — `system` (which covers `developer`), `user`,
+  `assistant`, `tool` and `reasoning`. A selection naming no role shows every
+  role, so `--show reasoning` is the recorded thinking from all of them. It applies to every
   render, `-o json` included. `--reasoning=false` still works as the shorthand
   it always was; asking for both at once is an input error rather than a
   silently empty thread.
