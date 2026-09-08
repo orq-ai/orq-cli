@@ -42,7 +42,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the newest conversational span is read. --spans lists what that choice was made between, why each other span was passed over, and the span id to pass as the second argument to read one yourself.",
+			"Given a trace id alone, the newest conversational span holding a whole conversation is read. --spans shows that selection: TRY is the order the spans are read in, not a ranking of the answer — the first one that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does. NOTE says why a span is passed over, or why one that looks unreadable is tried anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -136,7 +136,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
-	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans and which one this command would read, instead of rendering a thread")
+	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, with why each is passed over, instead of rendering a thread")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
@@ -376,6 +376,7 @@ type ThreadSpan struct {
 	StartedAt string `json:"started_at,omitempty"`
 	Order     int    `json:"order,omitempty"`
 	Skipped   string `json:"skipped,omitempty"`
+	Note      string `json:"note,omitempty"`
 }
 
 func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
@@ -543,7 +544,7 @@ func unwrapThreadEnvelope(response map[string]any, key string) map[string]any {
 // a conversation they did not expect has no other way to see what it was chosen
 // between, or which span id to pass as the second argument.
 func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format string) error {
-	_, _, summaries, err := listThreadSpans(api, traceID, params)
+	_, excluded, summaries, err := listThreadSpans(api, traceID, params)
 	if err != nil {
 		// The same partial-listing rule as selection: report what was listed
 		// before the failure rather than claiming the trace has only these.
@@ -558,6 +559,7 @@ func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format
 		// wants, and they are not the same string.
 		Warn("no spans listed for trace %q; `orq traces search` returns both an `id` and a `trace_id`, and this command takes the trace_id", traceID)
 	}
+	summaries = appendThreadFallbacks(api, traceID, params, summaries, excluded)
 	if format == threadFormatXML || format == threadFormatMarkdown {
 		printThreadSpans(summaries)
 		return nil
@@ -588,7 +590,62 @@ func printThreadSpans(summaries []ThreadSpan) {
 		if span.Order > 0 {
 			order = strconv.Itoa(span.Order)
 		}
-		rows = append(rows, tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, span.Skipped}})
+		note := span.Skipped
+		if span.Note != "" {
+			note = span.Note
+		}
+		rows = append(rows, tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, note}})
 	}
-	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "NAME", "SKIPPED"}, rows)
+	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "NAME", "NOTE"}, rows)
+}
+
+// appendThreadFallbacks completes the try order with the spans the trace names
+// itself. Selection falls back to the leading and root span ids when the
+// listing offers nothing that hydrates, and it does so even for a span the
+// listing reported as having no detail — so a listing-only table calls a span
+// skipped that selection is willing to read. The trace fetch this costs is the
+// one the normal path already makes.
+func appendThreadFallbacks(api TraceAPI, traceID string, params *viper.Viper, summaries []ThreadSpan, excluded map[string]bool) []ThreadSpan {
+	if api.GetTrace == nil {
+		return summaries
+	}
+	response, err := api.GetTrace(traceID, params)
+	if err != nil {
+		// Selection would fail here too, but --spans is what a reader runs to
+		// find out why; report the listing rather than nothing.
+		Warn("get trace %q: %v; the trace's own leading and root span are not shown", traceID, err)
+		return summaries
+	}
+	trace := unwrapThreadEnvelope(response, "trace")
+	next := 0
+	for _, span := range summaries {
+		next = max(next, span.Order)
+	}
+	byID := make(map[string]int, len(summaries))
+	for index, span := range summaries {
+		byID[span.SpanID] = index
+	}
+	for _, id := range uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])) {
+		if excluded[id] {
+			continue
+		}
+		index, listed := byID[id]
+		if listed && summaries[index].Order > 0 {
+			continue
+		}
+		next++
+		if !listed {
+			summaries = append(summaries, ThreadSpan{SpanID: id, Order: next, Note: "named by the trace, not in its span listing"})
+			continue
+		}
+		summaries[index].Order, summaries[index].Note, summaries[index].Skipped = next, "tried anyway: "+summaries[index].Skipped, ""
+	}
+	sort.SliceStable(summaries, func(i, j int) bool {
+		left, right := summaries[i].Order, summaries[j].Order
+		if (left == 0) != (right == 0) {
+			return right == 0
+		}
+		return left < right
+	})
+	return summaries
 }

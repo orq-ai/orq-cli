@@ -1071,8 +1071,10 @@ func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fake.getCalls) != 0 {
-		t.Fatalf("--spans hydrated spans: %v", fake.getCalls)
+	for _, call := range fake.getCalls {
+		if strings.HasPrefix(call, "span:") {
+			t.Fatalf("--spans hydrated spans: %v", fake.getCalls)
+		}
 	}
 	// Newest first among the candidates, then the skipped ones with a reason.
 	var rows [][]string
@@ -1169,5 +1171,36 @@ func TestTracesThreadReportsATraceWithNoSpans(t *testing.T) {
 	}
 	if !strings.Contains(out, `"spans": []`) {
 		t.Fatalf("--spans = %q, want an empty list", out)
+	}
+}
+
+// The trace's own leading and root span are tried when nothing in the listing
+// hydrates, no-detail spans included, so the try order has to show them rather
+// than call them skipped.
+func TestTracesThreadOrdersTheTraceFallbackAfterTheListing(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "thin", "root_span_id": "unlisted"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "listed", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			map[string]any{"span_id": "thin", "has_detail": false, "started_at": "2025-01-01T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	want := []ThreadSpan{
+		{SpanID: "listed", Order: 1, StartedAt: "2025-01-02T00:00:00Z"},
+		{SpanID: "thin", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Note: "tried anyway: no recorded detail"},
+		{SpanID: "unlisted", Order: 3, Note: "named by the trace, not in its span listing"},
+	}
+	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
+		t.Fatalf("spans = %+v, want %+v", payload.Spans, want)
 	}
 }

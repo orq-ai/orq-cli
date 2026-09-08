@@ -154,9 +154,11 @@ controls on surface changes, whichever side they originate from.
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
 
-- **Added:** `orq traces thread --spans` lists the trace's spans, the order
-  selection would try them in, and the ones it skips with the reason
-  (`evaluator`, `no recorded detail`) — the pick was previously invisible, and
+- **Added:** `orq traces thread --spans` lists the trace's spans in the order
+  selection reads them, with a note on each it passes over (`evaluator`, `no
+  recorded detail`) or reads despite that (a span the trace names as its
+  leading or root is tried whatever the listing said) — the pick was
+  previously invisible, and
   a reader who got a conversation they did not expect had no way to see what it
   was chosen between or which span id to pass as the second argument. Prints a
   table for a person, and `{"spans": [...]}` under `-o json`. A trace that lists
