@@ -99,7 +99,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// The annotation is how run.go recognizes this command before it runs; see
 	// RelaxOutputFormat.
 	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
-	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here) [env: %s]", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
+	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and %s is ignored)", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
@@ -112,19 +112,18 @@ const (
 	threadFormatAnnotation = "orq.thread-output-format"
 )
 
-// RelaxOutputFormat hands this command the job of judging an output format
-// that came from the environment or a config file. Both feed viper's
-// `output-format`, which bartolo's root validates against its own list before
-// any command runs — a list without `xml` or `markdown`, so an
-// `ORQ_OUTPUT_FORMAT=markdown` shell would otherwise be told markdown is not a
-// format, by the one command that renders it. A value bartolo does accept is
-// left alone; anything else is answered by this command, which knows both the
-// renders it adds and the one it takes away.
+// RelaxOutputFormat takes this command out from under a check written for a
+// smaller list of formats. The environment and the config file both feed
+// viper's `output-format`, which bartolo's root validates against its own list
+// before any command runs — a list without `xml` or `markdown`, so a config
+// naming either would be refused by the one command that renders them, and an
+// `ORQ_OUTPUT_FORMAT=markdown` shell would fail here rather than being ignored
+// here. A value bartolo does accept is left alone; anything else is this
+// command's to answer for, or to ignore.
 //
 // The substituted value is the CLI-wide default, which is what the rest of the
-// CLI would have used anyway; this command reads the environment and the config
-// itself rather than the merged value, so nothing downstream reads the
-// substitute as a request. restore() puts viper back, and the process-local
+// CLI would have used anyway; this command reads the config itself rather than
+// the merged value, so nothing downstream reads the substitute as a request. restore() puts viper back, and the process-local
 // format bartolo resolved from the substitute stays substituted — it is RunE's
 // own SetOutputFormat, called before every emit, that decides what this command
 // serializes. It returns a restore func, and false when there is nothing to
@@ -176,22 +175,43 @@ var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yam
 // else in silence for the first case is the bug this command had. Asked for, it
 // is an error. Left at the default, it is the reading view.
 //
-// The flag and the environment ask per invocation, so `table` from either is an
-// error. The config file states a standing default instead — `orq default-format
-// table` is the documented way to write the CLI-wide one — and a standing
-// `table` is not a request for a layout this command cannot give, so it falls
-// through to the same render an unset config gets.
+// The flag asks per invocation, so `table` from it is an error. The config file
+// states a standing default instead — `orq default-format table` is the
+// documented way to write the CLI-wide one — and a standing `table` is not a
+// request for a layout this command cannot give, so it falls through to the
+// same render an unset config gets.
+//
+// ORQ_OUTPUT_FORMAT is not read here at all. It is exported once and then
+// answers for every command in the shell, which is how a session pins the
+// machine format for a pipeline; letting it reach this command would mean an
+// exported `json` silently replaces the render a person came to read, and an
+// exported `table` fails the one command whose formats are its own. The flag is
+// how this command is asked.
 func resolveThreadFormat(cmd *cobra.Command) (string, error) {
 	if flag := cmd.Flags().Lookup("output-format"); flag != nil && flag.Changed {
 		return normalizeThreadFormat(flag.Value.String(), "--output-format")
 	}
-	if value := strings.TrimSpace(os.Getenv(outputFormatEnvVar)); value != "" {
-		return normalizeThreadFormat(value, outputFormatEnvVar)
-	}
-	if value := configuredOutputFormat(); value != "" && value != outputFormatTable {
+	if value := configuredThreadFormat(); value != "" && value != outputFormatTable {
 		return normalizeThreadFormat(value, "output-format in the config file")
 	}
 	return threadFormatXML, nil
+}
+
+// configuredThreadFormat is the config file's own output-format, with the
+// environment kept out of the answer. configuredOutputFormat reads viper's
+// merged value, and viper ranks the environment above the config file — so on
+// the one command that ignores ORQ_OUTPUT_FORMAT, reading the merged value
+// would hand back the very variable being ignored whenever a config entry
+// exists to gate it. viper exposes no per-tier read, so the variable is lifted
+// out of the process for the length of the lookup; this runs before the command
+// starts any work, and nothing else reads the environment in between.
+func configuredThreadFormat() string {
+	if previous, ok := os.LookupEnv(outputFormatEnvVar); ok {
+		if err := os.Unsetenv(outputFormatEnvVar); err == nil {
+			defer func() { _ = os.Setenv(outputFormatEnvVar, previous) }()
+		}
+	}
+	return configuredOutputFormat()
 }
 
 func normalizeThreadFormat(value, source string) (string, error) {

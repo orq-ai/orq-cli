@@ -155,8 +155,8 @@ controls on surface changes, whichever side they originate from.
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
 
 - **Added:** `orq traces thread` gains a `markdown` render alongside its
-  existing XML default, reachable from `-o markdown`, `ORQ_OUTPUT_FORMAT` or
-  the config file like every other format on this command. Unlike XML, the
+  existing XML default, reachable from `-o markdown` or the config file like
+  every other format on this command. Unlike XML, the
   Markdown view does not escape recorded content — escaping every heading and
   code fence would defeat a view meant to paste into a chat client or ticket —
   so read untrusted traces as XML, whose framing a span cannot forge.
@@ -164,12 +164,18 @@ controls on surface changes, whichever side they originate from.
   where the identical default printed the readable thread. The command branched
   on whether the format flag had been set rather than on the format it resolved
   to, so asking for the CLI-wide default explicitly changed the output. Naming
-  `table` explicitly — via the flag or `ORQ_OUTPUT_FORMAT` — is now an input
-  error naming the formats this command does render. A `table` set only as the
+  `table` explicitly — `-o table` — is now an input error naming the formats
+  this command does render. A `table` set only as the
   CLI-wide default (`orq default-format table`, persisted to the config file)
   is treated like asking for nothing, since it is a standing default rather
   than a request, and still renders XML. `-o json`, `-o yaml` and `-o toon` are
   unchanged.
+- **Changed:** `orq traces thread` ignores `ORQ_OUTPUT_FORMAT`. The variable is
+  exported once and then answers for every command in the shell, so a session
+  that pinned `json` for a pipeline would have had this command's readable
+  render replaced without asking, and a session that pinned `table` would have
+  had it fail on a value never aimed at it. `-o` is how this command is asked;
+  the config file still supplies a standing default.
 - **Fixed:** an invalid `orq traces thread --slice` expression reports the
   accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
   `strconv.Atoi` error, and an index too large to hold is reported as out of

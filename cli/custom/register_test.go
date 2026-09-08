@@ -3,6 +3,9 @@ package custom
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -441,13 +444,17 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 
 // bartolo's root validates viper's output-format against its own list before
 // any command runs, and that list has neither of the two renders this command
-// adds. Only the real binary runs that check: a synthetic cobra tree has no
-// PersistentPreRunE, so deleting run.go's wrapper would leave the unit tests
-// green while `ORQ_OUTPUT_FORMAT=markdown orq traces thread` told the user
-// markdown is not a format — by the one command that renders it.
-func TestThreadFormatFromTheEnvironmentSurvivesGlobalValidation(t *testing.T) {
+// adds. `orq traces thread` ignores ORQ_OUTPUT_FORMAT, so no value of it may
+// decide anything here — including failing the run. Only the real binary runs
+// that check: a synthetic cobra tree has no PersistentPreRunE, so deleting
+// run.go's wrapper would leave the unit tests green while
+// `ORQ_OUTPUT_FORMAT=markdown orq traces thread` told the user markdown is not
+// a format, by the one command that renders it.
+func TestThreadIgnoresTheEnvironmentFormatInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
-	for _, format := range []string{"markdown", "xml"} {
+	// markdown and xml are this command's own renders; table is the CLI-wide
+	// default a shell most often exports; csv is not a format anywhere.
+	for _, format := range []string{"markdown", "xml", "table", "csv"} {
 		t.Run(format, func(t *testing.T) {
 			cmd := exec.Command(binPath, "traces", "thread", "tr_x")
 			cmd.Dir = t.TempDir()
@@ -458,26 +465,63 @@ func TestThreadFormatFromTheEnvironmentSurvivesGlobalValidation(t *testing.T) {
 				"ORQ_OUTPUT_FORMAT="+format,
 			)
 			// No credentials and no network reachable from a temp HOME, so the
-			// run fails; what matters is which failure it is.
+			// run fails; what matters is which failure it is. A complaint about
+			// the format means the environment reached a decision it must not.
 			out, _ := cmd.CombinedOutput()
-			if strings.Contains(string(out), "is not one of") {
-				t.Fatalf("ORQ_OUTPUT_FORMAT=%s was rejected as a format: %s", format, out)
+			if strings.Contains(string(out), "is not one of") || strings.Contains(string(out), "no columns to lay out") {
+				t.Fatalf("ORQ_OUTPUT_FORMAT=%s was judged as a format: %s", format, out)
 			}
 		})
 	}
-	// The same check still refuses what the command has no render for.
-	t.Run("table", func(t *testing.T) {
-		cmd := exec.Command(binPath, "traces", "thread", "tr_x")
-		cmd.Dir = t.TempDir()
-		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_OUTPUT_FORMAT=table")
-		out, err := cmd.CombinedOutput()
-		if err == nil {
-			t.Fatalf("ORQ_OUTPUT_FORMAT=table succeeded: %s", out)
+}
+
+// viper ranks the environment above the config file, so a command that ignores
+// ORQ_OUTPUT_FORMAT cannot read its config default through viper's merged
+// value: the variable it is ignoring would answer for the file. Only the real
+// binary has both tiers populated, and only a real render says which one won.
+func TestThreadReadsItsConfigDefaultNotTheEnvironment(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v3/traces/tr_x/spans/span-1" {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"not found"}`)
+			return
 		}
-		if !strings.Contains(string(out), "xml, markdown, json, yaml, toon") {
-			t.Fatalf("ORQ_OUTPUT_FORMAT=table = %s, want the formats this command takes", out)
-		}
-	})
+		fmt.Fprint(w, `{"span": {"span_id": "span-1", "trace_id": "tr_x", "attributes": {`+
+			`"gen_ai.request.model": "gpt-4o",`+
+			`"gen_ai.input": [{"role": "user", "content": "hello"}],`+
+			`"gen_ai.output": [{"role": "assistant", "content": "hi"}]}}}`)
+	}))
+	defer server.Close()
+
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".orq", "config.yaml"), []byte("output-format: markdown\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(),
+		"HOME="+home,
+		"NO_COLOR=",
+		"ORQ_NO_COLOR=",
+		"ORQ_API_KEY=stub-key",
+		"ORQ_SERVER="+server.URL,
+		// The tier that must not answer: ignored here, and ranked above the
+		// config file by viper.
+		"ORQ_OUTPUT_FORMAT=json",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("traces thread: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "## USER") {
+		t.Fatalf("output = %s, want the config file's markdown render", out)
+	}
 }
 
 // Nothing in this repository owns bartolo's PersistentPreRunE, so the wrapper

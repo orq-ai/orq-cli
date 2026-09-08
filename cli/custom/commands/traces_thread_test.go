@@ -628,8 +628,7 @@ func partialSpan() map[string]any {
 // used to answer the two differently by accident: it branched on whether the
 // flag was set rather than on the value, so an explicit `-o table` swapped the
 // reading view for a structured dump. A conversation has no columns, so a
-// per-invocation ask for one is an error, whichever of the two sources that ask
-// arrives from.
+// per-invocation ask for one is an error.
 func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 	routes := []struct {
 		name  string
@@ -638,7 +637,6 @@ func TestTracesThreadRejectsTableFromEverySource(t *testing.T) {
 	}{
 		{name: "flag", args: []string{"--output-format", "table"}},
 		{name: "shorthand", args: []string{"-o", "table"}},
-		{name: "environment", setup: func(t *testing.T) { t.Setenv(outputFormatEnvVar, "table") }},
 	}
 	for _, route := range routes {
 		t.Run(route.name, func(t *testing.T) {
@@ -723,24 +721,29 @@ func writeOutputFormatConfig(t *testing.T, value string) {
 	}
 }
 
-// The environment must be genuinely what answers, so pin a value neither the
-// flag default nor the config can supply.
-func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
-	t.Setenv(outputFormatEnvVar, "json")
-	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
-		t.Fatalf("environment json = %q", out)
+// ORQ_OUTPUT_FORMAT is exported once and then answers for every command in the
+// shell. This command does not read it: a session that pinned the machine
+// format for a pipeline should not have the render swapped out from under it
+// here, and should not be failed by a `table` it never aimed at this command.
+func TestTracesThreadIgnoresTheEnvironment(t *testing.T) {
+	for _, value := range []string{"table", "json", "markdown", "csv"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(outputFormatEnvVar, value)
+			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+			out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, "<thread ") || !strings.Contains(out, "first") {
+				t.Fatalf("output = %q, want the render an unset environment gets", out)
+			}
+		})
 	}
 }
 
-// The environment is a per-invocation ask and the config file a standing
-// default, so the environment answers over it. Swapping the two branches in
-// resolveThreadFormat breaks nothing without this.
-func TestTracesThreadEnvironmentOutranksTheConfigFile(t *testing.T) {
+// The config file is the one standing default this command does read, and an
+// environment that named something else does not displace it.
+func TestTracesThreadReadsTheConfigFileOverTheEnvironment(t *testing.T) {
 	writeOutputFormatConfig(t, "markdown")
 	t.Setenv(outputFormatEnvVar, "json")
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
@@ -748,15 +751,15 @@ func TestTracesThreadEnvironmentOutranksTheConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, `"messages"`) || strings.Contains(out, "## USER") {
-		t.Fatalf("environment json = %q", out)
+	if !strings.Contains(out, "## USER [0]") || strings.Contains(out, `"messages"`) {
+		t.Fatalf("config markdown = %q", out)
 	}
 }
 
-// The flag is the nearest source, so it answers over an environment or a
-// config that named something else.
-func TestTracesThreadFlagOutranksTheEnvironment(t *testing.T) {
-	t.Setenv(outputFormatEnvVar, "table")
+// The flag is the nearest source, so it answers over a config that named
+// something else.
+func TestTracesThreadFlagOutranksTheConfigFile(t *testing.T) {
+	writeOutputFormatConfig(t, "json")
 	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
 	out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen")
 	if err != nil {
