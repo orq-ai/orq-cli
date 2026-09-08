@@ -181,12 +181,16 @@ func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string)
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "unsupported":
-			// Both halves are recorded span text, so both can carry framing.
-			rendered = "[unsupported content: " + part.UnsupportedType
+			// Both halves are recorded span text, so both can carry framing —
+			// and both are capped here rather than after the brackets are
+			// added, so the cap counts what the span recorded and a cut can
+			// never land inside this label and leave it unclosed.
+			rendered = "[unsupported content: " + escape(truncateThreadText(part.UnsupportedType, maxChars))
 			if part.Text != "" {
-				rendered += " — " + part.Text
+				rendered += " — " + escape(truncateThreadText(part.Text, maxChars))
 			}
-			rendered += "]"
+			sections = append(sections, rendered+"]")
+			continue
 		}
 		if rendered != "" {
 			sections = append(sections, escape(truncateThreadText(rendered, maxChars)))

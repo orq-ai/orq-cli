@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"os"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -83,5 +84,67 @@ func TestEveryTimeWindowedCommandExists(t *testing.T) {
 				t.Errorf("%v: no --%s flag", path, flag)
 			}
 		}
+	}
+}
+
+// TestBodyFromFlagsOnlyReadsStdin covers the branch the default window turns
+// on. A pipe on stdin may still deliver a body, so bartolo is left to wait for
+// it; a terminal never will.
+func TestBodyFromFlagsOnlyReadsStdin(t *testing.T) {
+	root, _ := fakeTracesSearch(t)
+	search := childCommand(childCommand(root, "traces"), "search")
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+
+	terminal, err := os.OpenFile(os.DevNull, os.O_RDONLY, 0)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	defer terminal.Close()
+
+	for _, tc := range []struct {
+		name  string
+		stdin *os.File
+		want  bool
+	}{
+		{name: "a pipe may carry a body", stdin: reader, want: false},
+		{name: "a terminal never does", stdin: terminal, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := os.Stdin
+			os.Stdin = tc.stdin
+			t.Cleanup(func() { os.Stdin = previous })
+			if got := bodyFromFlagsOnly(search); got != tc.want {
+				t.Fatalf("bodyFromFlagsOnly() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestBodyFromFlagsOnlyDefersOnAnUnreadableStdin keeps the unknown case on the
+// side that cannot overwrite a body the user supplied.
+func TestBodyFromFlagsOnlyDefersOnAnUnreadableStdin(t *testing.T) {
+	root, _ := fakeTracesSearch(t)
+	search := childCommand(childCommand(root, "traces"), "search")
+
+	closed, _, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if err := closed.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	previous := os.Stdin
+	os.Stdin = closed
+	t.Cleanup(func() { os.Stdin = previous })
+
+	if bodyFromFlagsOnly(search) {
+		t.Fatal("bodyFromFlagsOnly() = true on a stdin it could not stat, want false")
 	}
 }

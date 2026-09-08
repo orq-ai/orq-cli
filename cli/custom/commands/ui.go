@@ -104,15 +104,13 @@ const (
 // defaults to - `table`, what `orq default-format table` writes and what an
 // exported ORQ_OUTPUT_FORMAT usually repeats - is not a request there.
 //
-// A command that resolves its own format from its own -o (the annotation) is
-// classified from that flag alone, because that is all it reads: counting a
-// standing default there would suppress the notices written for a person on
-// the very run that renders them the readable thread.
+// A command that reads only its own -o answers separately, in
+// ownFormatRequested.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	f := cmd.Flags().Lookup("output-format")
 	if cmd.Annotations[threadFormatAnnotation] != "" {
-		return f != nil && f.Changed && namesMachineFormat(f.Value.String())
+		return ownFormatRequested(cmd)
 	}
+	f := cmd.Flags().Lookup("output-format")
 	if f != nil && f.Changed {
 		return namesMachineFormat(f.Value.String())
 	}
@@ -120,6 +118,15 @@ func machineFormatRequested(cmd *cobra.Command) bool {
 		return standingDefaultIsMachineFormat(value)
 	}
 	return standingDefaultIsMachineFormat(configuredOutputFormat())
+}
+
+// ownFormatRequested answers for a command that resolves its format from its
+// own -o and reads no other source. That flag is all it reads, so a standing
+// default cannot be a request here: counting one would drop the notices written
+// for a person on the very run that renders them the readable thread.
+func ownFormatRequested(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("output-format")
+	return f != nil && f.Changed && namesMachineFormat(f.Value.String())
 }
 
 // namesMachineFormat reports whether a named format is a serialization for a

@@ -1071,3 +1071,49 @@ func TestRenderThreadEscapesFramingInTagAttributes(t *testing.T) {
 		t.Fatalf("newline survived in an attribute: %s", out.String())
 	}
 }
+
+// TestRenderThreadCapsAnUnsupportedPartWithoutCuttingItsLabel keeps --max-chars
+// counting recorded text: the renderer's own "[unsupported content: ...]"
+// framing is not spent from the budget, and a cut cannot leave it unclosed.
+func TestRenderThreadCapsAnUnsupportedPartWithoutCuttingItsLabel(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{{
+		Index: 0,
+		Role:  "user",
+		Content: []ThreadPart{{
+			Type:            "unsupported",
+			UnsupportedType: "image_url",
+			Text:            strings.Repeat("u", 200),
+		}},
+	}}}
+
+	var out bytes.Buffer
+	if err := RenderThread(&out, thread, 20); err != nil {
+		t.Fatalf("RenderThread: %v", err)
+	}
+	rendered := out.String()
+
+	if !strings.Contains(rendered, "[unsupported content: image_url — "+strings.Repeat("u", 20)) {
+		t.Fatalf("label or the first 20 recorded characters did not survive:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "[truncated: 180 more characters]") {
+		t.Fatalf("cut did not report the 180 characters it dropped:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "[unsupported content: image_ur\n") {
+		t.Fatalf("the cap ate the renderer's own label:\n%s", rendered)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(firstUnsupportedBlock(rendered)), "]") {
+		t.Fatalf("the label was left unclosed:\n%s", rendered)
+	}
+}
+
+func firstUnsupportedBlock(rendered string) string {
+	start := strings.Index(rendered, "[unsupported content:")
+	if start < 0 {
+		return ""
+	}
+	block := rendered[start:]
+	if end := strings.Index(block, "</message>"); end >= 0 {
+		block = block[:end]
+	}
+	return block
+}
