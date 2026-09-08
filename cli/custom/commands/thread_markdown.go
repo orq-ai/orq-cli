@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -73,31 +72,36 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 // the span facts are shown at all.
 func threadSourceHeader(source ThreadSource) string {
 	var fields []string
-	if source.TraceID != "" {
-		fields = append(fields, "trace `"+markdownInline(source.TraceID)+"`")
+	for _, field := range threadSourceFields(source) {
+		fields = append(fields, markdownSourceField(field))
 	}
-	if source.SpanID != "" {
-		fields = append(fields, "span `"+markdownInline(source.SpanID)+"`")
+	var header string
+	if len(fields) > 0 {
+		header = "> " + strings.Join(fields, " · ")
 	}
-	for _, value := range []string{source.Representation, source.Model, source.Status} {
-		if value != "" {
-			fields = append(fields, markdownInline(value))
-		}
-	}
-	if source.DurationMS != "" {
-		fields = append(fields, source.DurationMS+" ms")
-	}
-	if source.Tokens != "" {
-		fields = append(fields, source.Tokens+" tokens")
-	}
-	if len(fields) == 0 {
-		return ""
-	}
-	header := "> " + strings.Join(fields, " · ")
 	if source.Error != "" {
-		header += "\n>\n> **Error:** " + markdownInline(source.Error)
+		// A span that failed reports it even when nothing else about the span
+		// is known: the failure is the fact the reader most needs.
+		if header != "" {
+			header += "\n>\n"
+		}
+		header += "> **Error:** " + markdownInline(source.Error)
 	}
 	return header
+}
+
+// markdownSourceField renders one span fact for the header. Every field goes
+// through markdownInline here — a recorded value carrying a newline would
+// otherwise end the blockquote and let the rest of it be read as a turn.
+func markdownSourceField(field threadSourceField) string {
+	rendered := markdownInline(field.Value)
+	if field.Code {
+		rendered = "`" + rendered + "`"
+	}
+	if field.Label != "" {
+		rendered = field.Label + " " + rendered
+	}
+	return rendered + field.Unit
 }
 
 func markdownInline(value string) string {
@@ -128,7 +132,9 @@ func renderMarkdownParts(parts []ThreadPart, maxChars int) string {
 // string is written as prose instead, since fencing it would claim a structure
 // it does not have. The cap applies to the encoded text rather than to the
 // fenced block, so a truncated value cannot swallow its own closing fence and
-// turn the rest of the thread into code.
+// turn the rest of the thread into code. A value that would not encode keeps
+// the fence but is labelled, so its Go rendering cannot be mistaken for
+// recorded text.
 func renderMarkdownValue(value any, maxChars int) string {
 	if value == nil {
 		return ""
@@ -136,9 +142,9 @@ func renderMarkdownValue(value any, maxChars int) string {
 	if text, ok := value.(string); ok {
 		return truncateThreadText(text, maxChars)
 	}
-	encoded, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return truncateThreadText(fmt.Sprint(value), maxChars)
+	encoded, ok := encodeThreadValue(value)
+	if !ok {
+		return "```\n" + unencodableThreadValue + "\n" + truncateThreadText(encoded, maxChars) + "\n```"
 	}
-	return "```json\n" + truncateThreadText(string(encoded), maxChars) + "\n```"
+	return "```json\n" + truncateThreadText(encoded, maxChars) + "\n```"
 }
