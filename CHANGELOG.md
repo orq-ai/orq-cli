@@ -156,7 +156,9 @@ controls on surface changes, whichever side they originate from.
 
 - **Added:** `orq traces thread`, which normalizes Chat Completions and
   Responses spans into one readable thread. It renders XML by default, or
-  Markdown, JSON, YAML or TOON when `-o` names one; `--slice` selects
+  Markdown, JSON, YAML or TOON when `-o` names one — from the flag,
+  `ORQ_OUTPUT_FORMAT` or the config file, all three of which reach the two
+  renders that only this command has; `--slice` selects
   Python-style message ranges, and dropped Responses content is shown
   explicitly as `[content unavailable: N items]` rather than invented text. The
   XML view escapes recorded content so a span cannot forge a turn; the Markdown

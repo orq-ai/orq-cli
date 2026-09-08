@@ -92,6 +92,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// one answers here and the global keeps every other command. It stays out
 	// of viper deliberately — bartolo validates the bound value against its own
 	// list before this command runs, and `xml` is not on it.
+	// The annotation is how run.go recognizes this command before it runs; see
+	// RelaxOutputFormat.
+	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
 	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s, which escapes recorded content so a span cannot forge a turn; markdown does not) [env: ORQ_OUTPUT_FORMAT]", strings.Join(threadFormats, ", "), threadFormatXML))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
@@ -108,7 +111,38 @@ const (
 	// threadFormatEnvVar is the environment spelling of -o, from bartolo's
 	// ORQ prefix and its `-` to `_` replacer.
 	threadFormatEnvVar = "ORQ_OUTPUT_FORMAT"
+	// threadFormatAnnotation marks the command whose -o takes the two renders
+	// bartolo's own list does not have.
+	threadFormatAnnotation = "orq.thread-output-format"
 )
+
+// RelaxOutputFormat hands this command the job of judging an output format
+// that came from the environment or a config file. Both feed viper's
+// `output-format`, which bartolo's root validates against its own list before
+// any command runs — a list without `xml` or `markdown`, so an
+// `ORQ_OUTPUT_FORMAT=markdown` shell would otherwise be told markdown is not a
+// format, by the one command that renders it. A value bartolo does accept is
+// left alone; anything else is answered by this command, which knows both the
+// renders it adds and the one it takes away.
+//
+// The substituted value is the CLI-wide default, which is what the rest of the
+// CLI would have used anyway; this command reads the environment and the config
+// itself rather than the merged value, so nothing downstream reads the
+// substitute as a request. It returns a restore func, and false when there is
+// nothing to relax.
+func RelaxOutputFormat(cmd *cobra.Command) (func(), bool) {
+	if cmd == nil || cmd.Annotations[threadFormatAnnotation] == "" {
+		return nil, false
+	}
+	value := strings.ToLower(strings.TrimSpace(viper.GetString("output-format")))
+	if value == "" || slices.Contains(bartolocli.OutputFormats, value) {
+		return nil, false
+	}
+	previous := viper.Get("output-format")
+	viper.Set("output-format", threadFormatTable)
+	// viper.Set(key, nil) is how an override is dropped; there is no Unset.
+	return func() { viper.Set("output-format", previous) }, true
+}
 
 // threadFormats are the values -o takes on this command: the two reading views,
 // then whatever the CLI can serialize. The serializations are derived from

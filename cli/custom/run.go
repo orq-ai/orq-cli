@@ -43,6 +43,18 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 		Version:             version,
 	})
 
+	// `orq traces thread` renders two formats bartolo's -o does not know, and
+	// bartolo validates the bound value before any command runs. Wrap that
+	// check so the environment and the config file can name them for that
+	// command, the way its flag already can.
+	validate := bartolocli.Root.PersistentPreRunE
+	bartolocli.Root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if restore, relaxed := commands.RelaxOutputFormat(cmd); relaxed {
+			defer restore()
+		}
+		return validate(cmd, args)
+	}
+
 	commands.SetAPIVersion(bartolocli.Root, apiVersion)
 
 	registerGenerated(bartolocli.Root)

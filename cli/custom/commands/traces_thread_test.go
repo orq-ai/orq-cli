@@ -877,3 +877,47 @@ func TestTracesThreadOmitsReasoningOnRequest(t *testing.T) {
 		t.Fatalf("Markdown = %q", dropped)
 	}
 }
+
+// The two renders this command adds are not values bartolo's root will accept
+// in viper, so an environment or config file naming one has to be let past that
+// check — see RelaxOutputFormat, which run.go wraps the check with.
+func TestRelaxOutputFormat(t *testing.T) {
+	thread := NewTracesThreadCommand(TraceAPI{})
+	cases := []struct {
+		name    string
+		cmd     *cobra.Command
+		value   string
+		relaxed bool
+	}{
+		{name: "markdown", cmd: thread, value: "markdown", relaxed: true},
+		{name: "xml", cmd: thread, value: "xml", relaxed: true},
+		// Unknown values are relaxed too: the command's own error names the
+		// formats it renders, where bartolo's would name a list that has
+		// neither xml nor markdown on it.
+		{name: "unknown", cmd: thread, value: "csv", relaxed: true},
+		{name: "a format bartolo accepts", cmd: thread, value: "json"},
+		{name: "unset", cmd: thread, value: ""},
+		{name: "another command", cmd: &cobra.Command{Use: "other"}, value: "markdown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := viper.Get("output-format")
+			t.Cleanup(func() { viper.Set("output-format", previous) })
+			viper.Set("output-format", tc.value)
+			restore, relaxed := RelaxOutputFormat(tc.cmd)
+			if relaxed != tc.relaxed {
+				t.Fatalf("relaxed = %v, want %v", relaxed, tc.relaxed)
+			}
+			if !relaxed {
+				return
+			}
+			if got := viper.GetString("output-format"); got != threadFormatTable {
+				t.Fatalf("masked value = %q, want %q so bartolo's check passes", got, threadFormatTable)
+			}
+			restore()
+			if got := viper.GetString("output-format"); got != tc.value {
+				t.Fatalf("after restore = %q, want %q", got, tc.value)
+			}
+		})
+	}
+}
