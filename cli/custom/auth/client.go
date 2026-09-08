@@ -218,10 +218,34 @@ type Profile struct {
 	} `json:"preferences"`
 }
 
-// FetchProfile calls the identity-api ProfileService.GetProfile Connect RPC.
-// Connect unary calls are POSTs with a JSON request message, and the profile
-// arrives wrapped in the GetProfileResponse envelope.
+// FetchProfile calls the identity-api ProfileService.GetProfile Connect RPC,
+// falling back to the REST endpoint it replaced (GET <v1>/me) on deployments
+// that do not serve it. Both are live: api/my.orq.ai route the RPC, while a
+// deployment whose ingress has no /v3/rpc route answers the POST with an HTML
+// 404/405 from the proxy — which used to end setup right after the browser
+// approval, with nginx markup for an error message.
 func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
+	profile, rpcErr := c.fetchProfileRPC(accessToken)
+	if rpcErr == nil {
+		return profile, nil
+	}
+	// Only a routing answer means "this host does not have the RPC". A 401 or a
+	// 5xx is the RPC itself talking, and retrying the old endpoint would trade a
+	// precise error for a confusing one.
+	var apiErr *APIError
+	if !errors.As(rpcErr, &apiErr) || (apiErr.Status != http.StatusNotFound && apiErr.Status != http.StatusMethodNotAllowed) {
+		return nil, rpcErr
+	}
+	profile, restErr := c.fetchProfileREST(accessToken)
+	if restErr != nil {
+		return nil, fmt.Errorf("%w (and the legacy profile endpoint failed too: %v)", rpcErr, restErr)
+	}
+	return profile, nil
+}
+
+// fetchProfileRPC is the Connect unary call: a POST with a JSON request
+// message, answering with the profile wrapped in a GetProfileResponse envelope.
+func (c *Client) fetchProfileRPC(accessToken string) (*Profile, error) {
 	var resp struct {
 		Profile Profile `json:"profile"`
 	}
@@ -233,6 +257,20 @@ func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
 		return nil, fmt.Errorf("invalid profile response from %s", c.URLs.ProfileBaseURL)
 	}
 	return &resp.Profile, nil
+}
+
+// fetchProfileREST is the pre-identity-api endpoint: a GET answering with the
+// profile unwrapped.
+func (c *Client) fetchProfileREST(accessToken string) (*Profile, error) {
+	url := c.URLs.V1BaseURL + "/me"
+	var profile Profile
+	if err := c.jsonRequest(http.MethodGet, url, accessToken, nil, &profile); err != nil {
+		return nil, err
+	}
+	if profile.Workspaces == nil {
+		return nil, fmt.Errorf("invalid profile response from %s", url)
+	}
+	return &profile, nil
 }
 
 // ============================================================================

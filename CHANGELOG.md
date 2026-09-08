@@ -117,6 +117,14 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed:** `orq setup --server <host>` no longer dies with a raw nginx `405 Not
+  Allowed` page right after the browser approval on a deployment that does not
+  route the identity RPC. The profile fetch calls
+  `POST /v3/rpc/identity/.../GetProfile` first and, only when the host answers
+  that route with a 404 or 405, falls back to the REST endpoint it replaced
+  (`GET /v2/api/me`). A 401 or a 5xx from the RPC keeps its own error, so a dead
+  credential is still reported as one.
+
 ## [8.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.0) — 2026-09-07
 
 - **Removed: `orq auth add-profile` and `orq auth list-profiles`**, the
