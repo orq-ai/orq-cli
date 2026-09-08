@@ -199,9 +199,10 @@ func escapeThreadTags(text string) string {
 }
 
 // truncateThreadText caps a rendered block, keeping its start and saying how
-// much was left out. Only text inside an element is shortened, so a truncated
-// message stays well-formed. A trace can hold one tool result larger than the
-// context it is being read in.
+// much was left out. Callers pass text that is already inside their own framing
+// — an XML element, a Markdown fence — so a cut can never leave a tag or a
+// fence half-written. A trace can hold one tool result larger than the context
+// it is being read in.
 func truncateThreadText(text string, maxChars int) string {
 	if maxChars <= 0 || len([]rune(text)) <= maxChars {
 		return text

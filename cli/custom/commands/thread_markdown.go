@@ -8,12 +8,15 @@ import (
 )
 
 // RenderThreadMarkdown writes a plain Markdown view of a thread, for a reader
-// or a pipeline that wants headings rather than the XML render's tags. Recorded
-// body content is written through as Markdown; structural metadata is escaped
-// so trace values cannot inject headings or break the renderer's framing.
-// `--format xml` remains the render to trust when a span's own text may imitate
-// the surrounding structure. maxChars caps
-// each rendered block, or is zero for no cap.
+// or a pipeline that wants headings rather than the XML render's tags.
+// Structural metadata — roles, names, ids, the source header — is escaped, so a
+// trace value cannot inject a heading. Recorded body content deliberately is
+// not: escaping every `##` and code fence in it would defeat the readable view
+// that is this render's whole purpose. The consequence is that a span whose own
+// text contains `## ASSISTANT [1]` produces something that reads like a turn,
+// which is exactly what `escapeThreadTags` stops on the XML side — so
+// `--format xml` stays the render to trust when the recorded text is not.
+// maxChars caps each rendered block, or is zero for no cap.
 func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
 	var sections []string
 	if header := threadSourceHeader(thread.Source); header != "" {
@@ -30,6 +33,12 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 	heading := fmt.Sprintf("## %s [%d]", markdownInline(strings.ToUpper(message.Role)), message.Index)
 	if message.Name != "" {
 		heading += " — " + markdownInline(message.Name)
+	}
+	// The id the XML render carries as tool_call_id. Two parallel calls to one
+	// tool produce two identical headings without it, and a reader pairing a
+	// result to its call has nothing to pair on.
+	if message.ToolCallID != "" {
+		heading += " [" + markdownInline(message.ToolCallID) + "]"
 	}
 
 	ordinary, errors, exceptions := partitionThreadParts(message.Content)
@@ -60,10 +69,8 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 	return heading + "\n\n" + body
 }
 
-// threadSourceHeader names the span the thread was read from, and the span
-// facts a reader needs to judge the conversation. Trace-only requests pick one
-// span out of many, and a reader who cannot see which one has no way to tell a
-// wrong selection from a wrong conversation.
+// threadSourceHeader is threadOpenTag's Markdown counterpart; see there for why
+// the span facts are shown at all.
 func threadSourceHeader(source ThreadSource) string {
 	var fields []string
 	if source.TraceID != "" {
@@ -119,8 +126,8 @@ func renderMarkdownParts(parts []ThreadPart, maxChars int) string {
 		case "text", "summary", "error", "exception":
 			rendered = part.Text
 		case "json":
-			// Already capped inside its fence; the shared cap below would cut
-			// the closing one off.
+			// Capped by renderMarkdownValue, which caps inside the fence it
+			// adds; re-capping here would cut a closing fence off.
 			if fenced := renderMarkdownValue(part.Value, maxChars); fenced != "" {
 				sections = append(sections, fenced)
 			}
@@ -143,9 +150,11 @@ func renderMarkdownParts(parts []ThreadPart, maxChars int) string {
 	return strings.Join(sections, "\n\n")
 }
 
-// renderMarkdownValue fences an encoded value. The cap applies to the encoded
-// text rather than the fenced block, so a truncated value cannot swallow its
-// own closing fence and turn the rest of the thread into code.
+// renderMarkdownValue fences an encoded value; a value that was recorded as a
+// string is written as prose instead, since fencing it would claim a structure
+// it does not have. The cap applies to the encoded text rather than to the
+// fenced block, so a truncated value cannot swallow its own closing fence and
+// turn the rest of the thread into code.
 func renderMarkdownValue(value any, maxChars int) string {
 	if value == nil {
 		return ""

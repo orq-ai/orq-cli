@@ -142,11 +142,14 @@ controls on surface changes, whichever side they originate from.
 
 - **Added:** `orq traces thread`, which normalizes Chat Completions and
   Responses spans into one readable thread. It renders XML by default, or
-  Markdown, JSON, YAML, or TOON when selected; `--slice` selects Python-style
-  message ranges, and dropped Responses content is shown explicitly as
-  `[content unavailable: N items]` rather than invented text. `--format`
-  outranks `-o`, so a shell that pins a global format can still ask this
-  command for a different render.
+  Markdown, JSON, YAML, or TOON when selected with `--format`; `--slice`
+  selects Python-style message ranges, and dropped Responses content is shown
+  explicitly as `[content unavailable: N items]` rather than invented text.
+  `--format` outranks `-o` and accepts every serialization `-o` does, so a
+  shell that pins a global format can still ask this command for a different
+  render. The XML view escapes recorded content so a span cannot forge a turn;
+  the Markdown view deliberately does not, because escaping every heading and
+  code fence would defeat the readable view — read untrusted traces as XML.
 - **Fixed:** `orq traces thread -o table` renders the readable thread again
   instead of a structured dump. The command branched on whether the format flag
   had been set rather than on the resolved format, so an explicit `-o table`
@@ -155,7 +158,8 @@ controls on surface changes, whichever side they originate from.
   reach the same render. `--json`, `-o yaml` and `-o toon` are unchanged.
 - **Fixed:** an invalid `orq traces thread --slice` expression reports the
   accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
-  `strconv.Atoi` error.
+  `strconv.Atoi` error, and an index too large to hold is reported as out of
+  range rather than as a grammar mistake. Both exit as input errors.
 
 ## [8.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.2.0) — 2026-09-09
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -600,8 +601,11 @@ func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
 	}{
 		{name: "default"},
 		{name: "flag", args: []string{"--output-format", "table"}},
-		{name: "environment", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
+		{name: "environment", setup: func(t *testing.T) { bindOutputFormatEnv(t, "table") }},
+		// The config file resolves through the same viper key as everything
+		// else, which is the tier viper.Set writes.
 		{name: "config", setup: func(t *testing.T) { viper.Set("output-format", "table") }},
+		{name: "explicit-table", args: []string{"--format", "table"}},
 		{name: "explicit-xml", args: []string{"--format", "xml"}},
 	}
 	var rendered []string
@@ -625,6 +629,38 @@ func TestTracesThreadRendersXMLForEveryRouteToTable(t *testing.T) {
 		if out != rendered[0] {
 			t.Fatalf("routes disagree: %q vs %q", out, rendered[0])
 		}
+	}
+}
+
+// bindOutputFormatEnv makes ORQ_OUTPUT_FORMAT answer for `output-format` the
+// way bartolo's Init does, and drops the process-wide viper override that would
+// otherwise shadow it — without this the "environment" route above is a second
+// spelling of the default and cannot fail.
+func bindOutputFormatEnv(t *testing.T, value string) {
+	t.Helper()
+	previous := viper.Get("output-format")
+	t.Cleanup(func() { viper.Set("output-format", previous) })
+	viper.Set("output-format", nil)
+	viper.SetEnvPrefix("ORQ")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+	t.Setenv("ORQ_OUTPUT_FORMAT", value)
+	if got := viper.GetString("output-format"); got != value {
+		t.Fatalf("env binding did not take: output-format = %q, want %q", got, value)
+	}
+}
+
+// The environment route above only means something if the environment is
+// genuinely what answers, so pin a value the flag default cannot supply.
+func TestTracesThreadSerializesFromTheEnvironment(t *testing.T) {
+	bindOutputFormatEnv(t, "json")
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"messages"`) || strings.Contains(out, "<thread") {
+		t.Fatalf("environment json = %q", out)
 	}
 }
 
@@ -678,13 +714,63 @@ func TestTracesThreadFormatFlag(t *testing.T) {
 			t.Fatalf("yaml = %q", out)
 		}
 	})
-	t.Run("rejects table", func(t *testing.T) {
+	t.Run("rejects an unknown format", func(t *testing.T) {
 		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
-		_, err := runTracesThread(t, traceAPI(fake), "--format", "table", "trace-1", "chosen")
+		_, err := runTracesThread(t, traceAPI(fake), "--format", "csv", "trace-1", "chosen")
 		if err == nil || !strings.Contains(err.Error(), "xml, markdown, json, yaml, toon") {
 			t.Fatalf("err = %v", err)
 		}
 	})
+	// `--format` offers every serialization `-o` does, so a format bartolo
+	// gains cannot be one this command calls invalid.
+	t.Run("offers every global serialization", func(t *testing.T) {
+		for _, format := range bartolocli.OutputFormats {
+			if format == "table" {
+				continue
+			}
+			if !slices.Contains(threadFormats, format) {
+				t.Fatalf("--format does not accept %q, which -o does", format)
+			}
+		}
+	})
+	// Contradictory input: --json is an alias for `-o json`, and applyJSONAlias
+	// yields to an explicit -o. The explicit flag wins, so this renders XML.
+	t.Run("explicit output-format beats --json", func(t *testing.T) {
+		fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+		out, err := runTracesThread(t, traceAPI(fake), "--json", "--output-format", "table", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "<thread ") {
+			t.Fatalf("--json -o table = %q", out)
+		}
+	})
+	t.Run("caps both renders", func(t *testing.T) {
+		for _, format := range []string{"xml", "markdown"} {
+			span := conversationalSpan(strings.Repeat("q", 100))
+			fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": span}}
+			out, err := runTracesThread(t, traceAPI(fake), "--format", format, "--max-chars", "20", "trace-1", "chosen")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, "[truncated: 80 more characters]") {
+				t.Fatalf("%s ignored --max-chars: %q", format, out)
+			}
+		}
+	})
+}
+
+func TestTracesThreadReportsAnOutOfRangeSliceIndex(t *testing.T) {
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": conversationalSpan("first")}}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--slice", "99999999999999999999")
+	// The expression is grammatical, so repeating the grammar would send the
+	// reader back to retype what they typed.
+	if err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(fmt.Sprint(err), "2, 2:, :-1") || strings.Contains(fmt.Sprint(err), "strconv") {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func TestTracesThreadReportsSliceGrammar(t *testing.T) {

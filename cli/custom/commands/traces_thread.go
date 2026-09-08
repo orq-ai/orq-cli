@@ -56,7 +56,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			if slice != "" {
 				thread, err = SliceThread(thread, slice)
 				if err != nil {
-					return err
+					// A malformed --slice is a typed-it-wrong error, the same
+					// class as a --format the command does not know.
+					return bartolocli.NewValueError(err)
 				}
 			}
 			if !reasoning {
@@ -82,7 +84,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
-	cmd.Flags().StringVar(&format, "format", "", fmt.Sprintf("Thread output format [%s] (default %s; -o/--json select a serialization when unset)", strings.Join(threadFormats, ", "), threadFormatXML))
+	cmd.Flags().StringVar(&format, "format", "", fmt.Sprintf("Thread output format [%s] (default %s, which escapes recorded content; markdown does not; -o selects a serialization when unset)", strings.Join(threadFormats, ", "), threadFormatXML))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
@@ -90,33 +92,54 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 const (
 	threadFormatXML      = "xml"
 	threadFormatMarkdown = "markdown"
+	// threadFormatTable is bartolo's CLI-wide default. It is the one value in
+	// OutputFormats that names a layout rather than a serialization, and a
+	// conversation — messages holding content parts, tool calls, reasoning —
+	// has no columns to lay out.
+	threadFormatTable = "table"
 )
 
-// threadFormats are the explicit --format values. XML is also the command's
-// implicit default.
-var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yaml", "toon"}
+// threadFormats are the explicit --format values: the two reading views, then
+// whatever the CLI can serialize. The serializations are derived from bartolo's
+// own list rather than restated, so a format added there cannot be one that
+// `-o` accepts and `--format` calls invalid. `table` is accepted too and means
+// the XML render, for the same reason `-o table` does — one word, one answer,
+// whichever flag it arrives on.
+var threadFormats = threadFormatList()
 
-// resolveThreadFormat picks one render from one resolved value. A conversation
-// is nested, so there is no table to lay out: `table` — the CLI-wide default,
-// whether it arrived from -o, ORQ_OUTPUT_FORMAT, a config file, or nothing at
-// all — resolves to the XML render, so all four routes agree. --format is the
-// per-command override, and the only way to ask for Markdown, which the global
-// flag does not accept.
+func threadFormatList() []string {
+	formats := []string{threadFormatXML, threadFormatMarkdown}
+	for _, format := range bartolocli.OutputFormats {
+		if format != threadFormatTable {
+			formats = append(formats, format)
+		}
+	}
+	return formats
+}
+
+// resolveThreadFormat picks one render from one resolved value, in precedence
+// order: --format, then the serialization -o resolved to, then the XML render.
+// `table` is not a shape a conversation has, so it means XML however it
+// arrived — -o, ORQ_OUTPUT_FORMAT, a config file, --format, or nothing at all.
+// That is the whole point: one resolved value, one render, no route disagreeing
+// with another. --format is the per-command override, and the only way to ask
+// for Markdown, which the global flag does not accept.
 func resolveThreadFormat(format string) (string, error) {
 	if strings.TrimSpace(format) == "" {
-		if resolved := bartolocli.OutputFormat(); resolved != "table" {
-			return resolved, nil
-		}
-		return threadFormatXML, nil
+		return threadRenderFor(bartolocli.OutputFormat()), nil
 	}
 	normalized := strings.ToLower(strings.TrimSpace(format))
-	if normalized == "md" {
-		normalized = threadFormatMarkdown
-	}
-	if slices.Contains(threadFormats, normalized) {
-		return normalized, nil
+	if slices.Contains(threadFormats, normalized) || normalized == threadFormatTable {
+		return threadRenderFor(normalized), nil
 	}
 	return "", bartolocli.NewValueError(fmt.Errorf("--format: %q is not one of [%s]", format, strings.Join(threadFormats, ", ")))
+}
+
+func threadRenderFor(format string) string {
+	if format == threadFormatTable {
+		return threadFormatXML
+	}
+	return format
 }
 
 func optionalArg(args []string, index int) string {
