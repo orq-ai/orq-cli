@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.2.0) — 2026-09-09
+
 - **Added: `orq launch copilot`.** GitHub Copilot CLI joins the launch agents,
   wired through the orq AI Gateway with the session's own credentials. It rides
   the OpenAI-shaped router at `/v3/router` and is configured through the
