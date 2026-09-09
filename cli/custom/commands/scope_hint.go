@@ -15,8 +15,10 @@ func NotFoundScopeHint(err error) string {
 	if err == nil || !threadNotFound(err) {
 		return ""
 	}
+	// An API key carries its own scope, and `orq projects use` does not change
+	// it. Only a session read has a project to name and a way to switch it.
 	if explicitAPIKey {
-		return "\nScope comes from the API key in use."
+		return ""
 	}
 	session, sessionErr := auth.ReadSession()
 	if sessionErr != nil || session == nil {

@@ -197,9 +197,10 @@ controls on surface changes, whichever side they originate from.
   came back as a bare `HTTP 404: trace span not found` that reads as "this does
   not exist" — the one thing it does not mean. Any command, generated ones
   included, now adds one line: ``Looked in project "pydata2026"; ids are read
-  within one: `orq projects use <key>` to switch.`` With an explicit API key it
-  says the key decides the scope instead, and `orq traces thread` keeps its own
-  line when it could name the project holding the trace.
+  within one: `orq projects use <key>` to switch.`` Only for a login session: an
+  API key carries its own scope and `orq projects use` does not change it, so
+  key-authenticated runs are left alone. `orq traces thread` keeps its own line
+  when it could name the project holding the trace.
 
 - **Fixed:** the rc binary (`@orq-ai/cli-rc`) reads stored Responses payloads
   too. `orq traces thread` gained that read in the stable binary only, so the
