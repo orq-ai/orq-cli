@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"orq/cli/custom/skills"
@@ -570,6 +572,71 @@ func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
 				if !strings.Contains(string(out), want) {
 					t.Fatalf("orq %v under a %s markdown = %s, want %q", args, source, out, want)
 				}
+			}
+		})
+	}
+}
+
+// The notice's own tests cover when it prints; this covers that it is reached
+// at all, and reached before the command body. The wiring is the fragile part:
+// the notice hangs off bartolo's single PreRun hook, and a chain assembled in
+// the wrong order — or an installer that replaces the hook instead of wrapping
+// it — would silence it with every unit test still green.
+func TestUpdateNoticeHookRunsBeforeTheCommandBody(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	var order []string
+	updateNoticeOnce = sync.Once{}
+	prev := maybePrintUpdateNotice
+	maybePrintUpdateNotice = func(*cobra.Command) { order = append(order, "notice") }
+	t.Cleanup(func() { maybePrintUpdateNotice = prev })
+
+	root := buildRoot(t)
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.AddCommand(&cobra.Command{
+		Use: "hook-probe",
+		RunE: func(*cobra.Command, []string) error {
+			order = append(order, "command")
+			return nil
+		},
+	})
+	root.SetArgs([]string{"hook-probe"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("hook-probe: %v", err)
+	}
+
+	if want := []string{"notice", "command"}; !slices.Equal(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
+// Cobra never reaches a PersistentPreRunE for help output, so the pre-run hook
+// alone left `orq` and `orq --help` silent — and those are the runs someone
+// makes while working out what the CLI does. `orq help <cmd>` reaches the hook
+// AND the help renderer, and still owes the user exactly one line.
+func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	for _, args := range [][]string{{"--help"}, {}, {"help", "man-pages"}} {
+		t.Run(strings.Join(append([]string{"orq"}, args...), " "), func(t *testing.T) {
+			calls := 0
+			updateNoticeOnce = sync.Once{} // a fresh process, as a user would have
+			prev := maybePrintUpdateNotice
+			maybePrintUpdateNotice = func(*cobra.Command) { calls++ }
+			t.Cleanup(func() { maybePrintUpdateNotice = prev })
+
+			root := buildRoot(t)
+			root.SetOut(&bytes.Buffer{})
+			root.SetErr(&bytes.Buffer{})
+			root.SetArgs(args)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if calls != 1 {
+				t.Errorf("notice reached %d times, want exactly 1", calls)
 			}
 		})
 	}

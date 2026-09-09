@@ -14,6 +14,7 @@ import (
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 )
 
@@ -30,6 +31,12 @@ const (
 
 	updateCheckTTL     = 24 * time.Hour
 	updateCheckTimeout = 2 * time.Second
+
+	// The notice is a nudge, not a policy: three sightings in a day is enough
+	// for anyone who is going to act on it, and a fourth is just noise on
+	// someone's every command.
+	noticeWindow  = 24 * time.Hour
+	noticesPerDay = 3
 )
 
 // installMethod is how this binary arrived, which decides how it can be
@@ -43,15 +50,18 @@ const (
 	methodUnknown   installMethod = "unknown"
 )
 
-// updateCacheFile records the last check so the registry is asked at most once a
-// day and a stale "update available" cannot outlive the update that fixed it:
-// CurrentAtCheck invalidates the entry as soon as the running version changes,
-// through whichever install method the user updated.
+// updateCacheFile records the last check. CurrentAtCheck is what stops a stale
+// "update available" outliving the update that fixed it: the entry is void the
+// moment the running version changes, through whichever install method.
 type updateCacheFile struct {
 	Version        int       `json:"version"`
 	CheckedAt      time.Time `json:"checked_at"`
 	Latest         string    `json:"latest"`
 	CurrentAtCheck string    `json:"current_at_check"`
+	// ShownAt are the times the notice was actually printed: the display
+	// budget, on its own clock from the fetch TTL, in the same file so a
+	// version change voids both at once.
+	ShownAt []time.Time `json:"shown_at,omitempty"`
 }
 
 // Overridable for tests: the real endpoint and the real home directory are not
@@ -62,11 +72,21 @@ var (
 	osExecutable      = os.Executable
 )
 
-// MaybePrintUpdateNotice prints a one-line "newer version available" notice on
-// stderr on every human-facing run, from the cached answer when there is one:
-// the TTL bounds how often the registry is asked, not how often the user is
-// told. Every failure path is silent: an update check must never turn a working
-// command into a failure, nor delay it beyond updateCheckTimeout.
+// MaybePrintUpdateNotice prints the "newer version available" notice on stderr
+// before the command runs, from cache only.
+//
+// Before, because a line after several screens of output is a line nobody
+// reads. From cache only, because a registry round trip in front of every
+// command is latency the user did not ask for - RefreshUpdateCache does that
+// after the command instead.
+//
+// The cached answer is served however old it is, as long as it was recorded
+// for the running version. Gating the notice on the fetch TTL as well starved
+// it entirely for anyone who runs orq about once a day: their cache is always
+// a little past the TTL by the time they come back, so the notice was never
+// due on the run that could have shown it. A day-old "8.0.5 is out" is still
+// true; the version stamp is what makes a notice that has been fixed
+// disappear, not its age.
 func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if updateCheckDisabled(cmd) {
 		return
@@ -75,8 +95,37 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if _, ok := parseSemver(current); !ok {
 		return // dev build, or a version we cannot reason about
 	}
-	if fresh := readUpdateCache(current); fresh != nil {
-		printUpdateNotice(current, fresh.Latest)
+	cache := cachedCheckFor(current)
+	if cache == nil || !updateAvailable(current, cache.Latest) {
+		return
+	}
+	shown := recentNotices(cache.ShownAt)
+	if len(shown) >= noticesPerDay {
+		return
+	}
+	if !printUpdateNotice(current, cache.Latest) {
+		// A closed or broken stderr showed the user nothing, so it must not
+		// spend one of the three sightings they are owed.
+		return
+	}
+	cache.ShownAt = append(shown, time.Now().UTC())
+	writeUpdateCache(cache)
+}
+
+// RefreshUpdateCache asks the registry for the latest version when the cached
+// answer has expired, and only writes it: whatever it learns is for the next
+// run to print. Runs after the command so the round trip never delays it, and
+// every failure path is silent - an update check must never turn a working
+// command into a failure, nor delay it beyond updateCheckTimeout.
+func RefreshUpdateCache(cmd *cobra.Command) {
+	if updateCheckDisabled(cmd) {
+		return
+	}
+	current := currentVersion(cmd)
+	if _, ok := parseSemver(current); !ok {
+		return
+	}
+	if cache := cachedCheckFor(current); cache != nil && time.Since(cache.CheckedAt) < updateCheckTTL {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
@@ -85,15 +134,45 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if err != nil {
 		return
 	}
-	writeUpdateCache(current, latest)
-	printUpdateNotice(current, latest)
+	storeUpdateCheck(current, latest)
 }
 
-func printUpdateNotice(current, latest string) {
-	if !updateAvailable(current, latest) {
-		return
+// storeUpdateCheck records a fresh registry answer. The display budget survives
+// a re-check of the same version - otherwise a daily refresh would hand out
+// three fresh notices every day. A version change drops it, so the first run
+// after an update is heard.
+func storeUpdateCheck(current, latest string) {
+	var shown []time.Time
+	if prev := cachedCheckFor(current); prev != nil {
+		shown = recentNotices(prev.ShownAt)
 	}
-	fmt.Fprintf(bartolocli.Stderr, "\nUpdate available: %s -> %s\n  Run: %s\n", current, latest, updateHint())
+	writeUpdateCache(&updateCacheFile{
+		Version:        1,
+		CheckedAt:      time.Now().UTC(),
+		Latest:         latest,
+		CurrentAtCheck: current,
+		ShownAt:        shown,
+	})
+}
+
+// recentNotices keeps the budget rolling rather than one that something has to
+// reset. A timestamp in the future - a resumed VM, a corrected clock - is
+// dropped rather than counted, or three of them would silence the notice until
+// real time caught up with them.
+func recentNotices(shown []time.Time) []time.Time {
+	out := make([]time.Time, 0, len(shown))
+	for _, t := range shown {
+		if age := time.Since(t); age >= 0 && age < noticeWindow {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// printUpdateNotice reports whether the user was actually shown the notice.
+func printUpdateNotice(current, latest string) bool {
+	_, err := fmt.Fprintf(bartolocli.Stderr, "\nUpdate available: %s -> %s\n  Run: %s\n", current, latest, updateHint())
+	return err == nil
 }
 
 // updateCheckDisabled reports whether this run must stay silent: an explicit
@@ -175,10 +254,10 @@ func updateCachePath() (string, error) {
 	return filepath.Join(home, ".orq", "update-check.json"), nil
 }
 
-// readUpdateCache returns the cached check when it is still valid for the
-// running version, or nil when the caller should check again. Missing or
-// corrupt file is a cold cache, never an error.
-func readUpdateCache(current string) *updateCacheFile {
+// cachedCheckFor returns the recorded check when it was made for the running
+// version, at any age - the two callers apply their own clocks to it. A
+// missing, corrupt or foreign-version file is a cold cache, never an error.
+func cachedCheckFor(current string) *updateCacheFile {
 	path, err := updateCachePath()
 	if err != nil {
 		return nil
@@ -191,13 +270,13 @@ func readUpdateCache(current string) *updateCacheFile {
 	if err := json.Unmarshal(raw, &cache); err != nil || cache.Version != 1 {
 		return nil
 	}
-	if cache.CurrentAtCheck != current || time.Since(cache.CheckedAt) >= updateCheckTTL {
+	if cache.CurrentAtCheck != current {
 		return nil
 	}
 	return &cache
 }
 
-func writeUpdateCache(current, latest string) {
+func writeUpdateCache(cache *updateCacheFile) {
 	path, err := updateCachePath()
 	if err != nil {
 		return
@@ -205,36 +284,13 @@ func writeUpdateCache(current, latest string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	raw, err := json.Marshal(updateCacheFile{
-		Version:        1,
-		CheckedAt:      time.Now().UTC(),
-		Latest:         latest,
-		CurrentAtCheck: current,
-	})
+	raw, err := json.Marshal(cache)
 	if err != nil {
 		return
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".update-check-*.json")
-	if err != nil {
-		return
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		return
-	}
-	if err := tmp.Close(); err != nil {
-		return
-	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		return
-	}
-	_ = os.Rename(tmp.Name(), path)
+	_ = auth.WriteSecretFile(path, raw)
 }
 
-// fetchLatestVersion reads the dist-tag matching the running version's line, so
-// an rc build is compared against rc and a stable build against stable - else
-// every rc user would be told to "update" to an older stable release.
 func fetchLatestVersion(ctx context.Context, current string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, updateDistTagsURL, nil)
 	if err != nil {

@@ -65,7 +65,7 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 	// install, and a successful one leaves a binary whose version no longer
 	// matches the entry anyway.
 	if checkOnly || !available {
-		writeUpdateCache(current, latest)
+		storeUpdateCheck(current, latest)
 	}
 	if checkOnly {
 		return reportUpdateCheck(cmd, current, latest, installMethod, available)
