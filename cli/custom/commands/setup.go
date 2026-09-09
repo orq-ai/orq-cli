@@ -479,9 +479,6 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	if session == nil {
-		if opts.noInput {
-			return nil, errors.New("no TTY available for browser login\n  Pass --api-key <key> or set ORQ_API_KEY, then re-run")
-		}
 		session, err = deviceLogin(ctx, rep, opts)
 		if err != nil {
 			return nil, err
@@ -518,7 +515,10 @@ func apiBaseFromEnv() string {
 }
 
 func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
-	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, true)
+	// Device login itself needs no terminal: in a piped run the URL and code are
+	// still visible in output, and the poll can wait for approval normally. Only
+	// skip launching a browser, which is surprising in an unattended process.
+	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, !opts.noInput)
 	if err != nil {
 		return nil, err
 	}
