@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.3.0) — 2026-09-09
+
 - **Changed:** paginated list commands render a table at a terminal instead of a
   full TOON dump. `orq logs search`, `orq traces search`, `orq reporting query`,
   `orq webhooks query` and `orq knowledge-bases list-chunks-paginated` print one
