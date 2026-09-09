@@ -23,7 +23,7 @@ import (
 )
 
 // The human view keeps one row per fault and one coding_agents summary;
-// healthy per-agent rows only exist in --json. The predicate is the status,
+// healthy per-agent rows only exist in `-o json`. The predicate is the status,
 // never the message.
 func TestDoctorSummaryCollapsesHealthyAgentRows(t *testing.T) {
 	checks := []doctorCheck{
@@ -78,7 +78,7 @@ func TestDoctorSummaryCollapsesHealthyAgentRows(t *testing.T) {
 // their agent is wired to a different workspace and how to move it. Its ID
 // deliberately sits outside the "coding_agent_" namespace the collapse above
 // strips, so — despite being status "info" — it must still render in the
-// default human view, not just in --json.
+// default human view, not just in `-o json`.
 func TestDoctorSummaryKeepsPinnedWorkspaceRow(t *testing.T) {
 	checks := []doctorCheck{
 		{ID: "session_file", Status: "pass", Message: "Session file loaded"},
@@ -499,7 +499,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 			t.Fatalf("got ok=%v status=%q, want a warn", ok, check.Status)
 		}
 		// The message prints the human-facing (tilde'd, shell-quoted) path;
-		// the raw absolute path is what --json's Details carries.
+		// the raw absolute path is what the `-o json` Details carries.
 		if !strings.Contains(check.Message, tilde(sessionPath)) {
 			t.Errorf("message does not name the loose session file %s: %q", tilde(sessionPath), check.Message)
 		}
@@ -808,7 +808,7 @@ func TestCredentialPermsCheck(t *testing.T) {
 
 // runDoctorJSON runs the real `orq doctor` the way a script does — through
 // cobra, with the process-wide formatter — and returns the decoded report.
-// No --json: that flag lives on bartolo's root command, and a non-TTY run
+// No `-o`: that flag lives on bartolo's root command, and a non-TTY run
 // already gets the structured report, which is the contract scripts use.
 func runDoctorJSON(t *testing.T, args ...string) map[string]any {
 	t.Helper()

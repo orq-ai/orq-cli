@@ -91,8 +91,8 @@ jobs:
         run: go build ./...
       - name: go test
         run: go test ./...
-      - name: --json contract
-        run: go run ./cmd/orq --json version | jq .
+      - name: -o json contract
+        run: go run ./cmd/orq -o json version | jq .
       - name: bartolo version matches across modules
         shell: bash
         run: |

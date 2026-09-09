@@ -40,7 +40,7 @@ The scaffold also includes:
 Check the generated setup before making requests:
 
 ```sh
-orq --json doctor
+orq -o json doctor
 ```
 
 ## Authentication
@@ -111,7 +111,7 @@ This CLI groups commands by product/resource noun inferred from the OpenAPI tags
 Verify config, auth source, and selected server before making API calls.
 
 ```sh
-orq --json doctor
+orq -o json doctor
 ```
 
 ### Inspect server defaults
@@ -176,7 +176,7 @@ Bartolo keeps generated and user-owned code separate:
 
 ## Output Conventions
 
-- Prefer `--json` when you want machine-readable output.
+- Prefer `-o json` when you want machine-readable output.
 - Use `--help` on any command group or command to inspect flags and required args.
 - Use `help-input` when a command accepts a request body from stdin or CLI shorthand.
 - Use `server list`, `server use`, and `server set` to manage generated server defaults.

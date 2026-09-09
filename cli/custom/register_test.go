@@ -3,7 +3,9 @@ package custom
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +18,6 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.yaml.in/yaml/v3"
 )
 
 // A machine that never ran `orq connect` has no manifest. The sweep half of
@@ -250,21 +251,6 @@ func TestOnlySkillsCommandsRefreshSkills(t *testing.T) {
 	}
 }
 
-func TestApplyJSONAliasReturnsFormatterErrors(t *testing.T) {
-	previous := setOutputFormat
-	t.Cleanup(func() { setOutputFormat = previous })
-	want := errors.New("formatter unavailable")
-	setOutputFormat = func(string) (func(), error) { return nil, want }
-	viper.Set("json", true)
-	t.Cleanup(func() { viper.Set("json", false) })
-
-	cmd := &cobra.Command{Use: "doctor"}
-	cmd.Flags().String("output-format", "toon", "")
-	if err := applyJSONAlias(cmd); !errors.Is(err, want) {
-		t.Fatalf("applyJSONAlias error = %v, want %v", err, want)
-	}
-}
-
 func TestApplyNoColorPreservesTerminalTableRendering(t *testing.T) {
 	previousTerminal := stdoutIsTerminal
 	previousFormatter := bartolocli.Formatter
@@ -332,8 +318,15 @@ func TestMigrationRunsBeforeInMemoryProfileTypeRepair(t *testing.T) {
 	}
 }
 
-func TestJSONAliasAndExplicitOutputFormatPrecedence(t *testing.T) {
-	binPath := filepath.Join(t.TempDir(), "orq-json-contract")
+// The global `--json` is gone: `-o json` is the only spelling. Keeping both
+// was two ways to ask for one thing, and `--json -o yaml` asked for two
+// formats at once.
+// buildOrqBinary compiles the real `orq` and returns its path. A test that
+// needs bartolo's own root — its PersistentPreRunE, its viper wiring, its
+// config and env tiers — cannot get it from a synthetic cobra tree.
+func buildOrqBinary(t *testing.T) string {
+	t.Helper()
+	binPath := filepath.Join(t.TempDir(), "orq")
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller: could not determine this file's path")
@@ -342,41 +335,39 @@ func TestJSONAliasAndExplicitOutputFormatPrecedence(t *testing.T) {
 	build := exec.Command("go", "build", "-o", binPath, "./cmd/orq")
 	build.Dir = moduleRoot
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build orq for JSON contract test: %v\n%s", err, out)
+		t.Fatalf("build orq: %v\n%s", err, out)
 	}
+	return binPath
+}
 
-	for _, tc := range []struct {
-		name string
-		args []string
-		json bool
-	}{
-		{name: "explicit yaml wins", args: []string{"--json", "-o", "yaml", "version"}},
-		{name: "json alias", args: []string{"--json", "version"}, json: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(binPath, tc.args...)
-			cmd.Dir = t.TempDir()
-			cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
-			out, err := cmd.Output()
-			if err != nil {
-				t.Fatalf("orq %v: %v", tc.args, err)
-			}
-			if tc.json {
-				var payload map[string]any
-				if err := json.Unmarshal(out, &payload); err != nil {
-					t.Fatalf("--json output is not JSON: %v\n%s", err, out)
-				}
-				return
-			}
-			var payload map[string]any
-			if err := yaml.Unmarshal(out, &payload); err != nil {
-				t.Fatalf("explicit YAML output is not YAML: %v\n%s", err, out)
-			}
-			if json.Valid(out) {
-				t.Fatalf("--json overrode explicit -o yaml: %s", out)
-			}
-		})
-	}
+func TestJSONFlagIsGone(t *testing.T) {
+	binPath := buildOrqBinary(t)
+
+	t.Run("rejects --json", func(t *testing.T) {
+		cmd := exec.Command(binPath, "--json", "version")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("orq --json version succeeded: %s", out)
+		}
+		if !strings.Contains(string(out), "unknown flag: --json") {
+			t.Fatalf("orq --json version = %s, want an unknown-flag error", out)
+		}
+	})
+	t.Run("serializes with -o json", func(t *testing.T) {
+		cmd := exec.Command(binPath, "-o", "json", "version")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "NO_COLOR=", "ORQ_NO_COLOR=")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("orq -o json version: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(out, &payload); err != nil {
+			t.Fatalf("-o json output is not JSON: %v\n%s", err, out)
+		}
+	})
 }
 
 func TestImproveArgErrorsAppendsUsageLine(t *testing.T) {
@@ -447,5 +438,139 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	// Listing logins must work before one exists.
 	if !profileExemptCommands["auth sessions"] {
 		t.Error("`auth sessions` must be exempt from the unknown-profile guard")
+	}
+}
+
+// threadSpanServer answers the two calls `orq traces thread tr_x span-1`
+// makes, so a binary-level run reaches a render instead of the network.
+func threadSpanServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v3/traces/tr_x/spans/span-1" {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"not found"}`)
+			return
+		}
+		fmt.Fprint(w, `{"span": {"span_id": "span-1", "trace_id": "tr_x", "attributes": {`+
+			`"gen_ai.request.model": "gpt-4o",`+
+			`"gen_ai.input": [{"role": "user", "content": "hello"}],`+
+			`"gen_ai.output": [{"role": "assistant", "content": "hi"}]}}}`)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// threadHome is a HOME whose config file names format, or a bare one when it
+// is empty.
+func threadHome(t *testing.T, format string) string {
+	t.Helper()
+	home := t.TempDir()
+	if format == "" {
+		return home
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".orq", "config.yaml"), []byte("output-format: "+format+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return home
+}
+
+// `orq traces thread` takes its format from -o alone. Both standing sources —
+// the exported variable and the config file — answer for every command in a
+// shell or a tree, and neither may swap the render a person came to read.
+// Only the real binary has those tiers populated at all.
+func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := threadSpanServer(t)
+	for _, source := range []string{"environment", "config"} {
+		t.Run(source, func(t *testing.T) {
+			home := threadHome(t, "")
+			env := []string{"HOME=" + home, "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_API_KEY=stub-key", "ORQ_SERVER=" + server.URL, "ORQ_OUTPUT_FORMAT="}
+			if source == "environment" {
+				env[len(env)-1] = "ORQ_OUTPUT_FORMAT=json"
+			} else {
+				env[0] = "HOME=" + threadHome(t, "json")
+			}
+			cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
+			cmd.Dir = t.TempDir()
+			cmd.Env = append(os.Environ(), env...)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("traces thread: %v\n%s", err, out)
+			}
+			if !strings.Contains(string(out), "<thread ") || strings.Contains(string(out), `"messages"`) {
+				t.Fatalf("a standing %s format decided the render: %s", source, out)
+			}
+		})
+	}
+}
+
+// -o is the only route to the two renders bartolo's own list does not have,
+// and it reaches the command without any relaxation of bartolo's check: the
+// local flag shadows the bound global one, so nothing this command is asked
+// ever lands in viper. This is the test that fails if that stops being true.
+func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	server := threadSpanServer(t)
+	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1", "-o", "markdown")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(),
+		"HOME="+threadHome(t, ""),
+		"NO_COLOR=",
+		"ORQ_NO_COLOR=",
+		"ORQ_API_KEY=stub-key",
+		"ORQ_SERVER="+server.URL,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("traces thread -o markdown: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "## USER") {
+		t.Fatalf("output = %s, want the markdown render", out)
+	}
+}
+
+// A standing value bartolo does not know is refused before any command runs.
+// `orq traces thread` used to be exempted from that check, so a config file
+// naming `markdown` — a value every other command rejects — worked there and
+// nowhere else. One answer for the whole CLI is the point: the same value
+// fails the same way whichever command it is handed to.
+func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
+	binPath := buildOrqBinary(t)
+	// Reachable and credentialed, so a run that gets past the check succeeds
+	// and the exit code alone says the check was skipped.
+	server := threadSpanServer(t)
+	const want = `--output-format: "markdown" is not one of`
+	for _, source := range []string{"environment", "config"} {
+		t.Run(source, func(t *testing.T) {
+			for _, args := range [][]string{{"version"}, {"traces", "thread", "tr_x", "span-1"}} {
+				cmd := exec.Command(binPath, args...)
+				cmd.Dir = t.TempDir()
+				home, format := threadHome(t, ""), ""
+				if source == "config" {
+					home = threadHome(t, "markdown")
+				} else {
+					format = "markdown"
+				}
+				cmd.Env = append(os.Environ(),
+					"HOME="+home,
+					"NO_COLOR=",
+					"ORQ_NO_COLOR=",
+					"ORQ_API_KEY=stub-key",
+					"ORQ_SERVER="+server.URL,
+					"ORQ_OUTPUT_FORMAT="+format,
+				)
+				out, err := cmd.CombinedOutput()
+				if err == nil {
+					t.Fatalf("orq %v exited 0 under a %s markdown: %s", args, source, out)
+				}
+				if !strings.Contains(string(out), want) {
+					t.Fatalf("orq %v under a %s markdown = %s, want %q", args, source, out, want)
+				}
+			}
+		})
 	}
 }

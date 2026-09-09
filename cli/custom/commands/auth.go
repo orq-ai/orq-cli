@@ -226,7 +226,7 @@ func NewLogoutCommand() *cobra.Command {
 
 			// Same human/machine split as login and whoami: the human view
 			// returns early so a terminal never sees the structured payload,
-			// and --json/-o never sees the check line. A kept-but-unrevoked
+			// and `-o json` never sees the check line. A kept-but-unrevoked
 			// token is a warning, not a green success.
 			if wantsHumanView(cmd) {
 				if revokeErr == nil {
@@ -356,7 +356,7 @@ func NewWhoAmICommand() *cobra.Command {
 
 // printIdentity renders the friendly "who am I" block: a green headline plus an
 // aligned key/value list. The structured report is reserved for scripts and
-// --json/-o, so this is the primary output at a terminal.
+// `-o json`, so this is the primary output at a terminal.
 func printIdentity(report IdentityReport, verb string) {
 	email := "current user"
 	name := ""

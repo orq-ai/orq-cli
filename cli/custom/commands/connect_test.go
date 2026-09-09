@@ -859,7 +859,7 @@ func ensureFormatter(t *testing.T) {
 }
 
 // "agents" is orq's own entity — the platform Agents you build and invoke.
-// Using it for coding agents made `orq disconnect --json` read like a listing of
+// Using it for coding agents made `orq disconnect -o json` read like a listing of
 // those. The payload also has to carry the surviving key, or a script sees a
 // clean removal where the terminal was told a live credential remains.
 func TestDisconnectPayloadNamesCodingAgentsAndTheRetainedKey(t *testing.T) {
@@ -886,7 +886,7 @@ func TestDisconnectPayloadNamesCodingAgentsAndTheRetainedKey(t *testing.T) {
 	bartolocli.Stdout = &out
 	t.Cleanup(func() { bartolocli.Stdout = prev })
 
-	// --json is a root flag; a subcommand run standalone has no TTY, so emit
+	// `-o` is a root flag; a subcommand run standalone has no TTY, so emit
 	// produces the structured payload anyway.
 	cmd := NewDisconnectCommand()
 	cmd.SetArgs([]string{"kimi"})

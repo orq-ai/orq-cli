@@ -40,7 +40,7 @@ test:
 	@go test ./cli/custom/...
 
 doctor:
-	@go run "$(BUILD_TARGET)" --json doctor
+	@go run "$(BUILD_TARGET)" -o json doctor
 
 completions:
 	@mkdir -p "$(COMPLETIONS_DIR)"

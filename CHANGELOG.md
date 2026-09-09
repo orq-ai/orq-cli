@@ -8,15 +8,15 @@ changes scripts could observe. Internal refactors do not.
 
 What you may depend on, and what you may not:
 
-- **`--json` output on stdout is the machine contract.** For commands backed
+- **`-o json` output on stdout is the machine contract.** For commands backed
   directly by an orq API endpoint, field names and structure follow that
   endpoint's response. Documented transformation commands may instead expose
   their own documented derived schema; for example, `orq traces thread`
-  returns a canonical normalized thread. Scripts should parse `--json` and
+  returns a canonical normalized thread. Scripts should parse `-o json` and
   nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
-  regeneration into `--json` with nothing in CI failing, so response
+  regeneration into `-o json` with nothing in CI failing, so response
   field-shape changes are announced here by hand, not caught automatically.
   Fingerprinting response types per command so the gate covers them too is
   tracked in RES-1133.
@@ -103,10 +103,10 @@ at release time, so they have to already exist.
 The orq API version a build was generated against is recorded, not encoded:
 
 - `orq --version` prints it under the CLI version, and `orq version` reports
-  both plus the install method (`--json` for scripts).
+  both plus the install method (`-o json` for scripts).
 - Every GitHub release's notes open with **Built against orq API <version>**.
 - `orq doctor` carries it as `binary.api_version` in the structured report
-  (`--json`) and in the `--report` bug-report body.
+  (`-o json`) and in the `--report` bug-report body.
 - `npm view @orq-ai/cli orqApiVersion` reads it off the published package.
 
 A release is now cut for any change that reaches a binary, including
@@ -134,6 +134,148 @@ controls on surface changes, whichever side they originate from.
   selects the table's columns, and a name that is not a field of the returned
   items fails with `--columns: "<name>" is not a field of the returned items`
   rather than being ignored.
+
+- **Added: `orq traces thread --format`**, which chooses the render for one
+  run: `xml` (the default), `markdown`, `json`, `yaml` or `toon`. Markdown is
+  the plain-headings reading view; `xml` remains the one to trust when a span's
+  own text may imitate the surrounding structure, since it escapes framing.
+  `--format` outranks `-o`, so a shell that pins a global format can still ask
+  this command for something else.
+
+- **Removed: the global `--json` flag.** Use `-o json`, which it was an alias
+  for. Two spellings for one request meant `--json -o yaml` asked for two
+  formats at once, and the alias had to guess which one won. `ORQ_JSON` goes
+  with it; `ORQ_OUTPUT_FORMAT=json` is the environment spelling. Removed
+  without the usual release of notice because the CLI has not been announced
+  yet and no published script depends on it.
+
+- **Changed:** the time-scoped query commands default to the last 7 days when
+  neither `--from` nor `--to` is given, instead of failing on the required
+  fields: `traces search`, `traces query-oql`, `traces aggregate`, `logs
+  search`, `logs query`, `logs aggregate`, `logs get-patterns`, `logs
+  get-context` and `reporting query`. An end you pass yourself is untouched,
+  and a body supplied on stdin or with `--from-file` is sent exactly as given.
+
+- **Added:** `orq traces thread` reads a Responses span's conversation from the
+  stored response the span names in `gen_ai.response.id`, instead of rendering
+  the item counts the span keeps in place of the turns. A span recorded through
+  the Responses API stores `openresponses.input` as `{"items":{"count":7}}` —
+  the shape of a conversation without the conversation — so what rendered as
+  `[content unavailable: 7 items]` is now the seven turns, tool calls and
+  recorded reasoning included. The thread's source header gains a `response`
+  attribute (`response_id` in `-o json`) naming where the turns were read from,
+  set only when the span itself did not carry them. Only ids the orq gateway
+  minted (`resp_…`) are fetched; a provider's own response id is recorded in
+  the same field and resolves to nothing, so it costs no request.
+
+- **Changed:** `orq traces thread --spans` distinguishes the three states its
+  `NOTE` column used to spell "content dropped by the collector": content the
+  span never recorded, content recorded in a stored response that could not be
+  read, and content dropped with no stored response named. The selected span
+  now keeps its note too — a `*` row with turns that are all unavailable said
+  nothing about itself before.
+
+- **Fixed:** `orq traces thread` reads a trace whose root span is an evaluator.
+  The evaluator subtree is skipped so a judge's conversation is never returned
+  in place of the conversation it judged; when the judge is the whole trace
+  that skip left nothing, and the command failed with "no supported
+  conversation found" on a trace it could read. The exclusion now lifts when
+  honouring it would leave no span at all, and says on stderr that it did.
+
+- **Changed:** every "not found" now names the project it looked in. A read by
+  id answers within the active project, so an id recorded in a sibling project
+  came back as a bare `HTTP 404: trace span not found` that reads as "this does
+  not exist" — the one thing it does not mean. Any command, generated ones
+  included, now adds one line: ``Looked in project "pydata2026"; ids are read
+  within one: `orq projects use <key>` to switch.`` Only for a login session: an
+  API key carries its own scope and `orq projects use` does not change it, so
+  key-authenticated runs are left alone. The hint is the whole change: nothing
+  goes looking for the id in other projects, because nothing can — an access
+  token carries the projects it may read, and a workspace-level one covers only
+  the projects the login is a team member of.
+
+- **Fixed:** the rc binary (`@orq-ai/cli-rc`) reads stored Responses payloads
+  too. `orq traces thread` gained that read in the stable binary only, so the
+  same trace rendered `[content unavailable: 7 items]` on rc and the turns on
+  stable.
+
+- **Changed:** `orq traces thread --spans` says why a span holds no
+  conversation instead of leaving `no conversation recorded` to cover every
+  cause. A span whose request was rejected reports the error it recorded
+  (`the span failed (BadRequestError), so no conversation was recorded`); a
+  span that recorded a prompt with no reply — what the orq agent runtime writes,
+  keeping the reply out of the trace — reports that rather than passing as
+  complete, and selection now keeps looking at sibling spans for one that holds
+  the answer; a span naming the provider's own response id says so instead of
+  claiming it named no stored response; and a stored response that could not be
+  read reports the status, so a 404 (gone) reads differently from a 401 (still
+  there, not readable now). Naming a span (`orq traces thread <trace-id> <span-id>`) warns with the
+  same note rather than rendering `[content unavailable]` silently.
+
+- **Changed:** `orq traces thread` picks the span to read by depth in the span
+  tree first — the model call under an agent under the trace — and only then by
+  start time between siblings. It went by start time alone, which compares
+  clocks across services: a root span whose recorded start lands after its own
+  children was read instead of the model call inside it.
+
+- **Added:** `orq traces thread --spans` lists the trace's spans in the order
+  selection reads them, with a note on each it passes over (`evaluator`, `no
+  recorded detail`) or reads despite that (a span the trace names as its
+  leading or root is tried whatever the listing said) — the pick was
+  previously invisible, and
+  a reader who got a conversation they did not expect had no way to see what it
+  was chosen between or which span id to pass as the second argument. Prints a
+  Each span shows how many turns it holds (`TURNS`, `"messages"`), which is what
+  says whether the right span was picked; filling that column reads the spans
+  listed, up to 25 per run. A span that was read and passed over says why in the same column (`no
+  conversation recorded`, `content dropped by the collector`, `could not be
+  read`), which is the usual question a surprising thread raises.
+  The span the command settles on is marked `*` in the table and `"selected":
+  true` under `-o json` — which is not always the first one tried, since a span
+  that comes back with content dropped loses to a later one that kept the
+  turns. Prints a table for a person, and `{"spans": [...]}` under `-o json`. A trace that lists
+  no spans says so on stderr: a trace summary carries both a record `id` and a
+  `trace_id`, and this command takes the `trace_id`.
+
+- **Added:** `orq traces thread --match <regex>` keeps the messages whose
+  recorded text matches, searching everything a render shows — message text,
+  reasoning, JSON values, and tool calls by name, id and arguments. Matching is
+  case-insensitive; use the inline `(?-i)` flag to respect case. Composes with
+  `--include` and `--slice`.
+
+- **Added:** `orq traces thread --include` (`-i`) renders just the parts of the
+  conversation you name — `system` (which covers `developer`), `user`,
+  `assistant`, `tool` and `reasoning`. A selection naming no role keeps every
+  role, so `-i reasoning` is the recorded thinking from all of them. It applies to every
+  render, `-o json` included. `--reasoning=false` still works as the shorthand
+  it always was; asking for both at once is an input error rather than a
+  silently empty thread.
+
+- **Added:** `orq traces thread` gains a `markdown` render alongside its
+  existing XML default, reachable from `-o markdown`. Unlike XML, the
+  Markdown view does not escape recorded content — escaping every heading and
+  code fence would defeat a view meant to paste into a chat client or ticket —
+  so read untrusted traces as XML, whose framing a span cannot forge.
+- **Fixed:** `orq traces thread -o table` no longer prints a structured dump
+  where the identical default printed the readable thread. The command branched
+  on whether the format flag had been set rather than on the format it resolved
+  to, so asking for the CLI-wide default explicitly changed the output. Naming
+  `table` explicitly — `-o table` — is now an input error naming the formats
+  this command does render. `-o json`, `-o yaml` and `-o toon` are unchanged.
+- **Changed:** `-o` is the only way to ask `orq traces thread` for a format.
+  `ORQ_OUTPUT_FORMAT` and the config file's `output-format` are standing
+  defaults for every command in a shell or on a machine, so one naming `json`
+  would have replaced this command's readable render without asking, and one
+  naming `table` would have failed a command whose formats are its own. Neither
+  is read here. `xml` and `markdown` are not values the rest of the CLI
+  accepts, so a config file or an exported variable naming either now fails
+  this command exactly as it already failed `orq version` and every other
+  command — this one command used to be exempted from that check, which is what
+  made a config the rest of the CLI refuses look like it worked.
+- **Fixed:** an invalid `orq traces thread --slice` expression reports the
+  accepted grammar (`2`, `2:`, `:-1`, `1:3`) instead of surfacing a Go
+  `strconv.Atoi` error, and an index too large to hold is reported as out of
+  range rather than as a grammar mistake. Both exit as input errors.
 
 ## [8.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.2.0) — 2026-09-09
 

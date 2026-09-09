@@ -15,10 +15,6 @@
           "type": "string"
         },
         {
-          "name": "json",
-          "type": "bool"
-        },
-        {
           "name": "no-color",
           "type": "bool"
         },
@@ -8896,8 +8892,22 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "include",
+          "shorthand": "i",
+          "type": "stringSlice"
+        },
+        {
+          "name": "match",
+          "type": "string"
+        },
+        {
           "name": "max-chars",
           "type": "int"
+        },
+        {
+          "name": "output-format",
+          "shorthand": "o",
+          "type": "string"
         },
         {
           "name": "reasoning",
@@ -8906,6 +8916,10 @@
         {
           "name": "slice",
           "type": "string"
+        },
+        {
+          "name": "spans",
+          "type": "bool"
         }
       ]
     },

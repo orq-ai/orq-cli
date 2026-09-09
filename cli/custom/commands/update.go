@@ -19,7 +19,7 @@ const updateFetchTimeout = 10 * time.Second
 // real installer.
 //
 // The child's stdout is routed to stderr: npm's and install.sh's progress is
-// diagnostics, while stdout carries this command's own result, which `--json`
+// diagnostics, while stdout carries this command's own result, which `-o json`
 // promises is parseable.
 var runUpdateCommand = func(ctx context.Context, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)

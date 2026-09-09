@@ -28,7 +28,6 @@ import (
 var apiKeyEnvVars = commands.APIKeyEnvVars
 
 var (
-	setOutputFormat  = bartolocli.SetOutputFormat
 	stdoutIsTerminal = commands.StdoutIsTerminal
 	stderrIsTerminal = commands.StderrIsTerminal
 )
@@ -105,6 +104,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
 	improveArgErrors(root)
+	explainNotFoundScope(root)
 }
 
 func registerGlobalFlags() {
@@ -114,27 +114,6 @@ func registerGlobalFlags() {
 	bartolocli.AddGlobalFlag("no-color", "", "Disable colored output (NO_COLOR is also honored)", false)
 	bartolocli.AddGlobalFlag("workspace", "", "Workspace key to use for this invocation (overrides the session's active workspace)", "")
 	bartolocli.AddGlobalFlag("project", "", "Project id, key or name to use for this invocation (overrides the session's active project)", "")
-	// bartolo 0.9 retired its own --json in favor of `-o json`. It stays here
-	// as an alias because it is the machine contract this CLI shipped and
-	// documented; applyJSONAlias below turns it into --output-format json.
-	bartolocli.AddGlobalFlag("json", "", "Alias for --output-format json", false)
-}
-
-// applyJSONAlias makes --json mean `-o json` unless the user also passed an
-// explicit --output-format, which wins as the more specific request. It goes
-// into both stores: bartolo resolves its process-local format in its own
-// PersistentPreRunE before this hook, while this repo's custom renderers read
-// viper directly.
-func applyJSONAlias(cmd *cobra.Command) error {
-	if !viper.GetBool("json") {
-		return nil
-	}
-	if f := cmd.Flags().Lookup("output-format"); f != nil && f.Changed {
-		return nil
-	}
-	viper.Set("output-format", "json")
-	_, err := setOutputFormat("json")
-	return err
 }
 
 // annotateGlobalFlagEnvVars only labels the ORQ_* binding registerGlobalFlags already describes; nothing is bound here.
@@ -165,9 +144,6 @@ func installSessionPreRun() {
 			}
 		}
 		applyNoColor()
-		if err := applyJSONAlias(cmd); err != nil {
-			return err
-		}
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
 			return fmt.Errorf(
@@ -637,6 +613,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
 	attachTracesThread(root, traceAPI)
+	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
 	root.AddCommand(commands.NewOrqiCommand())
@@ -928,4 +905,104 @@ func improveArgErrors(cmd *cobra.Command) {
 	for _, sub := range cmd.Commands() {
 		improveArgErrors(sub)
 	}
+}
+
+// explainNotFoundScope appends the active project to every "not found" a
+// command returns. A read by id answers within one project, so an id recorded
+// in a sibling project comes back as a bare 404 that reads as "this does not
+// exist" — the one thing it does not mean. Applied to the whole tree, so the
+// generated operations carry it too.
+func explainNotFoundScope(cmd *cobra.Command) {
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			err := run(c, args)
+			hint := commands.NotFoundScopeHint(err)
+			// A command that already named the scope itself — `traces thread`
+			// names the project holding the trace — needs no second copy.
+			if hint == "" || strings.Contains(err.Error(), "orq projects use") {
+				return err
+			}
+			return fmt.Errorf("%w%s", err, hint)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		explainNotFoundScope(sub)
+	}
+}
+
+// defaultTimeWindow is the window the time-scoped query commands assume when
+// the caller names neither end. Their APIs require `from` and `to`, and "no
+// window" is never what someone typing a bare search meant.
+const defaultTimeWindow = "7d"
+
+// timeWindowedCommands are the commands that take a `from`/`to` body window:
+// every trace, log and reporting query. Listed by path rather than detected by
+// flag name so a future generated command with an unrelated --from is not
+// silently given a window it never asked for.
+var timeWindowedCommands = [][]string{
+	{"traces", "search"},
+	{"traces", "query-oql"},
+	{"traces", "aggregate"},
+	{"logs", "search"},
+	{"logs", "query"},
+	{"logs", "aggregate"},
+	{"logs", "get-patterns"},
+	{"logs", "get-context"},
+	{"reporting", "query"},
+}
+
+// applyDefaultTimeWindow gives those commands a default `from`/`to` of the last
+// 7 days. Only when the body is being built from flags: a body piped in or read
+// with --from-file is machine-written and sent as given, and an end the user
+// named always wins.
+func applyDefaultTimeWindow(root *cobra.Command) {
+	for _, path := range timeWindowedCommands {
+		cmd := root
+		for _, name := range path {
+			cmd = childCommand(cmd, name)
+			if cmd == nil {
+				break
+			}
+		}
+		if cmd == nil || cmd.RunE == nil {
+			continue
+		}
+		cmd.Long += "\n\nWith no `from`/`to`, the window is the last 7 days. " +
+			"A body piped in or read with --from-file is sent as given."
+		run := cmd.RunE
+		cmd.RunE = func(cmd *cobra.Command, args []string) error {
+			if !bodyFromFlagsOnly(cmd) {
+				return run(cmd, args)
+			}
+			for name, value := range map[string]string{"from": defaultTimeWindow, "to": "now"} {
+				if f := cmd.Flags().Lookup(name); f != nil && !f.Changed {
+					if err := cmd.Flags().Set(name, value); err != nil {
+						return err
+					}
+				}
+			}
+			return run(cmd, args)
+		}
+	}
+}
+
+// bodyFromFlagsOnly reports whether the request body will be assembled from
+// flags alone — no --from-file, no piped or redirected stdin.
+//
+// Known limitation: an idle inherited pipe (a CI runner's or subprocess.Popen's
+// stdin that nobody writes to) reads as a body here and skips the default
+// window. Waiting to see whether a byte arrives is what breaks a slow producer:
+// setting from/to marks them Changed, which flips bartolo's bodySuppliedElsewhere
+// and turns its stdin read into a 250ms grace that discards a body arriving
+// after it, so `(sleep 0.35; cat body.json) | orq traces search` would silently
+// send the injected window instead of the user's query.
+func bodyFromFlagsOnly(cmd *cobra.Command) bool {
+	if f := cmd.Flags().Lookup("from-file"); f != nil && f.Changed {
+		return false
+	}
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }

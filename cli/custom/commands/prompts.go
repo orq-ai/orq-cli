@@ -12,7 +12,7 @@ import (
 )
 
 // promptStdio routes survey prompts to stderr. A prompt is interaction, not
-// output: survey defaults to os.Stdout, so `orq ... --json > out.json` at a
+// output: survey defaults to os.Stdout, so `orq ... -o json > out.json` at a
 // terminal would write the question into the JSON payload. Read from stdin,
 // write the prompt and the typed echo to stderr, leaving stdout for the result.
 func promptStdio() survey.AskOpt {
@@ -57,6 +57,10 @@ var userEnvAPIKeyTaken bool
 // SetExplicitAPIKey is called once per invocation from custom's PreRun, before
 // the session-token injection.
 func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
+
+// UsingExplicitAPIKey reports what SetExplicitAPIKey last recorded, for the
+// callers outside this package that have to restore it.
+func UsingExplicitAPIKey() bool { return explicitAPIKey }
 
 // SetUserEnvAPIKey is called alongside SetExplicitAPIKey, before the injection.
 func SetUserEnvAPIKey(v string) { userEnvAPIKey, userEnvAPIKeyTaken = strings.TrimSpace(v), true }

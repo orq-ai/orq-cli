@@ -41,7 +41,7 @@ func TestServerFlagReplacesAPIBaseURL(t *testing.T) {
 			continue
 		}
 		// Hidden, and NOT cobra-deprecated: pflag's own notice goes to stdout
-		// and would corrupt --json. resolveServer warns on stderr instead.
+		// and would corrupt -o json. resolveServer warns on stderr instead.
 		if !f.Hidden {
 			t.Errorf("%v: --api-base-url must be hidden from help", path)
 		}
@@ -52,7 +52,7 @@ func TestServerFlagReplacesAPIBaseURL(t *testing.T) {
 }
 
 // The deprecated flag still routes, below an explicit --server, and its warning
-// goes to stderr: on stdout it would corrupt --json.
+// goes to stderr: on stdout it would corrupt -o json.
 func TestDeprecatedAPIBaseFlagResolves(t *testing.T) {
 	root := buildRoot(t)
 	t.Cleanup(func() { auth.SetServer("", "default") })
@@ -74,7 +74,7 @@ func TestDeprecatedAPIBaseFlagResolves(t *testing.T) {
 		t.Errorf("deprecation warning missing from stderr: %q", stderr)
 	}
 	if stdout != "" {
-		t.Errorf("stdout must stay clean for --json, got %q", stdout)
+		t.Errorf("stdout must stay clean for -o json, got %q", stdout)
 	}
 
 	// An explicit --server outranks the alias.
@@ -123,8 +123,12 @@ func TestConfigureAPIKeyUsageNotice(t *testing.T) {
 	cases := []struct {
 		name, envVar, profileKey, noNotice string
 		explicitKey, stderrTTY, stdoutTTY  bool
-		json                               bool
-		wantPending                        bool
+		// format is the -o value this case passes on the command line; empty
+		// means the flag was not used.
+		format string
+		// envFormat is the same request arriving as ORQ_OUTPUT_FORMAT.
+		envFormat   string
+		wantPending bool
 	}{
 		{name: "ORQ_API_KEY on a stderr tty", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
 		{name: "ORQ_TOKEN on a stderr tty", envVar: "ORQ_TOKEN", explicitKey: true, stderrTTY: true, stdoutTTY: true, wantPending: true},
@@ -134,26 +138,22 @@ func TestConfigureAPIKeyUsageNotice(t *testing.T) {
 		{name: "stored profile wins", envVar: "ORQ_TOKEN", explicitKey: true, profileKey: "profile-key", stderrTTY: true, stdoutTTY: true},
 		{name: "opt out", envVar: "ORQ_API_KEY", explicitKey: true, noNotice: "1", stderrTTY: true, stdoutTTY: true},
 		{name: "stderr redirected", envVar: "ORQ_API_KEY", explicitKey: true, stdoutTTY: true},
-		{name: "machine format", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, json: true},
+		{name: "machine format", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, format: "json"},
+		// -o is not the only way to ask; the notice has to stay off a shell
+		// that named the format in the environment too.
+		{name: "machine format from the environment", envVar: "ORQ_API_KEY", explicitKey: true, stderrTTY: true, stdoutTTY: true, envFormat: "json"},
 		{name: "session bridge owns exported key", envVar: "ORQ_API_KEY", stderrTTY: true, stdoutTTY: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			prevProfile := viper.GetString("profile")
-			prevJSON := viper.GetBool("json")
-			// machineFormatRequested reads output-format from viper, so an
-			// inherited value would silently turn every tty case into a
-			// machine-format one.
-			prevFormat := viper.GetString("output-format")
 			viper.Set("profile", "default")
-			viper.Set("json", tc.json)
-			viper.Set("output-format", "toon")
-			t.Cleanup(func() {
-				viper.Set("profile", prevProfile)
-				viper.Set("json", prevJSON)
-				viper.Set("output-format", prevFormat)
-			})
+			t.Cleanup(func() { viper.Set("profile", prevProfile) })
+			// machineFormatRequested reads the environment, so an inherited
+			// ORQ_OUTPUT_FORMAT would silently turn every tty case into a
+			// machine-format one.
+			t.Setenv("ORQ_OUTPUT_FORMAT", tc.envFormat)
 			t.Setenv("ORQ_NO_API_KEY_NOTICE", tc.noNotice)
 			for _, envVar := range apiKeyEnvVars {
 				t.Setenv(envVar, "")
@@ -177,6 +177,14 @@ func TestConfigureAPIKeyUsageNotice(t *testing.T) {
 			root.PersistentFlags().String("output-format", "toon", "")
 			cmd := &cobra.Command{Use: "models"}
 			root.AddCommand(cmd)
+			// The global flag as the command sees it after cobra merged it,
+			// marked Changed when this case asked for a machine format.
+			cmd.Flags().String("output-format", "toon", "")
+			if tc.format != "" {
+				if err := cmd.Flags().Set("output-format", tc.format); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			prevOut, prevErr := stdoutIsTerminal, stderrIsTerminal
 			stdoutIsTerminal = func() bool { return tc.stdoutTTY }

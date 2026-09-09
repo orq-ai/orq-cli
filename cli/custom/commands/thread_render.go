@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // RenderThread writes a readable, loss-conscious view of a thread. Messages are
@@ -33,8 +34,111 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 		attributes = append(attributes, "tool_call_id="+threadAttribute(message.ToolCallID))
 	}
 
-	var ordinary, errors, exceptions []ThreadPart
-	for _, part := range message.Content {
+	blocks := threadMessageBlocks(message, maxChars, escapeThreadTags, renderThreadValue)
+	rendered := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Section {
+		case threadSectionBody, threadSectionToolResult:
+			// A tool result is the message's own content here; the role
+			// attribute already says whose it is.
+			rendered = append(rendered, block.Content)
+		case threadSectionToolCall:
+			rendered = append(rendered, threadElement(threadToolCallTag(block.Call), block.Content))
+		default:
+			rendered = append(rendered, threadElement(threadElementNames[block.Section], block.Content))
+		}
+	}
+	body := strings.Join(rendered, "\n\n")
+	if body == "" {
+		body = "[content unavailable]"
+	}
+	return "<message " + strings.Join(attributes, " ") + ">\n" + body + "\n</message>"
+}
+
+// threadSection names a block inside a message. Which blocks a message has, and
+// the order they appear in, is the same in both renders — only the label and
+// the framing around each differ, so threadMessageBlocks decides what exists
+// and each renderer decides how it looks. A section added here reaches both
+// views or neither.
+type threadSection int
+
+const (
+	threadSectionBody threadSection = iota
+	threadSectionToolResult
+	threadSectionError
+	threadSectionException
+	threadSectionReasoning
+	threadSectionReasoningSummary
+	threadSectionToolCall
+)
+
+// threadBlock is one rendered block of a message: its section, its already
+// capped and escaped content, and — for a tool call — the call it came from,
+// since both renders label a call with its name and id.
+type threadBlock struct {
+	Section threadSection
+	Call    ThreadToolCall
+	Content string
+}
+
+// threadMessageBlocks walks a message into the blocks both renders show, in the
+// order both show them, dropping the ones with nothing to say. escape and value
+// are the caller's framing, threaded down to the part walk.
+func threadMessageBlocks(message ThreadMessage, maxChars int, escape func(string) string, value func(any, int) string) []threadBlock {
+	parts := func(parts []ThreadPart) string {
+		return renderThreadPartsWith(parts, maxChars, escape, value)
+	}
+	ordinary, errors, exceptions := partitionThreadParts(message.Content)
+	reasoning, summaries := partitionThreadReasoning(message.Reasoning)
+
+	body := threadSectionBody
+	if message.Role == "tool" {
+		body = threadSectionToolResult
+	}
+
+	blocks := make([]threadBlock, 0, 5+len(message.ToolCalls))
+	for _, block := range []threadBlock{
+		{Section: body, Content: parts(ordinary)},
+		{Section: threadSectionError, Content: parts(errors)},
+		{Section: threadSectionException, Content: parts(exceptions)},
+		{Section: threadSectionReasoning, Content: parts(reasoning)},
+		{Section: threadSectionReasoningSummary, Content: parts(summaries)},
+	} {
+		if block.Content != "" {
+			blocks = append(blocks, block)
+		}
+	}
+	for _, call := range message.ToolCalls {
+		if content := value(call.Arguments, maxChars); content != "" {
+			blocks = append(blocks, threadBlock{Section: threadSectionToolCall, Call: call, Content: content})
+		}
+	}
+	return blocks
+}
+
+var threadElementNames = map[threadSection]string{
+	threadSectionError:            "error",
+	threadSectionException:        "exception",
+	threadSectionReasoning:        "reasoning",
+	threadSectionReasoningSummary: "reasoning_summary",
+}
+
+func threadToolCallTag(call ThreadToolCall) string {
+	tag := "tool_call"
+	if call.ID != "" {
+		tag += " id=" + threadAttribute(call.ID)
+	}
+	if call.Name != "" {
+		tag += " name=" + threadAttribute(call.Name)
+	}
+	return tag
+}
+
+// partitionThreadParts keeps the XML and Markdown renderers' treatment of
+// error and exception content identical while allowing each renderer to choose
+// its own framing.
+func partitionThreadParts(parts []ThreadPart) (ordinary, errors, exceptions []ThreadPart) {
+	for _, part := range parts {
 		switch part.Type {
 		case "error":
 			errors = append(errors, part)
@@ -44,35 +148,18 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 			ordinary = append(ordinary, part)
 		}
 	}
-	body := renderThreadParts(ordinary, maxChars)
-	body = appendThreadElement(body, "error", renderThreadParts(errors, maxChars))
-	body = appendThreadElement(body, "exception", renderThreadParts(exceptions, maxChars))
+	return ordinary, errors, exceptions
+}
 
-	var reasoning, summaries []ThreadPart
-	for _, part := range message.Reasoning {
+func partitionThreadReasoning(parts []ThreadPart) (reasoning, summaries []ThreadPart) {
+	for _, part := range parts {
 		if part.Type == "summary" {
 			summaries = append(summaries, part)
 		} else {
 			reasoning = append(reasoning, part)
 		}
 	}
-	body = appendThreadElement(body, "reasoning", renderThreadParts(reasoning, maxChars))
-	body = appendThreadElement(body, "reasoning_summary", renderThreadParts(summaries, maxChars))
-
-	for _, call := range message.ToolCalls {
-		tag := "tool_call"
-		if call.ID != "" {
-			tag += " id=" + threadAttribute(call.ID)
-		}
-		if call.Name != "" {
-			tag += " name=" + threadAttribute(call.Name)
-		}
-		body = appendThreadElement(body, tag, truncateThreadText(renderThreadValue(call.Arguments), maxChars))
-	}
-	if body == "" {
-		body = "[content unavailable]"
-	}
-	return "<message " + strings.Join(attributes, " ") + ">\n" + body + "\n</message>"
+	return reasoning, summaries
 }
 
 // threadOpenTag names the span the thread was read from, and the span facts a
@@ -80,18 +167,13 @@ func renderThreadMessage(message ThreadMessage, maxChars int) string {
 // of many, and a reader who cannot see which one has no way to tell a wrong
 // selection from a wrong conversation.
 func threadOpenTag(source ThreadSource) string {
-	attributes := threadTagAttributes(
-		"trace", source.TraceID,
-		"span", source.SpanID,
-		"format", source.Representation,
-		"model", source.Model,
-		"duration_ms", source.DurationMS,
-		"tokens", source.Tokens,
-		"status", source.Status,
-	)
+	var attributes []string
+	for _, field := range threadSourceFields(source) {
+		attributes = append(attributes, field.Attribute+"="+threadAttribute(field.Value))
+	}
 	tag := "<thread"
-	if attributes != "" {
-		tag += " " + attributes
+	if len(attributes) > 0 {
+		tag += " " + strings.Join(attributes, " ")
 	}
 	if source.Error == "" {
 		return tag + ">"
@@ -99,68 +181,118 @@ func threadOpenTag(source ThreadSource) string {
 	return tag + ">\n\n<span_error>\n" + escapeThreadTags(source.Error) + "\n</span_error>"
 }
 
-func threadTagAttributes(pairs ...string) string {
-	var attributes []string
-	for index := 0; index+1 < len(pairs); index += 2 {
-		if pairs[index+1] != "" {
-			attributes = append(attributes, pairs[index]+"="+threadAttribute(pairs[index+1]))
+// threadSourceField is one span fact, spelled for both renders: Attribute is
+// the XML attribute name, and Label, Unit and Code say how Markdown presents
+// the same value. Escaping stays the renderer's job — the Value here is as
+// recorded.
+type threadSourceField struct {
+	Attribute string
+	Label     string
+	Unit      string
+	Value     string
+	Code      bool
+}
+
+// threadSourceFields lists the span facts, in display order, that a reader
+// needs to judge the conversation. Both threadOpenTag and threadSourceHeader
+// consume this one list, so a field cannot be shown by one render and dropped —
+// or escaped by one render and forgotten — by the other.
+func threadSourceFields(source ThreadSource) []threadSourceField {
+	all := []threadSourceField{
+		{Attribute: "trace", Label: "trace", Value: source.TraceID, Code: true},
+		{Attribute: "span", Label: "span", Value: source.SpanID, Code: true},
+		{Attribute: "response", Label: "response", Value: source.ResponseID, Code: true},
+		{Attribute: "format", Value: source.Representation},
+		{Attribute: "model", Value: source.Model},
+		{Attribute: "duration_ms", Unit: " ms", Value: source.DurationMS},
+		{Attribute: "tokens", Unit: " tokens", Value: source.Tokens},
+		{Attribute: "status", Value: source.Status},
+	}
+	fields := make([]threadSourceField, 0, len(all))
+	for _, field := range all {
+		if field.Value != "" {
+			fields = append(fields, field)
 		}
 	}
-	return strings.Join(attributes, " ")
+	return fields
 }
 
-func appendThreadElement(body, tag, content string) string {
-	if content == "" {
-		return body
-	}
+func threadElement(tag, content string) string {
 	name, _, _ := strings.Cut(tag, " ")
-	element := "<" + tag + ">\n" + content + "\n</" + name + ">"
-	if body == "" {
-		return element
-	}
-	return body + "\n\n" + element
+	return "<" + tag + ">\n" + content + "\n</" + name + ">"
 }
 
-func renderThreadParts(parts []ThreadPart, maxChars int) string {
+// renderThreadPartsWith walks the part types once for both renderers. Only the
+// framing differs between them — whether recorded text is escaped, how a value
+// is delimited — so the walk itself lives in one place and a ThreadPart type
+// added to it reaches both views or neither. value returns text that is already
+// capped, since a renderer that wraps it (a Markdown fence) has to cap inside
+// its own delimiters. Text is cut before escape runs, so a cut can never split
+// an escape that has not been written yet.
+func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string) string, value func(any, int) string) string {
 	sections := make([]string, 0, len(parts))
 	for _, part := range parts {
 		var rendered string
 		switch part.Type {
 		case "text", "summary", "error", "exception":
-			rendered = escapeThreadTags(part.Text)
+			rendered = part.Text
 		case "json":
-			rendered = renderThreadValue(part.Value)
+			if delimited := value(part.Value, maxChars); delimited != "" {
+				sections = append(sections, delimited)
+			}
+			continue
 		case "state":
 			rendered = "[" + part.State + "]"
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "unsupported":
-			// Both halves are recorded span text, so both can carry framing.
-			rendered = "[unsupported content: " + escapeThreadTags(part.UnsupportedType)
+			// Both halves are recorded span text, so both can carry framing —
+			// and both are capped here rather than after the brackets are
+			// added, so the cap counts what the span recorded and a cut can
+			// never land inside this label and leave it unclosed.
+			rendered = "[unsupported content: " + escape(truncateThreadText(part.UnsupportedType, maxChars))
 			if part.Text != "" {
-				rendered += " — " + escapeThreadTags(part.Text)
+				rendered += " — " + escape(truncateThreadText(part.Text, maxChars))
 			}
-			rendered += "]"
+			sections = append(sections, rendered+"]")
+			continue
 		}
 		if rendered != "" {
-			sections = append(sections, truncateThreadText(rendered, maxChars))
+			sections = append(sections, escape(truncateThreadText(rendered, maxChars)))
 		}
 	}
 	return strings.Join(sections, "\n\n")
 }
 
-func renderThreadValue(value any) string {
+// unencodableThreadValue marks a value the renderer could not encode. A
+// rendering failure must not read as recorded content, so the fallback is
+// labelled rather than dropped into the body as if the span had said it.
+const unencodableThreadValue = "[unencodable value]"
+
+// encodeThreadValue encodes a non-string recorded value as JSON. ok is false
+// when encoding failed and the text is Go's own rendering of the value rather
+// than the value as it was recorded.
+func encodeThreadValue(value any) (string, bool) {
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return fmt.Sprint(value), false
+	}
+	return string(encoded), true
+}
+
+func renderThreadValue(value any, maxChars int) string {
 	if value == nil {
 		return ""
 	}
 	if text, ok := value.(string); ok {
-		return escapeThreadTags(text)
+		return escapeThreadTags(truncateThreadText(text, maxChars))
 	}
-	encoded, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return escapeThreadTags(fmt.Sprint(value))
+	encoded, ok := encodeThreadValue(value)
+	rendered := escapeThreadTags(truncateThreadText(encoded, maxChars))
+	if !ok {
+		return unencodableThreadValue + "\n" + rendered
 	}
-	return escapeThreadTags(string(encoded))
+	return rendered
 }
 
 // threadAttribute quotes an attribute value. Every one of them — a trace id, a
@@ -173,31 +305,34 @@ func threadAttribute(value string) string {
 
 var threadAttributeEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "\n", " ", "\r", " ", "\t", " ")
 
-// threadTagPattern matches this renderer's own framing. Only those tags are
-// escaped when they appear in recorded content, so HTML a conversation happens
-// to discuss survives intact.
+// threadTagPattern names the tags that count as framing: the ones this
+// renderer writes itself.
 var threadTagPattern = regexp.MustCompile(`</?(?:thread|message|reasoning|reasoning_summary|tool_call|error|exception|span_error)\b`)
 
+// escapeThreadTags is the whole of what this render escapes in recorded body
+// text: the opening "<" of a framing tag becomes "&lt;", so a span whose text
+// contains "</message>" cannot forge a turn. Nothing else in a body is touched.
+// The render is a readable text view with forge-proof framing, not a parseable
+// XML document — recorded "<div>", "Tom & Jerry", "a < b" and "?a=1&b=2" are
+// reproduced character for character, as the reader recorded them. Recorded
+// values that appear inside a tag rather than in a body are escaped more
+// heavily; see threadAttribute for why.
 func escapeThreadTags(text string) string {
 	return threadTagPattern.ReplaceAllStringFunc(text, func(match string) string {
 		return "&lt;" + strings.TrimPrefix(match, "<")
 	})
 }
 
-// truncateThreadText caps a rendered block, keeping its start and saying how
-// much was left out. Only text inside an element is shortened, so a truncated
-// message stays well-formed. A trace can hold one tool result larger than the
-// context it is being read in.
+// truncateThreadText caps a block of recorded text, keeping its start and
+// saying how much was left out, so a trace holding one tool result larger than
+// the context it is read in stays readable. It runs on raw text, before any
+// framing escape and inside the caller's own delimiters — an XML element, a
+// Markdown fence — so a cut can leave neither a tag, a fence nor an escape
+// half-written, and --max-chars counts the characters that were recorded.
 func truncateThreadText(text string, maxChars int) string {
-	if maxChars <= 0 || len(text) <= maxChars {
+	if maxChars <= 0 || utf8.RuneCountInString(text) <= maxChars {
 		return text
 	}
-	kept := text[:maxChars]
-	// Never split a rune; a cut multi-byte character renders as garbage.
-	for len(kept) > 0 && !isThreadRuneStart(text[len(kept)]) {
-		kept = kept[:len(kept)-1]
-	}
-	return kept + fmt.Sprintf("\n[truncated: %d more characters]", len(text)-len(kept))
+	runes := []rune(text)
+	return string(runes[:maxChars]) + fmt.Sprintf("\n[truncated: %d more characters]", len(runes)-maxChars)
 }
-
-func isThreadRuneStart(b byte) bool { return b&0xC0 != 0x80 }

@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -17,9 +19,13 @@ type ThreadSource struct {
 	Representation string `json:"representation"`
 	TraceID        string `json:"trace_id,omitempty"`
 	SpanID         string `json:"span_id,omitempty"`
-	Model          string `json:"model,omitempty"`
-	DurationMS     string `json:"duration_ms,omitempty"`
-	Tokens         string `json:"tokens,omitempty"`
+	// ResponseID names the stored Responses payload the turns were read from,
+	// set only when the span itself held counts rather than content. Without
+	// it the render claims text the span does not carry.
+	ResponseID string `json:"response_id,omitempty"`
+	Model      string `json:"model,omitempty"`
+	DurationMS string `json:"duration_ms,omitempty"`
+	Tokens     string `json:"tokens,omitempty"`
 	// Status and Error are set only when the span itself failed.
 	Status string `json:"status,omitempty"`
 	Error  string `json:"error,omitempty"`
@@ -114,4 +120,121 @@ func SliceThread(thread Thread, expression string) (Thread, error) {
 	result := thread
 	result.Messages = append([]ThreadMessage{}, thread.Messages[start:stop]...)
 	return result, nil
+}
+
+// ThreadKinds are the kinds --include selects from: the four roles a reader sees
+// in the render, and reasoning, which is a section inside a message rather than
+// a message of its own. `system` covers the developer role, which the render
+// presents as an instruction the same way.
+var ThreadKinds = []string{"system", "user", "assistant", "tool", threadKindReasoning}
+
+const threadKindReasoning = "reasoning"
+
+// FilterThread keeps only the selected kinds. Role names decide whose messages
+// survive; reasoning decides whether the recorded thinking inside them does. A
+// selection naming no role keeps every role, so --include reasoning reads as "the
+// thinking, wherever it was recorded" rather than as nothing at all.
+//
+// A message the selection empties is dropped. One that was already empty
+// survives a role selection, because the render says "[content unavailable]"
+// for a turn that happened with nothing recorded and that is a fact about the
+// trace rather than something the filter was asked to hide — but not a
+// reasoning-only selection, which asked about sections and not about turns.
+func FilterThread(thread Thread, kinds []string) (Thread, error) {
+	selected := map[string]bool{}
+	roles := false
+	for _, kind := range kinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind == "" {
+			continue
+		}
+		if !slices.Contains(ThreadKinds, kind) {
+			return Thread{}, fmt.Errorf("unknown message type %q: expected one of %s", kind, strings.Join(ThreadKinds, ", "))
+		}
+		selected[kind] = true
+		roles = roles || kind != threadKindReasoning
+	}
+	if len(selected) == 0 {
+		return thread, nil
+	}
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
+		if roles && !selected[threadRoleKind(message.Role)] {
+			continue
+		}
+		had := len(message.Content) > 0 || len(message.Reasoning) > 0 || len(message.ToolCalls) > 0
+		if !selected[threadKindReasoning] {
+			message.Reasoning = nil
+		}
+		if !roles {
+			message.Content, message.ToolCalls = nil, nil
+		}
+		if (had || !roles) && len(message.Content) == 0 && len(message.Reasoning) == 0 && len(message.ToolCalls) == 0 {
+			continue
+		}
+		kept = append(kept, message)
+	}
+	result := thread
+	result.Messages = kept
+	return result, nil
+}
+
+func threadRoleKind(role string) string {
+	if isInstructionRole(role) {
+		return "system"
+	}
+	return role
+}
+
+// MatchThread keeps the messages whose recorded text matches. Everything a
+// render puts on the page is searched, tool calls included: a call's name and
+// its arguments are recorded text like any other, and "where did it call
+// search_docs" is the question this exists to answer. Matching is
+// case-insensitive; a pattern that means the case it wrote says so with the
+// inline `(?-i)` flag.
+func MatchThread(thread Thread, pattern string) (Thread, error) {
+	expression, err := regexp.Compile("(?i)" + pattern)
+	if err != nil {
+		return Thread{}, fmt.Errorf("invalid match pattern %q: %w", pattern, err)
+	}
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
+		if messageMatches(message, expression) {
+			kept = append(kept, message)
+		}
+	}
+	result := thread
+	result.Messages = kept
+	return result, nil
+}
+
+func messageMatches(message ThreadMessage, expression *regexp.Regexp) bool {
+	// The result of a call carries the call's id and nothing else that names
+	// it, so searching for that id has to find both sides of the pair.
+	if expression.MatchString(message.Name) || expression.MatchString(message.ToolCallID) {
+		return true
+	}
+	for _, parts := range [][]ThreadPart{message.Content, message.Reasoning} {
+		for _, part := range parts {
+			if expression.MatchString(part.Text) || expression.MatchString(part.UnsupportedType) {
+				return true
+			}
+			if part.Value != nil {
+				if encoded, _ := encodeThreadValue(part.Value); expression.MatchString(encoded) {
+					return true
+				}
+			}
+		}
+	}
+	for _, call := range message.ToolCalls {
+		if expression.MatchString(call.Name) || expression.MatchString(call.ID) {
+			return true
+		}
+		if call.Arguments != nil {
+			if encoded, _ := encodeThreadValue(call.Arguments); expression.MatchString(encoded) {
+				return true
+			}
+		}
+	}
+	return false
 }

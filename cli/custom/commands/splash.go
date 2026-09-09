@@ -30,7 +30,7 @@ func printSplash(w io.Writer, version string) {
 		return
 	}
 	// Gate on the stream being written to, not stdout: the splash goes to
-	// stderr, so `orq setup --json > file` should still draw it, while
+	// stderr, so `orq setup -o json > file` should still draw it, while
 	// `orq setup 2>/dev/null` should not.
 	if f, ok := w.(*os.File); !ok || !isatty.IsTerminal(f.Fd()) {
 		return

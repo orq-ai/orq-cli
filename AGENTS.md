@@ -10,12 +10,23 @@ make test                           # go test ./cli/custom/...
 go test ./cli/custom/commands -run TestVersionCommandReportsBothVersions   # one test
 go test ./... && go vet ./... && gofmt -l $(git ls-files '*.go')            # what CI runs
 go run ./cmd/surface-dump -check    # command-surface gate; -write to accept a change
-go run ./cmd/orq --json doctor      # or: make doctor
+go run ./cmd/orq -o json doctor     # or: make doctor
 ```
 
 CI additionally runs, and these are worth reproducing locally when you touch what
-they cover: `dash -n install.sh` (the installer must stay POSIX — macOS `/bin/sh`
-is bash in POSIX mode and accepts things dash rejects), and
+they cover: `go run ./cmd/orq -o json version | jq .` (the `-o json` contract —
+catches a flag rename or removal that breaks the machine format before it hits
+main), `go run ./cmd/surface-dump -check` (the command-surface gate, listed
+above under Commands but also a CI step in its own right), a diff of the
+`bartolo` version pinned in the root `go.mod` against
+`packages/orq-rc/go.mod` (the two modules must not drift), `dash -n install.sh`
+plus the installer's dash-run fixture and upgrade/rollback tests (the installer
+must stay POSIX — macOS `/bin/sh` is bash in POSIX mode and accepts things dash
+rejects), `go test ./cli/custom/skills/` on Windows (the OS-specific half of
+that package), the release-packaging stamp check
+(`scripts/release-build.sh --stamp-only`), `node .github/scripts/check-release-label-config.js`
+and `node --test .github/scripts/label-pr.test.js` (release-label and PR-title
+tooling), `actionlint` over `.github/workflows/*.yml`, and
 `python3 scripts/stamp-changelog.py --self-test`.
 
 The second module has its own checks: `cd packages/orq-rc && go build ./... && go vet ./...`.
@@ -181,6 +192,14 @@ add-before-remove ordering.
 Reverts made with GitHub's button are titled `Revert "feat: ..."`, which is not
 conventional. Retitle to `revert: ...` before the check will pass.
 
+## Working tree
+
+Never run `git checkout`, `git restore` or `git stash` on files you did not
+change. Other agents work in this checkout at the same time, and their
+uncommitted edits are unrecoverable once discarded. To decide whether a failure
+is yours, reproduce it in a throwaway worktree
+(`git worktree add -d /tmp/head HEAD`) instead of reverting files in place.
+
 ## Commits
 
 Conventional commits: `type(scope): subject`. Types in use here are `feat`,
@@ -192,6 +211,10 @@ The type is not decoration — it is what decides the version and whether the
 changelog moves. Pick it for the user-visible effect, not the size of the diff:
 a large refactor with no observable change is `refactor`, and a one-line change
 to a flag's meaning is `feat!`.
+
+No tool attribution in PR descriptions: a PR body ends with its own content, not
+a "Generated with Claude Code" footer. Who wrote a change is not what a reviewer
+opens the PR to learn.
 
 Commit messages and PR titles follow the same convention, and a PR title is a
 merge gate — see [Pull request titles](#pull-request-titles). `CHANGELOG.md` is
@@ -225,7 +248,7 @@ major:
 
 - **Is it breaking at all?** Only a documented part of the [stability
   contract](CHANGELOG.md#stability-contract) changing under a caller counts: a
-  changed `--json` shape, a changed exit code, an existing invocation that now
+  changed `-o json` shape, a changed exit code, an existing invocation that now
   does something else, or a command or flag pulled without a deprecation
   period. New behaviour behind a new flag, a TOON rendering change, and a
   generator or internal change that leaves `surface.json` untouched are not.
@@ -274,7 +297,7 @@ correct state; a changelog padded with refactors is not.
 
 `CHANGELOG.md`'s [Stability contract](CHANGELOG.md#stability-contract) is
 binding, not aspirational. The parts that most often catch a change out:
-`--json` on stdout is the machine contract and mirrors the API response shape;
+`-o json` on stdout is the machine contract and mirrors the API response shape;
 TOON (the default terminal format) is presentation-only and may change; errors
 go to stderr and results to stdout; and removing or renaming a command or flag
 is a breaking change that must be announced at least one release ahead.

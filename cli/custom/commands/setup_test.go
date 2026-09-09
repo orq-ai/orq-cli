@@ -698,7 +698,7 @@ func TestGatewayWiringBranch(t *testing.T) {
 
 // A provider write the user consented to and did not get is an agent failure,
 // not a warning: it must reach the exit code (via errAgentFailed on the agent's
-// Error) and the JSON. It used to evaporate — rep.warn, exit 0, success in --json.
+// Error) and the JSON. It used to evaporate — rep.warn, exit 0, success in `-o json`.
 func TestProviderWriteFailureIsAnAgentError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
