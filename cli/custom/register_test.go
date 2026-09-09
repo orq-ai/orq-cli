@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -572,5 +573,39 @@ func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The notice's own tests cover when it prints; this covers that it is reached
+// at all, and reached before the command body. The wiring is the fragile part:
+// the notice hangs off bartolo's single PreRun hook, and a chain assembled in
+// the wrong order — or an installer that replaces the hook instead of wrapping
+// it — would silence it with every unit test still green.
+func TestUpdateNoticeHookRunsBeforeTheCommandBody(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	var order []string
+	prev := maybePrintUpdateNotice
+	maybePrintUpdateNotice = func(*cobra.Command) { order = append(order, "notice") }
+	t.Cleanup(func() { maybePrintUpdateNotice = prev })
+
+	root := buildRoot(t)
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.AddCommand(&cobra.Command{
+		Use: "hook-probe",
+		RunE: func(*cobra.Command, []string) error {
+			order = append(order, "command")
+			return nil
+		},
+	})
+	root.SetArgs([]string{"hook-probe"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("hook-probe: %v", err)
+	}
+
+	if want := []string{"notice", "command"}; !slices.Equal(order, want) {
+		t.Errorf("order = %v, want %v", order, want)
 	}
 }

@@ -65,10 +65,9 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	// which one this was.
 	executed, err := bartolocli.Root.ExecuteContextC(ctx)
 	if err == nil && executed != nil {
-		// Only refreshes the cached answer, silently: the notice itself is
-		// printed before the command (installUpdateNoticePreRun), where it can
-		// still be seen. Doing the registry round trip here instead of there is
-		// what keeps it off the command's critical path.
+		// Refreshes the cached answer and prints nothing; the notice went out
+		// before the command (installUpdateNoticePreRun). The round trip is
+		// here so it stays off the command's critical path.
 		commands.RefreshUpdateCache(executed)
 	}
 	select {

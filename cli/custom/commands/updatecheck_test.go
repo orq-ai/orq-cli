@@ -121,15 +121,17 @@ func TestUpdateNoticeBudgetSurvivesCacheRefresh(t *testing.T) {
 	}
 
 	// Age the check past the TTL, leaving the printings inside their window.
-	cache, ok := loadUpdateCache()
-	if !ok {
+	cache := cachedCheckFor("4.13.18")
+	if cache == nil {
 		t.Fatal("no cache written")
 	}
 	cache.CheckedAt = time.Now().Add(-25 * time.Hour).UTC()
 	writeUpdateCache(cache)
 
 	stderr.Reset()
-	runUpdateCheck(cmd) // refetches, prints nothing (stale cache)
+	// Both runs are silent for the same reason - the budget is spent - not
+	// because the entry aged: a stale entry is still printable.
+	runUpdateCheck(cmd) // refetches
 	runUpdateCheck(cmd)
 	if got := stderr.String(); got != "" {
 		t.Errorf("printed %q after a re-check, want the daily budget to survive it", got)
@@ -145,8 +147,8 @@ func TestUpdateNoticeBudgetRollsOver(t *testing.T) {
 		runUpdateCheck(cmd)
 	}
 
-	cache, ok := loadUpdateCache()
-	if !ok {
+	cache := cachedCheckFor("4.13.18")
+	if cache == nil {
 		t.Fatal("no cache written")
 	}
 	for i := range cache.ShownAt {
@@ -158,6 +160,32 @@ func TestUpdateNoticeBudgetRollsOver(t *testing.T) {
 	runUpdateCheck(cmd)
 	if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
 		t.Errorf("printed %q, want the notice again once the old ones aged out", got)
+	}
+}
+
+// Someone who runs orq about once a day always arrives with an entry just past
+// the fetch TTL. Gating the notice on that TTL as well meant they were never
+// told at all - the run that could have printed always found the cache "cold",
+// refreshed it, and the entry expired again before they came back.
+func TestUpdateNoticeReachesAOncePerDayUser(t *testing.T) {
+	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	cmd := updateTestCmd("4.13.18")
+	runUpdateCheck(cmd) // day one: cold cache, fetches after the command
+
+	for day := 2; day <= 4; day++ {
+		cache := cachedCheckFor("4.13.18")
+		if cache == nil {
+			t.Fatalf("day %d: no cache written", day)
+		}
+		cache.CheckedAt = time.Now().Add(-25 * time.Hour).UTC()
+		cache.ShownAt = nil // yesterday's sighting has aged out of the window
+		writeUpdateCache(cache)
+
+		stderr.Reset()
+		runUpdateCheck(cmd)
+		if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
+			t.Fatalf("day %d printed %q, want the notice", day, got)
+		}
 	}
 }
 
@@ -253,7 +281,7 @@ func TestUpdateCacheInvalidatedByVersionChange(t *testing.T) {
 	}
 }
 
-func TestReadUpdateCache(t *testing.T) {
+func TestCachedCheckFor(t *testing.T) {
 	home := t.TempDir()
 	orig := updateHomeDir
 	t.Cleanup(func() { updateHomeDir = orig })
@@ -271,19 +299,28 @@ func TestReadUpdateCache(t *testing.T) {
 	}
 
 	write(t, "{not json")
-	if readUpdateCache("4.13.18") != nil {
+	if cachedCheckFor("4.13.18") != nil {
 		t.Error("corrupt cache must read as cold, not as a hit")
 	}
 
+	other, _ := json.Marshal(updateCacheFile{Version: 1, CheckedAt: time.Now(), Latest: "4.13.22", CurrentAtCheck: "4.13.17"})
+	write(t, string(other))
+	if cachedCheckFor("4.13.18") != nil {
+		t.Error("an entry recorded for another version must read as cold")
+	}
+
+	// Age is the callers' business, not this one's: the notice serves an old
+	// entry, the refresh replaces it. Gating both on the TTL here is what
+	// starved the notice for once-a-day users.
 	stale, _ := json.Marshal(updateCacheFile{Version: 1, CheckedAt: time.Now().Add(-25 * time.Hour), Latest: "4.13.22", CurrentAtCheck: "4.13.18"})
 	write(t, string(stale))
-	if readUpdateCache("4.13.18") != nil {
-		t.Error("cache older than the TTL must read as cold")
+	if cachedCheckFor("4.13.18") == nil {
+		t.Error("an entry past the fetch TTL must still be readable")
 	}
 
 	fresh, _ := json.Marshal(updateCacheFile{Version: 1, CheckedAt: time.Now(), Latest: "4.13.22", CurrentAtCheck: "4.13.18"})
 	write(t, string(fresh))
-	if readUpdateCache("4.13.18") == nil {
+	if cachedCheckFor("4.13.18") == nil {
 		t.Error("fresh cache must be a hit")
 	}
 }

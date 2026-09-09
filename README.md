@@ -500,9 +500,10 @@ nothing.
 
 At most once a day, after a command finishes, the CLI also checks the npm
 dist-tag for its release line and caches the answer. When a newer version
-exists, the next runs print a single stderr line before the command's output,
+exists, later runs print a single stderr line before the command's output,
 telling you to run `orq update` — at most three times per 24 hours, so the
-notice stays a nudge rather than a fixture of every command. The only request is a `GET` of the
+notice stays a nudge rather than a fixture of every command. `orq --help` and
+bare `orq` never print it. The only request is a `GET` of the
 public `registry.npmjs.org` dist-tags document: no version, platform or
 identifier is sent anywhere. Nothing is printed when `ORQ_NO_UPDATE_CHECK` or
 `CI` is set, when output is piped, when `-o` requested a machine

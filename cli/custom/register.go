@@ -130,12 +130,13 @@ func appendHelpFooter(root *cobra.Command) {
 	root.SetHelpTemplate(root.HelpTemplate() + "\n" + helpFooter + "\n")
 }
 
-// installSessionPreRun runs once per invocation, after cobra parsed flags and
-// before the handler. It decides the server, brings ~/.orq up to date, and —
-// only when no user-supplied API key is in force — authenticates generated
-// commands as the login session by minting the active workspace/project token
-// into ORQ_API_KEY. Bartolo resolves profiles and explicit keys itself.
-func installSessionPreRun() {
+// chainPreRun appends a step to bartolo's single package-level PreRun hook,
+// which is the only seam there is: bartolo's Init owns root.PersistentPreRunE
+// and calls this hook from it, and cobra never looks at a PersistentPreRun on
+// the same command that has a PersistentPreRunE. Steps run in registration
+// order, so an installer that depends on an earlier one's work registers after
+// it.
+func chainPreRun(step func(cmd *cobra.Command, args []string) error) {
 	prev := bartolocli.PreRun
 	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
 		if prev != nil {
@@ -143,6 +144,17 @@ func installSessionPreRun() {
 				return err
 			}
 		}
+		return step(cmd, args)
+	}
+}
+
+// installSessionPreRun runs once per invocation, after cobra parsed flags and
+// before the handler. It decides the server, brings ~/.orq up to date, and —
+// only when no user-supplied API key is in force — authenticates generated
+// commands as the login session by minting the active workspace/project token
+// into ORQ_API_KEY. Bartolo resolves profiles and explicit keys itself.
+func installSessionPreRun() {
+	chainPreRun(func(cmd *cobra.Command, args []string) error {
 		applyNoColor()
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
 		if viper.GetBool("no-input") && interactiveWizardCommands[commandPath(cmd)] {
@@ -206,7 +218,7 @@ func installSessionPreRun() {
 			os.Setenv("ORQ_API_KEY", token)
 		}
 		return nil
-	}
+	})
 }
 
 // resolveServer decides the one host this invocation talks to, and records
@@ -627,24 +639,20 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 }
 
 // installUpdateNoticePreRun puts the "update available" notice ahead of the
-// command's own output rather than after it, where it scrolled off the top of
-// a long listing and went unread. It chains last so everything the notice
-// depends on - --no-color, the --json alias, the resolved output format - is
-// already applied, and it never fails a command: printing is all it does, and
-// only from cache (see MaybePrintUpdateNotice), so it adds no network wait in
-// front of the command.
+// command's own output rather than after it, where it scrolled off the top of a
+// long listing and went unread. It registers last because the notice depends on
+// --no-color, the --json alias and the resolved output format, all of which the
+// session step settles.
 func installUpdateNoticePreRun() {
-	prev := bartolocli.PreRun
-	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
-		if prev != nil {
-			if err := prev(cmd, args); err != nil {
-				return err
-			}
-		}
-		commands.MaybePrintUpdateNotice(cmd)
+	chainPreRun(func(cmd *cobra.Command, _ []string) error {
+		maybePrintUpdateNotice(cmd)
 		return nil
-	}
+	})
 }
+
+// Variable so a test can prove the hook fires ahead of a real command body:
+// the notice itself needs a TTY, which no test process has.
+var maybePrintUpdateNotice = commands.MaybePrintUpdateNotice
 
 // installSkillsRefreshPreRun keeps installed skills current with the running
 // binary, and reclaims links left behind by launches that died without
@@ -669,14 +677,6 @@ func installUpdateNoticePreRun() {
 // to collect, and doctor excludes session links by design, so nothing
 // reported them in the meantime.
 //
-// root has no PersistentPreRun of its own to chain onto: bartolo's Init sets
-// root.PersistentPreRunE to a function that, after its own housekeeping,
-// calls the single package-level bartolocli.PreRun hook if one is set. That
-// is the same seam installSessionPreRun above already uses, so this chains
-// onto it the same way rather than assigning root.PersistentPreRun directly
-// — which cobra would never even look at, since PersistentPreRunE (bartolo's)
-// takes priority over PersistentPreRun on the same command.
-//
 // Both calls only ever touch what the manifest already records: a machine
 // that never ran `orq connect` has no manifest, and Refresh and
 // SweepDeadSessions both return before touching the filesystem in that case.
@@ -688,13 +688,7 @@ func installUpdateNoticePreRun() {
 // timeout twice, so a contended manifest costs this at most one lockTimeout
 // (currently 2s), not a hang and not a doubled wait.
 func installSkillsRefreshPreRun() {
-	prev := bartolocli.PreRun
-	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
-		if prev != nil {
-			if err := prev(cmd, args); err != nil {
-				return err
-			}
-		}
+	chainPreRun(func(cmd *cobra.Command, args []string) error {
 		// The sweep runs everywhere, the refresh does not. A dead PID in the
 		// manifest is an unambiguous fact and collecting it is one file read
 		// plus one liveness check — SweepDeadSessions returns before locking
@@ -753,7 +747,7 @@ func installSkillsRefreshPreRun() {
 			}
 		}
 		return nil
-	}
+	})
 }
 
 // renamePreviewModelsList gives `GET /v3/router/models` its own name, since the

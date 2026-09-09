@@ -309,7 +309,7 @@ func TestUpdateFailureLeavesTheNoticeArmed(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err == nil {
 		t.Fatal("expected the update to fail")
 	}
-	if readUpdateCache("4.13.18") != nil {
+	if cachedCheckFor("4.13.18") != nil {
 		t.Error("a failed update wrote the cache, silencing the notice for 24h about an update that never happened")
 	}
 }
