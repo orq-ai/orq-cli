@@ -117,6 +117,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed:** `orq setup` now starts the OAuth device flow when run without a
+  terminal and no credential exists, printing the verification URL and code
+  before waiting for approval. Coding agents and piped shells can therefore
+  complete clean-machine onboarding without first running a separate login
+  command.
+
 ## [8.6.5](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.5) — 2026-09-15
 
 - **Changed (breaking): `orq` no longer reads `.env` or `.env.local`.** The
