@@ -30,6 +30,12 @@ const (
 
 	updateCheckTTL     = 24 * time.Hour
 	updateCheckTimeout = 2 * time.Second
+
+	// The notice is a nudge, not a policy: three sightings in a day is enough
+	// for anyone who is going to act on it, and a fourth is just noise on
+	// someone's every command.
+	noticeWindow  = 24 * time.Hour
+	noticesPerDay = 3
 )
 
 // installMethod is how this binary arrived, which decides how it can be
@@ -52,6 +58,11 @@ type updateCacheFile struct {
 	CheckedAt      time.Time `json:"checked_at"`
 	Latest         string    `json:"latest"`
 	CurrentAtCheck string    `json:"current_at_check"`
+	// ShownAt are the times the notice was actually printed, newest last and
+	// capped at noticesPerDay: the display budget, which is separate from the
+	// fetch TTL above. Lives in the same file so both halves are invalidated
+	// together when the running version changes.
+	ShownAt []time.Time `json:"shown_at,omitempty"`
 }
 
 // Overridable for tests: the real endpoint and the real home directory are not
@@ -62,11 +73,15 @@ var (
 	osExecutable      = os.Executable
 )
 
-// MaybePrintUpdateNotice prints a one-line "newer version available" notice on
-// stderr on every human-facing run, from the cached answer when there is one:
-// the TTL bounds how often the registry is asked, not how often the user is
-// told. Every failure path is silent: an update check must never turn a working
-// command into a failure, nor delay it beyond updateCheckTimeout.
+// MaybePrintUpdateNotice prints the "newer version available" notice on stderr
+// BEFORE the command runs, from the cached answer only. Before, because a line
+// after several screens of output is a line nobody reads; from cache only,
+// because a registry round trip in front of every command is latency the user
+// did not ask for. The cache is refreshed by RefreshUpdateCache after the
+// command, so a cold cache costs one silent run, not a slow one.
+//
+// At most noticesPerDay printings per noticeWindow: the notice used to print on
+// every human run, which is how a helpful nudge became wallpaper.
 func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if updateCheckDisabled(cmd) {
 		return
@@ -75,9 +90,34 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if _, ok := parseSemver(current); !ok {
 		return // dev build, or a version we cannot reason about
 	}
-	if fresh := readUpdateCache(current); fresh != nil {
-		printUpdateNotice(current, fresh.Latest)
+	cache := readUpdateCache(current)
+	if cache == nil || !updateAvailable(current, cache.Latest) {
 		return
+	}
+	shown := recentNotices(cache.ShownAt)
+	if len(shown) >= noticesPerDay {
+		return
+	}
+	printUpdateNotice(current, cache.Latest)
+	cache.ShownAt = append(shown, time.Now().UTC())
+	writeUpdateCache(cache)
+}
+
+// RefreshUpdateCache asks the registry for the latest version when the cached
+// answer has expired, and only writes it: whatever it learns is for the next
+// run to print. Runs after the command so the round trip never delays it, and
+// every failure path is silent - an update check must never turn a working
+// command into a failure, nor delay it beyond updateCheckTimeout.
+func RefreshUpdateCache(cmd *cobra.Command) {
+	if updateCheckDisabled(cmd) {
+		return
+	}
+	current := currentVersion(cmd)
+	if _, ok := parseSemver(current); !ok {
+		return
+	}
+	if readUpdateCache(current) != nil {
+		return // still fresh
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
@@ -85,8 +125,37 @@ func MaybePrintUpdateNotice(cmd *cobra.Command) {
 	if err != nil {
 		return
 	}
-	writeUpdateCache(current, latest)
-	printUpdateNotice(current, latest)
+	storeUpdateCheck(current, latest)
+}
+
+// storeUpdateCheck records a fresh registry answer. The display budget survives
+// a re-check of the same version - otherwise a daily refresh would hand out
+// three fresh notices every day. A version change drops it, so the first run
+// after an update is heard.
+func storeUpdateCheck(current, latest string) {
+	var shown []time.Time
+	if prev, ok := loadUpdateCache(); ok && prev.CurrentAtCheck == current {
+		shown = recentNotices(prev.ShownAt)
+	}
+	writeUpdateCache(&updateCacheFile{
+		Version:        1,
+		CheckedAt:      time.Now().UTC(),
+		Latest:         latest,
+		CurrentAtCheck: current,
+		ShownAt:        shown,
+	})
+}
+
+// recentNotices drops printings that have aged out of the window, so the budget
+// is a rolling one rather than a counter that has to be reset by something.
+func recentNotices(shown []time.Time) []time.Time {
+	out := make([]time.Time, 0, len(shown))
+	for _, t := range shown {
+		if time.Since(t) < noticeWindow {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func printUpdateNotice(current, latest string) {
@@ -175,29 +244,38 @@ func updateCachePath() (string, error) {
 	return filepath.Join(home, ".orq", "update-check.json"), nil
 }
 
-// readUpdateCache returns the cached check when it is still valid for the
-// running version, or nil when the caller should check again. Missing or
-// corrupt file is a cold cache, never an error.
-func readUpdateCache(current string) *updateCacheFile {
+// loadUpdateCache returns the cache file as written, without judging whether it
+// is still usable. Missing or corrupt file is a cold cache, never an error.
+func loadUpdateCache() (*updateCacheFile, bool) {
 	path, err := updateCachePath()
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var cache updateCacheFile
 	if err := json.Unmarshal(raw, &cache); err != nil || cache.Version != 1 {
+		return nil, false
+	}
+	return &cache, true
+}
+
+// readUpdateCache returns the cached check when it is still valid for the
+// running version, or nil when the caller should check again.
+func readUpdateCache(current string) *updateCacheFile {
+	cache, ok := loadUpdateCache()
+	if !ok {
 		return nil
 	}
 	if cache.CurrentAtCheck != current || time.Since(cache.CheckedAt) >= updateCheckTTL {
 		return nil
 	}
-	return &cache
+	return cache
 }
 
-func writeUpdateCache(current, latest string) {
+func writeUpdateCache(cache *updateCacheFile) {
 	path, err := updateCachePath()
 	if err != nil {
 		return
@@ -205,12 +283,7 @@ func writeUpdateCache(current, latest string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
-	raw, err := json.Marshal(updateCacheFile{
-		Version:        1,
-		CheckedAt:      time.Now().UTC(),
-		Latest:         latest,
-		CurrentAtCheck: current,
-	})
+	raw, err := json.Marshal(cache)
 	if err != nil {
 		return
 	}
@@ -232,9 +305,6 @@ func writeUpdateCache(current, latest string) {
 	_ = os.Rename(tmp.Name(), path)
 }
 
-// fetchLatestVersion reads the dist-tag matching the running version's line, so
-// an rc build is compared against rc and a stable build against stable - else
-// every rc user would be told to "update" to an older stable release.
 func fetchLatestVersion(ctx context.Context, current string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, updateDistTagsURL, nil)
 	if err != nil {

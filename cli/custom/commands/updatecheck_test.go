@@ -74,22 +74,90 @@ func updateTestCmd(version string) *cobra.Command {
 	return root
 }
 
-func TestMaybePrintUpdateNoticePrintsEveryRunAndChecksOncePerTTL(t *testing.T) {
+// runUpdateCheck is one whole invocation in the order run.go performs it: the
+// notice before the command, the cache refresh after it.
+func runUpdateCheck(cmd *cobra.Command) {
+	MaybePrintUpdateNotice(cmd)
+	RefreshUpdateCache(cmd)
+}
+
+func TestMaybePrintUpdateNoticeIsCacheOnlyAndCappedPerDay(t *testing.T) {
 	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
 	cmd := updateTestCmd("4.13.18")
 
-	MaybePrintUpdateNotice(cmd)
-	if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
-		t.Fatalf("first run printed no notice: %q", got)
+	// A cold cache costs a silent run, not a slow one: nothing is printed until
+	// the answer fetched after the command is available to the next run.
+	runUpdateCheck(cmd)
+	if got := stderr.String(); got != "" {
+		t.Fatalf("first run printed %q, want silence on a cold cache", got)
+	}
+
+	for i := 1; i <= noticesPerDay; i++ {
+		stderr.Reset()
+		runUpdateCheck(cmd)
+		if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
+			t.Fatalf("run %d printed %q, want the notice served from cache", i, got)
+		}
 	}
 
 	stderr.Reset()
-	MaybePrintUpdateNotice(cmd)
-	if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
-		t.Errorf("second run inside the TTL printed %q, want the notice served from cache", got)
+	runUpdateCheck(cmd)
+	if got := stderr.String(); got != "" {
+		t.Errorf("run %d printed %q, want silence after %d notices in the window", noticesPerDay+2, got, noticesPerDay)
 	}
 	if got := hits.Load(); got != 1 {
-		t.Errorf("registry hits = %d, want 1 (cache must serve the second run)", got)
+		t.Errorf("registry hits = %d, want 1 (cache must serve the later runs)", got)
+	}
+}
+
+// The budget is per 24h, not per cache entry: a daily refresh of the same
+// version must not hand out three more notices.
+func TestUpdateNoticeBudgetSurvivesCacheRefresh(t *testing.T) {
+	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	cmd := updateTestCmd("4.13.18")
+	runUpdateCheck(cmd)
+	for i := 0; i < noticesPerDay; i++ {
+		runUpdateCheck(cmd)
+	}
+
+	// Age the check past the TTL, leaving the printings inside their window.
+	cache, ok := loadUpdateCache()
+	if !ok {
+		t.Fatal("no cache written")
+	}
+	cache.CheckedAt = time.Now().Add(-25 * time.Hour).UTC()
+	writeUpdateCache(cache)
+
+	stderr.Reset()
+	runUpdateCheck(cmd) // refetches, prints nothing (stale cache)
+	runUpdateCheck(cmd)
+	if got := stderr.String(); got != "" {
+		t.Errorf("printed %q after a re-check, want the daily budget to survive it", got)
+	}
+}
+
+// A printing older than the window no longer counts against the budget.
+func TestUpdateNoticeBudgetRollsOver(t *testing.T) {
+	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
+	cmd := updateTestCmd("4.13.18")
+	runUpdateCheck(cmd)
+	for i := 0; i < noticesPerDay; i++ {
+		runUpdateCheck(cmd)
+	}
+
+	cache, ok := loadUpdateCache()
+	if !ok {
+		t.Fatal("no cache written")
+	}
+	for i := range cache.ShownAt {
+		cache.ShownAt[i] = time.Now().Add(-25 * time.Hour).UTC()
+	}
+	writeUpdateCache(cache)
+
+	stderr.Reset()
+	runUpdateCheck(cmd)
+	if got := stderr.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
+		t.Errorf("printed %q, want the notice again once the old ones aged out", got)
 	}
 }
 
@@ -97,9 +165,9 @@ func TestMaybePrintUpdateNoticeCachedUpToDateStaysSilent(t *testing.T) {
 	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
 	cmd := updateTestCmd("4.13.22")
 
-	MaybePrintUpdateNotice(cmd)
+	runUpdateCheck(cmd)
 	stderr.Reset()
-	MaybePrintUpdateNotice(cmd)
+	runUpdateCheck(cmd)
 	if got := stderr.String(); got != "" {
 		t.Errorf("cached run printed %q for an up-to-date binary, want silence", got)
 	}
@@ -110,7 +178,7 @@ func TestMaybePrintUpdateNoticeCachedUpToDateStaysSilent(t *testing.T) {
 
 func TestMaybePrintUpdateNoticeSilentWhenUpToDate(t *testing.T) {
 	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
-	MaybePrintUpdateNotice(updateTestCmd("4.13.22"))
+	runUpdateCheck(updateTestCmd("4.13.22"))
 	if got := stderr.String(); got != "" {
 		t.Errorf("printed %q for an up-to-date binary, want silence", got)
 	}
@@ -129,7 +197,7 @@ func TestMaybePrintUpdateNoticeSuppressed(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
 			c.apply(t)
-			MaybePrintUpdateNotice(updateTestCmd("4.13.18"))
+			runUpdateCheck(updateTestCmd("4.13.18"))
 			if got := stderr.String(); got != "" {
 				t.Errorf("printed %q, want silence", got)
 			}
@@ -142,7 +210,7 @@ func TestMaybePrintUpdateNoticeSuppressed(t *testing.T) {
 
 func TestMaybePrintUpdateNoticeDevBuildStaysSilent(t *testing.T) {
 	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
-	MaybePrintUpdateNotice(updateTestCmd("dev"))
+	runUpdateCheck(updateTestCmd("dev"))
 	if got := stderr.String(); got != "" {
 		t.Errorf("printed %q for a dev build, want silence", got)
 	}
@@ -153,7 +221,8 @@ func TestMaybePrintUpdateNoticeDevBuildStaysSilent(t *testing.T) {
 
 func TestMaybePrintUpdateNoticeRCFollowsRCTag(t *testing.T) {
 	stderr, _ := updateTestEnv(t, map[string]string{"latest": "4.13.22", "rc": "4.14.0-rc.48"})
-	MaybePrintUpdateNotice(updateTestCmd("4.14.0-rc.47"))
+	runUpdateCheck(updateTestCmd("4.14.0-rc.47"))
+	runUpdateCheck(updateTestCmd("4.14.0-rc.47"))
 	if got := stderr.String(); !strings.Contains(got, "4.14.0-rc.47 -> 4.14.0-rc.48") {
 		t.Errorf("rc build compared against the wrong tag: %q", got)
 	}
@@ -162,7 +231,7 @@ func TestMaybePrintUpdateNoticeRCFollowsRCTag(t *testing.T) {
 func TestMaybePrintUpdateNoticeSurvivesRegistryFailure(t *testing.T) {
 	stderr, _ := updateTestEnv(t, nil)
 	updateDistTagsURL = "http://127.0.0.1:1/dist-tags" // nothing listens here
-	MaybePrintUpdateNotice(updateTestCmd("4.13.18"))
+	runUpdateCheck(updateTestCmd("4.13.18"))
 	if got := stderr.String(); got != "" {
 		t.Errorf("printed %q on a failed check, want silence", got)
 	}
@@ -170,12 +239,12 @@ func TestMaybePrintUpdateNoticeSurvivesRegistryFailure(t *testing.T) {
 
 func TestUpdateCacheInvalidatedByVersionChange(t *testing.T) {
 	stderr, hits := updateTestEnv(t, map[string]string{"latest": "4.13.22"})
-	MaybePrintUpdateNotice(updateTestCmd("4.13.18"))
+	runUpdateCheck(updateTestCmd("4.13.18"))
 	stderr.Reset()
 
 	// The user updated: the cache entry for the old version must not be reused,
 	// or a fixed "update available" would survive its own fix.
-	MaybePrintUpdateNotice(updateTestCmd("4.13.22"))
+	runUpdateCheck(updateTestCmd("4.13.22"))
 	if got := stderr.String(); got != "" {
 		t.Errorf("printed %q after updating, want silence", got)
 	}
@@ -225,7 +294,7 @@ func TestWriteUpdateCacheIsPrivate(t *testing.T) {
 	t.Cleanup(func() { updateHomeDir = orig })
 	updateHomeDir = func() (string, error) { return home, nil }
 
-	writeUpdateCache("4.13.18", "4.13.22")
+	storeUpdateCheck("4.13.18", "4.13.22")
 	info, err := os.Stat(filepath.Join(home, ".orq", "update-check.json"))
 	if err != nil {
 		t.Fatal(err)

@@ -61,14 +61,15 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 	}
 
 	// ExecuteContextC, not ExecuteContext, for the command that actually ran:
-	// the notice's suppression rules are per-command, and root cannot answer
+	// the check's suppression rules are per-command, and root cannot answer
 	// which one this was.
 	executed, err := bartolocli.Root.ExecuteContextC(ctx)
 	if err == nil && executed != nil {
-		// After the command's own output, so the notice never interleaves with
-		// it, and never on a failing run where the user has a real problem to
-		// read. Silent unless a person at a terminal is a day overdue an update.
-		commands.MaybePrintUpdateNotice(executed)
+		// Only refreshes the cached answer, silently: the notice itself is
+		// printed before the command (installUpdateNoticePreRun), where it can
+		// still be seen. Doing the registry round trip here instead of there is
+		// what keeps it off the command's critical path.
+		commands.RefreshUpdateCache(executed)
 	}
 	select {
 	case s := <-received:

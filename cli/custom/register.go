@@ -623,6 +623,27 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewUpdateCommand())
 	root.AddCommand(commands.NewVersionCommand())
 	installSkillsRefreshPreRun()
+	installUpdateNoticePreRun()
+}
+
+// installUpdateNoticePreRun puts the "update available" notice ahead of the
+// command's own output rather than after it, where it scrolled off the top of
+// a long listing and went unread. It chains last so everything the notice
+// depends on - --no-color, the --json alias, the resolved output format - is
+// already applied, and it never fails a command: printing is all it does, and
+// only from cache (see MaybePrintUpdateNotice), so it adds no network wait in
+// front of the command.
+func installUpdateNoticePreRun() {
+	prev := bartolocli.PreRun
+	bartolocli.PreRun = func(cmd *cobra.Command, args []string) error {
+		if prev != nil {
+			if err := prev(cmd, args); err != nil {
+				return err
+			}
+		}
+		commands.MaybePrintUpdateNotice(cmd)
+		return nil
+	}
 }
 
 // installSkillsRefreshPreRun keeps installed skills current with the running
