@@ -27,6 +27,9 @@ type fakeTraceAPI struct {
 	responses map[string]map[string]any
 	respErr   map[string]error
 	respCalls []string
+	searches  []string
+	search    map[string]any
+	searchErr error
 }
 
 func (api *fakeTraceAPI) getTrace(traceID string, _ *viper.Viper) (map[string]any, error) {
@@ -55,8 +58,13 @@ func (api *fakeTraceAPI) getResponse(responseID string, _ *viper.Viper) (map[str
 	return api.responses[responseID], nil
 }
 
+func (api *fakeTraceAPI) searchTraces(body string, _ *viper.Viper) (map[string]any, error) {
+	api.searches = append(api.searches, body)
+	return api.search, api.searchErr
+}
+
 func traceAPI(fake *fakeTraceAPI) TraceAPI {
-	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans, GetResponse: fake.getResponse}
+	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans, GetResponse: fake.getResponse, SearchTraces: fake.searchTraces}
 }
 
 // storedResponseSpan is a Responses span as the API returns one: the item
@@ -1463,5 +1471,142 @@ func TestTracesThreadNamesProjectScopingOnAMissingTrace(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--project") {
 		t.Fatalf("a trace read is project-scoped and the 404 does not say so, got: %v", err)
+	}
+}
+
+// A stored response that answers 404 is gone; anything else means the turns
+// are probably still there and the read failed. A reader deciding whether to
+// retry needs the two spelled differently.
+func TestTracesThreadTellsAGoneStoredResponseFromAnUnreadableOne(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"gone", errors.New("HTTP 404:\n{\"error\":\"not found\"}"), threadNoteStoredGone},
+		{"unreadable", errors.New("HTTP 401:\nunauthorized"), "the stored response this span names could not be read: HTTP 401:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeTraceAPI{
+				trace: map[string]any{"trace": map[string]any{"leading_span_id": "a"}},
+				spans: map[string]map[string]any{"a": storedResponseSpan("resp_1", 2)},
+				pages: map[string]map[string]any{"": {"data": []any{
+					map[string]any{"span_id": "a", "has_detail": true},
+				}}},
+				respErr: map[string]error{"resp_1": tc.err},
+			}
+			out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Fatalf("--spans = %s, want note %q", out, tc.want)
+			}
+		})
+	}
+}
+
+// A span naming the provider's own response id named something real; it is
+// this API that cannot read it. Saying it "names no stored response" would
+// send a reader looking for a recording bug that is not there.
+func TestTracesThreadSaysWhenAResponseIDIsTheProvidersOwn(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "a"}},
+		spans: map[string]map[string]any{"a": storedResponseSpan("2f0d0c22-8a2f-4c1e-9c0a-1d2e3f405162", 2)},
+		pages: map[string]map[string]any{"": {"data": []any{map[string]any{"span_id": "a", "has_detail": true}}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, threadNoteProviderID) {
+		t.Fatalf("--spans = %s, want note %q", out, threadNoteProviderID)
+	}
+	if len(fake.respCalls) != 0 {
+		t.Fatalf("fetched %v, want no stored-response read", fake.respCalls)
+	}
+}
+
+// A rejected call records no conversation, and "no conversation recorded"
+// alone reads as a gap in this command rather than a request that failed.
+func TestTracesThreadNamesTheErrorOnAFailedSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "bad"}},
+		spans: map[string]map[string]any{
+			"bad": {"span": map[string]any{"attributes": map[string]any{"error.type": "BadRequestError"}}},
+			"ok":  conversationalSpan("hello"),
+		},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "bad", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			map[string]any{"span_id": "ok", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "BadRequestError") {
+		t.Fatalf("--spans = %s, want the error type named", out)
+	}
+}
+
+// The orq agent runtime records the opening turn on the span and keeps the
+// reply out of the trace. A span with a prompt and no answer is not the whole
+// conversation, so selection has to keep looking at its siblings.
+func TestTracesThreadKeepsLookingPastASpanWithNoReply(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "prompt"}},
+		spans: map[string]map[string]any{
+			"prompt": {"span": map[string]any{"attributes": map[string]any{
+				"gen_ai.input": []any{map[string]any{"role": "user", "content": "hello"}},
+			}}},
+			"full": conversationalSpan("hello"),
+		},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "prompt", "has_detail": true, "started_at": "2025-01-02T00:00:00Z"},
+			map[string]any{"span_id": "full", "has_detail": true, "started_at": "2025-01-01T00:00:00Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, threadNoteNoAnswer) {
+		t.Fatalf("--spans = %s, want note %q", out, threadNoteNoAnswer)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	for _, span := range payload.Spans {
+		if span.Selected && span.SpanID != "full" {
+			t.Fatalf("selected %q, want the span holding the reply", span.SpanID)
+		}
+	}
+}
+
+// A 404 on a trace that exists in a sibling project is not a missing trace: it
+// is one out of reach from this project's token. The command says which
+// project holds it and leaves the switch to the reader, because switching
+// rescopes every later call in the session.
+func TestTracesThreadNamesTheProjectHoldingAMissingTrace(t *testing.T) {
+	switchTestEnv(t)
+	srv := switchServer(t, []string{"acme"}, `{"project_id":"id-2","key":"pydata","name":"PyData"}`)
+	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "Banking")
+	fake := &fakeTraceAPI{
+		traceErr: errors.New("HTTP 404:\n{\"error\":\"not found\"}"),
+		search:   map[string]any{"data": []any{map[string]any{"trace_id": "trace-1", "project_id": "id-2"}}},
+	}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "orq projects use pydata") {
+		t.Fatalf("error = %v, want the project to switch to", err)
+	}
+	if len(fake.searches) != 1 || !strings.Contains(fake.searches[0], "trace-1") {
+		t.Fatalf("searches = %v, want one filtered on the trace id", fake.searches)
 	}
 }

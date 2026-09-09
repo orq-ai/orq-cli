@@ -180,10 +180,35 @@ controls on surface changes, whichever side they originate from.
   conversation found" on a trace it could read. The exclusion now lifts when
   honouring it would leave no span at all, and says on stderr that it did.
 
-- **Changed:** a trace id that is not found reports that reads are scoped to
-  one project and names `--project`. A trace lives in a project while
-  `orq traces search` spans the workspace, so a trace id copied from a sibling
-  project failed with a bare 404 that read as "this trace does not exist".
+- **Changed:** a trace id that is not found now names the project that holds
+  it. A trace lives in a project while `orq traces search` spans the workspace,
+  so a trace id copied from a sibling project failed with a bare 404 that read
+  as "this trace does not exist". The command now searches the workspace once —
+  scope travels in the access token, so this uses the unscoped workspace token
+  rather than the project one — and reports: This trace is in project "PyData"
+  (pydata), not the active one. Run `orq projects use pydata` and try again.
+  It does not switch for you: every later read in the session is scoped the
+  same way, so the switch is the fix, not a retry of this one call. With an
+  explicit API key, or when the search finds nothing, the previous advice
+  (`--project`, or `orq projects use --clear` plus `orq traces search`) stands.
+
+- **Fixed:** the rc binary (`@orq-ai/cli-rc`) reads stored Responses payloads
+  too. `orq traces thread` gained that read in the stable binary only, so the
+  same trace rendered `[content unavailable: 7 items]` on rc and the turns on
+  stable.
+
+- **Changed:** `orq traces thread --spans` says why a span holds no
+  conversation instead of leaving `no conversation recorded` to cover every
+  cause. A span whose request was rejected reports the error it recorded
+  (`the span failed (BadRequestError), so no conversation was recorded`); a
+  span that recorded a prompt with no reply — what the orq agent runtime writes,
+  keeping the reply out of the trace — reports that rather than passing as
+  complete, and selection now keeps looking at sibling spans for one that holds
+  the answer; a span naming the provider's own response id says so instead of
+  claiming it named no stored response; and a stored response that could not be
+  read reports the status, so a 404 (gone) reads differently from a 401 (still
+  there, not readable now). Reading a single span with `--span` warns with the
+  same note rather than rendering `[content unavailable]` silently.
 
 - **Changed:** `orq traces thread` picks the span to read by depth in the span
   tree first — the model call under an agent under the trace — and only then by

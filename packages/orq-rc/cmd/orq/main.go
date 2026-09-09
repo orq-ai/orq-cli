@@ -38,5 +38,13 @@ func traceAPI() commands.TraceAPI {
 			_, decoded, err := generated.OpenapiTracesListSpans(traceID, params)
 			return decoded, err
 		},
+		GetResponse: func(responseID string, params *viper.Viper) (map[string]any, error) {
+			_, decoded, err := generated.OpenapiRetrieveResponse(responseID, params)
+			return decoded, err
+		},
+		SearchTraces: func(body string, params *viper.Viper) (map[string]any, error) {
+			_, decoded, err := generated.OpenapiTracesSearch(params, body)
+			return decoded, err
+		},
 	}
 }

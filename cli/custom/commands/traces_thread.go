@@ -3,6 +3,8 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -27,6 +29,10 @@ type TraceAPI struct {
 	// conversation, so without this the turns are unreadable — the span says
 	// how many there were and nothing else.
 	GetResponse func(responseID string, params *viper.Viper) (map[string]any, error)
+	// SearchTraces finds traces workspace-wide, which the id reads cannot do:
+	// they answer within the project the token is scoped to. Used to say which
+	// project holds a trace that is not in the active one.
+	SearchTraces func(body string, params *viper.Viper) (map[string]any, error)
 }
 
 // NewTracesThreadCommand builds `orq traces thread`, rendering the newest
@@ -217,7 +223,11 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		return Thread{}, fmt.Errorf("trace API is unavailable")
 	}
 	if spanID != "" {
-		return hydrateThread(api, traceID, spanID, params)
+		thread, err := hydrateThread(api, traceID, spanID, params)
+		if err != nil {
+			return Thread{}, fmt.Errorf("%w%s", err, threadProjectHint(api, traceID, err, params))
+		}
+		return thread, nil
 	}
 	if api.GetTrace == nil {
 		return Thread{}, fmt.Errorf("trace API is unavailable")
@@ -243,7 +253,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
 	response, err := api.GetTrace(traceID, params)
 	if err != nil {
-		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(err))
+		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(api, traceID, err, params))
 	}
 	trace := unwrapThreadEnvelope(response, "trace")
 	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
@@ -253,12 +263,42 @@ func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]str
 // Reads by trace id are scoped to one project while `orq traces search` is not,
 // so a trace from a sibling project is not "gone" — it is unreachable from the
 // project this invocation is pinned to, and nothing in a plain 404 says so.
-func threadProjectHint(err error) string {
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not found") {
+func threadProjectHint(api TraceAPI, traceID string, err error, params *viper.Viper) string {
+	if err == nil || !threadNotFound(err) {
 		return ""
+	}
+	if hint := locateThreadProject(api, traceID, params); hint != "" {
+		return hint
 	}
 	return "\nA trace is read within one project: this looked in the active one. Pass --project <key> if it belongs to another, or run `orq projects use --clear` and `orq traces search` to find which."
 }
+
+// threadNotFound reports the 404 that project scoping produces. The generated
+// operations wrap a failed request as `HTTP <code>:\n<body>` and hand back no
+// response object, so the status is only readable off that prefix; a transport
+// that never reached the API has no status, hence the phrase fallback.
+func threadNotFound(err error) bool {
+	if status := threadHTTPStatus(err); status != 0 {
+		return status == http.StatusNotFound
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not found")
+}
+
+// threadHTTPStatus is the status the API answered with, or 0 when the error
+// carries none.
+func threadHTTPStatus(err error) int {
+	match := threadStatusPattern.FindStringSubmatch(err.Error())
+	if match == nil {
+		return 0
+	}
+	status, convErr := strconv.Atoi(match[1])
+	if convErr != nil {
+		return 0
+	}
+	return status
+}
+
+var threadStatusPattern = regexp.MustCompile(`\bHTTP (\d{3})\b`)
 
 // selectThread reads the candidates in order, then the trace's own fallbacks,
 // and returns the conversation it settles on. It is separate from the paging
@@ -289,7 +329,7 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 		thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				record(spanID, threadNoteUnsupported)
+				record(spanID, orThreadNote(note, threadNoteUnsupported))
 			} else {
 				record(spanID, threadNoteUnreadable)
 				if operationalErr == nil {
@@ -357,16 +397,37 @@ func betterThread(candidate, best Thread) bool {
 	return threadIsWhole(candidate) && !threadIsWhole(best)
 }
 
-// threadIsWhole reports a thread with no content the collector dropped.
+// threadIsWhole reports a thread with no content the collector dropped. A
+// conversation that never reached an answer is not whole either: the orq agent
+// runtime records the opening turn on the span and holds the reply elsewhere,
+// so a span with input alone would otherwise end the search over its siblings.
 func threadIsWhole(thread Thread) bool {
+	if len(thread.Messages) > 0 && !threadHasAnswer(thread) {
+		return false
+	}
+	return !threadDropsContent(thread)
+}
+
+// threadDropsContent reports a thread the collector recorded without its text.
+func threadDropsContent(thread Thread) bool {
 	for _, message := range thread.Messages {
 		for _, part := range message.Content {
 			if part.Type == "unavailable" {
-				return false
+				return true
 			}
 		}
 	}
-	return true
+	return false
+}
+
+// threadHasAnswer reports a thread that holds a reply, not just the prompt.
+func threadHasAnswer(thread Thread) bool {
+	for _, message := range thread.Messages {
+		if message.Role == "assistant" {
+			return true
+		}
+	}
+	return false
 }
 
 // threadContentMessages counts the messages that carry something to read. A
@@ -403,7 +464,13 @@ func uniqueThreadIDs(ids ...string) []string {
 }
 
 func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, error) {
-	thread, _, err := hydrateNotedThread(api, traceID, spanID, params)
+	thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
+	// One span, one note: --spans carries these in its own column, but a
+	// rendered conversation would otherwise show `[content unavailable]` with
+	// no word on whether the turns are gone or merely unreadable right now.
+	if err == nil && note != "" {
+		Warn("%s", note)
+	}
 	return thread, err
 }
 
@@ -422,6 +489,11 @@ func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err != nil && !errors.Is(err, ErrUnsupportedConversation) {
 		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
 	}
+	if errors.Is(err, ErrUnsupportedConversation) {
+		if note := threadFailureNote(span); note != "" {
+			return Thread{}, note, fmt.Errorf("span %q: %w", spanID, err)
+		}
+	}
 	if err == nil && threadIsWhole(thread) {
 		return thread, "", nil
 	}
@@ -435,16 +507,71 @@ func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err != nil {
 		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
 	}
+	// A span that kept every turn it recorded but recorded no reply is a
+	// different gap from a dropped payload, and only the answer is missing.
+	if len(thread.Messages) > 0 && !threadHasAnswer(thread) && !threadDropsContent(thread) {
+		note = threadNoteNoAnswer
+	}
 	return thread, note, nil
 }
 
 const (
 	threadNoteDropped     = "content dropped by the collector"
 	threadNoteUnstored    = "content dropped by the collector, and the span names no stored response to read it from"
-	threadNoteStoredGone  = "the stored response this span names could not be read"
+	threadNoteProviderID  = "content dropped by the collector, and the response id the span names is the provider's own, which this API cannot read"
+	threadNoteStoredGone  = "the stored response this span names is gone"
+	threadNoteNoAnswer    = "no reply recorded on this span: the runtime holds it outside the trace"
 	threadNoteUnsupported = "no conversation recorded"
 	threadNoteUnreadable  = "could not be read"
 )
+
+// threadStoredReadNote reports a stored response this command asked for and did
+// not get. A 404 means the payload is gone; anything else — an expired token, a
+// gateway error — means the turns may well still exist, and a reader deciding
+// whether to retry needs the difference.
+func threadStoredReadNote(err error) string {
+	if threadHTTPStatus(err) == http.StatusNotFound {
+		return threadNoteStoredGone
+	}
+	return fmt.Sprintf("the stored response this span names could not be read: %s", threadFirstLine(err.Error()))
+}
+
+// threadFailureNote explains a span that recorded no conversation because it
+// failed. The collector writes nothing on a rejected request, so "no
+// conversation recorded" alone reads as a gap in this command rather than what
+// it is: the call never produced one.
+func threadFailureNote(span map[string]any) string {
+	// The same reading the source header does, so the note and the header can
+	// never disagree about whether a span failed.
+	var source ThreadSource
+	describeThreadSpan(&source, span)
+	cause := ""
+	if value, ok := threadLookup(span, "error.type"); ok {
+		cause = threadScalar(value)
+	}
+	if cause == "" {
+		cause = source.Error
+	}
+	// Status is set only for a failure, so it is the last resort rather than
+	// the test: a span can record the type of what went wrong and no status.
+	if cause == "" {
+		cause = source.Status
+	}
+	if cause == "" {
+		return ""
+	}
+	return fmt.Sprintf("the span failed (%s), so no conversation was recorded", threadFirstLine(cause))
+}
+
+// threadFirstLine keeps a note to one line: the generated client puts the whole
+// response body in the error, and --spans prints one row per span.
+func threadFirstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	if len(line) > 120 {
+		return line[:117] + "..."
+	}
+	return line
+}
 
 // hydrateStoredResponse reads the conversation a Responses span left in the
 // Responses store. The span records `openresponses.input` as `{items:{count}}`
@@ -455,13 +582,16 @@ const (
 func hydrateStoredResponse(api TraceAPI, traceID, spanID string, span map[string]any, params *viper.Viper) (*Thread, string) {
 	responseID := storedResponseID(span)
 	if api.GetResponse == nil || responseID == "" {
+		if namesProviderResponseID(span) {
+			return nil, threadNoteProviderID
+		}
 		return nil, threadNoteUnstored
 	}
 	payload, err := api.GetResponse(responseID, params)
 	if err != nil {
 		// The span still renders what it kept; a payload that cannot be read
 		// costs the turns, not the command.
-		return nil, threadNoteStoredGone
+		return nil, threadStoredReadNote(err)
 	}
 	// The stored payload carries the same `input`/`output` item arrays the
 	// span carries counts of, so it normalises through the Responses dialect
@@ -473,7 +603,7 @@ func hydrateStoredResponse(api TraceAPI, traceID, spanID string, span map[string
 		"output":       payload["output"],
 	}}, source)
 	if err != nil {
-		return nil, threadNoteStoredGone
+		return nil, threadStoredReadNote(err)
 	}
 	describeThreadSpan(&thread.Source, span)
 	thread.Source.ResponseID = responseID
@@ -494,6 +624,22 @@ func storedResponseID(span map[string]any) string {
 // storedResponsePrefix marks a response id minted by the orq gateway. A
 // provider's own id (a bare uuid) is recorded in the same field and 404s.
 const storedResponsePrefix = "resp_"
+
+// namesProviderResponseID reports a span that named a response this command
+// cannot fetch, as opposed to naming none at all: the turns exist at the
+// provider, just not behind any orq route.
+func namesProviderResponseID(span map[string]any) bool {
+	value, _ := threadLookup(span, "gen_ai.response.id")
+	return threadString(value) != ""
+}
+
+// orThreadNote prefers the note the read produced over the generic one.
+func orThreadNote(note, fallback string) string {
+	if note != "" {
+		return note
+	}
+	return fallback
+}
 
 type threadCandidate struct {
 	id        string
@@ -551,7 +697,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 			listErr = fmt.Errorf("list spans for trace %q: %w", traceID, err)
 			break
 		}
-		spans = append(spans, listSpanData(response)...)
+		spans = append(spans, listEnvelopeData(response)...)
 		next := threadString(response["next_page_token"])
 		if next == "" || seenTokens[next] {
 			break
@@ -620,7 +766,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 	return candidates, excluded, summaries, listErr
 }
 
-func listSpanData(response map[string]any) []map[string]any {
+func listEnvelopeData(response map[string]any) []map[string]any {
 	data, _ := response["data"].([]any)
 	spans := make([]map[string]any, 0, len(data))
 	for _, value := range data {
@@ -893,7 +1039,7 @@ func countRemainingThreadSpans(api TraceAPI, traceID string, params *viper.Viper
 		thread, note, err := hydrateNotedThread(api, traceID, summaries[index].SpanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				summaries[index].Note = threadNoteUnsupported
+				summaries[index].Note = orThreadNote(note, threadNoteUnsupported)
 			} else {
 				summaries[index].Note = threadNoteUnreadable
 			}
