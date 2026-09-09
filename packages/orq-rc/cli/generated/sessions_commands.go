@@ -484,7 +484,7 @@ func registersessionsCommands(root *cobra.Command) {
 					return bartolocli.OperationError(err)
 				}
 
-				if err := bartolocli.Formatter.Format(decoded); err != nil {
+				if err := bartolocli.FormatList(decoded); err != nil {
 					return errors.Wrap(err, "formatting failed")
 				}
 
