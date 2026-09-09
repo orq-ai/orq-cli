@@ -180,18 +180,6 @@ controls on surface changes, whichever side they originate from.
   conversation found" on a trace it could read. The exclusion now lifts when
   honouring it would leave no span at all, and says on stderr that it did.
 
-- **Changed:** a trace id that is not found now names the project that holds
-  it. A trace lives in a project while `orq traces search` spans the workspace,
-  so a trace id copied from a sibling project failed with a bare 404 that read
-  as "this trace does not exist". The command now searches the workspace once —
-  scope travels in the access token, so this uses the unscoped workspace token
-  rather than the project one — and reports: ``This trace is in project
-  "PyData", not the active one: `orq projects use pydata` to switch.`` It does
-  not switch for you: every later read in the session is scoped the same way,
-  so the switch is the fix, not a retry of this one call. With an explicit API
-  key, or when the search finds nothing, the read falls back to naming the
-  project it looked in.
-
 - **Changed:** every "not found" now names the project it looked in. A read by
   id answers within the active project, so an id recorded in a sibling project
   came back as a bare `HTTP 404: trace span not found` that reads as "this does
@@ -199,8 +187,10 @@ controls on surface changes, whichever side they originate from.
   included, now adds one line: ``Looked in project "pydata2026"; ids are read
   within one: `orq projects use <key>` to switch.`` Only for a login session: an
   API key carries its own scope and `orq projects use` does not change it, so
-  key-authenticated runs are left alone. `orq traces thread` keeps its own line
-  when it could name the project holding the trace.
+  key-authenticated runs are left alone. The hint is the whole change: nothing
+  goes looking for the id in other projects, because nothing can — an access
+  token carries the projects it may read, and a workspace-level one covers only
+  the projects the login is a team member of.
 
 - **Fixed:** the rc binary (`@orq-ai/cli-rc`) reads stored Responses payloads
   too. `orq traces thread` gained that read in the stable binary only, so the

@@ -29,10 +29,6 @@ type TraceAPI struct {
 	// conversation, so without this the turns are unreadable — the span says
 	// how many there were and nothing else.
 	GetResponse func(responseID string, params *viper.Viper) (map[string]any, error)
-	// SearchTraces finds traces workspace-wide, which the id reads cannot do:
-	// they answer within the project the token is scoped to. Used to say which
-	// project holds a trace that is not in the active one.
-	SearchTraces func(body string, params *viper.Viper) (map[string]any, error)
 }
 
 // NewTracesThreadCommand builds `orq traces thread`, rendering the newest
@@ -225,7 +221,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if spanID != "" {
 		thread, err := hydrateThread(api, traceID, spanID, params)
 		if err != nil {
-			return Thread{}, fmt.Errorf("%w%s", err, threadProjectHint(api, traceID, err, params))
+			return Thread{}, fmt.Errorf("%w%s", err, threadProjectHint(err))
 		}
 		return thread, nil
 	}
@@ -253,7 +249,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
 	response, err := api.GetTrace(traceID, params)
 	if err != nil {
-		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(api, traceID, err, params))
+		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(err))
 	}
 	trace := unwrapThreadEnvelope(response, "trace")
 	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
@@ -263,13 +259,7 @@ func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]str
 // Reads by trace id are scoped to one project while `orq traces search` is not,
 // so a trace from a sibling project is not "gone" — it is unreachable from the
 // project this invocation is pinned to, and nothing in a plain 404 says so.
-func threadProjectHint(api TraceAPI, traceID string, err error, params *viper.Viper) string {
-	if err == nil || !threadNotFound(err) {
-		return ""
-	}
-	if hint := locateThreadProject(api, traceID, params); hint != "" {
-		return hint
-	}
+func threadProjectHint(err error) string {
 	return NotFoundScopeHint(err)
 }
 

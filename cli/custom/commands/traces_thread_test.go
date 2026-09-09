@@ -27,9 +27,6 @@ type fakeTraceAPI struct {
 	responses map[string]map[string]any
 	respErr   map[string]error
 	respCalls []string
-	searches  []string
-	search    map[string]any
-	searchErr error
 }
 
 func (api *fakeTraceAPI) getTrace(traceID string, _ *viper.Viper) (map[string]any, error) {
@@ -58,13 +55,8 @@ func (api *fakeTraceAPI) getResponse(responseID string, _ *viper.Viper) (map[str
 	return api.responses[responseID], nil
 }
 
-func (api *fakeTraceAPI) searchTraces(body string, _ *viper.Viper) (map[string]any, error) {
-	api.searches = append(api.searches, body)
-	return api.search, api.searchErr
-}
-
 func traceAPI(fake *fakeTraceAPI) TraceAPI {
-	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans, GetResponse: fake.getResponse, SearchTraces: fake.searchTraces}
+	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans, GetResponse: fake.getResponse}
 }
 
 // storedResponseSpan is a Responses span as the API returns one: the item
@@ -1469,10 +1461,7 @@ func TestTracesThreadNamesProjectScopingOnAMissingTrace(t *testing.T) {
 	switchTestEnv(t)
 	srv := switchServer(t, []string{"acme"}, "")
 	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "Banking")
-	fake := &fakeTraceAPI{
-		traceErr: errors.New("HTTP 404: trace not found"),
-		search:   map[string]any{"data": []any{}},
-	}
+	fake := &fakeTraceAPI{traceErr: errors.New("HTTP 404: trace not found")}
 	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
 	if err == nil {
 		t.Fatal("expected the missing trace to fail")
@@ -1592,29 +1581,5 @@ func TestTracesThreadKeepsLookingPastASpanWithNoReply(t *testing.T) {
 		if span.Selected && span.SpanID != "full" {
 			t.Fatalf("selected %q, want the span holding the reply", span.SpanID)
 		}
-	}
-}
-
-// A 404 on a trace that exists in a sibling project is not a missing trace: it
-// is one out of reach from this project's token. The command says which
-// project holds it and leaves the switch to the reader, because switching
-// rescopes every later call in the session.
-func TestTracesThreadNamesTheProjectHoldingAMissingTrace(t *testing.T) {
-	switchTestEnv(t)
-	srv := switchServer(t, []string{"acme"}, `{"project_id":"id-2","key":"pydata","name":"PyData"}`)
-	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "Banking")
-	fake := &fakeTraceAPI{
-		traceErr: errors.New("HTTP 404:\n{\"error\":\"not found\"}"),
-		search:   map[string]any{"data": []any{map[string]any{"trace_id": "trace-1", "project_id": "id-2"}}},
-	}
-	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
-	if err == nil {
-		t.Fatal("want an error")
-	}
-	if !strings.Contains(err.Error(), "orq projects use pydata") {
-		t.Fatalf("error = %v, want the project to switch to", err)
-	}
-	if len(fake.searches) != 1 || !strings.Contains(fake.searches[0], "trace-1") {
-		t.Fatalf("searches = %v, want one filtered on the trace id", fake.searches)
 	}
 }
