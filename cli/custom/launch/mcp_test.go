@@ -250,7 +250,7 @@ func TestLaunchMCPEntriesCarryNothingButTheURL(t *testing.T) {
 		return keys
 	}
 
-	if got := entryKeys(t, claudeMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"type", "url"}) {
+	if got := entryKeys(t, httpMCPConfigJSON(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"type", "url"}) {
 		t.Errorf("claude entry keys = %v, want [type url]", got)
 	}
 	if got := entryKeys(t, kimiMCPConfig(DefaultMCPURL), "mcpServers"); !reflect.DeepEqual(got, []string{"url"}) {

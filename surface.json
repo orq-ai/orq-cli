@@ -4320,6 +4320,10 @@
       "use": "codex"
     },
     {
+      "path": "orq launch copilot",
+      "use": "copilot"
+    },
+    {
       "path": "orq launch kilo",
       "use": "kilo"
     },

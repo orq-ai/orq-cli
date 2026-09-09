@@ -310,3 +310,14 @@ func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
 		})
 	}
 }
+
+// warningsContain is shared by the agent resolve tests: several of them assert
+// on a warning reaching the plan rather than on its downstream effect.
+func warningsContain(plan *LaunchPlan, substr string) bool {
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, substr) {
+			return true
+		}
+	}
+	return false
+}

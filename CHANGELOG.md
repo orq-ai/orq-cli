@@ -117,6 +117,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq launch copilot`.** GitHub Copilot CLI joins the launch agents,
+  wired through the orq AI Gateway with the session's own credentials. It rides
+  the OpenAI-shaped router at `/v3/router` and is configured through the
+  `COPILOT_PROVIDER_*` variables Copilot reads for a BYOK provider, so there is
+  no config file to write or clean up; set `ORQ_COPILOT_BASE_URL` or
+  `COPILOT_MODEL` to override. Copilot takes one active model per session, so
+  `--models` is not offered. Launching an agent that has no orq skills
+  directory registered now says so rather than reporting success having linked
+  nothing.
+
 ## [8.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.1) — 2026-09-08
 
 - **Fixed:** `orq setup --server <host>` no longer dies with a raw nginx `405 Not
