@@ -117,6 +117,22 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed:** paginated list commands render a table at a terminal instead of a
+  full TOON dump. `orq logs search`, `orq traces search`, `orq reporting query`,
+  `orq webhooks query` and `orq knowledge-bases list-chunks-paginated` print one
+  row per item, `No results.` on an empty page, and a footer line such as `N
+  shown, more available`. The rc line adds `orq sessions list`, which its own
+  schema also marks as paginated. Piped output and any explicit
+  `--output-format` (including `--json`) are unchanged, as are exit codes, so
+  scripts see exactly what they saw before. This comes from bartolo v0.13.0,
+  which classifies these responses as collections from the schema's pagination
+  metadata.
+- **Changed:** `--columns` now applies to those same commands. It previously
+  printed `--columns was ignored: this output is not a table.` on them; it now
+  selects the table's columns, and a name that is not a field of the returned
+  items fails with `--columns: "<name>" is not a field of the returned items`
+  rather than being ignored.
+
 ## [8.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.2.0) — 2026-09-09
 
 - **Added: `orq launch copilot`.** GitHub Copilot CLI joins the launch agents,
