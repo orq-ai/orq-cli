@@ -221,7 +221,7 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if spanID != "" {
 		thread, err := hydrateThread(api, traceID, spanID, params)
 		if err != nil {
-			return Thread{}, fmt.Errorf("%w%s", err, threadProjectHint(err))
+			return Thread{}, fmt.Errorf("%w%s", err, NotFoundScopeHint(err))
 		}
 		return thread, nil
 	}
@@ -249,18 +249,10 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
 	response, err := api.GetTrace(traceID, params)
 	if err != nil {
-		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(err))
+		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, NotFoundScopeHint(err))
 	}
 	trace := unwrapThreadEnvelope(response, "trace")
 	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
-}
-
-// threadProjectHint names project scoping on the error that scoping causes.
-// Reads by trace id are scoped to one project while `orq traces search` is not,
-// so a trace from a sibling project is not "gone" — it is unreachable from the
-// project this invocation is pinned to, and nothing in a plain 404 says so.
-func threadProjectHint(err error) string {
-	return NotFoundScopeHint(err)
 }
 
 // threadNotFound reports the 404 that project scoping produces. The generated
