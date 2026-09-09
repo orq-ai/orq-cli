@@ -22,6 +22,11 @@ type TraceAPI struct {
 	GetTrace  func(traceID string, params *viper.Viper) (map[string]any, error)
 	GetSpan   func(traceID, spanID string, params *viper.Viper) (map[string]any, error)
 	ListSpans func(traceID string, params *viper.Viper) (map[string]any, error)
+	// GetResponse reads a stored Responses payload by id. A span recorded
+	// through the Responses API keeps only the item counts of its
+	// conversation, so without this the turns are unreadable — the span says
+	// how many there were and nothing else.
+	GetResponse func(responseID string, params *viper.Viper) (map[string]any, error)
 }
 
 // NewTracesThreadCommand builds `orq traces thread`, rendering the newest
@@ -238,10 +243,21 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
 	response, err := api.GetTrace(traceID, params)
 	if err != nil {
-		return nil, fmt.Errorf("get trace %q: %w", traceID, err)
+		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, threadProjectHint(err))
 	}
 	trace := unwrapThreadEnvelope(response, "trace")
 	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
+}
+
+// threadProjectHint names project scoping on the error that scoping causes.
+// Reads by trace id are scoped to one project while `orq traces search` is not,
+// so a trace from a sibling project is not "gone" — it is unreachable from the
+// project this invocation is pinned to, and nothing in a plain 404 says so.
+func threadProjectHint(err error) string {
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return ""
+	}
+	return "\nA trace is read within one project: this looked in the active one. Pass --project <key> if it belongs to another, or run `orq projects use --clear` and `orq traces search` to find which."
 }
 
 // selectThread reads the candidates in order, then the trace's own fallbacks,
@@ -270,12 +286,12 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 	// it hydrates; once one is missing content, a sibling that kept it is worth
 	// finding, and it is not always the next span tried.
 	consider := func(spanID string) *Thread {
-		thread, err := hydrateThread(api, traceID, spanID, params)
+		thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				record(spanID, "no conversation recorded")
+				record(spanID, threadNoteUnsupported)
 			} else {
-				record(spanID, "could not be read")
+				record(spanID, threadNoteUnreadable)
 				if operationalErr == nil {
 					operationalErr = err
 				}
@@ -291,7 +307,7 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 		if !threadIsWhole(thread) {
 			if outcomes != nil {
 				outcome := outcomes[spanID]
-				outcome.Note = "content dropped by the collector"
+				outcome.Note = note
 				outcomes[spanID] = outcome
 			}
 			degraded = true
@@ -387,16 +403,97 @@ func uniqueThreadIDs(ids ...string) []string {
 }
 
 func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, error) {
+	thread, _, err := hydrateNotedThread(api, traceID, spanID, params)
+	return thread, err
+}
+
+// hydrateNotedThread reads a span's conversation and says what stands between
+// it and the whole one. The note is what --spans prints: "content dropped" is
+// three different states to whoever has to decide whether the turns exist
+// somewhere — never recorded, recorded and reachable, recorded and gone — and
+// only the read knows which.
+func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, string, error) {
 	spanResponse, err := api.GetSpan(traceID, spanID, params)
 	if err != nil {
-		return Thread{}, fmt.Errorf("get span %q for trace %q: %w", spanID, traceID, err)
+		return Thread{}, "", fmt.Errorf("get span %q for trace %q: %w", spanID, traceID, err)
 	}
-	thread, err := NormalizeThread(unwrapThreadEnvelope(spanResponse, "span"), ThreadSource{TraceID: traceID, SpanID: spanID})
+	span := unwrapThreadEnvelope(spanResponse, "span")
+	thread, err := NormalizeThread(span, ThreadSource{TraceID: traceID, SpanID: spanID})
+	if err != nil && !errors.Is(err, ErrUnsupportedConversation) {
+		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
+	}
+	if err == nil && threadIsWhole(thread) {
+		return thread, "", nil
+	}
+	stored, note := hydrateStoredResponse(api, traceID, spanID, span, params)
+	if stored != nil && (err != nil || betterThread(*stored, thread)) {
+		if !threadIsWhole(*stored) {
+			return *stored, threadNoteDropped, nil
+		}
+		return *stored, "", nil
+	}
 	if err != nil {
-		return Thread{}, fmt.Errorf("span %q: %w", spanID, err)
+		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
 	}
-	return thread, nil
+	return thread, note, nil
 }
+
+const (
+	threadNoteDropped     = "content dropped by the collector"
+	threadNoteUnstored    = "content dropped by the collector, and the span names no stored response to read it from"
+	threadNoteStoredGone  = "the stored response this span names could not be read"
+	threadNoteUnsupported = "no conversation recorded"
+	threadNoteUnreadable  = "could not be read"
+)
+
+// hydrateStoredResponse reads the conversation a Responses span left in the
+// Responses store. The span records `openresponses.input` as `{items:{count}}`
+// — the shape of the turns without the turns — and names the payload in
+// `gen_ai.response.id`, which is the only route back to the text. A provider's
+// own id is not that route: only ids the gateway minted resolve, so this asks
+// for one it can recognise rather than spending a request on every span.
+func hydrateStoredResponse(api TraceAPI, traceID, spanID string, span map[string]any, params *viper.Viper) (*Thread, string) {
+	responseID := storedResponseID(span)
+	if api.GetResponse == nil || responseID == "" {
+		return nil, threadNoteUnstored
+	}
+	payload, err := api.GetResponse(responseID, params)
+	if err != nil {
+		// The span still renders what it kept; a payload that cannot be read
+		// costs the turns, not the command.
+		return nil, threadNoteStoredGone
+	}
+	// The stored payload carries the same `input`/`output` item arrays the
+	// span carries counts of, so it normalises through the Responses dialect
+	// already implemented rather than a second reader of the same shapes.
+	source := ThreadSource{TraceID: traceID, SpanID: spanID, ResponseID: responseID}
+	thread, err := NormalizeThread(map[string]any{"openresponses": map[string]any{
+		"instructions": payload["instructions"],
+		"input":        payload["input"],
+		"output":       payload["output"],
+	}}, source)
+	if err != nil {
+		return nil, threadNoteStoredGone
+	}
+	describeThreadSpan(&thread.Source, span)
+	thread.Source.ResponseID = responseID
+	return &thread, ""
+}
+
+// storedResponseID is the gateway response id a span names, or "" when it
+// names none this command can fetch.
+func storedResponseID(span map[string]any) string {
+	value, _ := threadLookup(span, "gen_ai.response.id")
+	id := threadString(value)
+	if strings.HasPrefix(id, storedResponsePrefix) {
+		return id
+	}
+	return ""
+}
+
+// storedResponsePrefix marks a response id minted by the orq gateway. A
+// provider's own id (a bare uuid) is recorded in the same field and 404s.
+const storedResponsePrefix = "resp_"
 
 type threadCandidate struct {
 	id        string
@@ -463,7 +560,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 		params.Set("page-token", next)
 	}
 
-	excluded := evaluatorExclusions(spans)
+	excluded := readableThreadExclusions(spans, evaluatorExclusions(spans))
 	depths := threadSpanDepths(spans)
 	candidates := make([]threadCandidate, 0, len(spans))
 	seenIDs := make(map[string]bool, len(spans))
@@ -565,6 +662,28 @@ func evaluatorExclusions(spans []map[string]any) map[string]bool {
 		}
 	}
 	return excluded
+}
+
+// readableThreadExclusions drops the evaluator exclusion when honouring it
+// would leave nothing to read. Skipping an evaluator subtree keeps a judge's
+// own conversation from being returned instead of the conversation it judged —
+// but a trace whose root is the evaluator has no other subtree, and excluding
+// all of it turns a readable trace into "no supported conversation found".
+func readableThreadExclusions(spans []map[string]any, excluded map[string]bool) map[string]bool {
+	if len(excluded) == 0 {
+		return excluded
+	}
+	for _, span := range spans {
+		id := threadString(span["span_id"])
+		if id == "" || excluded[id] || span["has_detail"] == false {
+			continue
+		}
+		return excluded
+	}
+	// Whose conversation this is stops being obvious once the exclusion is
+	// lifted, and the reader asked for a trace, not for a judge.
+	Warn("every span in this trace is an evaluator; rendering the evaluator's own conversation")
+	return map[string]bool{}
 }
 
 func evaluatorSpan(span map[string]any) bool {
@@ -728,11 +847,6 @@ func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, cand
 			messages := outcome.Messages
 			summaries[index].Messages = &messages
 		}
-		if summaries[index].SpanID == thread.Source.SpanID {
-			// The span that answered explains itself; a note recorded on the
-			// way to it would read as a reason it lost.
-			continue
-		}
 		if outcome.Note != "" && summaries[index].Note == "" {
 			summaries[index].Note = outcome.Note
 		}
@@ -776,15 +890,16 @@ func countRemainingThreadSpans(api TraceAPI, traceID string, params *viper.Viper
 			break
 		}
 		read++
-		thread, err := hydrateThread(api, traceID, summaries[index].SpanID, params)
+		thread, note, err := hydrateNotedThread(api, traceID, summaries[index].SpanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				summaries[index].Note = "no conversation recorded"
+				summaries[index].Note = threadNoteUnsupported
 			} else {
-				summaries[index].Note = "could not be read"
+				summaries[index].Note = threadNoteUnreadable
 			}
 			continue
 		}
+		summaries[index].Note = note
 		messages := len(thread.Messages)
 		summaries[index].Messages = &messages
 	}

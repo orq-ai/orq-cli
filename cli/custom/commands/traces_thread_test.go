@@ -24,6 +24,9 @@ type fakeTraceAPI struct {
 	listErr   error
 	getCalls  []string
 	listCalls []string
+	responses map[string]map[string]any
+	respErr   map[string]error
+	respCalls []string
 }
 
 func (api *fakeTraceAPI) getTrace(traceID string, _ *viper.Viper) (map[string]any, error) {
@@ -44,8 +47,35 @@ func (api *fakeTraceAPI) listSpans(traceID string, params *viper.Viper) (map[str
 	return api.pages[params.GetString("page-token")], api.listErr
 }
 
+func (api *fakeTraceAPI) getResponse(responseID string, _ *viper.Viper) (map[string]any, error) {
+	api.respCalls = append(api.respCalls, responseID)
+	if err := api.respErr[responseID]; err != nil {
+		return nil, err
+	}
+	return api.responses[responseID], nil
+}
+
 func traceAPI(fake *fakeTraceAPI) TraceAPI {
-	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans}
+	return TraceAPI{GetTrace: fake.getTrace, GetSpan: fake.getSpan, ListSpans: fake.listSpans, GetResponse: fake.getResponse}
+}
+
+// storedResponseSpan is a Responses span as the API returns one: the item
+// counts of a conversation, and the id of the payload holding the items.
+func storedResponseSpan(responseID string, inputItems int) map[string]any {
+	return map[string]any{"span": map[string]any{"attributes": map[string]any{
+		"gen_ai": map[string]any{"response": map[string]any{"id": responseID}},
+		"openresponses": map[string]any{
+			"input":  map[string]any{"items": map[string]any{"count": inputItems}},
+			"output": map[string]any{"items": map[string]any{"count": 1}},
+		},
+	}}}
+}
+
+func storedResponsePayload(question, answer string) map[string]any {
+	return map[string]any{
+		"input":  []any{map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": question}}}},
+		"output": []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": answer}}}},
+	}
 }
 
 func conversationalSpan(text string) map[string]any {
@@ -401,7 +431,11 @@ func TestTracesThreadFallsBackToNewestNonEvaluatorDetailedSpanAcrossPages(t *tes
 	}
 }
 
-func TestTracesThreadNeverUsesExcludedEvaluatorFallback(t *testing.T) {
+// An evaluator subtree is skipped so a judge's conversation is never returned
+// in place of the conversation it judged. When the judge is the whole trace
+// there is no such substitution to make, and skipping it renders nothing at
+// all — so the exclusion lifts, and says that it did.
+func TestTracesThreadReadsATraceThatIsOnlyAnEvaluator(t *testing.T) {
 	fake := &fakeTraceAPI{
 		trace: map[string]any{"trace": map[string]any{"leading_span_id": "evalkid", "root_span_id": "eval"}},
 		spans: map[string]map[string]any{
@@ -413,12 +447,12 @@ func TestTracesThreadNeverUsesExcludedEvaluatorFallback(t *testing.T) {
 			map[string]any{"span_id": "evalkid", "parent_span_id": "eval", "has_detail": true},
 		}}},
 	}
-	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
-	if err == nil || !strings.Contains(err.Error(), "no supported conversation") {
-		t.Fatalf("error = %v", err)
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatalf("thread: %v", err)
 	}
-	if got, want := fake.getCalls, []string{"trace:trace-1"}; fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("calls = %v, want %v", got, want)
+	if !strings.Contains(out, "must not render evaluator child") {
+		t.Fatalf("the deepest evaluator span is all this trace holds, got:\n%s", out)
 	}
 }
 
@@ -1124,7 +1158,7 @@ func TestTracesThreadMarksTheSelectedSpanNotTheFirstTried(t *testing.T) {
 		t.Fatalf("unmarshal %q: %v", out, err)
 	}
 	want := []string{
-		"new order=1 turns=1 note=content dropped by the collector",
+		"new order=1 turns=1 note=" + threadNoteUnstored,
 		"old order=2 turns=2 selected",
 	}
 	if got := describeThreadSpans(payload.Spans); fmt.Sprint(got) != fmt.Sprint(want) {
@@ -1308,4 +1342,126 @@ func describeThreadSpans(spans []ThreadSpan) []string {
 		described = append(described, text)
 	}
 	return described
+}
+
+func TestTracesThreadReadsTheStoredResponseASpanOnlyCounted(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace:     map[string]any{"trace": map[string]any{"root_span_id": "counted"}},
+		spans:     map[string]map[string]any{"counted": storedResponseSpan("resp_1", 1)},
+		responses: map[string]map[string]any{"resp_1": storedResponsePayload("what changed", "the schema did")},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatalf("thread: %v", err)
+	}
+	for _, want := range []string{"what changed", "the schema did", `response="resp_1"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in the render, got:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "content unavailable") {
+		return
+	}
+	t.Fatalf("the stored response was read, so nothing should be reported unavailable:\n%s", out)
+}
+
+func TestTracesThreadKeepsTheSpanWhenNoStoredResponseAnswers(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"root_span_id": "counted"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "counted", "type": "span.responses", "has_detail": true, "started_at": "2026-09-08T22:09:03.148Z"},
+		}}},
+		spans:   map[string]map[string]any{"counted": storedResponseSpan("resp_gone", 1)},
+		respErr: map[string]error{"resp_gone": errors.New("HTTP 404")},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans")
+	if err != nil {
+		t.Fatalf("--spans: %v", err)
+	}
+	if !strings.Contains(out, threadNoteStoredGone) {
+		t.Fatalf("expected the unreadable stored response to be named, got:\n%s", out)
+	}
+}
+
+func TestTracesThreadSaysWhenASpanNamesNoStoredResponse(t *testing.T) {
+	span := storedResponseSpan("", 1)
+	delete(span["span"].(map[string]any)["attributes"].(map[string]any), "gen_ai")
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"root_span_id": "counted"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "counted", "type": "span.responses", "has_detail": true, "started_at": "2026-09-08T22:09:03.148Z"},
+		}}},
+		spans: map[string]map[string]any{"counted": span},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans")
+	if err != nil {
+		t.Fatalf("--spans: %v", err)
+	}
+	if !strings.Contains(out, threadNoteUnstored) {
+		t.Fatalf("expected the missing stored response to be named, got:\n%s", out)
+	}
+	if len(fake.respCalls) != 0 {
+		t.Fatalf("a span naming no response id should cost no request, got %v", fake.respCalls)
+	}
+}
+
+func TestTracesThreadDoesNotFetchAProviderResponseID(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"root_span_id": "counted"}},
+		spans: map[string]map[string]any{"counted": storedResponseSpan("252ef0cc-8dd6-46e2-a92a-60f617cde01f", 1)},
+	}
+	if _, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans"); err != nil {
+		t.Fatalf("--spans: %v", err)
+	}
+	if len(fake.respCalls) != 0 {
+		t.Fatalf("only gateway resp_ ids resolve, so none should be requested, got %v", fake.respCalls)
+	}
+}
+
+func TestTracesThreadReadsAnEvaluatorRootedTrace(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "root", "type": "span.evaluator", "name": "InvokeEvaluator", "has_detail": true, "started_at": "2026-09-08T22:09:03.140Z"},
+			map[string]any{"span_id": "judged", "parent_span_id": "root", "type": "span.responses", "has_detail": true, "started_at": "2026-09-08T22:09:03.148Z"},
+		}}},
+		spans: map[string]map[string]any{"judged": conversationalSpan("the judged turn")},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatalf("thread: %v", err)
+	}
+	if !strings.Contains(out, "the judged turn") {
+		t.Fatalf("an evaluator at the root leaves no other subtree to read, got:\n%s", out)
+	}
+}
+
+func TestTracesThreadStillSkipsAnEvaluatorBesideAConversation(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"root_span_id": "root"}},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "root", "type": "trace", "has_detail": true, "started_at": "2026-09-08T22:09:03.140Z"},
+			map[string]any{"span_id": "chat", "parent_span_id": "root", "type": "span.chat_completion", "has_detail": true, "started_at": "2026-09-08T22:09:03.141Z"},
+			map[string]any{"span_id": "judge", "parent_span_id": "root", "type": "span.evaluator", "has_detail": true, "started_at": "2026-09-08T22:09:03.900Z"},
+		}}},
+		spans: map[string]map[string]any{"chat": conversationalSpan("the real turn"), "judge": conversationalSpan("the judge's turn")},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err != nil {
+		t.Fatalf("thread: %v", err)
+	}
+	if strings.Contains(out, "the judge's turn") {
+		t.Fatalf("the evaluator subtree must stay excluded when another span holds the conversation:\n%s", out)
+	}
+}
+
+func TestTracesThreadNamesProjectScopingOnAMissingTrace(t *testing.T) {
+	fake := &fakeTraceAPI{traceErr: errors.New("HTTP 404: trace not found")}
+	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
+	if err == nil {
+		t.Fatal("expected the missing trace to fail")
+	}
+	if !strings.Contains(err.Error(), "--project") {
+		t.Fatalf("a trace read is project-scoped and the 404 does not say so, got: %v", err)
+	}
 }

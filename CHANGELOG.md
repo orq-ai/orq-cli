@@ -154,6 +154,37 @@ controls on surface changes, whichever side they originate from.
   get-context` and `reporting query`. An end you pass yourself is untouched,
   and a body supplied on stdin or with `--from-file` is sent exactly as given.
 
+- **Added:** `orq traces thread` reads a Responses span's conversation from the
+  stored response the span names in `gen_ai.response.id`, instead of rendering
+  the item counts the span keeps in place of the turns. A span recorded through
+  the Responses API stores `openresponses.input` as `{"items":{"count":7}}` —
+  the shape of a conversation without the conversation — so what rendered as
+  `[content unavailable: 7 items]` is now the seven turns, tool calls and
+  recorded reasoning included. The thread's source header gains a `response`
+  attribute (`response_id` in `-o json`) naming where the turns were read from,
+  set only when the span itself did not carry them. Only ids the orq gateway
+  minted (`resp_…`) are fetched; a provider's own response id is recorded in
+  the same field and resolves to nothing, so it costs no request.
+
+- **Changed:** `orq traces thread --spans` distinguishes the three states its
+  `NOTE` column used to spell "content dropped by the collector": content the
+  span never recorded, content recorded in a stored response that could not be
+  read, and content dropped with no stored response named. The selected span
+  now keeps its note too — a `*` row with turns that are all unavailable said
+  nothing about itself before.
+
+- **Fixed:** `orq traces thread` reads a trace whose root span is an evaluator.
+  The evaluator subtree is skipped so a judge's conversation is never returned
+  in place of the conversation it judged; when the judge is the whole trace
+  that skip left nothing, and the command failed with "no supported
+  conversation found" on a trace it could read. The exclusion now lifts when
+  honouring it would leave no span at all, and says on stderr that it did.
+
+- **Changed:** a trace id that is not found reports that reads are scoped to
+  one project and names `--project`. A trace lives in a project while
+  `orq traces search` spans the workspace, so a trace id copied from a sibling
+  project failed with a bare 404 that read as "this trace does not exist".
+
 - **Changed:** `orq traces thread` picks the span to read by depth in the span
   tree first — the model call under an agent under the trace — and only then by
   start time between siblings. It went by start time alone, which compares

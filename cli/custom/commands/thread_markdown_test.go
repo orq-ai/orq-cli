@@ -197,7 +197,7 @@ func TestThreadSourceFieldsListEverySourceField(t *testing.T) {
 	for _, field := range threadSourceFields(source) {
 		attributes = append(attributes, field.Attribute)
 	}
-	want := []string{"trace", "span", "format", "model", "duration_ms", "tokens", "status"}
+	want := []string{"trace", "span", "response", "format", "model", "duration_ms", "tokens", "status"}
 	if !reflect.DeepEqual(attributes, want) {
 		t.Fatalf("attributes = %q, want %q", attributes, want)
 	}

@@ -201,6 +201,7 @@ func threadSourceFields(source ThreadSource) []threadSourceField {
 	all := []threadSourceField{
 		{Attribute: "trace", Label: "trace", Value: source.TraceID, Code: true},
 		{Attribute: "span", Label: "span", Value: source.SpanID, Code: true},
+		{Attribute: "response", Label: "response", Value: source.ResponseID, Code: true},
 		{Attribute: "format", Value: source.Representation},
 		{Attribute: "model", Value: source.Model},
 		{Attribute: "duration_ms", Unit: " ms", Value: source.DurationMS},

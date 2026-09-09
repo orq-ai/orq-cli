@@ -19,9 +19,13 @@ type ThreadSource struct {
 	Representation string `json:"representation"`
 	TraceID        string `json:"trace_id,omitempty"`
 	SpanID         string `json:"span_id,omitempty"`
-	Model          string `json:"model,omitempty"`
-	DurationMS     string `json:"duration_ms,omitempty"`
-	Tokens         string `json:"tokens,omitempty"`
+	// ResponseID names the stored Responses payload the turns were read from,
+	// set only when the span itself held counts rather than content. Without
+	// it the render claims text the span does not carry.
+	ResponseID string `json:"response_id,omitempty"`
+	Model      string `json:"model,omitempty"`
+	DurationMS string `json:"duration_ms,omitempty"`
+	Tokens     string `json:"tokens,omitempty"`
 	// Status and Error are set only when the span itself failed.
 	Status string `json:"status,omitempty"`
 	Error  string `json:"error,omitempty"`
