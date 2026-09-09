@@ -96,7 +96,7 @@ func describeThreadProject(client *auth.Client, token, projectID string) string 
 		}
 	}
 	if key == "" {
-		return fmt.Sprintf("\nThis trace is in project %s, not the active one. Switch with `orq projects use <key>`: reads by id answer within the active project only.", projectID)
+		return fmt.Sprintf("\nThis trace is in project %s, not the active one: `orq projects use <key>` to switch.", projectID)
 	}
-	return fmt.Sprintf("\nThis trace is in project %q (%s), not the active one. Run `orq projects use %s` and try again: reads by id answer within the active project only, so the rest of the session needs the switch too.", name, key, key)
+	return fmt.Sprintf("\nThis trace is in project %q, not the active one: `orq projects use %s` to switch.", name, key)
 }
