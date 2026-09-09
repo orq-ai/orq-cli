@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"orq/cli/custom/commands"
+
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +20,10 @@ func TestNotFoundNamesTheActiveProject(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ORQ_API_KEY", "")
+	// A process global shared with every other test in this package.
+	prevExplicit := commands.UsingExplicitAPIKey()
+	commands.SetExplicitAPIKey(false)
+	t.Cleanup(func() { commands.SetExplicitAPIKey(prevExplicit) })
 	dir := filepath.Join(home, ".orq", "sessions")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)

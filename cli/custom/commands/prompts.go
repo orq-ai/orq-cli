@@ -58,6 +58,10 @@ var userEnvAPIKeyTaken bool
 // the session-token injection.
 func SetExplicitAPIKey(v bool) { explicitAPIKey = v }
 
+// UsingExplicitAPIKey reports what SetExplicitAPIKey last recorded, for the
+// callers outside this package that have to restore it.
+func UsingExplicitAPIKey() bool { return explicitAPIKey }
+
 // SetUserEnvAPIKey is called alongside SetExplicitAPIKey, before the injection.
 func SetUserEnvAPIKey(v string) { userEnvAPIKey, userEnvAPIKeyTaken = strings.TrimSpace(v), true }
 
