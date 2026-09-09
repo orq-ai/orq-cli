@@ -207,7 +207,7 @@ controls on surface changes, whichever side they originate from.
   the answer; a span naming the provider's own response id says so instead of
   claiming it named no stored response; and a stored response that could not be
   read reports the status, so a 404 (gone) reads differently from a 401 (still
-  there, not readable now). Reading a single span with `--span` warns with the
+  there, not readable now). Naming a span (`orq traces thread <trace-id> <span-id>`) warns with the
   same note rather than rendering `[content unavailable]` silently.
 
 - **Changed:** `orq traces thread` picks the span to read by depth in the span
