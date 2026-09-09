@@ -216,7 +216,7 @@ func NewDoctorCommand() *cobra.Command {
 			// The report goes out first either way: a failed --fix has to name
 			// which path it could not repair before the error ends the run.
 			if wantsHumanView(cmd) {
-				printDoctorSummary(authStatus, userEmail, checks)
+				printDoctorSummary(authStatus, userEmail, client.URLs.APIBaseURL, checks)
 				return permsErr
 			}
 			if err := emit(report); err != nil {
@@ -269,8 +269,13 @@ func emitBugReport(cmd *cobra.Command) error {
 // printDoctorSummary is the scannable, colored checklist a person sees at a
 // terminal. It is the primary output in that mode (the verbose structured
 // report is reserved for scripts and --json/-o), so it writes to stdout.
-func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
+func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCheck) {
 	out := bartolocli.Stdout
+	// Names the host every *_base_url row below probes, once instead of per row.
+	if baseURL != "" {
+		fmt.Fprintln(out, paint(ansiDim, "Base URL: "+baseURL))
+		fmt.Fprintln(out)
+	}
 	authLine := authStatus
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
