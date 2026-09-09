@@ -26,6 +26,10 @@ type Client struct {
 	// projectID narrows every access token this client mints to one project.
 	// Empty means all projects the user can see.
 	projectID string
+	// profileTransport is the profile endpoint this host is known to serve,
+	// carried across invocations on the session so a host without the identity
+	// RPC does not pay a failing request before every profile fetch.
+	profileTransport string
 }
 
 func NewClient(apiBase string) *Client {
@@ -41,6 +45,21 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 	c.ctx = ctx
 	return c
 }
+
+// WithProfileTransport tells the client which profile endpoint this host was
+// last seen to serve, so it starts with that one. Returns the client for
+// chaining.
+func (c *Client) WithProfileTransport(transport string) *Client {
+	if transport == ProfileTransportRPC || transport == ProfileTransportREST {
+		c.profileTransport = transport
+	}
+	return c
+}
+
+// ProfileTransport names the profile endpoint that last answered, "" until one
+// has. Callers holding a session persist it so the next invocation skips the
+// endpoint this host does not route.
+func (c *Client) ProfileTransport() string { return c.profileTransport }
 
 // WithProject narrows the access tokens this client mints to one project, so
 // the server scopes both reads and creates to it. Returns the client for
@@ -218,10 +237,91 @@ type Profile struct {
 	} `json:"preferences"`
 }
 
-// FetchProfile calls the identity-api ProfileService.GetProfile Connect RPC.
-// Connect unary calls are POSTs with a JSON request message, and the profile
-// arrives wrapped in the GetProfileResponse envelope.
+// Which profile endpoint a host serves. `orq doctor` reports it and the
+// session stores it, so both spell it the same way.
+const (
+	ProfileTransportRPC  = "rpc"
+	ProfileTransportREST = "rest"
+)
+
+// FetchProfile reads the profile from whichever endpoint this host serves: the
+// identity-api ProfileService.GetProfile Connect RPC, or the REST endpoint it
+// replaced (GET <v1>/me). Both are live — api/my.orq.ai route the RPC, while a
+// deployment whose ingress has no /v3/rpc route answers the POST with a 404/405
+// from the proxy, which used to end setup right after the browser approval.
+//
+// The endpoint that answered is recorded on the client and persisted by the
+// session, so the wrong one is attempted at most once per host rather than
+// before every profile fetch — this runs on `whoami`, `workspace use` and every
+// command that resolves a workspace token, not only on setup.
 func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
+	first, second := ProfileTransportRPC, ProfileTransportREST
+	if c.profileTransport == ProfileTransportREST {
+		first, second = second, first
+	}
+	profile, firstErr := c.fetchProfileVia(first, accessToken)
+	if firstErr == nil {
+		c.profileTransport = first
+		return profile, nil
+	}
+	// Only a routing answer means "this host does not serve that endpoint". A
+	// 401 or a 5xx is the service itself talking, and retrying the other
+	// endpoint would trade a precise error for a confusing one.
+	if !isRoutingError(firstErr) {
+		return nil, firstErr
+	}
+	profile, secondErr := c.fetchProfileVia(second, accessToken)
+	if secondErr == nil {
+		c.profileTransport = second
+		return profile, nil
+	}
+	// Statuses and URLs only. Both errors carry whatever body the proxy sent,
+	// and folding two of those into one message is how this bug looked to the
+	// user in the first place: a page of nginx markup where an error belongs.
+	return nil, fmt.Errorf("could not read your profile from %s: neither endpoint answered (%s; %s)",
+		c.URLs.APIBaseURL,
+		describeProfileAttempt(c.ProfileURL(first), firstErr),
+		describeProfileAttempt(c.ProfileURL(second), secondErr))
+}
+
+// isRoutingError reports whether err is the host saying it has no such route,
+// rather than the service behind it answering.
+func isRoutingError(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) &&
+		(apiErr.Status == http.StatusNotFound || apiErr.Status == http.StatusMethodNotAllowed)
+}
+
+// describeProfileAttempt renders one failed attempt without its response body,
+// which on a misrouted host is a proxy's HTML error page.
+func describeProfileAttempt(url string, err error) string {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return fmt.Sprintf("%s: HTTP %d", url, apiErr.Status)
+	}
+	return fmt.Sprintf("%s: %v", url, err)
+}
+
+// ProfileURL is the endpoint a transport reads the profile from. Exported so
+// `orq doctor` probes the same URLs this client calls rather than rebuilding
+// them.
+func (c *Client) ProfileURL(transport string) string {
+	if transport == ProfileTransportREST {
+		return c.URLs.V1BaseURL + "/me"
+	}
+	return c.URLs.ProfileBaseURL
+}
+
+func (c *Client) fetchProfileVia(transport, accessToken string) (*Profile, error) {
+	if transport == ProfileTransportREST {
+		return c.fetchProfileREST(accessToken)
+	}
+	return c.fetchProfileRPC(accessToken)
+}
+
+// fetchProfileRPC is the Connect unary call: a POST with a JSON request
+// message, answering with the profile wrapped in a GetProfileResponse envelope.
+func (c *Client) fetchProfileRPC(accessToken string) (*Profile, error) {
 	var resp struct {
 		Profile Profile `json:"profile"`
 	}
@@ -233,6 +333,20 @@ func (c *Client) FetchProfile(accessToken string) (*Profile, error) {
 		return nil, fmt.Errorf("invalid profile response from %s", c.URLs.ProfileBaseURL)
 	}
 	return &resp.Profile, nil
+}
+
+// fetchProfileREST is the pre-identity-api endpoint: a GET answering with the
+// profile unwrapped.
+func (c *Client) fetchProfileREST(accessToken string) (*Profile, error) {
+	url := c.ProfileURL(ProfileTransportREST)
+	var profile Profile
+	if err := c.jsonRequest(http.MethodGet, url, accessToken, nil, &profile); err != nil {
+		return nil, err
+	}
+	if profile.Workspaces == nil {
+		return nil, fmt.Errorf("invalid profile response from %s", url)
+	}
+	return &profile, nil
 }
 
 // ============================================================================
@@ -323,7 +437,18 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 			return nil, err
 		}
 	}
+	// Read before resolving the workspace: when the user chose none, the
+	// previous session's active workspace is a better answer than the server
+	// preference, which `orq workspace use` never PATCHes and which therefore
+	// drifts. resolveWorkspace (setup.go) already prefers it this way.
+	previous := c.previousSession(profile.ID, true)
+	chosen := strings.TrimSpace(workspaceKey) != ""
 	resolvedKey := resolveWorkspaceKey(profile, workspaceKey)
+	if !chosen {
+		if k := workspaceKeyOf(previous); k != "" {
+			resolvedKey = k
+		}
+	}
 	workspaceTokens := map[string]StoredAccessToken{}
 	if resolvedKey != "" {
 		tok, err := c.ExchangeAccessToken(approved.RefreshToken, resolvedKey)
@@ -336,30 +461,130 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 	if err != nil {
 		return nil, err
 	}
-	session := &Session{
-		Version:        1,
-		APIBaseURL:     c.URLs.APIBaseURL,
-		V1BaseURL:      c.URLs.V1BaseURL,
-		AuthBaseURL:    c.URLs.AuthBaseURL,
-		ProfileBaseURL: c.URLs.ProfileBaseURL,
-		User: &SessionUser{
-			ID:          profile.ID,
-			Email:       profile.Email,
-			DisplayName: resolveDisplayName(profile),
-		},
-		Workspaces:         profile.Workspaces,
-		ActiveWorkspaceKey: stringPtr(resolvedKey),
-		RefreshToken:       approved.RefreshToken,
-		BootstrapToken: StoredAccessToken{
-			Token:     approved.AccessToken,
-			ExpiresAt: formatISO(bootstrapExp),
-		},
-		WorkspaceTokens: workspaceTokens,
+	// Re-read immediately before the write. The login blocks on browser
+	// approval, and an `orq setup` landing in that window writes a gateway key
+	// this session was built before; saving the older copy would lose it, which
+	// is the class of loss this whole function exists to prevent.
+	// mergeWorkspaceToken guards the same hazard the same way. The general fix,
+	// one UpdateSession helper for all eight SaveSession callers, is RES-1532.
+	if latest := c.previousSession(profile.ID, false); latest != nil {
+		previous = latest
 	}
+	session := sessionForLogin(previous)
+	session.Version = 1
+	session.APIBaseURL = c.URLs.APIBaseURL
+	session.V1BaseURL = c.URLs.V1BaseURL
+	session.AuthBaseURL = c.URLs.AuthBaseURL
+	session.ProfileBaseURL = c.URLs.ProfileBaseURL
+	session.User = &SessionUser{
+		ID:          profile.ID,
+		Email:       profile.Email,
+		DisplayName: resolveDisplayName(profile),
+	}
+	session.Workspaces = profile.Workspaces
+	session.RefreshToken = approved.RefreshToken
+	session.BootstrapToken = StoredAccessToken{
+		Token:     approved.AccessToken,
+		ExpiresAt: formatISO(bootstrapExp),
+	}
+	// Deliberately only the token this login just issued. The cached entries
+	// were exchanged from the refresh token this login replaces, and carrying
+	// them would leave later commands authenticating with a credential from
+	// before the login the user just performed.
+	session.WorkspaceTokens = workspaceTokens
+	// The active project belongs to the workspace it was chosen in: UseWorkspace
+	// clears the pair on a change and switch.go repeats the rule. Only a chosen
+	// workspace can be a change — an unchosen one resolved to the previous
+	// session's own key above, so there is nothing to move away from.
+	if chosen && workspaceKeyOf(previous) != strings.TrimSpace(resolvedKey) {
+		session.ActiveProjectID, session.ActiveProjectName = "", ""
+	}
+	session.ActiveWorkspaceKey = stringPtr(resolvedKey)
+	session.ProfileTransport = c.profileTransport
 	if err := SaveSession(session); err != nil {
 		return nil, err
 	}
 	return session, nil
+}
+
+// sessionForLogin is the session the login builds on. Starting from the
+// previous one and overwriting what the login issues makes "kept" the default:
+// the alternative, building from zero and copying seven fields back, regresses
+// silently the next time anyone adds a durable field to Session.
+func sessionForLogin(previous *Session) *Session {
+	if previous == nil {
+		return &Session{}
+	}
+	kept := *previous
+	return &kept
+}
+
+// previousSession is the session on disk this login may build on: the same
+// user's, whatever state the file is in. Everything else returns nil, and the
+// paths that discard a live gateway key say so — the key stays valid for 90
+// days, and after the save there is nothing left on disk naming it.
+//
+// warn is false for the re-read immediately before the write, which must not
+// repeat a message the first read already printed.
+func (c *Client) previousSession(userID string, warn bool) *Session {
+	host := SessionHost(c.URLs.APIBaseURL)
+	r := InspectSession()
+	var previous *Session
+	switch r.Status {
+	case StatusMissing:
+		// A first login on this machine. Nothing to keep, nothing to lose.
+		return nil
+	case StatusOK:
+		previous = r.Session
+	case StatusInvalid:
+		// Invalid for *use* is not invalid as a source: validateSession rejects
+		// a session missing a URL, a refresh token or a bootstrap token, and
+		// those are the fields this login supplies. Only bytes that do not
+		// parse leave nothing to carry.
+		var err error
+		previous, err = readSessionFile(r.Path)
+		if err != nil || previous == nil {
+			if warn {
+				reportUnreadableGatewayKey(host, r.Path)
+			}
+			return nil
+		}
+	default: // StatusUnreadable
+		if warn {
+			reportUnreadableGatewayKey(host, r.Path)
+		}
+		return nil
+	}
+	if sameSessionUser(previous, userID) {
+		return previous
+	}
+	if warn {
+		// A different account. Inheriting the key would bill and scope its
+		// calls to the previous user and make `logout` name a key id that is
+		// not theirs, so it is dropped — out loud, because the save below is
+		// what removes the last record of it.
+		reportDroppedGatewayKey(host, previous.GatewayKey, previous.GatewayKeyID,
+			"a different user signed in on this machine")
+		reportSupersededExportedKey(previous)
+	}
+	return nil
+}
+
+// sameSessionUser requires both ids to be present. Two unknown users are not
+// the same user, and treating them as one hands a minted key to whoever logs
+// in next.
+func sameSessionUser(previous *Session, userID string) bool {
+	if previous == nil || previous.User == nil {
+		return false
+	}
+	return previous.User.ID != "" && userID != "" && previous.User.ID == userID
+}
+
+func workspaceKeyOf(s *Session) string {
+	if s == nil || s.ActiveWorkspaceKey == nil {
+		return ""
+	}
+	return strings.TrimSpace(*s.ActiveWorkspaceKey)
 }
 
 func (c *Client) EnsureBootstrapToken(session *Session) (*Session, error) {
@@ -382,10 +607,12 @@ func (c *Client) RefreshProfile(session *Session) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.WithProfileTransport(session.ProfileTransport)
 	profile, err := c.FetchProfile(session.BootstrapToken.Token)
 	if err != nil {
 		return nil, err
 	}
+	session.ProfileTransport = c.profileTransport
 	var activeKey *string
 	if session.ActiveWorkspaceKey != nil {
 		for _, w := range profile.Workspaces {

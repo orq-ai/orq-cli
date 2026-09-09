@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,6 +47,13 @@ type Session struct {
 	RefreshToken       string                       `json:"refreshToken"`
 	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
 	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
+
+	// ProfileTransport records which profile endpoint this host answered on
+	// ("rpc" or "rest"), so a deployment whose ingress does not route the
+	// identity RPC is not re-probed before every profile fetch. Empty on
+	// sessions written before it existed, and on those the RPC is tried first
+	// exactly as it was then.
+	ProfileTransport string `json:"profileTransport,omitempty"`
 
 	// The gateway key `orq setup` minted from this login for coding agents,
 	// its id (the handle for revoking it), its expiry, and the workspace it
@@ -335,4 +343,98 @@ func EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWS string) bool {
 		return true
 	}
 	return savedWS != "" && savedWS != activeWS
+}
+
+// Session states reported by ListSessions. A login is never reported as
+// "expired": the only date on disk belongs to the bootstrap token, which the
+// client re-mints from the refresh token on any call that needs it, so a stale
+// one means the next command does one extra round-trip — not that the login is
+// dead. Only the server can end a login, by rejecting the refresh token.
+const (
+	SessionStatusOK           = "ok"
+	SessionStatusNeedsRefresh = "needs-refresh"
+	SessionStatusInvalid      = "invalid"
+	SessionStatusUnreadable   = "unreadable"
+)
+
+// SessionListEntry is one login on disk, for `orq auth sessions`.
+type SessionListEntry struct {
+	Host      string `json:"host"`
+	Server    string `json:"server"`
+	User      string `json:"user,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+	Status    string `json:"status"`
+	Active    bool   `json:"active"`
+	Path      string `json:"path"`
+}
+
+// ListSessions reads every session in the sessions directory, newest layout
+// only: the file name is the host (see sessionPathFor), so the listing needs
+// no state beyond the directory itself.
+//
+// A file that will not decode is reported with its host and a status saying
+// so, rather than dropped: a session too broken to read is exactly what someone
+// runs this command to find, and a row of blank fields alone would be
+// indistinguishable from a healthy login that has set no project.
+// `.deprecated` files are skipped: they are what migrateSessionFiles parks a
+// host collision's loser under, not a login anything will authenticate with.
+func ListSessions() ([]SessionListEntry, error) {
+	entries, err := os.ReadDir(sessionsDir())
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return []SessionListEntry{}, nil
+		}
+		return nil, err
+	}
+
+	activeHost := SessionHost(ResolveURLs("").APIBaseURL)
+
+	sessions := make([]SessionListEntry, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		host := strings.TrimSuffix(name, ".json")
+		path := filepath.Join(sessionsDir(), name)
+		row := SessionListEntry{Host: host, Active: host == activeHost, Path: path}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			row.Status = SessionStatusUnreadable
+			sessions = append(sessions, row)
+			continue
+		}
+		var session Session
+		if err := json.Unmarshal(data, &session); err != nil {
+			row.Status = SessionStatusInvalid
+			sessions = append(sessions, row)
+			continue
+		}
+		// Keep listing validation consistent with InspectSession and doctor.
+		if err := validateSession(&session); err != nil {
+			row.Status = SessionStatusInvalid
+			sessions = append(sessions, row)
+			continue
+		}
+
+		row.Server = session.APIBaseURL
+		if session.User != nil {
+			row.User = session.User.Email
+		}
+		if session.ActiveWorkspaceKey != nil {
+			row.Workspace = *session.ActiveWorkspaceKey
+		}
+		row.Project = session.ActiveProjectName
+		// Match EnsureBootstrapToken's 60-second clock skew.
+		row.Status = SessionStatusOK
+		if isExpired(session.BootstrapToken.ExpiresAt, 60) {
+			row.Status = SessionStatusNeedsRefresh
+		}
+		sessions = append(sessions, row)
+	}
+
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Host < sessions[j].Host })
+	return sessions, nil
 }

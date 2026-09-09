@@ -70,7 +70,11 @@ func OpenapiActivityCreate(paramEntityId string, params *viper.Viper, body strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -122,7 +126,11 @@ func OpenapiActivityList(paramEntityId string, params *viper.Viper) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -169,7 +177,11 @@ func OpenapiActivityUpdate(paramEntityId string, paramActivityId string, params 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -207,7 +219,11 @@ func OpenapiCreateAgentRequest(params *viper.Viper, body string) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -332,7 +348,11 @@ func OpenapiInvokeAgent(paramKey string, params *viper.Viper, body string) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -390,7 +410,11 @@ func OpenapiListAgents(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -429,7 +453,11 @@ func OpenapiRetrieveAgentRequest(paramAgentKey string, params *viper.Viper) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -467,7 +495,11 @@ func OpenapiRunAgent(params *viper.Viper, body string) (*gentleman.Response, map
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -510,7 +542,11 @@ func OpenapiStreamAgent(paramKey string, params *viper.Viper, body string) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -548,7 +584,11 @@ func OpenapiStreamRunAgent(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -591,7 +631,11 @@ func OpenapiUpdateAgent(paramAgentKey string, params *viper.Viper, body string) 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -634,7 +678,11 @@ func OpenapiCreateAgentResponseRequest(paramAgentKey string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -672,7 +720,11 @@ func OpenapiAlertCreate(params *viper.Viper, body string) (*gentleman.Response, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -711,7 +763,11 @@ func OpenapiAlertDelete(paramAlertId string, params *viper.Viper) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -750,7 +806,11 @@ func OpenapiAlertGet(paramAlertId string, params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -801,7 +861,11 @@ func OpenapiAlertList(params *viper.Viper) (*gentleman.Response, map[string]inte
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -857,7 +921,11 @@ func OpenapiAlertListTriggerEvents(paramAlertId string, paramTriggerId string, p
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -909,7 +977,11 @@ func OpenapiAlertListTriggers(paramAlertId string, params *viper.Viper) (*gentle
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -952,7 +1024,11 @@ func OpenapiAlertUpdate(paramAlertId string, params *viper.Viper, body string) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -995,7 +1071,11 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1034,7 +1114,11 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1072,7 +1156,11 @@ func OpenapiCreateAnnotationQueue(params *viper.Viper, body string) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1111,7 +1199,11 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1150,7 +1242,11 @@ func OpenapiRetrieveAnnotationQueue(paramAnnotationQueueId string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1193,7 +1289,11 @@ func OpenapiRetrieveAnnotationQueueItem(paramAnnotationQueueId string, paramItem
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1248,7 +1348,11 @@ func OpenapiListAnnotationQueues(params *viper.Viper) (*gentleman.Response, map[
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1300,7 +1404,11 @@ func OpenapiListAnnotationQueueItems(paramAnnotationQueueId string, params *vipe
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1343,7 +1451,11 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1386,7 +1498,11 @@ func OpenapiUpdateAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1424,7 +1540,11 @@ func OpenapiApiKeyCreate(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1507,7 +1627,11 @@ func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1619,7 +1743,11 @@ func OpenapiApiKeyListCapabilities(params *viper.Viper) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1662,7 +1790,11 @@ func OpenapiApiKeyUpdate(paramApiKeyId string, params *viper.Viper, body string)
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1700,7 +1832,11 @@ func OpenapiAuditLogQuery(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1738,7 +1874,11 @@ func OpenapiBudgetCreate(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1777,7 +1917,11 @@ func OpenapiBudgetDelete(paramBudgetId string, params *viper.Viper) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1816,7 +1960,11 @@ func OpenapiBudgetGet(paramBudgetId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1894,7 +2042,11 @@ func OpenapiBudgetList(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1937,7 +2089,11 @@ func OpenapiBudgetResetConsumption(paramBudgetId string, params *viper.Viper, bo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -1980,7 +2136,11 @@ func OpenapiBudgetUpdate(paramBudgetId string, params *viper.Viper, body string)
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2018,7 +2178,11 @@ func OpenapiParse(params *viper.Viper, body string) (*gentleman.Response, map[st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2095,7 +2259,11 @@ func OpenapiCreateDataset(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2275,7 +2443,11 @@ func OpenapiListDatasets(params *viper.Viper) (*gentleman.Response, map[string]i
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2327,7 +2499,11 @@ func OpenapiListDatasetDatapoints(paramDatasetId string, params *viper.Viper) (*
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2366,7 +2542,11 @@ func OpenapiRetrieveDataset(paramDatasetId string, params *viper.Viper) (*gentle
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2409,7 +2589,11 @@ func OpenapiRetrieveDatapoint(paramDatasetId string, paramDatapointId string, pa
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2452,7 +2636,11 @@ func OpenapiUpdateDataset(paramDatasetId string, params *viper.Viper, body strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2499,7 +2687,11 @@ func OpenapiUpdateDatapoint(paramDatasetId string, paramDatapointId string, para
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2537,7 +2729,11 @@ func OpenapiDeploymentGetConfig(params *viper.Viper, body string) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2584,7 +2780,11 @@ func OpenapiDeployments(params *viper.Viper) (*gentleman.Response, map[string]in
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2622,7 +2822,11 @@ func OpenapiDocumentationSearch(params *viper.Viper, body string) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2681,7 +2885,11 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2719,7 +2927,11 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2758,7 +2970,11 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2801,7 +3017,11 @@ func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2840,7 +3060,11 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2883,7 +3107,11 @@ func OpenapiGetEvalVersion(paramId string, paramVersionId string, params *viper.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2926,7 +3154,11 @@ func OpenapiInvokeEval(paramId string, params *viper.Viper, body string) (*gentl
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -2978,7 +3210,11 @@ func OpenapiListEvalVersions(paramId string, params *viper.Viper) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3021,7 +3257,11 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3059,7 +3299,11 @@ func OpenapiPostV2Feedback(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3097,7 +3341,11 @@ func OpenapiPostV2FeedbackRemove(params *viper.Viper, body string) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3211,7 +3459,11 @@ func OpenapiCreateFileSystem(params *viper.Viper, body string) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3254,7 +3506,11 @@ func OpenapiCreateFolder(paramFileSystemKey string, params *viper.Viper, body st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3293,7 +3549,11 @@ func OpenapiDeleteFileSystem(paramFileSystemKey string, params *viper.Viper) (*g
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3341,7 +3601,11 @@ func OpenapiDeleteFile(paramFileSystemKey string, params *viper.Viper) (*gentlem
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3396,7 +3660,11 @@ func OpenapiListFileSystems(params *viper.Viper) (*gentleman.Response, map[strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3448,7 +3716,11 @@ func OpenapiListFiles(paramFileSystemKey string, params *viper.Viper) (*gentlema
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3491,7 +3763,11 @@ func OpenapiMoveFile(paramFileSystemKey string, params *viper.Viper, body string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3530,7 +3806,11 @@ func OpenapiRetrieveFileSystem(paramFileSystemKey string, params *viper.Viper) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3574,7 +3854,11 @@ func OpenapiStatFile(paramFileSystemKey string, params *viper.Viper) (*gentleman
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3617,7 +3901,11 @@ func OpenapiUpdateFileSystem(paramFileSystemKey string, params *viper.Viper, bod
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3656,7 +3944,11 @@ func OpenapiFileContent(paramFileIdOrPath string, params *viper.Viper) (*gentlem
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3695,7 +3987,11 @@ func OpenapiFileDelete(paramFileId string, params *viper.Viper) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3734,7 +4030,11 @@ func OpenapiFileGet(paramFileId string, params *viper.Viper) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3789,7 +4089,11 @@ func OpenapiFileList(params *viper.Viper) (*gentleman.Response, map[string]inter
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3832,7 +4136,11 @@ func OpenapiFileUpdate(paramFileId string, params *viper.Viper, body string) (*g
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3870,7 +4178,11 @@ func OpenapiFileUpload(params *viper.Viper, body string) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3909,7 +4221,11 @@ func OpenapiGetFinderEntity(paramId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3952,7 +4268,11 @@ func OpenapiListFinderEntities(params *viper.Viper) (*gentleman.Response, map[st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -3990,7 +4310,11 @@ func OpenapiGuardrailRuleCreate(params *viper.Viper, body string) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4029,7 +4353,11 @@ func OpenapiGuardrailRuleDelete(paramGuardrailRuleId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4096,7 +4424,11 @@ func OpenapiGuardrailRuleList(params *viper.Viper) (*gentleman.Response, map[str
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4135,7 +4467,11 @@ func OpenapiGuardrailRuleListUsedGuardrails(params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4174,7 +4510,11 @@ func OpenapiGuardrailRuleGet(paramGuardrailRuleId string, params *viper.Viper) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4217,7 +4557,11 @@ func OpenapiGuardrailRuleUpdate(paramGuardrailRuleId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4256,7 +4600,11 @@ func OpenapiHubGet(paramId string, params *viper.Viper) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4299,7 +4647,11 @@ func OpenapiHubSearch(params *viper.Viper) (*gentleman.Response, map[string]inte
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4535,7 +4887,11 @@ func OpenapiCreateIdentity(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4574,7 +4930,11 @@ func OpenapiDeleteIdentity(paramId string, params *viper.Viper) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4648,7 +5008,11 @@ func OpenapiListIdentities(params *viper.Viper) (*gentleman.Response, map[string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4696,7 +5060,11 @@ func OpenapiRetrieveIdentity(paramId string, params *viper.Viper) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4739,7 +5107,11 @@ func OpenapiUpdateIdentity(paramId string, params *viper.Viper, body string) (*g
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -4867,7 +5239,11 @@ func OpenapiCreateDatasource(paramKnowledgeId string, params *viper.Viper, body 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5000,7 +5376,11 @@ func OpenapiDeleteChunks(paramKnowledgeId string, paramDatasourceId string, para
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5090,7 +5470,11 @@ func OpenapiGetChunksCount(paramKnowledgeId string, paramDatasourceId string, pa
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5160,7 +5544,11 @@ func OpenapiListKnowledgeBases(params *viper.Viper) (*gentleman.Response, map[st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5224,7 +5612,11 @@ func OpenapiListChunks(paramKnowledgeId string, paramDatasourceId string, params
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5271,7 +5663,11 @@ func OpenapiListChunksPaginated(paramKnowledgeId string, paramDatasourceId strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5331,7 +5727,11 @@ func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5374,7 +5774,11 @@ func OpenapiPreviewDatasourceChunks(paramKnowledgeId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5460,7 +5864,11 @@ func OpenapiGetOneChunk(paramKnowledgeId string, paramDatasourceId string, param
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5503,7 +5911,11 @@ func OpenapiRetrieveDatasource(paramKnowledgeId string, paramDatasourceId string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5548,7 +5960,11 @@ func OpenapiGetOneFileUploadUrl(paramKnowledgeId string, paramFileName string, p
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5591,7 +6007,11 @@ func OpenapiGetOneDatasourceProcessingStatus(paramKnowledgeId string, paramDatas
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5634,7 +6054,11 @@ func OpenapiSearchKnowledge(paramKnowledgeId string, params *viper.Viper, body s
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5685,7 +6109,11 @@ func OpenapiUpdateChunkEnabled(paramKnowledgeId string, paramDatasourceId string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5779,7 +6207,11 @@ func OpenapiUpdateChunk(paramKnowledgeId string, paramDatasourceId string, param
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5826,7 +6258,11 @@ func OpenapiUpdateDatasource(paramKnowledgeId string, paramDatasourceId string, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5864,7 +6300,11 @@ func OpenapiManagementKeyCreate(params *viper.Viper, body string) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5903,7 +6343,11 @@ func OpenapiManagementKeyDelete(paramManagementKeyId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -5942,7 +6386,11 @@ func OpenapiManagementKeyGet(paramManagementKeyId string, params *viper.Viper) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6008,7 +6456,11 @@ func OpenapiManagementKeyList(params *viper.Viper) (*gentleman.Response, map[str
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6042,7 +6494,11 @@ func OpenapiManagementKeyListCapabilities(params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6085,7 +6541,11 @@ func OpenapiManagementKeyUpdate(paramManagementKeyId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6123,7 +6583,11 @@ func OpenapiMcpGatewayCreate(params *viper.Viper, body string) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6162,7 +6626,11 @@ func OpenapiMcpGatewayDelete(paramId string, params *viper.Viper) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6224,7 +6692,11 @@ func OpenapiMcpGatewayList(params *viper.Viper) (*gentleman.Response, map[string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6280,7 +6752,11 @@ func OpenapiMcpGatewayListTools(paramGatewayId string, params *viper.Viper) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6319,7 +6795,11 @@ func OpenapiMcpGatewayGet(paramId string, params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6362,7 +6842,11 @@ func OpenapiMcpGatewayUpdate(paramId string, params *viper.Viper, body string) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6400,7 +6884,11 @@ func OpenapiMcpServerCreate(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6439,7 +6927,11 @@ func OpenapiMcpServerDelete(paramId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6490,7 +6982,11 @@ func OpenapiMcpServerList(params *viper.Viper) (*gentleman.Response, map[string]
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6529,7 +7025,11 @@ func OpenapiMcpServerGet(paramId string, params *viper.Viper) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6572,7 +7072,11 @@ func OpenapiMcpServerSync(paramId string, params *viper.Viper, body string) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6615,7 +7119,11 @@ func OpenapiMcpServerTestTool(paramId string, params *viper.Viper, body string) 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6658,7 +7166,11 @@ func OpenapiMcpServerUpdate(paramId string, params *viper.Viper, body string) (*
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6696,7 +7208,11 @@ func OpenapiCreateMemoryStore(params *viper.Viper, body string) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6743,7 +7259,11 @@ func OpenapiCreateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6786,7 +7306,11 @@ func OpenapiCreateMemory(paramMemoryStoreKey string, params *viper.Viper, body s
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -6974,7 +7498,11 @@ func OpenapiGetAllMemoryStores(params *viper.Viper) (*gentleman.Response, map[st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7052,7 +7580,11 @@ func OpenapiGetAllMemoryDocuments(paramMemoryStoreKey string, paramMemoryEntityI
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7108,7 +7640,11 @@ func OpenapiGetAllMemories(paramMemoryStoreKey string, params *viper.Viper) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7147,7 +7683,11 @@ func OpenapiRetrieveMemoryStore(paramMemoryStoreKey string, params *viper.Viper)
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7194,7 +7734,11 @@ func OpenapiRetrieveMemoryDocument(paramMemoryStoreKey string, paramMemoryEntity
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7237,7 +7781,11 @@ func OpenapiRetrieveMemory(paramMemoryStoreKey string, paramMemoryEntityId strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7280,7 +7828,11 @@ func OpenapiUpdateMemoryStore(paramMemoryStoreKey string, params *viper.Viper, b
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7331,7 +7883,11 @@ func OpenapiUpdateMemoryDocument(paramMemoryStoreKey string, paramMemoryEntityId
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7378,7 +7934,11 @@ func OpenapiUpdateMemory(paramMemoryStoreKey string, paramMemoryEntityId string,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7417,7 +7977,11 @@ func OpenapiModelCatalogGet(paramId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7512,7 +8076,11 @@ func OpenapiModelCatalogList(params *viper.Viper) (*gentleman.Response, map[stri
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7608,7 +8176,11 @@ func OpenapiModelCatalogListOfferings(paramModel string, params *viper.Viper) (*
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7646,7 +8218,11 @@ func OpenapiModelAzureFoundryDeployments(params *viper.Viper, body string) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7684,7 +8260,11 @@ func OpenapiModelCreate(params *viper.Viper, body string) (*gentleman.Response, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7722,7 +8302,11 @@ func OpenapiModelCreateAwsBedrock(params *viper.Viper, body string) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7760,7 +8344,11 @@ func OpenapiModelCreateOpenAILike(params *viper.Viper, body string) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -7798,7 +8386,11 @@ func OpenapiModelCreateVertex(params *viper.Viper, body string) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8020,7 +8612,11 @@ func OpenapiListModels(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8097,7 +8693,11 @@ func OpenapiModelUpdate(paramId string, params *viper.Viper, body string) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8140,7 +8740,11 @@ func OpenapiModelUpdateAwsBedrock(paramId string, params *viper.Viper, body stri
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8183,7 +8787,11 @@ func OpenapiModelUpdateOpenAILike(paramId string, params *viper.Viper, body stri
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8302,7 +8910,11 @@ func OpenapiModelSharingSet(paramModelId string, params *viper.Viper, body strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8340,7 +8952,11 @@ func OpenapiNotifierCreate(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8379,7 +8995,11 @@ func OpenapiNotifierDelete(paramNotifierId string, params *viper.Viper) (*gentle
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8418,7 +9038,11 @@ func OpenapiNotifierGet(paramNotifierId string, params *viper.Viper) (*gentleman
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8477,7 +9101,11 @@ func OpenapiNotifierList(params *viper.Viper) (*gentleman.Response, map[string]i
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8520,7 +9148,11 @@ func OpenapiNotifierUpdate(paramNotifierId string, params *viper.Viper, body str
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8554,7 +9186,11 @@ func OpenapiPIICapabilities(params *viper.Viper) (*gentleman.Response, map[strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8592,7 +9228,11 @@ func OpenapiPIIDetect(params *viper.Viper, body string) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8630,7 +9270,11 @@ func OpenapiPIIRedact(params *viper.Viper, body string) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8668,7 +9312,11 @@ func OpenapiPIIRestore(params *viper.Viper, body string) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8706,7 +9354,11 @@ func OpenapiPolicyCreate(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8796,7 +9448,11 @@ func OpenapiPolicyList(params *viper.Viper) (*gentleman.Response, map[string]int
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8835,7 +9491,11 @@ func OpenapiPolicyGet(paramPolicyId string, params *viper.Viper) (*gentleman.Res
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8878,7 +9538,11 @@ func OpenapiPolicyUpdate(paramPolicyId string, params *viper.Viper, body string)
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8916,7 +9580,11 @@ func OpenapiProjectCreate(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8955,7 +9623,11 @@ func OpenapiProjectDelete(paramProjectId string, params *viper.Viper) (*gentlema
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -8994,7 +9666,11 @@ func OpenapiProjectGet(paramProjectId string, params *viper.Viper) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9041,7 +9717,11 @@ func OpenapiProjectList(params *viper.Viper) (*gentleman.Response, map[string]in
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9084,7 +9764,11 @@ func OpenapiProjectUpdate(paramProjectId string, params *viper.Viper, body strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9122,7 +9806,11 @@ func OpenapiCreatePrompt(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9251,7 +9939,11 @@ func OpenapiGetAllPrompts(params *viper.Viper) (*gentleman.Response, map[string]
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9303,7 +9995,11 @@ func OpenapiListPromptVersions(paramPromptId string, params *viper.Viper) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9342,7 +10038,11 @@ func OpenapiGetOnePrompt(paramId string, params *viper.Viper) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9385,7 +10085,11 @@ func OpenapiUpdatePrompt(paramId string, params *viper.Viper, body string) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9423,7 +10127,11 @@ func OpenapiReportingQuery(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9575,7 +10283,11 @@ func OpenapiCreateChatCompletion(params *viper.Viper, body string) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9613,7 +10325,11 @@ func OpenapiCreateCompletion(params *viper.Viper, body string) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9651,7 +10367,11 @@ func OpenapiCreateEmbedding(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9689,7 +10409,11 @@ func OpenapiCreateImageEdit(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9727,7 +10451,11 @@ func OpenapiCreateImage(params *viper.Viper, body string) (*gentleman.Response, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9765,7 +10493,11 @@ func OpenapiCreateImageVariation(params *viper.Viper, body string) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9803,7 +10535,11 @@ func OpenapiCreateModeration(params *viper.Viper, body string) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9841,7 +10577,11 @@ func OpenapiPostV2RouterOcr(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9879,7 +10619,11 @@ func OpenapiCreateRerank(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -9917,7 +10661,11 @@ func OpenapiRoutingRuleCreate(params *viper.Viper, body string) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10019,7 +10767,11 @@ func OpenapiRoutingRuleList(params *viper.Viper) (*gentleman.Response, map[strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10058,7 +10810,11 @@ func OpenapiRoutingRuleListUsedModels(params *viper.Viper) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10097,7 +10853,11 @@ func OpenapiRoutingRuleGet(paramRoutingRuleId string, params *viper.Viper) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10140,7 +10900,11 @@ func OpenapiRoutingRuleUpdate(paramRoutingRuleId string, params *viper.Viper, bo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10178,7 +10942,11 @@ func OpenapiCreateSession(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10256,7 +11024,11 @@ func OpenapiGetSession(paramSessionId string, params *viper.Viper) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10294,7 +11066,11 @@ func OpenapiGetSessionCount(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10332,7 +11108,11 @@ func OpenapiListSessions(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10409,7 +11189,11 @@ func OpenapiUpdateSession(paramSessionId string, params *viper.Viper, body strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10447,7 +11231,11 @@ func OpenapiSkillCreate(params *viper.Viper, body string) (*gentleman.Response, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10486,7 +11274,11 @@ func OpenapiSkillDelete(paramSkillId string, params *viper.Viper) (*gentleman.Re
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10525,7 +11317,11 @@ func OpenapiSkillGet(paramSkillId string, params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10572,7 +11368,11 @@ func OpenapiSkillList(params *viper.Viper) (*gentleman.Response, map[string]inte
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10615,7 +11415,11 @@ func OpenapiSkillUpdate(paramSkillId string, params *viper.Viper, body string) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10653,7 +11457,11 @@ func OpenapiSmartRouterCreate(params *viper.Viper, body string) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10692,7 +11500,11 @@ func OpenapiSmartRouterDelete(paramSmartRouterId string, params *viper.Viper) (*
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10731,7 +11543,11 @@ func OpenapiSmartRouterGet(paramSmartRouterId string, params *viper.Viper) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10790,7 +11606,11 @@ func OpenapiSmartRouterList(params *viper.Viper) (*gentleman.Response, map[strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10833,7 +11653,11 @@ func OpenapiSmartRouterUpdate(paramSmartRouterId string, params *viper.Viper, bo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -10953,7 +11777,11 @@ func OpenapiGetV2ToolsToolIdVersionsVersionId(paramToolId string, paramVersionId
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11000,7 +11828,11 @@ func OpenapiGetAllTools(params *viper.Viper) (*gentleman.Response, map[string]in
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11052,7 +11884,11 @@ func OpenapiGetV2ToolsToolIdVersions(paramToolId string, params *viper.Viper) (*
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11172,7 +12008,11 @@ func OpenapiTracesAggregate(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11305,7 +12145,11 @@ func OpenapiTracesGet(paramTraceId string, params *viper.Viper) (*gentleman.Resp
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11348,7 +12192,11 @@ func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11395,7 +12243,11 @@ func OpenapiInsightsServiceCancelRun(paramInsightId string, paramRunId string, p
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11433,7 +12285,11 @@ func OpenapiInsightsServiceCreateInsight(params *viper.Viper, body string) (*gen
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11476,7 +12332,11 @@ func OpenapiInsightsServiceDeleteRun(paramInsightId string, paramRunId string, p
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11523,7 +12383,11 @@ func OpenapiInsightsServiceGetCluster(paramInsightId string, paramRunId string, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11562,7 +12426,11 @@ func OpenapiInsightsServiceGetInsight(paramInsightId string, params *viper.Viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11605,7 +12473,11 @@ func OpenapiInsightsServiceGetRun(paramInsightId string, paramRunId string, para
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11648,7 +12520,11 @@ func OpenapiInsightsServiceGetRunArtifacts(paramInsightId string, paramRunId str
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11708,7 +12584,11 @@ func OpenapiInsightsServiceListClusterConversations(paramInsightId string, param
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11772,7 +12652,11 @@ func OpenapiInsightsServiceListClusters(paramInsightId string, paramRunId string
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11819,7 +12703,11 @@ func OpenapiInsightsServiceListInsights(params *viper.Viper) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11875,7 +12763,11 @@ func OpenapiInsightsServiceListRuns(paramInsightId string, params *viper.Viper) 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11913,7 +12805,11 @@ func OpenapiInsightsServicePreviewInsightCandidates(params *viper.Viper, body st
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -11960,7 +12856,11 @@ func OpenapiInsightsServiceReEvaluateRun(paramInsightId string, paramRunId strin
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12003,7 +12903,11 @@ func OpenapiInsightsServiceRunAnalysis(paramInsightId string, params *viper.Vipe
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12058,7 +12962,11 @@ func OpenapiInsightsServiceUpdateInsight(paramInsightId string, params *viper.Vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12128,7 +13036,11 @@ func OpenapiTracesListFacetValues(paramField string, params *viper.Viper) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12162,7 +13074,11 @@ func OpenapiTracesListFacets(params *viper.Viper) (*gentleman.Response, map[stri
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12196,7 +13112,11 @@ func OpenapiTracesListFields(params *viper.Viper) (*gentleman.Response, map[stri
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12244,7 +13164,11 @@ func OpenapiTracesListSpans(paramTraceId string, params *viper.Viper) (*gentlema
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12282,7 +13206,11 @@ func OpenapiTracesQueryOql(params *viper.Viper, body string) (*gentleman.Respons
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12320,7 +13248,11 @@ func OpenapiTracesSearch(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12354,7 +13286,11 @@ func OpenapiWebhookCount(params *viper.Viper) (*gentleman.Response, map[string]i
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12392,7 +13328,11 @@ func OpenapiWebhookCreate(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12431,7 +13371,11 @@ func OpenapiWebhookDelete(paramId string, params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12465,7 +13409,11 @@ func OpenapiWebhookGenerateSecret(params *viper.Viper) (*gentleman.Response, map
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12504,7 +13452,11 @@ func OpenapiWebhookGet(paramId string, params *viper.Viper) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12571,7 +13523,11 @@ func OpenapiWebhookList(params *viper.Viper) (*gentleman.Response, map[string]in
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12609,7 +13565,11 @@ func OpenapiWebhookQuery(params *viper.Viper, body string) (*gentleman.Response,
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12652,7 +13612,11 @@ func OpenapiWebhookUpdate(paramId string, params *viper.Viper, body string) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12686,7 +13650,11 @@ func OpenapiWorkspaceSettingsGet(params *viper.Viper) (*gentleman.Response, map[
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12724,7 +13692,11 @@ func OpenapiWorkspaceSettingsUpdate(params *viper.Viper, body string) (*gentlema
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12763,7 +13735,11 @@ func OpenapiWorkspaceGet(paramKey string, params *viper.Viper) (*gentleman.Respo
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12810,7 +13786,11 @@ func OpenapiWorkspaceList(params *viper.Viper) (*gentleman.Response, map[string]
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12853,7 +13833,11 @@ func OpenapiWorkspaceUpdate(paramKey string, params *viper.Viper, body string) (
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12896,7 +13880,11 @@ func OpenapiWorkspaceSecurityAddIPRange(paramWorkspaceKey string, params *viper.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -12939,7 +13927,11 @@ func OpenapiWorkspaceSecurityCreateDomain(paramWorkspaceKey string, params *vipe
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13064,7 +14056,11 @@ func OpenapiWorkspaceSecurityGetIPAllowlist(paramWorkspaceKey string, params *vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13103,7 +14099,11 @@ func OpenapiWorkspaceSecurityListDomains(paramWorkspaceKey string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13146,7 +14146,11 @@ func OpenapiWorkspaceSecurityUpdateIPAllowlist(paramWorkspaceKey string, params 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13189,7 +14193,11 @@ func OpenapiWorkspaceSecurityVerifyDomain(paramWorkspaceKey string, paramDomainI
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13232,7 +14240,11 @@ func OpenapiCreateAgentSchedule(paramAgentKey string, params *viper.Viper, body 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13314,7 +14326,11 @@ func OpenapiListAgentSchedules(paramAgentKey string, params *viper.Viper) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13357,7 +14373,11 @@ func OpenapiRetrieveAgentSchedule(paramAgentKey string, paramScheduleId string, 
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13400,7 +14420,11 @@ func OpenapiTriggerAgentSchedule(paramAgentKey string, paramScheduleId string, p
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13447,7 +14471,11 @@ func OpenapiUpdateAgentSchedule(paramAgentKey string, paramScheduleId string, pa
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13485,7 +14513,11 @@ func OpenapiAggregateLogs(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13524,7 +14556,11 @@ func OpenapiGetLog(paramId string, params *viper.Viper) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13567,7 +14603,11 @@ func OpenapiGetLogContext(paramId string, params *viper.Viper, body string) (*ge
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13605,7 +14645,11 @@ func OpenapiFindLogPatterns(params *viper.Viper, body string) (*gentleman.Respon
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13675,7 +14719,11 @@ func OpenapiListLogFacetValues(paramField string, params *viper.Viper) (*gentlem
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13713,7 +14761,11 @@ func OpenapiListLogFacets(params *viper.Viper, body string) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13747,7 +14799,11 @@ func OpenapiListLogFields(params *viper.Viper) (*gentleman.Response, map[string]
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13795,7 +14851,11 @@ func OpenapiListTraceLogs(paramTraceId string, params *viper.Viper) (*gentleman.
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13833,7 +14893,11 @@ func OpenapiQueryLogs(params *viper.Viper, body string) (*gentleman.Response, ma
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13871,7 +14935,11 @@ func OpenapiSearchLogs(params *viper.Viper, body string) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13909,7 +14977,11 @@ func OpenapiCreateRouterResponse(params *viper.Viper, body string) (*gentleman.R
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil
@@ -13948,7 +15020,11 @@ func OpenapiRetrieveResponse(paramResponseId string, params *viper.Viper) (*gent
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		decoded = after.(map[string]interface{})
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
 	}
 
 	return resp, decoded, nil

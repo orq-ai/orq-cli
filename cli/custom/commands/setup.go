@@ -447,7 +447,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			name := bartoloProfileName()
 			// Not `orq auth setup`: that is an interactive wizard, refused
 			// under --no-input, so a CI run could not follow the advice.
-			return nil, fmt.Errorf("profile %q has no API key; run `orq auth profile add apikey %s <api-key>`", name, name)
+			return nil, fmt.Errorf("profile %q has no API key; run `orq auth profile add %s --api-key-file <file>`", name, name)
 		}
 		rep.ok("using the API key from profile %s", bartoloProfileName())
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key}, nil

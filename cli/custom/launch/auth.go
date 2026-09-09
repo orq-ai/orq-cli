@@ -173,7 +173,7 @@ func ResolveCredentials(getenv func(string) string) (*Credentials, error) {
 	// login that the profile then refuses.
 	if name, key, ok := profileKey(); ok {
 		if key == "" {
-			return nil, fmt.Errorf("profile %q has no api_key; add one with 'orq auth profile add apikey %s <api-key>' or pass --profile \"\" for this call", name, name)
+			return nil, fmt.Errorf("profile %q has no api_key; add one with 'orq auth profile add %s --api-key-file <file>' or pass --profile \"\" for this call", name, name)
 		}
 		return &Credentials{APIKey: key, APIBaseURL: apiBase, Kind: CredentialAPIKey}, nil
 	}

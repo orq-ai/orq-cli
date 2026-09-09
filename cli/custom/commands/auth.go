@@ -315,7 +315,7 @@ func NewWhoAmICommand() *cobra.Command {
 					if key == "" {
 						// The profile exists but carries no key, so every request
 						// will fail; say that rather than print a blank field.
-						kv(9, "api_key", "%s", "(not set — run `orq auth profile add apikey "+bartolocli.ActiveProfileName()+" <api-key>`)")
+						kv(9, "api_key", "%s", "(not set — run `orq auth profile add "+bartolocli.ActiveProfileName()+" --api-key-file <file>`)")
 						return nil
 					}
 					kv(9, "api_key", "%s", key)
@@ -344,6 +344,7 @@ func NewWhoAmICommand() *cobra.Command {
 			report := BuildIdentityReport(session, &client.URLs)
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
+				noteOtherLogins(cmd)
 				return nil
 			}
 			return emit(report)
@@ -434,4 +435,24 @@ func reportClearedEnvFiles(paths []string) {
 	for _, path := range paths {
 		info("Removed the exported key from %s", tilde(path))
 	}
+}
+
+// noteOtherLogins points users with multiple saved logins to the listing.
+func noteOtherLogins(cmd *cobra.Command) {
+	sessions, err := auth.ListSessions()
+	count := usableSessionCount(sessions)
+	if err != nil || count < 2 {
+		return
+	}
+	Notice("%d saved logins — see `%s auth sessions`", count, cmd.Root().Name())
+}
+
+func usableSessionCount(rows []auth.SessionListEntry) int {
+	count := 0
+	for _, row := range rows {
+		if usableSessionStatus(row.Status) {
+			count++
+		}
+	}
+	return count
 }

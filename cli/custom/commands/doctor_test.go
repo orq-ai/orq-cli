@@ -33,7 +33,7 @@ func TestDoctorSummaryCollapsesHealthyAgentRows(t *testing.T) {
 		{ID: "coding_agent_opencode", Status: "warn", Message: "opencode is partially wired"},
 		{ID: "coding_agents", Status: "info", Message: "1 of 3 wired: claude"},
 	}
-	out := captureStdout(t, func() { printDoctorSummary("authenticated", "u@x.dev", checks) })
+	out := captureStdout(t, func() { printDoctorSummary("authenticated", "u@x.dev", "https://my.orq.ai", checks) })
 
 	for _, dropped := range []string{"coding_agent_claude", "coding_agent_kimi"} {
 		if strings.Contains(out, dropped) {
@@ -49,7 +49,13 @@ func TestDoctorSummaryCollapsesHealthyAgentRows(t *testing.T) {
 	// The column adapts to the longest printed ID: every message starts where
 	// the header's RESULT does, including on the 21-rune opencode row.
 	lines := strings.Split(out, "\n")
-	resultCol := strings.Index(lines[0], "RESULT")
+	resultCol := -1
+	for _, line := range lines {
+		if i := strings.Index(line, "RESULT"); i >= 0 {
+			resultCol = i
+			break
+		}
+	}
 	if resultCol < 0 {
 		t.Fatalf("no header row:\n%s", out)
 	}
@@ -82,7 +88,7 @@ func TestDoctorSummaryKeepsPinnedWorkspaceRow(t *testing.T) {
 		// with the row above, which does collapse.
 		{ID: "coding_agent_kimi_workspace", Status: "info", AlwaysShow: true, Message: "Kimi Code is pinned to workspace acme — run 'orq connect kimi' to move it to beta"},
 	}
-	out := captureStdout(t, func() { printDoctorSummary("authenticated", "u@x.dev", checks) })
+	out := captureStdout(t, func() { printDoctorSummary("authenticated", "u@x.dev", "https://my.orq.ai", checks) })
 
 	if strings.Contains(out, "is wired to orq (workspace acme)") {
 		t.Errorf("healthy coding_agent row without AlwaysShow should have collapsed:\n%s", out)
@@ -1192,7 +1198,7 @@ func TestCredentialPermissionsCleanResultIsStructuredButHumanSilent(t *testing.T
 		t.Fatalf("clean check = %+v, want pass with checked detail", check)
 	}
 	out := captureStdout(t, func() {
-		printDoctorSummary("missing", "", []doctorCheck{check})
+		printDoctorSummary("missing", "", "https://my.orq.ai", []doctorCheck{check})
 	})
 	if strings.Contains(out, "credential_permissions") {
 		t.Fatalf("human summary exposed clean credential row: %s", out)
@@ -1325,5 +1331,21 @@ func TestDoctorReportsAKeylessProfileAsMisconfigured(t *testing.T) {
 	}
 	if source, _ := authReport["source"].(string); !strings.Contains(source, "work") {
 		t.Errorf("auth source = %q, want the profile named", source)
+	}
+}
+
+func TestDoctorSummaryPrintsBaseURLOnce(t *testing.T) {
+	checks := []doctorCheck{
+		{ID: "api_base_url", Status: "pass", Message: "Reachable"},
+		{ID: "auth_base_url", Status: "pass", Message: "Reachable"},
+	}
+	out := captureStdout(t, func() {
+		printDoctorSummary("authenticated", "u@x.dev", "https://my.orq.ai", checks)
+	})
+	if n := strings.Count(out, "https://my.orq.ai"); n != 1 {
+		t.Fatalf("base URL printed %d times, want 1:\n%s", n, out)
+	}
+	if !strings.Contains(strings.SplitN(out, "\n", 2)[0], "Base URL: https://my.orq.ai") {
+		t.Fatalf("base URL is not the first line:\n%s", out)
 	}
 }

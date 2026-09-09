@@ -132,8 +132,7 @@ func NewDoctorCommand() *cobra.Command {
 			// useless (a guaranteed 401 reported as a green "Reachable"), and
 			// probing it with a key would fail every API-key setup.
 			if inspect.Status == auth.StatusOK && !isTokenExpired(inspect.Session.BootstrapToken.ExpiresAt) {
-				checks = append(checks, probeURL(cmd.Context(), "profile_base_url", http.MethodPost,
-					client.URLs.ProfileBaseURL, inspect.Session.BootstrapToken.Token))
+				checks = append(checks, profileChecks(cmd.Context(), client, inspect.Session.BootstrapToken.Token)...)
 			}
 
 			authStatus := string(inspect.Status)
@@ -202,6 +201,10 @@ func NewDoctorCommand() *cobra.Command {
 					"v1_base_url":      resolvedValue{Value: client.URLs.V1BaseURL, Source: v1Source},
 					"auth_base_url":    resolvedValue{Value: client.URLs.AuthBaseURL, Source: "derived"},
 					"profile_base_url": resolvedValue{Value: client.URLs.ProfileBaseURL, Source: profileSource},
+					"profile_transport": resolvedValue{
+						Value:  profileTransport(inspect),
+						Source: profileTransportSource(inspect),
+					},
 				},
 				Auth:   authMap,
 				Checks: checks,
@@ -213,7 +216,7 @@ func NewDoctorCommand() *cobra.Command {
 			// The report goes out first either way: a failed --fix has to name
 			// which path it could not repair before the error ends the run.
 			if wantsHumanView(cmd) {
-				printDoctorSummary(authStatus, userEmail, checks)
+				printDoctorSummary(authStatus, userEmail, client.URLs.APIBaseURL, checks)
 				return permsErr
 			}
 			if err := emit(report); err != nil {
@@ -266,8 +269,13 @@ func emitBugReport(cmd *cobra.Command) error {
 // printDoctorSummary is the scannable, colored checklist a person sees at a
 // terminal. It is the primary output in that mode (the verbose structured
 // report is reserved for scripts and --json/-o), so it writes to stdout.
-func printDoctorSummary(authStatus, userEmail string, checks []doctorCheck) {
+func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCheck) {
 	out := bartolocli.Stdout
+	// Names the host every *_base_url row below probes, once instead of per row.
+	if baseURL != "" {
+		fmt.Fprintln(out, paint(ansiDim, "Base URL: "+baseURL))
+		fmt.Fprintln(out)
+	}
 	authLine := authStatus
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
@@ -367,6 +375,39 @@ func isTokenExpired(expiresAt string) bool {
 // context so Ctrl+C cancels an in-flight probe instead of waiting it out.
 // method matters for the profile RPC: Connect unary calls only answer POST, so
 // probing it with a GET reports a 404/405 that says nothing about reachability.
+// profileChecks probes the profile endpoint the client would call, and the one
+// it falls back to when this host does not route the first. A 404/405 on the
+// identity RPC is not "reachable": it is the whole reason a login ends up on
+// the legacy endpoint, and reporting it green is how a deployment missing that
+// route looked healthy while every profile fetch quietly ran on the fallback.
+func profileChecks(ctx context.Context, client *auth.Client, bearer string) []doctorCheck {
+	rpc := probeURL(ctx, "profile_base_url", http.MethodPost, client.ProfileURL(auth.ProfileTransportRPC), bearer)
+	status, _ := rpc.Details["http_status"].(int)
+	if status != http.StatusNotFound && status != http.StatusMethodNotAllowed {
+		return []doctorCheck{rpc}
+	}
+	rpc.Status = "warn"
+	rpc.Message = fmt.Sprintf("This host does not route the identity RPC (HTTP %d); the legacy profile endpoint is used instead", status)
+	return []doctorCheck{rpc, probeURL(ctx, "profile_legacy_url", http.MethodGet, client.ProfileURL(auth.ProfileTransportREST), bearer)}
+}
+
+// profileTransport names the endpoint the recorded session last read the
+// profile from. A session written before the field existed reports the RPC,
+// which is what such a session's next fetch will try first.
+func profileTransport(inspect auth.SessionInspectResult) string {
+	if inspect.Status != auth.StatusOK || inspect.Session.ProfileTransport == "" {
+		return auth.ProfileTransportRPC
+	}
+	return inspect.Session.ProfileTransport
+}
+
+func profileTransportSource(inspect auth.SessionInspectResult) string {
+	if inspect.Status == auth.StatusOK && inspect.Session.ProfileTransport != "" {
+		return "session"
+	}
+	return "default"
+}
+
 func probeURL(parent context.Context, id, method, url, bearer string) doctorCheck {
 	authenticated := bearer != ""
 	if parent == nil {

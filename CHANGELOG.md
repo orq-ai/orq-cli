@@ -36,9 +36,12 @@ What you may depend on, and what you may not:
 - **Errors go to stderr; results go to stdout.**
 - **The command surface is tracked in `surface.json`.** CI fails any change to
   commands or flags that is not consciously committed, so the surface cannot
-  drift silently under an OpenAPI regeneration. Removing or renaming a
-  command or flag is a breaking change: announce it here at least one release
-  before it disappears.
+  drift silently under an OpenAPI regeneration. Removing or renaming a command
+  or flag is announced here at least one release before it disappears, and the
+  old spelling keeps working, hidden and warning, until then. That notice is
+  what costs users their attention, so the removal that follows it is a minor.
+  A command or flag that disappears without one is the breaking case, and it is
+  what cuts a major.
 
 ## Versioning
 
@@ -124,6 +127,67 @@ controls on surface changes, whichever side they originate from.
   directory registered now says so rather than reporting success having linked
   nothing.
 
+## [8.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.1) — 2026-09-08
+
+- **Fixed:** `orq setup --server <host>` no longer dies with a raw nginx `405 Not
+  Allowed` page right after the browser approval on a deployment that does not
+  route the identity RPC. The profile is read from whichever endpoint the host
+  serves — `POST /v3/rpc/identity/.../GetProfile`, or the REST endpoint it
+  replaced (`GET /v2/api/me`) when the first answers 404 or 405. A 401 or a 5xx
+  is the service itself talking and keeps its own error, so a dead credential is
+  still reported as one, and a host routing neither endpoint now gets a message
+  naming both URLs and both statuses instead of the proxy's HTML page.
+- **Changed:** the endpoint that answered is recorded on the session
+  (`profileTransport`) and used first from then on, so a host without the
+  identity RPC no longer pays a failing request before every profile fetch —
+  this runs on `orq whoami`, `orq workspace use` and every command that resolves
+  a workspace token, not only on setup. Sessions written before this field
+  existed try the RPC first, exactly as they did.
+- **Added:** `orq doctor` reports `config.profile_transport` and, on a host that
+  does not route the identity RPC, warns on `profile_base_url` instead of
+  calling a 404/405 there "Reachable" and adds a `profile_legacy_url` check for
+  the endpoint actually in use.
+
+- **Fixed: `orq auth login` no longer discards what `orq setup` recorded.** A
+  second login rewrote the session from scratch, dropping the gateway key minted
+  for the coding agents, its id, expiry and scope, and the active project. Three
+  things followed: `orq setup` stopped reusing the key and minted a fresh one on
+  every login, orphaning the last; the key id `orq auth logout` reads to offer a
+  revoke was gone, leaving a credential valid for 90 days; and `--workspace`
+  went back to being a silent no-op, because the rule that lets the exported
+  `ORQ_API_KEY` defer to your login identifies that key by comparing it against
+  the session's copy. Agents already wired keep working throughout — `orq
+  connect` writes the key into their own configs.
+
+  A login as a different user still inherits none of it, and now says so: it
+  names the dropped key id and how to revoke it, and warns that the previous
+  user's exported key still takes precedence until you run `orq setup`. A login
+  that moves workspace keeps the gateway key, whose own workspace is recorded
+  with it, but not the active project, which belongs to the workspace it was
+  chosen in. A session file that cannot be read is reported rather than
+  overwritten in silence.
+
+## [8.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.0.0) — 2026-09-07
+
+- **Removed: `orq auth add-profile` and `orq auth list-profiles`**, the
+  deprecated spellings announced for removal in 7.0.0. Use `orq auth profile
+  add` and `orq auth profile list`. Both were already hidden from `--help` and
+  printed a deprecation notice; they now leave `surface.json`.
+- **Changed: removing an already-deprecated command or flag no longer cuts a
+  major.** The [stability contract](#stability-contract) still requires a
+  removal to be announced a release ahead, with the old spelling kept working,
+  hidden and warning, until then — but that announcement is what costs callers
+  their attention, so the removal following it is a minor. A command or flag
+  that disappears without such a notice is still a major.
+- **Fixed:** table output renders nested columns instead of dropping them, and
+  a list operation is classified from the schema's own metadata rather than
+  guessed from its name, so list-shaped responses format as tables more
+  reliably. Both come from upgrading the bartolo generator and runtime to
+  v0.12.0.
+- **Fixed:** a generated command whose `after` handler returns something other
+  than an object now fails with an error naming the handler and the type it
+  returned, instead of panicking on a type assertion.
+
 ## [7.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.3.0) — 2026-09-07
 
 - **Added:** `orq doctor` and `orq connect --status` now report the version of
@@ -131,6 +195,13 @@ controls on surface changes, whichever side they originate from.
   bundle version, sourced from the source commit when available and otherwise
   the content fingerprint, while `doctor --json` exposes the full value as
   `checks[id=skills].details.version`.
+- **Added: `orq auth sessions`,** which lists saved logins by host, including
+  workspace, project, user, status, and the active server. It also surfaces
+  malformed sessions so they can be repaired.
+- **Fixed:** `--no-input` now refuses `orq auth profile add` before it can
+  prompt for a key.
+- **Note:** deprecated `auth add-profile` and `auth list-profiles` aliases
+  remain until the bartolo generator bump removes them.
 
 ## [7.2.0](https://github.com/orq-ai/orq-cli/releases/tag/v7.2.0) — 2026-09-07
 

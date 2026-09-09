@@ -50,3 +50,21 @@ func TestServerFromEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeServer(t *testing.T) {
+	cases := map[string]string{
+		"orq.example.com":         "https://orq.example.com",
+		"https://orq.example.com": "https://orq.example.com",
+		"http://orq.example.com":  "http://orq.example.com",
+		"orq.example.com/base":    "https://orq.example.com/base",
+		"localhost:3000":          "http://localhost:3000",
+		"127.0.0.1:4200":          "http://127.0.0.1:4200",
+		"  orq.example.com  ":     "https://orq.example.com",
+		"":                        "",
+	}
+	for in, want := range cases {
+		if got := NormalizeServer(in); got != want {
+			t.Errorf("NormalizeServer(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
