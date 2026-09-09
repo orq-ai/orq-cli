@@ -167,7 +167,9 @@ controls on surface changes, whichever side they originate from.
   previously invisible, and
   a reader who got a conversation they did not expect had no way to see what it
   was chosen between or which span id to pass as the second argument. Prints a
-  A span that was read and passed over says why in the same column (`no
+  Each span shows how many turns it holds (`TURNS`, `"messages"`), which is what
+  says whether the right span was picked; filling that column reads the spans
+  listed, up to 25 per run. A span that was read and passed over says why in the same column (`no
   conversation recorded`, `content dropped by the collector`, `could not be
   read`), which is the usual question a surprising thread raises.
   The span the command settles on is marked `*` in the table and `"selected":

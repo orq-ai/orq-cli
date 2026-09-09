@@ -42,7 +42,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the most specific span holding a whole conversation is read — deepest in the span tree first, and the later of two siblings. --spans shows that selection and marks the span it lands on with *. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
+			"Given a trace id alone, the most specific span holding a whole conversation is read — deepest in the span tree first, and the later of two siblings. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -248,10 +248,18 @@ func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]str
 // and returns the conversation it settles on. It is separate from the paging
 // and the trace fetch so --spans can show that selection over the same listing
 // it already paid for, rather than running the whole thing twice.
-func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, outcomes map[string]string) (Thread, error) {
-	record := func(spanID, outcome string) {
+// threadOutcome is what reading one span produced: how many turns it held, or
+// why it held none. --spans reports it; selection itself only needs the thread.
+type threadOutcome struct {
+	Messages int
+	Read     bool
+	Note     string
+}
+
+func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, outcomes map[string]threadOutcome) (Thread, error) {
+	record := func(spanID, note string) {
 		if outcomes != nil {
-			outcomes[spanID] = outcome
+			outcomes[spanID] = threadOutcome{Note: note}
 		}
 	}
 	tried := make(map[string]bool, len(candidates))
@@ -274,11 +282,18 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 			}
 			return nil
 		}
+		if outcomes != nil {
+			outcomes[spanID] = threadOutcome{Messages: len(thread.Messages), Read: true}
+		}
 		if best == nil || betterThread(thread, *best) {
 			best = &thread
 		}
 		if !threadIsWhole(thread) {
-			record(spanID, "content dropped by the collector")
+			if outcomes != nil {
+				outcome := outcomes[spanID]
+				outcome.Note = "content dropped by the collector"
+				outcomes[spanID] = outcome
+			}
 			degraded = true
 		} else if !degraded {
 			return best
@@ -402,6 +417,10 @@ type ThreadSpan struct {
 	Order     int    `json:"order,omitempty"`
 	Skipped   string `json:"skipped,omitempty"`
 	Note      string `json:"note,omitempty"`
+	// Messages is how many turns the span holds, for a span that was read.
+	// Absent on one that was not: --spans reads what it must to answer, not
+	// every span it lists.
+	Messages *int `json:"messages,omitempty"`
 	// Selected marks the span a plain `orq traces thread trace-id` reads. It
 	// is the answer selection actually reached, not the first in the try
 	// order: a span that hydrates with content dropped loses to a later one
@@ -642,13 +661,17 @@ func printThreadSpans(summaries []ThreadSpan) {
 		if span.Note != "" {
 			note = span.Note
 		}
-		row := tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, span.Name, note}}
+		messages := ""
+		if span.Messages != nil {
+			messages = strconv.Itoa(*span.Messages)
+		}
+		row := tableRow{cells: []string{order, span.SpanID, span.Type, span.StartedAt, messages, span.Name, note}}
 		if span.Selected {
 			row.marker = paint(ansiOK, "*")
 		}
 		rows = append(rows, row)
 	}
-	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "NAME", "NOTE"}, rows)
+	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "TURNS", "NAME", "NOTE"}, rows)
 }
 
 // orderThreadFallbacks completes the try order with the spans the trace names
@@ -694,16 +717,24 @@ func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded
 // otherwise. Running it costs what running the command costs, since selection
 // stops at the first span that answers.
 func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, summaries []ThreadSpan) []ThreadSpan {
-	outcomes := map[string]string{}
+	outcomes := map[string]threadOutcome{}
 	thread, err := selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr, outcomes)
 	for index := range summaries {
-		if summaries[index].SpanID == thread.Source.SpanID {
-			// The span that answered explains itself; an outcome recorded on
-			// the way to it would read as a reason it lost.
+		outcome, read := outcomes[summaries[index].SpanID]
+		if !read {
 			continue
 		}
-		if outcome := outcomes[summaries[index].SpanID]; outcome != "" && summaries[index].Note == "" {
-			summaries[index].Note = outcome
+		if outcome.Read {
+			messages := outcome.Messages
+			summaries[index].Messages = &messages
+		}
+		if summaries[index].SpanID == thread.Source.SpanID {
+			// The span that answered explains itself; a note recorded on the
+			// way to it would read as a reason it lost.
+			continue
+		}
+		if outcome.Note != "" && summaries[index].Note == "" {
+			summaries[index].Note = outcome.Note
 		}
 	}
 	if err != nil {
@@ -721,6 +752,41 @@ func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, cand
 	}
 	if !found && thread.Source.SpanID != "" {
 		summaries = append(summaries, ThreadSpan{SpanID: thread.Source.SpanID, Selected: true, Note: "read, but not in the listing this command saw"})
+	}
+	return countRemainingThreadSpans(api, traceID, params, summaries, outcomes)
+}
+
+// threadSpanReadLimit caps the spans --spans reads to fill in turn counts.
+// Selection stops at the first span that answers, so the rest are read only to
+// report them, and a trace with hundreds of spans should not turn one
+// diagnostic command into hundreds of requests.
+const threadSpanReadLimit = 25
+
+// countRemainingThreadSpans reads the candidates selection stopped short of, so
+// the turn count is there for every span the reader is choosing between rather
+// than only for the ones selection happened to need. A span it cannot read
+// keeps the reason instead of a count.
+func countRemainingThreadSpans(api TraceAPI, traceID string, params *viper.Viper, summaries []ThreadSpan, outcomes map[string]threadOutcome) []ThreadSpan {
+	read := len(outcomes)
+	for index := range summaries {
+		if summaries[index].Order == 0 || summaries[index].Messages != nil || summaries[index].Note != "" {
+			continue
+		}
+		if read >= threadSpanReadLimit {
+			break
+		}
+		read++
+		thread, err := hydrateThread(api, traceID, summaries[index].SpanID, params)
+		if err != nil {
+			if errors.Is(err, ErrUnsupportedConversation) {
+				summaries[index].Note = "no conversation recorded"
+			} else {
+				summaries[index].Note = "could not be read"
+			}
+			continue
+		}
+		messages := len(thread.Messages)
+		summaries[index].Messages = &messages
 	}
 	return summaries
 }

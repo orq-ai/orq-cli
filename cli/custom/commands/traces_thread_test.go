@@ -1079,8 +1079,8 @@ func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
 		rows = append(rows, strings.Fields(line))
 	}
 	want := [][]string{
-		{"*", "1", "new", "2025-01-02T00:00:00Z", "generation"},
-		{"2", "old", "2025-01-01T00:00:00Z", "generation"},
+		{"*", "1", "new", "2025-01-02T00:00:00Z", "2", "generation"},
+		{"2", "old", "2025-01-01T00:00:00Z", "generation", "no", "conversation", "recorded"},
 		{"-", "eval", "EVALUATOR", "2025-01-03T00:00:00Z", "evaluator"},
 		{"-", "thin", "2025-01-04T00:00:00Z", "no", "recorded", "detail"},
 	}
@@ -1088,8 +1088,9 @@ func TestTracesThreadListsSpansWithTheOrderSelectionWouldTry(t *testing.T) {
 		t.Fatalf("--spans rows = %v, want %v", rows, want)
 	}
 	// The listing and the trace are read once between the table and the
-	// selection it reports, not once for each.
-	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:new"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	// selection it reports, not once for each. Selection stops at the span
+	// that answers; the other candidate is read only for its turn count.
+	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:new", "span:trace-1:old"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	if len(fake.listCalls) != 1 {
@@ -1122,12 +1123,12 @@ func TestTracesThreadMarksTheSelectedSpanNotTheFirstTried(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("unmarshal %q: %v", out, err)
 	}
-	want := []ThreadSpan{
-		{SpanID: "new", Order: 1, StartedAt: "2025-01-02T00:00:00Z", Note: "content dropped by the collector"},
-		{SpanID: "old", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Selected: true},
+	want := []string{
+		"new order=1 turns=1 note=content dropped by the collector",
+		"old order=2 turns=2 selected",
 	}
-	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
-		t.Fatalf("spans = %+v, want %+v", payload.Spans, want)
+	if got := describeThreadSpans(payload.Spans); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("spans = %v, want %v", got, want)
 	}
 }
 
@@ -1234,13 +1235,13 @@ func TestTracesThreadOrdersTheTraceFallbackAfterTheListing(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("unmarshal %q: %v", out, err)
 	}
-	want := []ThreadSpan{
-		{SpanID: "listed", Order: 1, StartedAt: "2025-01-02T00:00:00Z", Note: "no conversation recorded"},
-		{SpanID: "thin", Order: 2, StartedAt: "2025-01-01T00:00:00Z", Note: "tried anyway: no recorded detail"},
-		{SpanID: "unlisted", Order: 3, Note: "named by the trace, not in its span listing"},
+	want := []string{
+		"listed order=1 note=no conversation recorded",
+		"thin order=2 note=tried anyway: no recorded detail",
+		"unlisted order=3 note=named by the trace, not in its span listing",
 	}
-	if fmt.Sprint(payload.Spans) != fmt.Sprint(want) {
-		t.Fatalf("spans = %+v, want %+v", payload.Spans, want)
+	if got := describeThreadSpans(payload.Spans); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("spans = %v, want %v", got, want)
 	}
 }
 
@@ -1278,8 +1279,33 @@ func TestTracesThreadTriesTheDeepestSpanFirstDespiteTheClock(t *testing.T) {
 	if !payload.Spans[0].Selected {
 		t.Fatalf("selected = %+v, want the model call", payload.Spans)
 	}
-	// Only the span that answered is read; the shallower two are never fetched.
-	if got, want := fake.getCalls, []string{"trace:trace-1", "span:trace-1:completion"}; fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("calls = %v, want %v", got, want)
+	if got, want := fake.getCalls[:2], []string{"trace:trace-1", "span:trace-1:completion"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("calls = %v, want the deepest span read first", got)
 	}
+}
+
+// describeThreadSpans renders the fields --spans is asserted on, since Messages
+// is a pointer and a formatted struct would compare addresses.
+func describeThreadSpans(spans []ThreadSpan) []string {
+	described := make([]string, 0, len(spans))
+	for _, span := range spans {
+		text := span.SpanID
+		if span.Order > 0 {
+			text += fmt.Sprintf(" order=%d", span.Order)
+		}
+		if span.Messages != nil {
+			text += fmt.Sprintf(" turns=%d", *span.Messages)
+		}
+		if span.Skipped != "" {
+			text += " skipped=" + span.Skipped
+		}
+		if span.Note != "" {
+			text += " note=" + span.Note
+		}
+		if span.Selected {
+			text += " selected"
+		}
+		described = append(described, text)
+	}
+	return described
 }
