@@ -1463,13 +1463,21 @@ func TestTracesThreadStillSkipsAnEvaluatorBesideAConversation(t *testing.T) {
 	}
 }
 
+// A 404 the workspace search cannot explain still says which project the read
+// looked in, so "not found" is never read as "does not exist".
 func TestTracesThreadNamesProjectScopingOnAMissingTrace(t *testing.T) {
-	fake := &fakeTraceAPI{traceErr: errors.New("HTTP 404: trace not found")}
+	switchTestEnv(t)
+	srv := switchServer(t, []string{"acme"}, "")
+	switchSession(t, srv.URL, "acme", []string{"acme"}, "id-1", "Banking")
+	fake := &fakeTraceAPI{
+		traceErr: errors.New("HTTP 404: trace not found"),
+		search:   map[string]any{"data": []any{}},
+	}
 	_, err := runTracesThread(t, traceAPI(fake), "trace-1")
 	if err == nil {
 		t.Fatal("expected the missing trace to fail")
 	}
-	if !strings.Contains(err.Error(), "--project") {
+	if !strings.Contains(err.Error(), `project "Banking"`) || !strings.Contains(err.Error(), "orq projects use") {
 		t.Fatalf("a trace read is project-scoped and the 404 does not say so, got: %v", err)
 	}
 }

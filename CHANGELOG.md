@@ -192,6 +192,16 @@ controls on surface changes, whichever side they originate from.
   explicit API key, or when the search finds nothing, the previous advice
   (`--project`, or `orq projects use --clear` plus `orq traces search`) stands.
 
+- **Changed:** every "not found" now names the project it looked in. A read by
+  id answers within the active project, so an id recorded in a sibling project
+  came back as a bare `HTTP 404: trace span not found` that reads as "this does
+  not exist" — the one thing it does not mean. Any command, generated ones
+  included, now adds: `This looked in project "pydata2026", which is the active
+  one. Ids are read within one project: if it belongs to another, switch with
+  `orq projects use <key>` and try again.` With an explicit API key the note says
+  the key decides the scope instead, and `orq traces thread` keeps its own
+  message when it could name the project holding the trace.
+
 - **Fixed:** the rc binary (`@orq-ai/cli-rc`) reads stored Responses payloads
   too. `orq traces thread` gained that read in the stable binary only, so the
   same trace rendered `[content unavailable: 7 items]` on rc and the turns on

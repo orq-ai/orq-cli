@@ -270,7 +270,7 @@ func threadProjectHint(api TraceAPI, traceID string, err error, params *viper.Vi
 	if hint := locateThreadProject(api, traceID, params); hint != "" {
 		return hint
 	}
-	return "\nA trace is read within one project: this looked in the active one. Pass --project <key> if it belongs to another, or run `orq projects use --clear` and `orq traces search` to find which."
+	return NotFoundScopeHint(err)
 }
 
 // threadNotFound reports the 404 that project scoping produces. The generated

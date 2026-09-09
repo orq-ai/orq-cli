@@ -104,6 +104,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
 	improveArgErrors(root)
+	explainNotFoundScope(root)
 }
 
 func registerGlobalFlags() {
@@ -903,6 +904,29 @@ func improveArgErrors(cmd *cobra.Command) {
 	}
 	for _, sub := range cmd.Commands() {
 		improveArgErrors(sub)
+	}
+}
+
+// explainNotFoundScope appends the active project to every "not found" a
+// command returns. A read by id answers within one project, so an id recorded
+// in a sibling project comes back as a bare 404 that reads as "this does not
+// exist" — the one thing it does not mean. Applied to the whole tree, so the
+// generated operations carry it too.
+func explainNotFoundScope(cmd *cobra.Command) {
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			err := run(c, args)
+			hint := commands.NotFoundScopeHint(err)
+			// A command that already named the scope itself — `traces thread`
+			// names the project holding the trace — needs no second copy.
+			if hint == "" || strings.Contains(err.Error(), "orq projects use") {
+				return err
+			}
+			return fmt.Errorf("%w%s", err, hint)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		explainNotFoundScope(sub)
 	}
 }
 
