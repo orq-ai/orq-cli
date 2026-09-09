@@ -103,6 +103,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	applyCommandGroups(root)
 	annotateGlobalFlagEnvVars(root)
 	appendHelpFooter(root)
+	installUpdateNoticeHelp(root)
 	improveArgErrors(root)
 	explainNotFoundScope(root)
 }
@@ -128,6 +129,19 @@ func appendHelpFooter(root *cobra.Command) {
 	// which turns the footer into a header. clig.dev wants Docs/Issues as a
 	// trailer after the flag list.
 	root.SetHelpTemplate(root.HelpTemplate() + "\n" + helpFooter + "\n")
+}
+
+// installUpdateNoticeHelp puts the notice on the help path too. Cobra returns
+// before any PersistentPreRunE for `--help` and for a root with no Run of its
+// own, so the pre-run hook alone left `orq` and `orq --help` — the two runs
+// someone makes when they are working out what the CLI can do, and the best
+// moment to learn it is a version behind — as the only silent ones.
+func installUpdateNoticeHelp(root *cobra.Command) {
+	help := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		printUpdateNoticeOnce(cmd)
+		help(cmd, args)
+	})
 }
 
 // chainPreRun appends a step to bartolo's single package-level PreRun hook,
@@ -645,10 +659,19 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 // session step settles.
 func installUpdateNoticePreRun() {
 	chainPreRun(func(cmd *cobra.Command, _ []string) error {
-		maybePrintUpdateNotice(cmd)
+		printUpdateNoticeOnce(cmd)
 		return nil
 	})
 }
+
+// printUpdateNoticeOnce is the guard for the two entry points below: `orq help
+// models` reaches the pre-run hook on the help command AND the help renderer,
+// and one invocation owes the user one line and one entry in the budget.
+func printUpdateNoticeOnce(cmd *cobra.Command) {
+	updateNoticeOnce.Do(func() { maybePrintUpdateNotice(cmd) })
+}
+
+var updateNoticeOnce sync.Once
 
 // Variable so a test can prove the hook fires ahead of a real command body:
 // the notice itself needs a TTY, which no test process has.

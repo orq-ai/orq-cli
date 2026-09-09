@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"orq/cli/custom/skills"
@@ -586,6 +587,7 @@ func TestUpdateNoticeHookRunsBeforeTheCommandBody(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	var order []string
+	updateNoticeOnce = sync.Once{}
 	prev := maybePrintUpdateNotice
 	maybePrintUpdateNotice = func(*cobra.Command) { order = append(order, "notice") }
 	t.Cleanup(func() { maybePrintUpdateNotice = prev })
@@ -607,5 +609,35 @@ func TestUpdateNoticeHookRunsBeforeTheCommandBody(t *testing.T) {
 
 	if want := []string{"notice", "command"}; !slices.Equal(order, want) {
 		t.Errorf("order = %v, want %v", order, want)
+	}
+}
+
+// Cobra never reaches a PersistentPreRunE for help output, so the pre-run hook
+// alone left `orq` and `orq --help` silent — and those are the runs someone
+// makes while working out what the CLI does. `orq help <cmd>` reaches the hook
+// AND the help renderer, and still owes the user exactly one line.
+func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	for _, args := range [][]string{{"--help"}, {}, {"help", "man-pages"}} {
+		t.Run(strings.Join(append([]string{"orq"}, args...), " "), func(t *testing.T) {
+			calls := 0
+			updateNoticeOnce = sync.Once{} // a fresh process, as a user would have
+			prev := maybePrintUpdateNotice
+			maybePrintUpdateNotice = func(*cobra.Command) { calls++ }
+			t.Cleanup(func() { maybePrintUpdateNotice = prev })
+
+			root := buildRoot(t)
+			root.SetOut(&bytes.Buffer{})
+			root.SetErr(&bytes.Buffer{})
+			root.SetArgs(args)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if calls != 1 {
+				t.Errorf("notice reached %d times, want exactly 1", calls)
+			}
+		})
 	}
 }
