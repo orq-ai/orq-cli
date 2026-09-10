@@ -111,6 +111,7 @@ skills check, and `orq doctor -o json` returns the full value at
 | `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 | `copilot` | nothing — copilot's BYOK provider is env-only, one model per session | `orq launch copilot` |
+| `gemini` | nothing — gemini reads a config home, not a provider registry | `orq launch gemini` |
 
 Models come from the live gateway catalogue (enabled chat models with tool calling), keyed by their canonical ref. The default the agent opens with is chosen from that ranking. `orq setup` sends no model call of its own: a probe would bill your credits and open a trace in your workspace to prove something you did not ask to have proven. Your first agent request is the test.
 
@@ -356,6 +357,7 @@ orq launch kilo                   # Kilo CLI (OpenCode fork)
 orq launch kimi                   # Kimi Code
 orq launch pi                     # Pi Coding Agent
 orq launch copilot                # GitHub Copilot CLI
+orq launch gemini                 # Gemini CLI
 ```
 
 The agent CLI itself must be installed — each subcommand prints an install hint when it is missing. All requests appear in your orq.ai traces and logs like any other gateway traffic.
@@ -400,7 +402,7 @@ Sandboxed execution is not available in this version.
 
 | Variable | Purpose |
 |---|---|
-| `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude (OpenAI-shaped router) |
+| `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
 | `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint) |
 | `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | claude model selection |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
@@ -408,6 +410,7 @@ Sandboxed execution is not available in this version.
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
 | `ORQ_PI_BASE_URL` / `PI_MODEL` / `PI_MODELS` | pi overrides |
 | `ORQ_COPILOT_BASE_URL` / `COPILOT_MODEL` | copilot overrides |
+| `ORQ_GEMINI_BASE_URL` / `GEMINI_MODEL` | gemini overrides (Gemini-native endpoint) |
 
 ---
 
@@ -536,6 +539,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 |---|---|
 | `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi, copilot |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
+| `<host>/v3/google` | model calls for gemini (Gemini-native API) |
 | `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch` and persistently by `orq connect mcp` |
 
 ```sh
