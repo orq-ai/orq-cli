@@ -32,7 +32,7 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 			if tc.activeWS != nil {
 				session = &auth.Session{
 					ActiveWorkspaceKey: tc.activeWS,
-					GatewayKey:         tc.savedKey,
+					SessionSecrets:     auth.SessionSecrets{GatewayKey: tc.savedKey},
 					GatewayWorkspace:   tc.savedWS,
 				}
 				saveLaunchSession(t, session)
@@ -46,7 +46,11 @@ func TestShadowsSessionOnlyOnARealMismatch(t *testing.T) {
 
 func TestShadowsSessionReadsTheSavedGatewayKey(t *testing.T) {
 	active := "acme"
-	session := &auth.Session{ActiveWorkspaceKey: &active, GatewayKey: "sk-brought", GatewayWorkspace: "acme"}
+	session := &auth.Session{
+		ActiveWorkspaceKey: &active,
+		SessionSecrets:     auth.SessionSecrets{GatewayKey: "sk-brought"},
+		GatewayWorkspace:   "acme",
+	}
 	saveLaunchSession(t, session)
 	if shadowsSession("sk-brought", session) {
 		t.Error("a user-supplied key in its own workspace reported as a mismatch")
@@ -64,9 +68,11 @@ func TestShadowsSessionIgnoresOurOwnInjectedToken(t *testing.T) {
 	active := "acme"
 	session := &auth.Session{
 		ActiveWorkspaceKey: &active,
-		WorkspaceTokens:    map[string]auth.StoredAccessToken{"acme": {Token: "session-jwt"}},
-		GatewayKey:         "sk-orq-MINTED",
-		GatewayWorkspace:   "acme",
+		SessionSecrets: auth.SessionSecrets{
+			WorkspaceTokens: map[string]auth.StoredAccessToken{"acme": {Token: "session-jwt"}},
+			GatewayKey:      "sk-orq-MINTED",
+		},
+		GatewayWorkspace: "acme",
 	}
 	saveLaunchSession(t, session)
 	if shadowsSession("session-jwt", session) {
@@ -143,7 +149,10 @@ func TestSupersededBySession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var session *auth.Session
 			if tc.activeWS != nil {
-				session = &auth.Session{ActiveWorkspaceKey: tc.activeWS, WorkspaceTokens: tc.workspaceTok}
+				session = &auth.Session{
+					ActiveWorkspaceKey: tc.activeWS,
+					SessionSecrets:     auth.SessionSecrets{WorkspaceTokens: tc.workspaceTok},
+				}
 			}
 			mintedFor, superseded := supersededBySession(tc.envKey, session, tc.savedKey, tc.savedWS)
 			if mintedFor != tc.wantMintedFor || superseded != tc.wantSuper {

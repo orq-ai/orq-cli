@@ -894,12 +894,14 @@ func saveDoctorSession(t *testing.T, apiBase, email, workspace string) {
 		User:               &auth.SessionUser{ID: "user-1", Email: email},
 		Workspaces:         []map[string]any{{"key": workspace}},
 		ActiveWorkspaceKey: &workspace,
-		RefreshToken:       "refresh-token",
-		BootstrapToken: auth.StoredAccessToken{
-			Token:     "bootstrap-token",
-			ExpiresAt: "2099-01-01T00:00:00Z",
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken: "refresh-token",
+			BootstrapToken: auth.StoredAccessToken{
+				Token:     "bootstrap-token",
+				ExpiresAt: "2099-01-01T00:00:00Z",
+			},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{},
 		},
-		WorkspaceTokens: map[string]auth.StoredAccessToken{},
 	}); err != nil {
 		t.Fatalf("save doctor session: %v", err)
 	}
@@ -1239,7 +1241,7 @@ func TestGatewayKeyExportedDescribesWhichCredentialWins(t *testing.T) {
 		explicitAPIKey = prevExplicit
 		userEnvAPIKey, userEnvAPIKeyTaken = prevEnv, prevTaken
 	})
-	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{GatewayKey: "sk-orq-MINTED"}}
+	loggedIn := auth.SessionInspectResult{Status: auth.StatusOK, Session: &auth.Session{SessionSecrets: auth.SessionSecrets{GatewayKey: "sk-orq-MINTED"}}}
 	loggedOut := auth.SessionInspectResult{Status: auth.StatusMissing}
 
 	for name, tc := range map[string]struct {

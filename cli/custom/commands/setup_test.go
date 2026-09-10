@@ -377,14 +377,16 @@ func credsHarness(t *testing.T) {
 	auth.SetServer("", "default")
 	urls := auth.ResolveURLs("")
 	if err := auth.SaveSession(&auth.Session{
-		Version:         1,
-		APIBaseURL:      urls.APIBaseURL,
-		V1BaseURL:       urls.V1BaseURL,
-		AuthBaseURL:     urls.AuthBaseURL,
-		ProfileBaseURL:  urls.ProfileBaseURL,
-		RefreshToken:    "refresh-token",
-		BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
-		WorkspaceTokens: map[string]auth.StoredAccessToken{},
+		Version:        1,
+		APIBaseURL:     urls.APIBaseURL,
+		V1BaseURL:      urls.V1BaseURL,
+		AuthBaseURL:    urls.AuthBaseURL,
+		ProfileBaseURL: urls.ProfileBaseURL,
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh-token",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -785,9 +787,12 @@ func TestSetupMintsThenConnectWires(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
-		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
 		ActiveWorkspaceKey: &key,
-		WorkspaceTokens:    map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1137,8 +1142,12 @@ func TestCodingAgentsUsesTheSuppliedAPIKey(t *testing.T) {
 	urls := auth.ResolveURLs("")
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL, AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
-		RefreshToken: "refresh-token", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
-		WorkspaceTokens: map[string]auth.StoredAccessToken{}, GatewayKey: "sk-orq-OLD-STALE",
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh-token",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{},
+			GatewayKey:      "sk-orq-OLD-STALE",
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1313,9 +1322,12 @@ func TestCodingAgentsWiresTheExportedKeyWhenLoggedIn(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: srv.URL, AuthBaseURL: srv.URL, V1BaseURL: srv.URL, ProfileBaseURL: srv.URL,
-		RefreshToken: "refresh", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
 		ActiveWorkspaceKey: &key,
-		WorkspaceTokens:    map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{key: {Token: "session-token", ExpiresAt: exp}},
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1388,13 +1400,15 @@ func TestCodingAgentsWiresTheSavedKeyForALoggedInUser(t *testing.T) {
 		AuthBaseURL:        srv.URL,
 		V1BaseURL:          srv.URL,
 		ProfileBaseURL:     srv.URL,
-		RefreshToken:       "refresh",
-		BootstrapToken:     auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
 		ActiveWorkspaceKey: &key,
-		WorkspaceTokens: map[string]auth.StoredAccessToken{
-			key: {Token: "session-token", ExpiresAt: exp},
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:   "refresh",
+			BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{
+				key: {Token: "session-token", ExpiresAt: exp},
+			},
+			GatewayKey: "sk-orq-SAVED-DURABLE",
 		},
-		GatewayKey:       "sk-orq-SAVED-DURABLE",
 		GatewayWorkspace: "acme",
 	}); err != nil {
 		t.Fatal(err)
@@ -1843,8 +1857,10 @@ func sessionWithToken(apiBase string) *authState {
 		durableKey: true,
 		session: &auth.Session{
 			ActiveWorkspaceKey: &key,
-			WorkspaceTokens: map[string]auth.StoredAccessToken{
-				key: {Token: "session-token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+			SessionSecrets: auth.SessionSecrets{
+				WorkspaceTokens: map[string]auth.StoredAccessToken{
+					key: {Token: "session-token", ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339)},
+				},
 			},
 		},
 	}
@@ -1884,8 +1900,13 @@ func TestCodingAgentsDoesNotPersistASuppliedKey(t *testing.T) {
 	urls := auth.ResolveURLs("")
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: urls.APIBaseURL, V1BaseURL: urls.V1BaseURL, AuthBaseURL: urls.AuthBaseURL, ProfileBaseURL: urls.ProfileBaseURL,
-		RefreshToken: "refresh-token", BootstrapToken: auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
-		WorkspaceTokens: map[string]auth.StoredAccessToken{}, GatewayKey: "sk-orq-SAVED", GatewayWorkspace: "acme",
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh-token",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{},
+			GatewayKey:      "sk-orq-SAVED",
+		},
+		GatewayWorkspace: "acme",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3521,7 +3542,7 @@ func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
 			session := &auth.Session{
 				ActiveWorkspaceKey: &active,
 				ActiveProjectID:    tc.projectID,
-				WorkspaceTokens:    tc.tokens,
+				SessionSecrets:     auth.SessionSecrets{WorkspaceTokens: tc.tokens},
 			}
 			if got := storedWorkspaceToken(session); got != tc.want {
 				t.Errorf("storedWorkspaceToken = %q, want %q", got, tc.want)

@@ -471,7 +471,8 @@ func (c *Client) CreateSessionFromDeviceApproval(approved *ApprovedDeviceLogin, 
 		previous = latest
 	}
 	session := sessionForLogin(previous)
-	session.Version = 1
+	// Version is SaveSession's to set: it depends on where the secrets end up,
+	// which only the write knows.
 	session.APIBaseURL = c.URLs.APIBaseURL
 	session.V1BaseURL = c.URLs.V1BaseURL
 	session.AuthBaseURL = c.URLs.AuthBaseURL

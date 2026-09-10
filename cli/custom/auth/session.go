@@ -34,19 +34,28 @@ type SessionUser struct {
 }
 
 type Session struct {
-	Version            int                          `json:"version"`
-	APIBaseURL         string                       `json:"apiBaseUrl"`
-	V1BaseURL          string                       `json:"v1BaseUrl"`
-	AuthBaseURL        string                       `json:"authBaseUrl"`
-	ProfileBaseURL     string                       `json:"profileBaseUrl"`
-	User               *SessionUser                 `json:"user"`
-	Workspaces         []map[string]any             `json:"workspaces"`
-	ActiveWorkspaceKey *string                      `json:"activeWorkspaceKey"`
-	ActiveProjectID    string                       `json:"activeProjectId,omitempty"`
-	ActiveProjectName  string                       `json:"activeProjectName,omitempty"`
-	RefreshToken       string                       `json:"refreshToken"`
-	BootstrapToken     StoredAccessToken            `json:"bootstrapToken"`
-	WorkspaceTokens    map[string]StoredAccessToken `json:"workspaceTokens"`
+	Version            int              `json:"version"`
+	APIBaseURL         string           `json:"apiBaseUrl"`
+	V1BaseURL          string           `json:"v1BaseUrl"`
+	AuthBaseURL        string           `json:"authBaseUrl"`
+	ProfileBaseURL     string           `json:"profileBaseUrl"`
+	User               *SessionUser     `json:"user"`
+	Workspaces         []map[string]any `json:"workspaces"`
+	ActiveWorkspaceKey *string          `json:"activeWorkspaceKey"`
+	ActiveProjectID    string           `json:"activeProjectId,omitempty"`
+	ActiveProjectName  string           `json:"activeProjectName,omitempty"`
+
+	// The secrets. Embedded anonymously, so they marshal to the same top-level
+	// JSON keys they always have when they are written inline, and so every
+	// `session.RefreshToken` / `session.WorkspaceTokens[k]` in the codebase
+	// still resolves. When SecretStore is set they live there instead and this
+	// is zero on disk; ReadSession fills it back in before any caller sees it.
+	SessionSecrets
+
+	// SecretStore names the store holding SessionSecrets, and is empty when
+	// they are inline in this file. Set together with Version 2 — see
+	// sessionVersionExternal for why the version moves too.
+	SecretStore string `json:"secretStore,omitempty"`
 
 	// ProfileTransport records which profile endpoint this host answered on
 	// ("rpc" or "rest"), so a deployment whose ingress does not route the
@@ -55,11 +64,13 @@ type Session struct {
 	// exactly as it was then.
 	ProfileTransport string `json:"profileTransport,omitempty"`
 
-	// The gateway key `orq setup` minted from this login for coding agents,
-	// its id (the handle for revoking it), its expiry, and the workspace it
-	// was minted for. Not a credential for the platform API, so never a
-	// bartolo profile.
-	GatewayKey          string `json:"gatewayKey,omitempty"`
+	// The id of the gateway key `orq setup` minted from this login for coding
+	// agents (the handle for revoking it), its expiry, and the workspace and
+	// project it was minted for. The key itself is a secret and lives in
+	// SessionSecrets; this metadata deliberately stays in the file, so
+	// doctor's expiry check and logout's "revoke it with
+	// `orq api-keys delete <id>`" keep working when the keychain is locked or
+	// the item is gone.
 	GatewayKeyID        string `json:"gatewayKeyId,omitempty"`
 	GatewayKeyExpiresAt string `json:"gatewayKeyExpiresAt,omitempty"`
 	GatewayWorkspace    string `json:"gatewayWorkspace,omitempty"`
@@ -128,6 +139,14 @@ func sessionPathFor(host string) string {
 	return filepath.Join(sessionsDir(), host+".json")
 }
 
+// sessionHostForPath is sessionPathFor backwards. Every reader and writer of
+// secrets keys the store item off the session file's own name, so a caller
+// holding a path (migration, attachToSession) and a caller holding a resolved
+// server (SaveSession) always agree on the account.
+func sessionHostForPath(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".json")
+}
+
 // SessionFilePath is the session for the server this invocation resolved
 // (custom.resolveServer → SetServer), so `--server https://my.staging.orq.ai`
 // reads the staging login and a bare `orq` reads the hosted one.
@@ -158,8 +177,15 @@ func LegacySessionFilePath() string {
 	return legacySessionFilePath()
 }
 
+// supportedSessionVersion is the one predicate InspectSession, ListSessions and
+// doctor share, because a login one of them calls readable and another calls
+// broken is worse than either answer on its own.
+func supportedSessionVersion(v int) bool {
+	return v == sessionVersionInline || v == sessionVersionExternal
+}
+
 func validateSession(s *Session) error {
-	if s.Version != 1 {
+	if !supportedSessionVersion(s.Version) {
 		return errors.New("unsupported session version")
 	}
 	if s.APIBaseURL == "" || s.AuthBaseURL == "" || s.V1BaseURL == "" || s.ProfileBaseURL == "" {
@@ -175,6 +201,37 @@ func validateSession(s *Session) error {
 		s.WorkspaceTokens = map[string]StoredAccessToken{}
 	}
 	return nil
+}
+
+// loadExternalSecrets fills s.SessionSecrets from the secret store when the
+// file says they live outside it, and is a no-op when they are inline.
+//
+// The three outcomes are deliberately distinct. A non-nil error means the store
+// itself could not answer — a locked keychain, a keyring daemon that died — and
+// the login may well be intact, so callers report it as unreadable rather than
+// invalid. found=false means the store answered and has no such item, which is
+// a session whose secrets are genuinely gone. Anything else is a usable login.
+func loadExternalSecrets(s *Session, host string) (found bool, err error) {
+	if s.SecretStore == "" {
+		return true, nil
+	}
+	store, err := resolveStore()
+	if err != nil {
+		return false, err
+	}
+	raw, err := store.Get(secretAccount(host))
+	if err != nil {
+		return false, err
+	}
+	if raw == "" {
+		return false, nil
+	}
+	var secrets SessionSecrets
+	if err := json.Unmarshal([]byte(raw), &secrets); err != nil {
+		return false, fmt.Errorf("session secrets in %s are not valid JSON: %w", s.SecretStore, err)
+	}
+	s.SessionSecrets = secrets
+	return true, nil
 }
 
 func InspectSession() SessionInspectResult {
@@ -198,6 +255,22 @@ func InspectSession() SessionInspectResult {
 			Path:    path,
 			Code:    "session_invalid",
 			Message: "Session file contains invalid JSON",
+		}
+	}
+	switch found, err := loadExternalSecrets(&session, sessionHostForPath(path)); {
+	case err != nil:
+		return SessionInspectResult{
+			Status:  StatusUnreadable,
+			Path:    path,
+			Code:    "session_secrets_unreadable",
+			Message: err.Error(),
+		}
+	case !found:
+		return SessionInspectResult{
+			Status:  StatusInvalid,
+			Path:    path,
+			Code:    "session_secrets_missing",
+			Message: fmt.Sprintf("Session credentials are no longer in %s; sign in again with 'orq auth login'", session.SecretStore),
 		}
 	}
 	if err := validateSession(&session); err != nil {
@@ -269,10 +342,23 @@ func SaveSession(s *Session) error {
 	return saveSessionTo(SessionFilePath(), s)
 }
 
-// saveSessionTo writes through WriteSecretFile — temp file in the same
-// directory, 0600, then rename — so a session file gets the same atomicity and
-// permissions as credentials.json, from one implementation.
+// saveSessionTo writes the metadata through WriteSecretFile — temp file in the
+// same directory, 0600, then rename — so a session file gets the same atomicity
+// and permissions as credentials.json, from one implementation.
+//
+// The secrets go to the store first, the file second. A crash between the two
+// leaves fresh tokens under stale metadata, which the next EnsureWorkspaceToken
+// repairs; the reverse order would leave a file claiming secrets that were
+// never written, which is a broken login. Version and SecretStore are set here
+// rather than by callers, because only this function knows where the secrets
+// ended up.
 func saveSessionTo(path string, s *Session) error {
+	store, err := resolveStore()
+	if err != nil {
+		// Only reachable under ORQ_CREDENTIAL_STORE=keychain, which asked for
+		// exactly this rather than a silent downgrade.
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -280,6 +366,27 @@ func saveSessionTo(path string, s *Session) error {
 	// field is shared with the caller unchanged.
 	written := *s
 	written.WorkspaceTokens = pruneExpiredWorkspaceTokens(s.WorkspaceTokens)
+	written.Version = sessionVersionInline
+	written.SecretStore = ""
+
+	if _, inline := store.(fileStore); !inline {
+		blob, err := json.Marshal(written.SessionSecrets)
+		if err != nil {
+			return err
+		}
+		if err := store.Set(secretAccount(sessionHostForPath(path)), string(blob)); err != nil {
+			// Degrade in the direction that keeps the user logged in: write the
+			// secrets inline, as this CLI always did, and warn once. A later
+			// save, once the keyring is unlocked or the daemon is up, moves
+			// them back out on its own.
+			warnFallbackOnce(err)
+		} else {
+			written.SessionSecrets = SessionSecrets{}
+			written.Version = sessionVersionExternal
+			written.SecretStore = store.Name()
+		}
+	}
+
 	data, err := json.MarshalIndent(written, "", "  ")
 	if err != nil {
 		return err
@@ -287,8 +394,16 @@ func saveSessionTo(path string, s *Session) error {
 	return WriteSecretFile(path, data)
 }
 
+// ClearSession removes the login: the store item first, best effort, then the
+// file. A missing item is success, exactly as fs.ErrNotExist already is — and a
+// store that cannot answer must not stop a logout, because the file is what
+// every read path starts from.
 func ClearSession() error {
-	err := os.Remove(SessionFilePath())
+	path := SessionFilePath()
+	if store, err := resolveStore(); err == nil {
+		_ = store.Delete(secretAccount(sessionHostForPath(path)))
+	}
+	err := os.Remove(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -408,6 +523,21 @@ func ListSessions() ([]SessionListEntry, error) {
 		}
 		var session Session
 		if err := json.Unmarshal(data, &session); err != nil {
+			row.Status = SessionStatusInvalid
+			sessions = append(sessions, row)
+			continue
+		}
+		// The listing validates every row and reports needs-refresh from the
+		// bootstrap token's expiry, both of which live in the store once the
+		// secrets are externalized — so this walks the store once per session
+		// file whose secrets are out of it. A row whose blob is gone is
+		// reported invalid, which is what it is.
+		switch found, err := loadExternalSecrets(&session, host); {
+		case err != nil:
+			row.Status = SessionStatusUnreadable
+			sessions = append(sessions, row)
+			continue
+		case !found:
 			row.Status = SessionStatusInvalid
 			sessions = append(sessions, row)
 			continue

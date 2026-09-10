@@ -46,7 +46,9 @@ func TestDescribeCredentialNamesTheCredentialThatWillBeUsed(t *testing.T) {
 	sessionToken := jwtCredential(t, `{"workspace_id":"ws_1","key_id":"key_session"}`)
 	session := &auth.Session{
 		ActiveWorkspaceKey: &active,
-		WorkspaceTokens:    map[string]auth.StoredAccessToken{active: {Token: sessionToken, ExpiresAt: future}},
+		SessionSecrets: auth.SessionSecrets{
+			WorkspaceTokens: map[string]auth.StoredAccessToken{active: {Token: sessionToken, ExpiresAt: future}},
+		},
 	}
 
 	// The shell sources ~/.orq/env, so the minted key is exported; PreRun

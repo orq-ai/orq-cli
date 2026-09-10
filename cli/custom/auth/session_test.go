@@ -18,10 +18,12 @@ func validSession(activeKey string) *Session {
 		V1BaseURL:          "https://api.example/v1",
 		AuthBaseURL:        "https://auth.example",
 		ProfileBaseURL:     "https://profile.example",
-		RefreshToken:       "refresh-abc",
-		BootstrapToken:     StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
 		ActiveWorkspaceKey: &activeKey,
-		WorkspaceTokens:    map[string]StoredAccessToken{},
+		SessionSecrets: SessionSecrets{
+			RefreshToken:    "refresh-abc",
+			BootstrapToken:  StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+			WorkspaceTokens: map[string]StoredAccessToken{},
+		},
 	}
 }
 

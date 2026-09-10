@@ -56,12 +56,14 @@ func switchSession(t *testing.T, apiBase, activeWorkspace string, workspaceKeys 
 	}
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: apiBase, AuthBaseURL: apiBase, V1BaseURL: apiBase, ProfileBaseURL: apiBase,
-		RefreshToken:       "refresh",
-		BootstrapToken:     auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
 		ActiveWorkspaceKey: active,
 		ActiveProjectID:    activeProjectID,
 		ActiveProjectName:  activeProjectName,
-		WorkspaceTokens:    tokens,
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: exp},
+			WorkspaceTokens: tokens,
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}

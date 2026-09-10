@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -577,5 +578,133 @@ func TestMigrateSaysNothingWhenThereIsNoGatewayKeyToDrop(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "api-keys delete") {
 		t.Errorf("a revoke hint was printed for a profile with no key: %q", out.String())
+	}
+}
+
+// Upgrading must not cost a re-login: the next command moves an existing
+// plaintext session's secrets into the store and rewrites the file without
+// them.
+func TestMigrateMovesInlineSecretsIntoTheStore(t *testing.T) {
+	store := newFakeStore()
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		"my.orq.ai.json": sessionOn("https://api.orq.ai", "acme"),
+	})
+	useStore(t, store, nil)
+	out := captureStderr(t)
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("MigrateLayout: %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "sessions", "my.orq.ai.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("refresh-abc")) {
+		t.Errorf("the refresh token is still in the file:\n%s", raw)
+	}
+	doc := map[string]any{}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["version"] != float64(sessionVersionExternal) || doc["secretStore"] != store.Name() {
+		t.Errorf("file says version %v / store %v, want %d / %q", doc["version"], doc["secretStore"], sessionVersionExternal, store.Name())
+	}
+	if store.items[secretAccount("my.orq.ai")] == "" {
+		t.Errorf("nothing under session::my.orq.ai; store holds %v", store.items)
+	}
+	// Migration is not silent — the user's credentials moved.
+	if !strings.Contains(out.String(), "my.orq.ai") {
+		t.Errorf("migration said nothing about moving the credentials: %q", out.String())
+	}
+
+	// And the login still works, without a re-login.
+	got, err := ReadSession()
+	if err != nil || got == nil || got.RefreshToken != "refresh-abc" {
+		t.Fatalf("the migrated session does not read back: (%+v, %v)", got, err)
+	}
+}
+
+// Migration runs before every command, so a second run has to be free.
+func TestMigrateSecretsToStoreIsIdempotent(t *testing.T) {
+	store := newFakeStore()
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		"my.orq.ai.json": sessionOn("https://api.orq.ai", "acme"),
+	})
+	useStore(t, store, nil)
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "sessions", "my.orq.ai.json")
+	first, _ := os.ReadFile(path)
+	info, _ := os.Stat(path)
+	setsAfterFirst := store.sets
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := os.ReadFile(path)
+	again, _ := os.Stat(path)
+	if string(first) != string(second) || !info.ModTime().Equal(again.ModTime()) {
+		t.Error("second run rewrote the session file")
+	}
+	if store.sets != setsAfterFirst {
+		t.Errorf("second run wrote the store again (%d sets, was %d)", store.sets, setsAfterFirst)
+	}
+}
+
+// Fail closed, the way attachToSession does: a store that will not take the
+// blob must leave the secrets' only copy exactly where it is — and must not
+// stop the command, because this runs before `orq version` too.
+func TestMigrateSecretsLeavesTheFileAloneWhenTheStoreErrors(t *testing.T) {
+	store := newFakeStore()
+	store.setErr = errors.New("keychain is locked")
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		"my.orq.ai.json": sessionOn("https://api.orq.ai", "acme"),
+	})
+	useStore(t, store, nil)
+	out := captureStderr(t)
+
+	path := filepath.Join(dir, "sessions", "my.orq.ai.json")
+	before, _ := os.ReadFile(path)
+	info, _ := os.Stat(path)
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("a locked keychain must not fail the command: %v", err)
+	}
+
+	after, _ := os.ReadFile(path)
+	again, _ := os.Stat(path)
+	if string(before) != string(after) || !info.ModTime().Equal(again.ModTime()) {
+		t.Errorf("the session file was rewritten despite the store failing:\n%s", after)
+	}
+	if !strings.Contains(out.String(), "keychain is locked") {
+		t.Errorf("the failure was not reported: %q", out.String())
+	}
+	got, err := ReadSession()
+	if err != nil || got == nil || got.RefreshToken != "refresh-abc" {
+		t.Fatalf("the login did not survive a failed migration: (%+v, %v)", got, err)
+	}
+}
+
+// The store is only consulted for a login that has not moved yet: a user who
+// opted out, or is on a platform with no keychain, pays nothing.
+func TestMigrateSecretsSkipsTheFileStoreEntirely(t *testing.T) {
+	store := newFakeStore()
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		"my.orq.ai.json": sessionOn("https://api.orq.ai", "acme"),
+	})
+	useStore(t, fileStore{}, nil)
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatal(err)
+	}
+	if store.sets+store.gets+store.deletes != 0 {
+		t.Errorf("the file store reached a secret store: %+v", store)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "sessions", "my.orq.ai.json"))
+	if !bytes.Contains(raw, []byte("refresh-abc")) {
+		t.Errorf("the opted-out session lost its inline secrets:\n%s", raw)
 	}
 }

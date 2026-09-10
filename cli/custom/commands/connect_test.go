@@ -80,10 +80,14 @@ func saveConnectSession(t *testing.T, apiBase, workspace, gatewayKey, gatewayWor
 	if err := auth.SaveSession(&auth.Session{
 		Version: 1, APIBaseURL: apiBase, V1BaseURL: apiBase, AuthBaseURL: apiBase, ProfileBaseURL: apiBase,
 		User: &auth.SessionUser{ID: "u1", Email: "user@example.com"}, Workspaces: []map[string]any{{"key": workspace}},
-		ActiveWorkspaceKey: &workspace, RefreshToken: "refresh-token",
-		BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: expiresAt},
-		WorkspaceTokens: map[string]auth.StoredAccessToken{workspace: {Token: "session-token-" + workspace, ExpiresAt: expiresAt}},
-		GatewayKey:      gatewayKey, GatewayWorkspace: gatewayWorkspace,
+		ActiveWorkspaceKey: &workspace,
+		SessionSecrets: auth.SessionSecrets{
+			RefreshToken:    "refresh-token",
+			BootstrapToken:  auth.StoredAccessToken{Token: "bootstrap-token", ExpiresAt: expiresAt},
+			WorkspaceTokens: map[string]auth.StoredAccessToken{workspace: {Token: "session-token-" + workspace, ExpiresAt: expiresAt}},
+			GatewayKey:      gatewayKey,
+		},
+		GatewayWorkspace: gatewayWorkspace,
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -38,6 +38,9 @@ func MigrateLayout(configDir string) error {
 	if err := migrateCredentials(configDir, renamed); err != nil {
 		return err
 	}
+	if err := migrateSecretsToStore(); err != nil {
+		return err
+	}
 	// Runs unconditionally, not only when migrateCredentials just deleted a
 	// profile: a prior interrupted run (or one whose migrateCredentials wrote
 	// credentials.json but then died before clearing the selection) can leave
@@ -253,6 +256,56 @@ func migrateCredentials(configDir string, renamed map[string]string) error {
 	return nil
 }
 
+// migrateSecretsToStore moves an existing login's secrets out of its session
+// file and into the secure store, so upgrading does not cost a re-login. It
+// runs on every command, like every other step here, and is a no-op once done.
+//
+// Only the session for the server this invocation resolved: a user with logins
+// to prod and staging migrates each the first time they use it, rather than
+// paying N keychain writes on a command that touches one of them.
+//
+// Fail-closed, the same way attachToSession is: the store is written before the
+// file is rewritten, and a store that will not take the blob leaves the file
+// byte-identical, with the secrets' only copy still in it.
+func migrateSecretsToStore() error {
+	store, err := resolveStore()
+	if err != nil {
+		// ORQ_CREDENTIAL_STORE=keychain with no keychain. The user asked for a
+		// hard error over a downgrade, and every save would fail anyway.
+		return err
+	}
+	if _, inline := store.(fileStore); inline {
+		return nil // opted out, or no store on this platform: nothing to do
+	}
+	s, err := ReadSession()
+	if err != nil || s == nil || s.SecretStore != "" {
+		// Absent, too broken to rewrite safely, or already migrated. A broken
+		// session is doctor's to report, not migration's to act on — and this
+		// runs before every command, so failing here would take down the
+		// commands someone with a broken ~/.orq reaches for.
+		return nil
+	}
+	blob, err := json.Marshal(s.SessionSecrets)
+	if err != nil {
+		return err
+	}
+	if err := store.Set(secretAccount(SessionHost(s.APIBaseURL)), string(blob)); err != nil {
+		// Warn, but do not fail the command: a locked keyring is not a reason
+		// for `orq version` to stop working, and the session file still holds
+		// the secrets, so the login is untouched.
+		warnFallbackOnce(err)
+		return nil
+	}
+	// SaveSession re-resolves the store and re-writes the item, which is one
+	// redundant Set — and the reason the file's Version and SecretStore are
+	// never set here: only the write that lands owns them.
+	if err := SaveSession(s); err != nil {
+		return err
+	}
+	fmt.Fprintf(bartolocli.Stderr, "moved the credentials for %s into %s.\n", SessionHost(s.APIBaseURL), store.Name())
+	return nil
+}
+
 // attachToSession writes gateway fields onto the session for the host a
 // profile named: its own server, else the session that used to carry its
 // name, else the hosted default. No session there means nothing to attach the
@@ -269,7 +322,7 @@ func attachToSession(profileName string, fields map[string]string, renamed map[s
 		host = SessionHost(DefaultAPIBaseURL)
 	}
 	path := sessionPathFor(host)
-	s, err := readSessionFile(path)
+	s, err := readSessionFileWithSecrets(path)
 	if err != nil {
 		// The session exists but is unreadable (truncated by a full disk, an
 		// interrupted write, …): the caller is about to delete this field's
@@ -478,6 +531,31 @@ func readSessionFile(path string) (*Session, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// readSessionFileWithSecrets is readSessionFile plus the externalized secrets,
+// for a caller that is about to write the session straight back. saveSessionTo
+// re-stores whatever SessionSecrets holds, so handing it a session whose
+// secrets were never loaded would replace the store item with an empty blob and
+// log the user out. Anything short of a complete session is an error here, so
+// the caller fails closed rather than saving a hollowed-out one.
+//
+// migrateSessionFiles deliberately keeps using the metadata-only read: it only
+// renames files, and making a locked keychain print "not a readable session
+// file" before every command would be a worse bug than the one this prevents.
+func readSessionFileWithSecrets(path string) (*Session, error) {
+	s, err := readSessionFile(path)
+	if err != nil || s == nil {
+		return s, err
+	}
+	found, err := loadExternalSecrets(s, sessionHostForPath(path))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("credentials for %s are no longer in %s", sessionHostForPath(path), s.SecretStore)
+	}
+	return s, nil
 }
 
 func fileExists(path string) bool {
