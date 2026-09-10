@@ -117,6 +117,12 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed:** `orq setup` now starts the OAuth device flow when run without a
+  terminal and no credential exists, printing the verification URL and code
+  before waiting for approval. Coding agents and piped shells can therefore
+  complete clean-machine onboarding without first running a separate login
+  command.
+
 ## [8.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.3.0) — 2026-09-09
 
 - **Changed:** paginated list commands render a table at a terminal instead of a

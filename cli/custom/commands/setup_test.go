@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1031,6 +1032,63 @@ func TestApplyGlobalFlagsForcesNoInputWithoutATTY(t *testing.T) {
 	}
 	if opts.interactive {
 		t.Error("--no-input did not clear -i")
+	}
+}
+
+// Device login is a URL, a code and a poll; none of those needs a terminal.
+// A coding agent starts setup through a pipe, so noInput must suppress only the
+// browser launch, not the login that creates the credential setup needs.
+func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
+	const token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig"
+	var starts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cli/device/start"):
+			starts.Add(1)
+			fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://login.example",`+
+				`"verification_uri_complete":"https://login.example/device","expires_in":60,"interval":0}`)
+		case strings.HasSuffix(r.URL.Path, "/cli/device/token"):
+			fmt.Fprintf(w, `{"access_token":%q,"refresh_token":"refresh","expires_in":3600}`, token)
+		case r.URL.Path == auth.ProfileRPCPath:
+			fmt.Fprint(w, `{"profile":{"id":"user","email":"agent@example.com","display_name":"Agent",`+
+				`"workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/access-token"):
+			fmt.Fprintf(w, `{"access_token":%q}`, token)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+
+	var out strings.Builder
+	state, err := resolveAuth(context.Background(), &reporter{w: &out}, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatalf("resolveAuth: %v", err)
+	}
+	if starts.Load() != 1 {
+		t.Fatalf("device login starts = %d, want 1", starts.Load())
+	}
+	if !strings.Contains(out.String(), "https://login.example/device") || !strings.Contains(out.String(), "ABCD-EFGH") {
+		t.Errorf("headless login did not print its URL and code:\n%s", out.String())
+	}
+	if state.session == nil || state.bearer != token {
+		t.Fatalf("state after login = %+v", state)
+	}
+	saved, err := auth.ReadSession()
+	if err != nil || saved == nil || saved.User == nil || saved.User.Email != "agent@example.com" {
+		t.Fatalf("saved session = %+v, err = %v", saved, err)
 	}
 }
 
