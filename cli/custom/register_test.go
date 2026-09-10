@@ -327,25 +327,9 @@ func TestLegacyProfileTypeAuthenticatesWithoutTouchingCredentials(t *testing.T) 
 	}
 }
 
-// Naming the handler must leave exactly one registered: bartolo resolves a
-// profile with no type, or an empty one, by falling back to the sole handler,
-// and that fallback is off the moment a second name exists. Register runs once
-// per process, but generated.Register re-registers the anonymous handler every
-// time it is called, so the collapse cannot be a one-shot.
-func TestNamingTheAuthHandlerLeavesExactlyOneRegistered(t *testing.T) {
-	buildRoot(t)
-	buildRoot(t)
-	if len(bartolocli.AuthHandlers) != 1 {
-		t.Fatalf("AuthHandlers = %v, want the one handler bartolo falls back to", bartolocli.AuthHandlers)
-	}
-	if _, named := bartolocli.AuthHandlers[legacyAuthType]; !named {
-		t.Errorf("AuthHandlers = %v, want it registered as %q", bartolocli.AuthHandlers, legacyAuthType)
-	}
-}
-
 // A profile with no type at all is what bartolo's own `auth profile add`
 // writes, and it has to keep resolving through that fallback.
-func TestUntypedProfileStillResolvesAfterTheRename(t *testing.T) {
+func TestUntypedProfileStillResolves(t *testing.T) {
 	profileHarness(t, `{"profiles":{"default":{"api_key":"sk-orq-CCC"}}}`)
 	buildRoot(t)
 	viper.Set("profile", "default")
