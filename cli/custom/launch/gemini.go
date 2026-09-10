@@ -50,7 +50,18 @@ var geminiNormalize = MakeNormalizeModel([]string{"google", "google-ai"})
 // deliberately: they resolve to any provider, so they hit the same problem one
 // step later.
 func geminiServesModel(id string) bool {
-	return strings.HasPrefix(id, "google/") || strings.HasPrefix(id, "google-ai/")
+	// The provider prefix alone is not enough. "google" is a provider, not a
+	// wire: Vertex AI serves Anthropic models too, so a catalogue can carry
+	// google/claude-sonnet-4-6 alongside google/gemini-2.5-pro. Verified on
+	// staging, where google/claude-haiku-4-5 sorts first and was being
+	// substituted as the default, which is the exact failure this filter
+	// exists to prevent. Require the model itself to be a Gemini one.
+	for _, prefix := range []string{"google/", "google-ai/"} {
+		if model, ok := strings.CutPrefix(id, prefix); ok {
+			return strings.HasPrefix(model, "gemini")
+		}
+	}
+	return false
 }
 
 func geminiAgent() AgentDef {

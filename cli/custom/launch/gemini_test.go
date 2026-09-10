@@ -315,3 +315,31 @@ func TestGeminiResolveNoMCP(t *testing.T) {
 		t.Fatalf("--no-mcp must omit mcpServers:\n%s", data)
 	}
 }
+
+// TestGeminiRejectsVertexHostedNonGemini pins the provider-is-not-a-wire rule.
+// "google" is a provider, and Vertex AI serves Anthropic models under it, so a
+// google/ prefix does not imply the Gemini-native wire can answer for the id.
+// Taken from the real staging catalogue, where google/claude-haiku-4-5 sorts
+// ahead of every google/gemini-* entry and was being substituted as the
+// default.
+func TestGeminiRejectsVertexHostedNonGemini(t *testing.T) {
+	plan := resolveGeminiWith(t, catalogue("google/claude-haiku-4-5", "google/gemini-2.5-pro"))
+
+	if got := modelArg(t, plan); got != "gemini-2.5-pro" {
+		t.Fatalf("--model = %q, want the Gemini model; a Vertex-hosted Anthropic id cannot be sent to /v3/google", got)
+	}
+}
+
+// TestGeminiWithOnlyVertexAnthropicEnabled is the same rule when it leaves
+// nothing servable: fall back to the default and say so, rather than handing
+// the Gemini wire a Claude id.
+func TestGeminiWithOnlyVertexAnthropicEnabled(t *testing.T) {
+	plan := resolveGeminiWith(t, catalogue("google/claude-haiku-4-5", "google/claude-opus-4-6"))
+
+	if got := modelArg(t, plan); got != DefaultGeminiModel {
+		t.Fatalf("--model = %q, want the default %q", got, DefaultGeminiModel)
+	}
+	if !warningsContain(plan, "this agent can serve") {
+		t.Fatalf("expected a no-servable-models warning, got: %v", plan.Warnings)
+	}
+}
