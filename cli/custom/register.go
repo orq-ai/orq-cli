@@ -217,6 +217,8 @@ func installSessionPreRun() {
 			return fmt.Errorf("`%s` would prompt and --no-input/ORQ_NO_INPUT is set; %s", commandPath(cmd), w.hint)
 		}
 		resolveServer(cmd)
+		// Migration reassigns bartolocli.Creds, so it has to finish before
+		// the profile reads below pick up a handle to the old file.
 		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
