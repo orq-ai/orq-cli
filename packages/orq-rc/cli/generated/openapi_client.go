@@ -5413,8 +5413,8 @@ func OpenapiListDatasources(paramKnowledgeId string, params *viper.Viper) (*gent
 	if bartolocli.FlagPassed(params, "q") || paramQ != "" {
 		req = req.AddQuery("q", fmt.Sprintf("%v", paramQ))
 	}
-	paramLimit := params.GetFloat64("limit")
-	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0.0 {
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
 		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
 	}
 	paramStatus := params.GetString("status")
