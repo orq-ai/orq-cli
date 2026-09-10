@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.5.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.5.0) — 2026-09-10
+
 - **Added: `orq launch gemini`.** Gemini CLI joins the launch agents, wired
   through the orq AI Gateway with the session's own credentials. It speaks the
   Gemini-native wire at `/v3/google` and is configured through
