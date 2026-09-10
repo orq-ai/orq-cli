@@ -290,16 +290,34 @@ func TestApplyNoColorPreservesTerminalTableRendering(t *testing.T) {
 // active profile and only its type, so it could not even see the api_key it
 // was meant to repair — and it rode along into the next unrelated save.
 func TestLegacyProfileTypeAuthenticatesWithoutTouchingCredentials(t *testing.T) {
-	dir := profileHarness(t, `{"profiles":{`+
+	path := profileHarness(t, `{"profiles":{`+
 		`"default":{"api_key":"sk-orq-AAA","type":"apikey"},`+
 		`"other":{"api_key":"sk-orq-BBB","type":"apikey","server":"https://other.example"}}}`)
-	path := filepath.Join(dir, "credentials.json")
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	buildRoot(t)
-	viper.Set("profile", "default")
+	root := buildRoot(t)
+	root.SetArgs([]string{"--profile", "default", "version"})
+	captureOutput(t, func() { err = root.Execute() })
+	if err != nil {
+		t.Fatalf("version: %v", err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("a read-only command rewrote credentials.json:\n%s\n%s", before, after)
+	}
+	// GetStringMap, not GetStringMapString on one profile: a viper override
+	// masks the whole "profiles" subtree from the map read that
+	// auth profile list iterates, while single-key reads still answer.
+	profiles := bartolocli.Creds.GetStringMap("profiles")
+	if len(profiles) != 2 || profiles["other"] == nil {
+		t.Errorf("a read-only command hid the stored profiles: %v", profiles)
+	}
 
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -312,18 +330,6 @@ func TestLegacyProfileTypeAuthenticatesWithoutTouchingCredentials(t *testing.T) 
 	}
 	if gotAuth != "Bearer sk-orq-AAA" {
 		t.Errorf("Authorization = %q, want the profile's key", gotAuth)
-	}
-
-	after, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(before, after) {
-		t.Errorf("a read-only command rewrote credentials.json:\n%s\n%s", before, after)
-	}
-	other := bartolocli.Creds.GetStringMapString("profiles.other")
-	if other["api_key"] != "sk-orq-BBB" || other["server"] != "https://other.example" {
-		t.Errorf("a profile beside the active one is no longer readable: %v", other)
 	}
 }
 
@@ -667,5 +673,32 @@ func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
 				t.Errorf("notice reached %d times, want exactly 1", calls)
 			}
 		})
+	}
+}
+
+// The ticket's repro: the in-memory type "repair" was an override, and the
+// next command that saved credentials.json wrote it out with everything else.
+func TestAddingAProfileLeavesTheOthersAsStored(t *testing.T) {
+	path := profileHarness(t, `{"profiles":{"default":{"api_key":"sk-orq-AAA","type":"apikey"}}}`)
+	root := buildRoot(t)
+	root.SetArgs([]string{"auth", "profile", "add", "newp", "sk-orq-ZZZ"})
+	var err error
+	captureOutput(t, func() { err = root.Execute() })
+	if err != nil {
+		t.Fatalf("auth profile add: %v", err)
+	}
+
+	var stored struct {
+		Profiles map[string]map[string]string `json:"profiles"`
+	}
+	raw, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatalf("%v: %s", err, raw)
+	}
+	if got := stored.Profiles["default"]; got["type"] != "apikey" || got["api_key"] != "sk-orq-AAA" {
+		t.Errorf("adding a profile rewrote an untouched one: %v", got)
 	}
 }
