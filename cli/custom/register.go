@@ -96,6 +96,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	// full usage block after every runtime failure.
 	root.SilenceUsage = true
 	registerGlobalFlags()
+	nameTheAuthHandler()
 	installSessionPreRun()
 	installAPIKeyUsageNotice()
 	registerCommands(root, traceAPI)
@@ -106,6 +107,49 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	installUpdateNoticeHelp(root)
 	improveArgErrors(root)
 	explainNotFoundScope(root)
+}
+
+// legacyAuthType is the profile type older builds wrote into
+// credentials.json. The generated client registers its handler anonymously
+// (apikey.InitBearer -> UseAuth("", ...)), and bartolo's resolveAuthHandler
+// looks a non-empty type up verbatim rather than falling back, so those
+// profiles resolved no handler at all and every generated command aborted with
+// "no authentication handler configured".
+const legacyAuthType = "apikey"
+
+// nameTheAuthHandler renames the anonymous handler to the type name stored
+// profiles already carry, so they authenticate as they are.
+//
+// It is a rename, not a second entry: resolveAuthHandler falls back to the
+// sole registered handler only while there is exactly one, so aliasing would
+// answer to "apikey" at the cost of every invocation that has no profile at
+// all. Renaming keeps the registry at one, which leaves the fallback intact,
+// so a profile with no type or an empty type resolves exactly as before while
+// "apikey" now resolves verbatim.
+//
+// The alternative — correcting the stored type instead — means either an
+// override on the shared Creds viper, which masks every other profile for as
+// long as it stands and rides along into the next unrelated save, or rewriting
+// credentials.json from a path that runs before every command, including on
+// the read-only ~/.orq where that write is the one thing that can fail. The
+// profile is not what is wrong here; the handler was missing a name.
+//
+// Renamed by assignment rather than through UseAuth: the handler is already
+// installed with its `auth profile add` subcommand, and a second UseAuth call
+// panics on exactly that. That subcommand keeps writing the empty type it
+// captured, which the sole-handler fallback still resolves.
+func nameTheAuthHandler() {
+	anonymous, ok := bartolocli.AuthHandlers[""]
+	if !ok {
+		return
+	}
+	// Dropping the anonymous entry is the point, so it happens whether or not
+	// the name is already taken: leaving both would put the registry back at
+	// two and take the fallback out with it.
+	delete(bartolocli.AuthHandlers, "")
+	if _, named := bartolocli.AuthHandlers[legacyAuthType]; !named {
+		bartolocli.AuthHandlers[legacyAuthType] = anonymous
+	}
 }
 
 func registerGlobalFlags() {
@@ -179,12 +223,9 @@ func installSessionPreRun() {
 			)
 		}
 		resolveServer(cmd)
-		// Migration reloads bartolo's credentials handle, so it must finish
-		// before the in-memory profile-type repair.
 		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
-		repairAuthProfileType()
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
@@ -376,28 +417,6 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 			"A browser login is not a profile: it belongs to a server, and is selected with --server",
 		name, source, name, drop,
 	)
-}
-
-// repairAuthProfileType rewrites, in memory only, a stored profile whose "type"
-// no auth handler answers to.
-//
-// Builds before this fix wrote type "apikey" while the generated client
-// registers its handler anonymously, so bartolo resolved no handler and every
-// generated command aborted with "no authentication handler configured".
-// Without this, those users stay broken until they happen to re-run orq setup.
-//
-// Only the in-memory value is corrected: rewriting credentials.json from a
-// PreRun would mean every command silently mutating the user's credential file.
-func repairAuthProfileType() {
-	profile := bartolocli.ActiveProfileName()
-	if profile == "" || strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
-		return
-	}
-	stored := bartolocli.Creds.GetString("profiles." + profile + ".type")
-	if _, ok := bartolocli.AuthHandlers[stored]; ok {
-		return
-	}
-	bartolocli.Creds.Set("profiles."+profile+".type", commands.BartoloAuthType())
 }
 
 // apiKeyConfigured reports whether bartolo would already find an API key from
