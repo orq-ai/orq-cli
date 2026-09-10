@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -439,5 +440,79 @@ func TestOptingOutRewritesAnExternalizedSessionInline(t *testing.T) {
 	got, err := ReadSession()
 	if err != nil || got == nil || got.RefreshToken != "refresh-abc" {
 		t.Fatalf("the opted-out session does not read back: (%+v, %v)", got, err)
+	}
+}
+
+// StoreName and StoreReason are what `orq doctor` prints, so they have to agree
+// with the resolution the save path actually took — including on the one state
+// the user chose deliberately, which doctor must not report as a degradation.
+func TestStoreNameAndReasonDescribeTheResolvedStore(t *testing.T) {
+	t.Run("secure store in use", func(t *testing.T) {
+		useStore(t, newFakeStore(), nil)
+		t.Setenv(CredentialStoreEnvVar, "")
+		if got := StoreName(); got != "fake keychain" {
+			t.Errorf("StoreName() = %q, want the resolved store", got)
+		}
+		if got := StoreReason(); got != "" {
+			t.Errorf("StoreReason() = %q, want nothing to explain", got)
+		}
+	})
+
+	t.Run("explicit opt-out", func(t *testing.T) {
+		useStore(t, fileStore{}, nil)
+		t.Setenv(CredentialStoreEnvVar, "file")
+		if got := StoreName(); got != FileStoreName {
+			t.Errorf("StoreName() = %q, want %q", got, FileStoreName)
+		}
+		if got := StoreReason(); got != CredentialStoreOptOutReason {
+			t.Errorf("StoreReason() = %q, want the opt-out named", got)
+		}
+	})
+
+	t.Run("keychain demanded and absent", func(t *testing.T) {
+		useStore(t, unavailableStore{reason: "no OS keychain support on plan9"},
+			unavailableStore{reason: "no OS keychain support on plan9"}.err())
+		t.Setenv(CredentialStoreEnvVar, "keychain")
+		if got := StoreName(); got != unavailableStoreName {
+			t.Errorf("StoreName() = %q, want the store named unavailable", got)
+		}
+		// The wrapper's own "no OS keychain available" is stripped: doctor's row
+		// says that in its own words already, and the cause is what is new.
+		if got := StoreReason(); got != "no OS keychain support on plan9" {
+			t.Errorf("StoreReason() = %q, want the platform's cause alone", got)
+		}
+	})
+}
+
+// doctor asks this per session file rather than asking which store this process
+// resolved, so a keychain machine holding an unmigrated session for another host
+// still gets told that file leaked a credential.
+func TestSessionFileHasInlineSecretsReadsTheFileNotTheStore(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"externalized", `{"version":2,"secretStore":"macOS Keychain"}`, false},
+		{"inline refresh token", `{"version":1,"refreshToken":"refresh"}`, true},
+		{"inline gateway key only", `{"version":1,"gatewayKey":"sk-orq-x"}`, true},
+		// No marker is not proof the file never held tokens, so it answers the
+		// safe way rather than the literal one.
+		{"no marker and no tokens", `{"version":1,"apiBaseUrl":"https://my.orq.ai"}`, true},
+		{"unparseable", `{`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, tc.name+".json")
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := SessionFileHasInlineSecrets(path); got != tc.want {
+				t.Errorf("SessionFileHasInlineSecrets(%s) = %v, want %v", tc.body, got, tc.want)
+			}
+		})
+	}
+	if !SessionFileHasInlineSecrets(filepath.Join(dir, "absent.json")) {
+		t.Error("an unreadable file answered 'nothing to leak', which it cannot prove")
 	}
 }

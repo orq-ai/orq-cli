@@ -340,3 +340,46 @@ func TestKeychainModeFailsTheSaveRatherThanWritingSecretsInline(t *testing.T) {
 		t.Errorf("a session file was written anyway (%v); the secrets must not be in it", statErr)
 	}
 }
+
+// TestStoreStatusProbesRatherThanTrustingTheResolution is the difference
+// between reporting the store the platform has and the store the secrets
+// actually reach. platformStore deliberately does not probe, so on a machine
+// with no helper binary it still hands back a real keychain store — and without
+// the probe in storeStatus, `orq doctor` would call that a pass while every
+// save fell back to the file.
+func TestStoreStatusProbesRatherThanTrustingTheResolution(t *testing.T) {
+	f := fixture(t)
+
+	t.Run("a reachable keychain is reported with nothing to explain", func(t *testing.T) {
+		t.Setenv(CredentialStoreEnvVar, "auto")
+		stubTool(t, f.notFound)
+
+		name, reason := storeStatus()
+		if name != platformStoreOrFail(t).Name() || reason != "" {
+			t.Errorf("storeStatus() = (%q, %q), want the platform store and no reason", name, reason)
+		}
+	})
+
+	t.Run("an unreachable keychain reports the file store and the cause", func(t *testing.T) {
+		t.Setenv(CredentialStoreEnvVar, "auto")
+		emptyPath(t)
+
+		name, reason := storeStatus()
+		if name != FileStoreName {
+			t.Errorf("storeStatus() name = %q, want %q — saves land in the file here", name, FileStoreName)
+		}
+		if !strings.Contains(reason, f.missingBinAdvice) {
+			t.Errorf("storeStatus() reason = %q, want the remediation (%q)", reason, f.missingBinAdvice)
+		}
+	})
+
+	t.Run("keychain mode reports no store rather than the fallback it refuses", func(t *testing.T) {
+		t.Setenv(CredentialStoreEnvVar, "keychain")
+		emptyPath(t)
+
+		name, reason := storeStatus()
+		if name != unavailableStoreName || reason == "" {
+			t.Errorf("storeStatus() = (%q, %q), want %q and a cause", name, reason, unavailableStoreName)
+		}
+	})
+}

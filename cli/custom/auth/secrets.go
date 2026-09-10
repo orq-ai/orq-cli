@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,22 @@ import (
 //	"keychain"      require the OS keychain; anything else is a hard error
 //	"file"          never touch the keychain — a deliberate opt-out, no warning
 const CredentialStoreEnvVar = "ORQ_CREDENTIAL_STORE"
+
+// CredentialStoreOptOutReason is what StoreReason answers when the user asked
+// for the session file outright. `orq doctor` compares against it to tell a
+// deliberate choice (which passes) from a degradation (which warns), rather
+// than re-reading the environment and risking a different answer than the one
+// the store resolution actually acted on.
+const CredentialStoreOptOutReason = CredentialStoreEnvVar + "=file"
+
+// FileStoreName and unavailableStoreName are the two store names that are not
+// an OS keychain. Exported for the file store because `orq doctor` reports it
+// and has to recognize it; the unavailable one never reaches a caller outside
+// this package except through StoreName.
+const (
+	FileStoreName        = "file"
+	unavailableStoreName = "unavailable"
+)
 
 // Session layout versions. 1 keeps the secrets inline in the session file, the
 // only shape every release before this one wrote. 2 keeps them in the store
@@ -75,7 +92,7 @@ type secretStore interface {
 // byte-shaped as it has always been.
 type fileStore struct{}
 
-func (fileStore) Name() string { return "file" }
+func (fileStore) Name() string { return FileStoreName }
 
 // Get answers "no such item", so a session file whose secretStore marker names
 // a store this process cannot resolve degrades to `session_secrets_missing`
@@ -93,7 +110,7 @@ func (fileStore) Delete(string) error { return nil }
 // keychain gets the cause rather than a bare failure.
 type unavailableStore struct{ reason string }
 
-func (u unavailableStore) Name() string               { return "unavailable" }
+func (u unavailableStore) Name() string               { return unavailableStoreName }
 func (u unavailableStore) Get(string) (string, error) { return "", u.err() }
 func (u unavailableStore) Set(string, string) error   { return u.err() }
 func (u unavailableStore) Delete(string) error        { return u.err() }
@@ -169,3 +186,101 @@ func warnFallbackOnce(err error) {
 // resetFallbackWarning lets a test observe the once-per-process warning more
 // than once in one test binary.
 func resetFallbackWarning() { fallbackWarned = sync.Once{} }
+
+// storeProbeAccount names an item no login ever writes. Looking it up is the
+// cheapest question that separates "there is a keychain here" from "there is
+// not": a working store answers "no such item", one that cannot be reached at
+// all fails.
+const storeProbeAccount = "probe::doctor"
+
+// storeStatus is the store session secrets actually land in, and why it is not
+// an OS keychain when it is not. Empty reason means there is nothing to
+// explain.
+//
+// Unlike resolveStore, this probes. Resolution deliberately does not — paying a
+// subprocess on every command to ask a question the following write answers
+// anyway is the cost Q3 of the design discussion rejected. But `orq doctor`
+// exists to ask exactly this question once, and without the probe it would
+// report the store the platform *has* rather than the one saves reach: on a
+// headless box platformStore hands back a real libsecret store, every save then
+// falls back to the file and warns, and doctor would still say "libsecret,
+// nothing to see here".
+//
+// The probe is a read, so there is nothing to create or clean up. It cannot see
+// a keychain that is merely locked — macOS answers errSecItemNotFound for a
+// missing item either way — which is the same blind spot resolution has, and
+// why the warning on the write itself stays.
+func storeStatus() (name, reason string) {
+	if credentialStorePreference() == "file" {
+		return FileStoreName, CredentialStoreOptOutReason
+	}
+	store, err := resolveStore()
+	if err != nil {
+		// ORQ_CREDENTIAL_STORE=keychain on a platform that has none. Naming the
+		// file store here would describe a fallback this mode exists to refuse.
+		return unavailableStoreName, keychainCause(err)
+	}
+	if store.Name() == FileStoreName {
+		// `auto` where the platform has no store to offer. resolveStore already
+		// swallowed the cause on the way here, so ask platformStore for it.
+		if _, perr := platformStore(); perr != nil {
+			return FileStoreName, keychainCause(perr)
+		}
+		return FileStoreName, "no OS keychain is in use"
+	}
+	if _, perr := store.Get(storeProbeAccount); perr != nil {
+		if keychainRequired() {
+			return unavailableStoreName, keychainCause(perr)
+		}
+		// Report where the secrets will really go, not where they were meant to.
+		return FileStoreName, keychainCause(perr)
+	}
+	return store.Name(), ""
+}
+
+// StoreName is the store this process keeps session secrets in — "macOS
+// Keychain", "libsecret", or "file" when there is no secure store or the user
+// opted out. It is what answers `orq doctor`'s "where does my token live", and
+// it is exported so doctor reads the resolution rather than reimplementing the
+// ORQ_CREDENTIAL_STORE rules and drifting from them.
+func StoreName() string { name, _ := storeStatus(); return name }
+
+// StoreReason is why StoreName is not an OS keychain, and is empty whenever it
+// is one. Three answers: CredentialStoreOptOutReason for a deliberate opt-out,
+// the platform's own cause when there is no keychain to reach, and "" when
+// there is nothing to explain.
+func StoreReason() string { _, reason := storeStatus(); return reason }
+
+// keychainCause is an errNoKeychain error as a sentence a user reads. The
+// wrapper's own text ("no OS keychain available") is what doctor's row already
+// says in its own words, so repeating it before the specific cause would give
+// every warning two colons and no more information.
+func keychainCause(err error) string {
+	msg := err.Error()
+	return strings.TrimPrefix(msg, errNoKeychain.Error()+": ")
+}
+
+// SessionFileHasInlineSecrets reports whether the session file at path still
+// carries the tokens themselves rather than a secretStore marker naming where
+// they went. `orq doctor` asks per file, instead of asking which store this
+// process resolved, because a machine with a keychain can still hold a session
+// file for another host that no command has migrated yet — and telling that
+// user their world-readable file held nothing worth stealing would be a lie.
+//
+// Only the secretStore marker answers false. A file with no marker and no
+// tokens in it either is not proof of anything — a truncated write, a half-read
+// file, a shape this version does not recognize — and the question being asked
+// is "could this file have leaked a credential", where the safe answer to "I
+// cannot tell" is yes. Unreadable and unparseable answer true for the same
+// reason.
+func SessionFileHasInlineSecrets(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return true
+	}
+	var s Session
+	if err := json.Unmarshal(data, &s); err != nil {
+		return true
+	}
+	return s.SecretStore == ""
+}

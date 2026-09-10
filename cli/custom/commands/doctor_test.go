@@ -1351,3 +1351,184 @@ func TestDoctorSummaryPrintsBaseURLOnce(t *testing.T) {
 		t.Fatalf("base URL is not the first line:\n%s", out)
 	}
 }
+
+// TestDoctorNamesTheCredentialStore drives the real command rather than
+// credentialStoreCheck: the row and the `auth.store` field are the whole
+// deliverable, and a check that was never wired into RunE passes every
+// direct-call test and fails this one.
+//
+// The three states are reached through the credentialStoreInfo seam, not
+// through ORQ_CREDENTIAL_STORE, because the fallback state is unreachable by
+// environment on a machine whose platform store resolves — which is every
+// machine this test runs on.
+func TestDoctorNamesTheCredentialStore(t *testing.T) {
+	cases := []struct {
+		name       string
+		info       func() (string, string)
+		wantStatus string
+		wantStore  string
+		wantInRow  string
+	}{
+		{
+			name:       "secure store in use",
+			info:       func() (string, string) { return "macOS Keychain", "" },
+			wantStatus: "pass",
+			wantStore:  "macOS Keychain",
+			wantInRow:  "macOS Keychain",
+		},
+		{
+			name:       "file store by explicit opt-out",
+			info:       func() (string, string) { return auth.FileStoreName, auth.CredentialStoreOptOutReason },
+			wantStatus: "pass",
+			wantStore:  "file (ORQ_CREDENTIAL_STORE=file)",
+			wantInRow:  "as asked",
+		},
+		{
+			name:       "file store by fallback",
+			info:       func() (string, string) { return auth.FileStoreName, "no Secret Service available" },
+			wantStatus: "warn",
+			wantStore:  "file",
+			wantInRow:  "ORQ_CREDENTIAL_STORE=file",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doctorAuthHarness(t, "")
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(srv.Close)
+			origServer, origSource := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+
+			origInfo := credentialStoreInfo
+			credentialStoreInfo = tc.info
+			t.Cleanup(func() { credentialStoreInfo = origInfo })
+
+			report := runDoctorJSON(t)
+
+			check := findCheck(t, report, "credential_store")
+			if check == nil {
+				t.Fatalf("doctor reported no credential_store check: %v", report["checks"])
+			}
+			if check["status"] != tc.wantStatus {
+				t.Errorf("credential_store status = %v, want %q", check["status"], tc.wantStatus)
+			}
+			details, _ := check["details"].(map[string]any)
+			if details["store"] != tc.wantStore {
+				t.Errorf("details.store = %v, want %q", details["store"], tc.wantStore)
+			}
+			if msg, _ := check["message"].(string); !strings.Contains(msg, tc.wantInRow) {
+				t.Errorf("credential_store message = %q, want it to mention %q", msg, tc.wantInRow)
+			}
+			// -o json answers unconditionally, including for the two states
+			// whose row a person never sees.
+			if store := doctorSection(t, report, "auth")["store"]; store != tc.wantStore {
+				t.Errorf("auth.store = %v, want %q", store, tc.wantStore)
+			}
+		})
+	}
+}
+
+// A store nobody has to act on is not worth a line in the human checklist —
+// the same rule a clean credential_permissions follows — while a fallback
+// nobody chose is exactly what that checklist is for.
+func TestCredentialStoreRowIsHumanSilentOnlyWhenItPasses(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		info    func() (string, string)
+		wantRow bool
+	}{
+		{"secure", func() (string, string) { return "libsecret", "" }, false},
+		{"opt-out", func() (string, string) { return auth.FileStoreName, auth.CredentialStoreOptOutReason }, false},
+		{"fallback", func() (string, string) { return auth.FileStoreName, "no Secret Service available" }, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := credentialStoreInfo
+			credentialStoreInfo = tc.info
+			t.Cleanup(func() { credentialStoreInfo = orig })
+
+			check, _ := credentialStoreCheck()
+			out := captureStdout(t, func() {
+				printDoctorSummary("authenticated", "u@x.dev", "https://my.orq.ai", []doctorCheck{check})
+			})
+			if got := strings.Contains(out, "credential_store"); got != tc.wantRow {
+				t.Fatalf("credential_store visible in human summary = %v, want %v:\n%s", got, tc.wantRow, out)
+			}
+		})
+	}
+}
+
+// ORQ_CREDENTIAL_STORE=keychain refuses the file fallback by design, so a
+// machine with no keychain can save no login at all. Reporting that as a warn —
+// or worse, as the file store — describes a degradation that never happens.
+func TestCredentialStoreCheckFailsWhenTheKeychainWasDemandedAndIsAbsent(t *testing.T) {
+	orig := credentialStoreInfo
+	credentialStoreInfo = func() (string, string) {
+		return "unavailable", "no OS keychain support on windows"
+	}
+	t.Cleanup(func() { credentialStoreInfo = orig })
+
+	check, display := credentialStoreCheck()
+	if check.Status != "fail" {
+		t.Fatalf("credential_store status = %q, want fail", check.Status)
+	}
+	if display != "unavailable" {
+		t.Errorf("auth.store = %q, want unavailable", display)
+	}
+	if !strings.Contains(check.Message, "no OS keychain support on windows") {
+		t.Errorf("message = %q, want the platform's own cause", check.Message)
+	}
+}
+
+// The revoke-and-rotate advice is about a credential that leaked. A session
+// file whose secrets moved into the OS keychain holds an email, a workspace key
+// and four URLs: still worth chmodding, nothing to revoke. Telling that user to
+// run `orq auth logout` to revoke a refresh token the file never held sends
+// them to re-authenticate for no reason.
+func TestLooseSessionFileWithExternalSecretsIsNotReportedAsCompromised(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("credentialPermsCheck is absent on windows")
+	}
+	write := func(t *testing.T, body string) doctorCheck {
+		t.Helper()
+		t.Setenv("HOME", t.TempDir())
+		dir := t.TempDir()
+		viper.Set("config-directory", dir)
+		t.Cleanup(func() { viper.Set("config-directory", "") })
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		sessions := auth.SessionsDir()
+		if err := os.MkdirAll(sessions, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(sessions, "my.orq.ai.json")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		check, ok, err := credentialPermsCheck(false)
+		if !ok || err != nil {
+			t.Fatalf("credentialPermsCheck() = ok=%v err=%v, want a finding", ok, err)
+		}
+		return check
+	}
+
+	t.Run("externalized", func(t *testing.T) {
+		check := write(t, `{"version":2,"secretStore":"macOS Keychain","apiBaseUrl":"https://my.orq.ai"}`)
+		if !strings.Contains(check.Message, "chmod") {
+			t.Fatalf("loose mode went unreported: %q", check.Message)
+		}
+		if strings.Contains(check.Message, "compromised") {
+			t.Fatalf("advised revoking a token the file never held: %q", check.Message)
+		}
+	})
+
+	t.Run("inline", func(t *testing.T) {
+		check := write(t, `{"version":1,"apiBaseUrl":"https://my.orq.ai","refreshToken":"refresh"}`)
+		if !strings.Contains(check.Message, "treat the exposed session as compromised") {
+			t.Fatalf("an inline session that leaked lost its advice: %q", check.Message)
+		}
+	})
+}

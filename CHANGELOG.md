@@ -117,6 +117,37 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: a browser login's tokens are kept in the OS keychain, not in
+  `~/.orq/sessions/<host>.json`.** On macOS and on a Linux desktop with a Secret
+  Service, `orq auth login` now writes the refresh token, the bootstrap token,
+  the per-workspace access tokens and the gateway key `orq setup` mints into one
+  keychain item (service `ai.orq.cli`, account `session::<host>`), and the
+  session file keeps only what is worth reading: your email, the active
+  workspace and project, the four base URLs, and the gateway key's id, expiry
+  and scope. `grep 'eyJ' ~/.orq/sessions/*.json` comes back empty. An existing
+  login migrates on the next command — one line on stderr, no re-login — and the
+  file it leaves behind is `"version": 2` with a `secretStore` field naming where
+  the tokens went. `orq launch`, `orq switch`, `orq setup` and `orq whoami` are
+  unchanged.
+
+  **Windows and the BSDs keep the previous behavior**, with the tokens inline in
+  the session file: `CredWriteW` caps a credential blob at 2560 bytes, which a
+  token set for two or three workspaces exceeds. So do a headless Linux box, a
+  container and a CI runner with no keyring daemon — those print one warning per
+  process naming the cause.
+
+  `ORQ_CREDENTIAL_STORE` decides: unset or `auto` tries the keychain and falls
+  back to the file with that warning, `file` opts out silently, and `keychain`
+  demands the secure store and fails the save rather than quietly writing the
+  tokens to disk.
+
+  Two things scripts can observe. `orq doctor -o json` gains `auth.store` (the
+  store's name, always present) and a `credential_store` check, which is a `warn`
+  only when the file store was a fallback nobody asked for and is hidden from the
+  human checklist otherwise. And a CLI older than this one, pointed at a
+  migrated session file, reports `unsupported session version` rather than
+  claiming the file is malformed — downgrade by re-running `orq auth login`.
+
 ## [8.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.3.0) — 2026-09-09
 
 - **Changed:** paginated list commands render a table at a terminal instead of a

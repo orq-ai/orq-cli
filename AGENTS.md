@@ -85,12 +85,32 @@ A profile that is selected but absent from the file is refused up front by
 `custom.rejectUnknownProfile`, because bartolo will not fall through from a
 selected profile to an ambient key. A browser login lives in `sessions/<host>.json` — host from
 `auth.SessionHost`, selected by the server `custom.resolveServer` decided — and
-everything this CLI records about that login (the gateway key `orq setup` minted,
-its id, expiry, workspace and project) is a field on `auth.Session`. `auth.MigrateLayout`
-brings older trees up to this on the next command. `auth/migrate.go` reads bartolo's
+everything this CLI records about that login is a field on `auth.Session`.
+`auth.MigrateLayout` brings older trees up to this on the next command.
+`auth/migrate.go` reads bartolo's
 `profile-selected` config key and rewrites config.json key-preserving, so
 `profile-decided` survives without anything depending on it; check both names
 when bumping the generator.
+
+**Where a login's secrets actually live.** Four of those fields — the refresh
+token, the bootstrap token, the per-workspace access tokens and the gateway key
+`orq setup` mints — are the anonymously embedded `auth.SessionSecrets`, and on
+macOS and Linux they are not in the file at all. `SaveSession` writes them as one
+OS keychain item (service `ai.orq.cli`, account `session::<host>`, via
+`security(1)` / `secret-tool`) and leaves the file at `"version": 2` with a
+`secretStore` marker naming where they went; `ReadSession` fills them back in, so
+every caller above `ReadSession`/`SaveSession`/`ClearSession` still gets one
+fully-populated `*Session` and nothing else in the tree knows. `ORQ_CREDENTIAL_STORE`
+picks: unset/`auto` tries the keychain and falls back to the file with one warning
+per process, `file` opts out silently, `keychain` demands it and fails the save
+rather than degrading. Windows and the BSDs always take the file store
+(`store_unsupported.go`): `CredWriteW` caps a blob at 2560 bytes, which a
+multi-workspace token set exceeds. The gateway key's *metadata* (id, expiry,
+workspace, project) deliberately stays in the file so `doctor`'s expiry check and
+`logout`'s `orq api-keys delete <id>` hint keep working when the keychain is
+locked. `orq doctor` names the store in `auth.store` and in the `credential_store`
+check, and `MigrateLayout`'s `migrateSecretsToStore` step moves an existing
+plaintext login into the store on the next command, with no re-login.
 
 **Which credential wins, and which profile name to ask for.** The order is
 bartolo's apikey handler's: the profile in force (`commands.profileInForce`:

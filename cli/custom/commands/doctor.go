@@ -123,6 +123,11 @@ func NewDoctorCommand() *cobra.Command {
 				checks = append(checks, perms)
 				permsErr = err
 			}
+			// "Where does my token live" is a question the CLI could not answer
+			// before there was more than one answer. The row is hidden when it
+			// passes, but the value below goes into the auth map either way.
+			storeCheck, storeDisplay := credentialStoreCheck()
+			checks = append(checks, storeCheck)
 			checks = append(checks, probeURL(cmd.Context(), "api_base_url", http.MethodGet, client.URLs.APIBaseURL, ""))
 			checks = append(checks, probeURL(cmd.Context(), "auth_base_url", http.MethodGet, client.URLs.AuthBaseURL, ""))
 
@@ -169,6 +174,11 @@ func NewDoctorCommand() *cobra.Command {
 				"user_email":           userEmail,
 				"active_workspace_key": activeWS,
 				"workspace_count":      workspaceCount,
+				// Unconditional, including when the credential_store row is
+				// hidden: `orq doctor -o json | jq .auth.store` is the scripted
+				// form of the question, and a field that appears only sometimes
+				// is one every caller has to guard.
+				"store": storeDisplay,
 			}
 			if inspect.Status != auth.StatusOK && inspect.Status != auth.StatusMissing {
 				authMap["session_error"] = map[string]any{
@@ -284,10 +294,12 @@ func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCh
 	// fault rows earn their own line. `-o json` keeps every row.
 	rows := []tableRow{{marker: statusGlyph(authStatusToCheck(authStatus)), cells: []string{"auth", authLine}}}
 	for _, c := range checks {
-		// A clean credential-permissions check is retained in structured
-		// output so automation can distinguish "checked" from "skipped",
-		// but stays silent in the compact human checklist.
-		if c.ID == "credential_permissions" && c.Status == "pass" {
+		// A clean credential-permissions or credential-store check is retained
+		// in structured output so automation can distinguish "checked" from
+		// "skipped", and can read the store name unconditionally, but both stay
+		// silent in the compact human checklist: neither asks the user to do
+		// anything.
+		if (c.ID == "credential_permissions" || c.ID == "credential_store") && c.Status == "pass" {
 			continue
 		}
 		if !c.AlwaysShow && strings.HasPrefix(c.ID, "coding_agent_") && (c.Status == "pass" || c.Status == "info") {
@@ -801,6 +813,83 @@ func exposedAPIKeyAdvice(keyID string) string {
 // without needing a path chmod can refuse on every platform the tests run on.
 var credPermChmod = func(f *os.File, mode os.FileMode) error { return f.Chmod(mode) }
 
+// credentialStoreInfo is where this process keeps session secrets, indirected
+// as the repo's package-var test seam (credPermChmod, above) so a test can drive
+// the fallback state on a machine whose own platform store resolves perfectly
+// well. There is no other way to reach that state from here: auth's store
+// resolution is unexported, and by design it does not probe.
+var credentialStoreInfo = func() (name, reason string) {
+	return auth.StoreName(), auth.StoreReason()
+}
+
+// credentialStoreCheck answers "where does my token live". It returns the check
+// and the display value doctor also puts in the auth map, so the two can never
+// name different stores.
+//
+// A secure store, and the file store the user asked for outright, both pass —
+// there is nothing to act on — and a passing row is hidden from the human
+// checklist the way a clean credential_permissions is. Only a fall back nobody
+// chose is a warning, and it names both the cause and the way to silence it.
+func credentialStoreCheck() (doctorCheck, string) {
+	name, reason := credentialStoreInfo()
+	switch {
+	case reason == "":
+		return doctorCheck{
+			ID:      "credential_store",
+			Status:  "pass",
+			Message: "Session credentials are stored in the " + name,
+			Details: map[string]any{"store": name},
+		}, name
+
+	case name != auth.FileStoreName:
+		// ORQ_CREDENTIAL_STORE=keychain with no keychain to reach. That mode
+		// refuses the fallback on purpose, so no login can be saved at all —
+		// a failure, not a note.
+		return doctorCheck{
+			ID:     "credential_store",
+			Status: "fail",
+			Message: auth.CredentialStoreEnvVar + "=keychain requires an OS keychain, and there is none: " +
+				reason + ". Unset it to fall back to the session file.",
+			Details: map[string]any{"store": name, "reason": reason},
+		}, name
+
+	case reason == auth.CredentialStoreOptOutReason:
+		display := name + " (" + reason + ")"
+		return doctorCheck{
+			ID:      "credential_store",
+			Status:  "pass",
+			Message: "Session credentials are stored in the session file, as asked (" + reason + ")",
+			Details: map[string]any{"store": display},
+		}, display
+
+	default:
+		return doctorCheck{
+			ID:     "credential_store",
+			Status: "warn",
+			Message: "Session credentials are stored in the session file in cleartext: " + reason +
+				". Set " + auth.CredentialStoreOptOutReason + " to silence this.",
+			Details: map[string]any{"store": name, "reason": reason},
+		}, name
+	}
+}
+
+// markExposed records that a loose path leaked a credential of its class, which
+// is what earns the revoke-and-rotate advice below.
+//
+// One path can be loose without having leaked anything: a session file whose
+// secrets live in the OS keychain holds an email, a workspace key and four
+// URLs. Its mode is still worth repairing, but "treat the exposed session as
+// compromised — run 'orq auth logout' to revoke the refresh token" would be
+// advice to revoke a token that was never in the file. The question is asked of
+// the file itself rather than of the store this process resolved, because a
+// keychain machine can still hold an unmigrated session for another host.
+func markExposed(exposed map[credPermClass]bool, r credPermResult) {
+	if r.class == credClassSession && !auth.SessionFileHasInlineSecrets(r.path) {
+		return
+	}
+	exposed[r.class] = true
+}
+
 // credentialPermsCheck reports credential files and directories left with
 // group/other permission bits set. Bartolo v0.6.0 already writes every
 // credentials.json as 0600, so a loose file here is leftover from an older
@@ -890,7 +979,7 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 	for _, r := range results {
 		switch r.outcome {
 		case credPermRepaired:
-			exposed[r.class] = true
+			markExposed(exposed, r)
 			repairedMsgs = append(repairedMsgs, fmt.Sprintf("%s was mode %04o — changed to %04o", r.display(), r.mode, r.want))
 			fixed := map[string]any{
 				"path":          r.path,
@@ -902,7 +991,7 @@ func credentialPermsCheck(fix bool) (doctorCheck, bool, error) {
 			}
 			fixedDetails = append(fixedDetails, fixed)
 		case credPermLoose, credPermFixFailed:
-			exposed[r.class] = true
+			markExposed(exposed, r)
 			// chmod follows symlinks, so the path the user recognizes is also
 			// the one that repairs the target.
 			chmod := fmt.Sprintf("chmod %o %s", r.want, r.humanPath)
