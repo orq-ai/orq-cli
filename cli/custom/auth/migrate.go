@@ -290,6 +290,13 @@ func migrateSecretsToStore() error {
 		return err
 	}
 	if err := store.Set(secretAccount(SessionHost(s.APIBaseURL)), string(blob)); err != nil {
+		if keychainRequired() {
+			// Same rule as saveSessionTo: `=keychain` asked for a hard error
+			// over a downgrade, and every save this command makes would fail
+			// anyway.
+			return fmt.Errorf("%s=keychain, but the session credentials could not be moved into %s: %w",
+				CredentialStoreEnvVar, store.Name(), err)
+		}
 		// Warn, but do not fail the command: a locked keyring is not a reason
 		// for `orq version` to stop working, and the session file still holds
 		// the secrets, so the login is untouched.

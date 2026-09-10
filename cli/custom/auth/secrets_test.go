@@ -350,10 +350,25 @@ func TestCredentialStoreEnvVarDecidesWhichStoreIsUsed(t *testing.T) {
 	}
 }
 
-// The reason phase one is invisible: no platform has a store wired up yet, so
-// every save is the layout that shipped before it.
+// A platform with no keychain at all — Windows, a BSD — resolves to the file
+// store under `auto` and writes exactly the layout that shipped before this
+// change, silently: that is the documented state of the platform, not a
+// degradation to warn about on every login.
 func TestWithNoPlatformStoreEverySaveStaysInline(t *testing.T) {
 	isolateHome(t)
+	t.Setenv(CredentialStoreEnvVar, "auto")
+	prev := resolveStore
+	resolveStore = func() (secretStore, error) {
+		return storeFor(func() (secretStore, error) {
+			store := unavailableStore{reason: "no OS keychain support on plan9"}
+			return store, store.err()
+		})
+	}
+	resetFallbackWarning()
+	t.Cleanup(func() {
+		resolveStore = prev
+		resetFallbackWarning()
+	})
 	out := captureStderr(t)
 	if err := SaveSession(validSession("prod")); err != nil {
 		t.Fatalf("SaveSession: %v", err)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 )
 
@@ -14,12 +15,18 @@ import (
 // materializes session skills into the user's real skills directory, and a
 // plain `go test` run must not write into the developer's (or CI runner's)
 // home to do it.
+//
+// The OS keychain is the same argument one layer over: auth.SaveSession
+// externalizes a session's secrets into the login keyring on darwin and linux,
+// and the tests here that save one must not leave items behind on the developer's
+// machine — nor depend on what is in it.
 func TestMain(m *testing.M) {
 	home, err := os.MkdirTemp("", "orq-launch-home-")
 	if err != nil {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
+	os.Setenv(auth.CredentialStoreEnvVar, "file")
 	// cwd too: a session links into cwd unless cwd is $HOME, and the package
 	// source directory is not where test links belong.
 	if err := os.Chdir(home); err != nil {

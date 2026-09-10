@@ -375,6 +375,13 @@ func saveSessionTo(path string, s *Session) error {
 			return err
 		}
 		if err := store.Set(secretAccount(sessionHostForPath(path)), string(blob)); err != nil {
+			if keychainRequired() {
+				// The user demanded the secure store. Nothing is written: a
+				// half-saved login is worse than a failed one, and this is the
+				// hard error `=keychain` exists to produce.
+				return fmt.Errorf("%s=keychain, but the session credentials could not be stored in %s: %w",
+					CredentialStoreEnvVar, store.Name(), err)
+			}
 			// Degrade in the direction that keeps the user logged in: write the
 			// secrets inline, as this CLI always did, and warn once. A later
 			// save, once the keyring is unlocked or the daemon is up, moves

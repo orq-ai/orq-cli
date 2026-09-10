@@ -113,7 +113,7 @@ var resolveStore = func() (secretStore, error) { return storeFor(platformStore) 
 // none: `auto` degrades to the file store instead, which is what keeps a
 // headless box, a container and Windows behaving exactly as they do today.
 func storeFor(platform func() (secretStore, error)) (secretStore, error) {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(CredentialStoreEnvVar))) {
+	switch credentialStorePreference() {
 	case "file":
 		return fileStore{}, nil
 	case "keychain":
@@ -128,6 +128,21 @@ func storeFor(platform func() (secretStore, error)) (secretStore, error) {
 		return store, nil
 	}
 }
+
+// credentialStorePreference is ORQ_CREDENTIAL_STORE, normalized. Read in one
+// place so store resolution and the no-fallback rule below cannot disagree
+// about what the user asked for.
+func credentialStorePreference() string {
+	return strings.ToLower(strings.TrimSpace(os.Getenv(CredentialStoreEnvVar)))
+}
+
+// keychainRequired reports whether the secure store was demanded rather than
+// preferred. It is what keeps `=keychain` a policy knob once platformStore
+// stops failing up front: with a real store resolved, the only place the
+// keychain can turn out to be unusable is the write itself, and an org that set
+// this wants that write to fail loudly instead of quietly landing the secrets in
+// the file it set the variable to avoid.
+func keychainRequired() bool { return credentialStorePreference() == "keychain" }
 
 // secretAccount names the keychain item holding one host's secrets. The host is
 // the session file's own name (SessionHost), so nothing has to invent a second
