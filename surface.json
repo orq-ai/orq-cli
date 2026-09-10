@@ -4320,6 +4320,10 @@
       "use": "copilot"
     },
     {
+      "path": "orq launch gemini",
+      "use": "gemini"
+    },
+    {
       "path": "orq launch kilo",
       "use": "kilo"
     },

@@ -342,6 +342,20 @@ type ResolveInput struct {
 	ModelsEnvKey      string // "" → agent has no models env
 	DefaultBaseURL    string // "" → DefaultGatewayBaseURL
 	CollectModelInfos bool   // kimi: keep per-model metadata
+
+	// ServesModel narrows the fetched catalogue to the models this agent can
+	// actually send. Nil, for every agent on the shared OpenAI-shaped router,
+	// means any enabled model is fair game. gemini sets it: it speaks the
+	// Gemini-native wire, so substituting an anthropic/* id for an unavailable
+	// default would build a request /v3/google cannot answer.
+	ServesModel func(id string) bool
+
+	// IgnoreSharedGatewayEnv drops ORQ_GATEWAY_URL from the base-URL chain.
+	// That variable holds the OpenAI-shaped router URL the router agents
+	// share, so an agent on a different wire must not inherit it: gemini would
+	// point its Gemini-native client at /v3/router. claude avoids this by not
+	// using the shared resolver at all.
+	IgnoreSharedGatewayEnv bool
 }
 
 // ResolvedModels is GatewayConfig plus optional per-model metadata (kimi).
@@ -368,10 +382,14 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 	// went to api.orq.ai instead, authenticated with a key their own gateway
 	// issued. claude got this right on its own (see claude.go); the shared
 	// resolver every other agent uses did not.
+	sharedGatewayURL := getenv("ORQ_GATEWAY_URL")
+	if input.IgnoreSharedGatewayEnv {
+		sharedGatewayURL = ""
+	}
 	baseURL := firstNonEmpty(
 		input.Flags.BaseURL,
 		getenv(input.BaseURLEnvKey),
-		getenv("ORQ_GATEWAY_URL"),
+		sharedGatewayURL,
 		input.DefaultBaseURL,
 		deriveFromAPIBase(input.APIBaseURL, "/v3/router"),
 		DefaultGatewayBaseURL,
@@ -410,6 +428,19 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 				"Could not fetch enabled models from %s/v2/models. Falling back to explicit/default models. %v",
 				input.APIBaseURL, err))
 		} else {
+			// Narrow before anything derives from the catalogue, so fetched,
+			// GatewayModels, Infos and every warning below agree on one list.
+			noun := "chat models"
+			if input.ServesModel != nil {
+				kept := fetchedInfos[:0:0]
+				for _, m := range fetchedInfos {
+					if input.ServesModel(m.ID) {
+						kept = append(kept, m)
+					}
+				}
+				fetchedInfos = kept
+				noun = "chat models this agent can serve"
+			}
 			ids := make([]string, len(fetchedInfos))
 			for i, m := range fetchedInfos {
 				ids[i] = m.ID
@@ -420,8 +451,8 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 			}
 			if len(fetched) == 0 {
 				warnings = append(warnings, fmt.Sprintf(
-					"the workspace has no enabled chat models; launching against %q anyway — enable models in the orq.ai studio or pass --model",
-					firstNonEmpty(input.Flags.Model, getenv(input.ModelEnvKey), first(explicitModels), input.DefaultModel)))
+					"the workspace has no enabled %s; launching against %q anyway — enable models in the orq.ai studio or pass --model",
+					noun, firstNonEmpty(input.Flags.Model, getenv(input.ModelEnvKey), first(explicitModels), input.DefaultModel)))
 			}
 		}
 	}

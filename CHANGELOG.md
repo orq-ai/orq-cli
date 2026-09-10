@@ -117,6 +117,15 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq launch gemini`.** Gemini CLI joins the launch agents, wired
+  through the orq AI Gateway with the session's own credentials. It speaks the
+  Gemini-native wire at `/v3/google` and is configured through
+  `GOOGLE_GEMINI_BASE_URL` and `GEMINI_API_KEY`; set `ORQ_GEMINI_BASE_URL` or
+  `GEMINI_MODEL` to override. Because gemini is not on the shared router it
+  ignores `ORQ_GATEWAY_URL`, the same way `orq launch claude` does, and it runs
+  against a session-scoped `GEMINI_CLI_HOME`, so its own extensions, skills and
+  session history are not visible for that run.
+
 ## [8.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.3.0) — 2026-09-09
 
 - **Changed:** paginated list commands render a table at a terminal instead of a
