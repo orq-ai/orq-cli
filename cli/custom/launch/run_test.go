@@ -89,6 +89,22 @@ func TestNoSkillsHelpDescribesWhatTheFlagNowDoes(t *testing.T) {
 	}
 }
 
+// gemini is on /v3/google, not the router, and takes a bare model id.
+func TestGeminiHelpNamesItsOwnRoute(t *testing.T) {
+	out := captureStdout(t, func() { printAgentHelp(FindAgent("gemini")) })
+	for _, stale := range []string{"AI Router", "provider/model_id"} {
+		if strings.Contains(out, stale) {
+			t.Errorf("gemini help still says %q:\n%s", stale, out)
+		}
+	}
+	if !strings.Contains(out, "/v3/google") {
+		t.Errorf("gemini help never names /v3/google:\n%s", out)
+	}
+	if !strings.Contains(captureStdout(t, func() { printAgentHelp(FindAgent("codex")) }), "AI Router") {
+		t.Error("router agents lost the AI Router wording")
+	}
+}
+
 // captureStdout collects what fn prints, so a help string can be asserted on.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
