@@ -76,14 +76,16 @@ func hostExecProbe(binary string, args ...string) (string, error) {
 }
 
 func printAgentHelp(def *AgentDef) {
-	fmt.Printf(`Launch %s preconfigured to route through the orq.ai AI Router.
+	route := firstNonEmpty(def.HelpRoute, "the orq.ai AI Router")
+	model := firstNonEmpty(def.HelpModel, "Gateway model (provider/model_id)")
+	fmt.Printf(`Launch %s preconfigured to route through %s.
 
 Usage:
   orq launch %s [flags] [--] [agent args...]
 
 Flags:
-  --model <id>          Gateway model (provider/model_id)
-`, def.Label, def.Name)
+  --model <id>          %s
+`, def.Label, route, def.Name, model)
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
