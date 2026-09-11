@@ -415,6 +415,27 @@ func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 	}
 }
 
+// --no-input refuses `auth profile add` only when it would prompt; a supplied
+// key is the headless form and must keep working under ORQ_NO_INPUT.
+func TestNoInputGuardLetsProfileAddWithAKeyThrough(t *testing.T) {
+	add, _, err := buildRoot(t).Find([]string{"auth", "profile", "add"})
+	if err != nil || commandPath(add) != "auth profile add" {
+		t.Fatalf("auth profile add not found: %v", err)
+	}
+	if !wizardWouldPrompt(add, []string{"ci"}) {
+		t.Error("name only, no key: must be refused under --no-input")
+	}
+	if wizardWouldPrompt(add, []string{"ci", "sk-positional"}) {
+		t.Error("key as argument: must not be refused")
+	}
+	if err := add.Flags().Set("api-key-file", "ci.key"); err != nil {
+		t.Fatal(err)
+	}
+	if wizardWouldPrompt(add, []string{"ci"}) {
+		t.Error("--api-key-file: must not be refused")
+	}
+}
+
 // The canonical profile-add command must be covered by the --no-input guard.
 func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	if !interactiveWizardCommands["auth profile add"] {
