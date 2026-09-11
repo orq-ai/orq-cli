@@ -71,22 +71,35 @@ var profileExemptCommands = map[string]bool{
 // Keyed by command PATH, not name: orq's own `setup` is a different command
 // from bartolo's `auth setup`, honors --no-input itself, and is meant to run
 // headless in CI. Matching on the bare name refused it.
-var interactiveWizardCommands = map[string]bool{
-	"auth setup":       true,
-	"auth profile add": true,
+var interactiveWizardCommands = map[string]wizard{
+	"auth setup": {
+		wouldPrompt: func(*cobra.Command, []string) bool { return true },
+		hint:        "use `orq auth login` or set ORQ_API_KEY instead",
+	},
+	// Prompts only for a key it was not given, so the CI form (a key argument
+	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
+	"auth profile add": {
+		wouldPrompt: profileAddWouldPrompt,
+		hint:        "pass the key with --api-key-file <path> (`-` reads stdin)",
+	},
 }
 
-// wizardWouldPrompt reports whether an interactiveWizardCommands entry is
-// about to prompt. `auth profile add` prompts only for a key it was not given,
-// so a key argument or --api-key-file keeps it running under --no-input: that
-// is the form CI uses, usually with ORQ_NO_INPUT set for the whole job.
-func wizardWouldPrompt(cmd *cobra.Command, args []string) bool {
-	path := commandPath(cmd)
-	if path == "auth profile add" {
-		keyFile, _ := cmd.Flags().GetString("api-key-file")
-		return len(args) < 2 && keyFile == ""
+type wizard struct {
+	wouldPrompt func(cmd *cobra.Command, args []string) bool
+	hint        string
+}
+
+// profileAddWouldPrompt mirrors bartolo's resolveProfileValue: each profile
+// key comes from --<key>-file, then the positional after the name, then a
+// prompt.
+func profileAddWouldPrompt(cmd *cobra.Command, args []string) bool {
+	for i, key := range bartolocli.AuthHandlers[""].ProfileKeys() {
+		file, _ := cmd.Flags().GetString(strings.ReplaceAll(key, "_", "-") + "-file")
+		if file == "" && i+1 >= len(args) {
+			return true
+		}
 	}
-	return interactiveWizardCommands[path]
+	return false
 }
 
 // commandPath is the command's path with the root binary name removed, so the
@@ -184,18 +197,8 @@ func installSessionPreRun() {
 	chainPreRun(func(cmd *cobra.Command, args []string) error {
 		applyNoColor()
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
-		if viper.GetBool("no-input") && wizardWouldPrompt(cmd, args) {
-			if commandPath(cmd) == "auth profile add" {
-				return fmt.Errorf(
-					"`auth profile add` would prompt for the API key and --no-input/ORQ_NO_INPUT is set; " +
-						"pass it with --api-key-file <path> (`-` reads stdin)",
-				)
-			}
-			return fmt.Errorf(
-				"`%s` is an interactive wizard and --no-input/ORQ_NO_INPUT is set; "+
-					"use `orq auth login` or set ORQ_API_KEY instead",
-				commandPath(cmd),
-			)
+		if w, ok := interactiveWizardCommands[commandPath(cmd)]; ok && viper.GetBool("no-input") && w.wouldPrompt(cmd, args) {
+			return fmt.Errorf("`%s` would prompt and --no-input/ORQ_NO_INPUT is set; %s", commandPath(cmd), w.hint)
 		}
 		resolveServer(cmd)
 		// Migration reloads bartolo's credentials handle, so it must finish
