@@ -415,11 +415,33 @@ func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 	}
 }
 
-// The canonical profile-add command must be covered by the --no-input guard.
-func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
-	if !interactiveWizardCommands["auth profile add"] {
-		t.Error("`auth profile add` must be refused under --no-input")
+// --no-input refuses `auth profile add` only when it would prompt; a supplied
+// key is the headless form and must keep working under ORQ_NO_INPUT.
+func TestNoInputGuardLetsProfileAddWithAKeyThrough(t *testing.T) {
+	add, _, err := buildRoot(t).Find([]string{"auth", "profile", "add"})
+	if err != nil || commandPath(add) != "auth profile add" {
+		t.Fatalf("auth profile add not found: %v", err)
 	}
+	wouldPrompt := interactiveWizardCommands["auth profile add"].wouldPrompt
+	if wouldPrompt == nil {
+		t.Fatal("`auth profile add` is not guarded under --no-input")
+	}
+	if !wouldPrompt(add, []string{"ci"}) {
+		t.Error("name only, no key: must be refused under --no-input")
+	}
+	if wouldPrompt(add, []string{"ci", "sk-positional"}) {
+		t.Error("key as argument: must not be refused")
+	}
+	if err := add.Flags().Set("api-key-file", "ci.key"); err != nil {
+		t.Fatal(err)
+	}
+	if wouldPrompt(add, []string{"ci"}) {
+		t.Error("--api-key-file: must not be refused")
+	}
+}
+
+// Deprecated aliases and `auth sessions` against the guard maps.
+func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	// Deprecated aliases remain guarded while they are present in surface.json.
 	surface, err := os.ReadFile(filepath.Join("..", "..", "surface.json"))
 	if err != nil {
@@ -434,7 +456,7 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 			t.Errorf("%q is gone from surface.json; drop it from profileExemptCommands", path)
 		}
 	}
-	if bytes.Contains(surface, []byte(`"orq auth add-profile"`)) != interactiveWizardCommands["auth add-profile"] {
+	if _, guarded := interactiveWizardCommands["auth add-profile"]; bytes.Contains(surface, []byte(`"orq auth add-profile"`)) != guarded {
 		t.Error("`auth add-profile` must be in interactiveWizardCommands exactly while it still ships")
 	}
 	// Listing logins must work before one exists.

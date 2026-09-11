@@ -59,8 +59,12 @@ type AgentDef struct {
 	// anthropic-native endpoint and resolves its model from env/defaults, so
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
-	Prompt        *PromptMapping
-	Resolve       func(*AgentContext) (*LaunchPlan, error)
+	// HelpRoute and HelpModel override the router wording in `orq launch
+	// <agent> --help` for an agent that is not on the router (claude, gemini).
+	HelpRoute string
+	HelpModel string
+	Prompt    *PromptMapping
+	Resolve   func(*AgentContext) (*LaunchPlan, error)
 }
 
 // Agents returns the registry, ordered for help output.

@@ -117,6 +117,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `--no-input` no longer refuses `orq auth profile add` when the key
+  is supplied.** `orq auth profile add ci --api-key-file ci.key` (or the key as
+  an argument) never prompts, so it now runs under `--no-input`/`ORQ_NO_INPUT`.
+  Only the form that would prompt, a name with no key, is still refused, and
+  its error now points at `--api-key-file`.
+- **Fixed: `orq launch gemini --help` and `orq launch claude --help` name
+  their own route.** Both said the agent routes through the AI Router; gemini
+  goes to `/v3/google` and takes a bare Gemini model id rather than a
+  `provider/model_id`, and claude goes to `/v3/anthropic`.
+
 ## [8.5.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.5.0) — 2026-09-10
 
 - **Added: `orq launch gemini`.** Gemini CLI joins the launch agents, wired
