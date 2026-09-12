@@ -14,8 +14,8 @@ import (
 
 // profileHarness gives a test its own HOME and a credentials.json loaded the
 // way the CLI loads it, so ProfileExists answers about that file and nothing
-// on the developer's machine.
-func profileHarness(t *testing.T, credentials string) {
+// on the developer's machine. It returns the ~/.orq it wrote that file into.
+func profileHarness(t *testing.T, credentials string) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -23,7 +23,8 @@ func profileHarness(t *testing.T, credentials string) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte(credentials), 0o600); err != nil {
+	path := filepath.Join(dir, "credentials.json")
+	if err := os.WriteFile(path, []byte(credentials), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	creds, err := bartolocli.NewCredentialsFile(dir)
@@ -37,6 +38,7 @@ func profileHarness(t *testing.T, credentials string) {
 		viper.Set("profile", "")
 		viper.Set("profile-selected", "")
 	})
+	return path
 }
 
 func findCommand(t *testing.T, root *cobra.Command, path ...string) *cobra.Command {

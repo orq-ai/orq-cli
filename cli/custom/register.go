@@ -179,12 +179,11 @@ func installSessionPreRun() {
 			)
 		}
 		resolveServer(cmd)
-		// Migration reloads bartolo's credentials handle, so it must finish
-		// before the in-memory profile-type repair.
+		// Migration reassigns bartolocli.Creds, so it has to finish before
+		// the profile reads below pick up a handle to the old file.
 		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
-		repairAuthProfileType()
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
@@ -376,28 +375,6 @@ func rejectUnknownProfile(cmd *cobra.Command) error {
 			"A browser login is not a profile: it belongs to a server, and is selected with --server",
 		name, source, name, drop,
 	)
-}
-
-// repairAuthProfileType rewrites, in memory only, a stored profile whose "type"
-// no auth handler answers to.
-//
-// Builds before this fix wrote type "apikey" while the generated client
-// registers its handler anonymously, so bartolo resolved no handler and every
-// generated command aborted with "no authentication handler configured".
-// Without this, those users stay broken until they happen to re-run orq setup.
-//
-// Only the in-memory value is corrected: rewriting credentials.json from a
-// PreRun would mean every command silently mutating the user's credential file.
-func repairAuthProfileType() {
-	profile := bartolocli.ActiveProfileName()
-	if profile == "" || strings.TrimSpace(bartolocli.Creds.GetString("profiles."+profile+".api_key")) == "" {
-		return
-	}
-	stored := bartolocli.Creds.GetString("profiles." + profile + ".type")
-	if _, ok := bartolocli.AuthHandlers[stored]; ok {
-		return
-	}
-	bartolocli.Creds.Set("profiles."+profile+".type", commands.BartoloAuthType())
 }
 
 // apiKeyConfigured reports whether bartolo would already find an API key from

@@ -281,42 +281,76 @@ func TestApplyNoColorPreservesTerminalTableRendering(t *testing.T) {
 	}
 }
 
-func TestMigrationRunsBeforeInMemoryProfileTypeRepair(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("NO_COLOR", "")
-	t.Setenv("ORQ_NO_COLOR", "")
-	previousStdout := bartolocli.Stdout
-	cleanCreds, err := bartolocli.NewCredentialsFile(t.TempDir())
+// The profile type builds up to 8.4 wrote is the one the handler now answers
+// to, so those profiles authenticate as they are: no correction, and nothing
+// written to the user's credential file by a command that only reads.
+//
+// The correction this replaces was a viper override placed from the PreRun. It
+// masked every sibling profile for as long as it stood — bartolo read back the
+// active profile and only its type, so it could not even see the api_key it
+// was meant to repair — and it rode along into the next unrelated save.
+func TestLegacyProfileTypeAuthenticatesWithoutTouchingCredentials(t *testing.T) {
+	path := profileHarness(t, `{"profiles":{`+
+		`"default":{"api_key":"sk-orq-AAA","type":"apikey"},`+
+		`"other":{"api_key":"sk-orq-BBB","type":"apikey","server":"https://other.example"}}}`)
+	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		bartolocli.Creds = cleanCreds
-		bartolocli.Stdout = previousStdout
-	})
 	root := buildRoot(t)
-	viper.Set("no-color", false)
-	bartolocli.Stdout = &bytes.Buffer{}
-	dir := viper.GetString("config-directory")
-	credentials := `{"profiles":{"default":{"api_key":"sk-orq-REAL","type":"stale","workspace":"acme"}}}`
-	if err := os.WriteFile(filepath.Join(dir, "credentials.json"), []byte(credentials), 0o600); err != nil {
-		t.Fatal(err)
+	root.SetArgs([]string{"--profile", "default", "version"})
+	captureOutput(t, func() { err = root.Execute() })
+	if err != nil {
+		t.Fatalf("version: %v", err)
 	}
-	creds, err := bartolocli.NewCredentialsFile(dir)
+
+	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bartolocli.Creds = creds
-	viper.Set("profile", "default")
-	t.Cleanup(func() { viper.Set("profile", "") })
-	root.SetArgs([]string{"version"})
-	if err := root.Execute(); err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(before, after) {
+		t.Errorf("a read-only command rewrote credentials.json:\n%s\n%s", before, after)
 	}
-	stored := bartolocli.Creds.GetString("profiles.default.type")
-	if _, ok := bartolocli.AuthHandlers[stored]; !ok {
-		t.Fatalf("profile type repair was discarded by migration reload: %q", stored)
+	// GetStringMap, not GetStringMapString on one profile: a viper override
+	// masks the whole "profiles" subtree from the map read that
+	// auth profile list iterates, while single-key reads still answer.
+	profiles := bartolocli.Creds.GetStringMap("profiles")
+	if len(profiles) != 2 || profiles["other"] == nil {
+		t.Errorf("a read-only command hid the stored profiles: %v", profiles)
+	}
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := bartolocli.Client.URL(srv.URL).Get().Do(); err != nil {
+		t.Fatalf("a profile written by an older build no longer authenticates: %v", err)
+	}
+	if gotAuth != "Bearer sk-orq-AAA" {
+		t.Errorf("Authorization = %q, want the profile's key", gotAuth)
+	}
+}
+
+// A profile with no type at all is what bartolo's own `auth profile add`
+// writes, and it has to keep resolving through that fallback.
+func TestUntypedProfileStillResolves(t *testing.T) {
+	profileHarness(t, `{"profiles":{"default":{"api_key":"sk-orq-CCC"}}}`)
+	buildRoot(t)
+	viper.Set("profile", "default")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := bartolocli.Client.URL(srv.URL).Get().Do(); err != nil {
+		t.Fatalf("an untyped profile no longer authenticates: %v", err)
+	}
+	if gotAuth != "Bearer sk-orq-CCC" {
+		t.Errorf("Authorization = %q, want the profile's key", gotAuth)
 	}
 }
 
@@ -639,5 +673,32 @@ func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
 				t.Errorf("notice reached %d times, want exactly 1", calls)
 			}
 		})
+	}
+}
+
+// The ticket's repro: the in-memory type "repair" was an override, and the
+// next command that saved credentials.json wrote it out with everything else.
+func TestAddingAProfileLeavesTheOthersAsStored(t *testing.T) {
+	path := profileHarness(t, `{"profiles":{"default":{"api_key":"sk-orq-AAA","type":"apikey"}}}`)
+	root := buildRoot(t)
+	root.SetArgs([]string{"auth", "profile", "add", "newp", "sk-orq-ZZZ"})
+	var err error
+	captureOutput(t, func() { err = root.Execute() })
+	if err != nil {
+		t.Fatalf("auth profile add: %v", err)
+	}
+
+	var stored struct {
+		Profiles map[string]map[string]string `json:"profiles"`
+	}
+	raw, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatalf("%v: %s", err, raw)
+	}
+	if got := stored.Profiles["default"]; got["type"] != "apikey" || got["api_key"] != "sk-orq-AAA" {
+		t.Errorf("adding a profile rewrote an untouched one: %v", got)
 	}
 }
