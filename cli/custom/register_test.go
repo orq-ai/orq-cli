@@ -663,3 +663,28 @@ func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
 		})
 	}
 }
+
+// `orq launch claude --help` prints text and launches nothing, so the skills
+// refresh — and the warnings it prints — has no business running. The agent
+// subcommands disable flag parsing, so -h arrives as a plain argument.
+func TestHelpInvocationSkipsSkillsRefresh(t *testing.T) {
+	agent := &cobra.Command{Use: "claude", DisableFlagParsing: true}
+	launch := &cobra.Command{Use: "launch"}
+	launch.AddCommand(agent)
+	(&cobra.Command{Use: "orq"}).AddCommand(launch)
+
+	if !skillsCommand(agent) {
+		t.Fatal("launch must still be a skills command")
+	}
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"--dry-run", "--help"}} {
+		if !helpInvocation(agent, args) {
+			t.Errorf("%v should be a help invocation", args)
+		}
+	}
+	// Past `--` the flag belongs to the agent, so it does not make this one.
+	for _, args := range [][]string{{}, {"--dry-run"}, {"--", "-h"}} {
+		if helpInvocation(agent, args) {
+			t.Errorf("%v should not be a help invocation", args)
+		}
+	}
+}

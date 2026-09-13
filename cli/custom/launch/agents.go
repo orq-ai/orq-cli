@@ -59,8 +59,9 @@ type AgentDef struct {
 	// anthropic-native endpoint and resolves its model from env/defaults, so
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
-	// HelpRoute and HelpModel override the router wording in `orq launch
-	// <agent> --help` for an agent that is not on the router (claude, gemini).
+	// HelpRoute and HelpModel name the router surface an agent speaks in
+	// `orq launch <agent> --help`, for the two that are not on the shared
+	// OpenAI-compatible one (claude, gemini).
 	HelpRoute string
 	HelpModel string
 	Prompt    *PromptMapping

@@ -753,7 +753,7 @@ func installSkillsRefreshPreRun() {
 				return nil
 			}
 		}
-		if !skillsCommand(cmd) {
+		if !skillsCommand(cmd) || helpInvocation(cmd, args) {
 			return nil
 		}
 		res, err := skills.Refresh()
@@ -944,6 +944,29 @@ func skillsCommand(cmd *cobra.Command) bool {
 	// diagnosing can never show you the state you called it about.
 	case "launch", "connect", "disconnect", "setup":
 		return true
+	}
+	return false
+}
+
+// helpInvocation reports whether this invocation only prints help, and so
+// should not converge anything on disk. Cobra's own --help never reaches a
+// RunE, but the launch agent subcommands set DisableFlagParsing, so their -h
+// arrives as a plain argument and Run prints help itself — matched here the
+// same way ParseArgv matches it, before a `--` handing the rest to the agent.
+func helpInvocation(cmd *cobra.Command, args []string) bool {
+	if cmd == nil {
+		return false
+	}
+	if help, err := cmd.Flags().GetBool("help"); err == nil && help {
+		return true
+	}
+	for _, arg := range args {
+		switch arg {
+		case "--":
+			return false
+		case "-h", "--help":
+			return true
+		}
 	}
 	return false
 }

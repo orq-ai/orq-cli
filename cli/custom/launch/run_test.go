@@ -89,23 +89,21 @@ func TestNoSkillsHelpDescribesWhatTheFlagNowDoes(t *testing.T) {
 	}
 }
 
-// gemini (/v3/google, bare model id) and claude (/v3/anthropic) are not on the router.
+// claude and gemini speak the router's native-API surfaces, not the shared
+// OpenAI-compatible one, and gemini takes a bare model id.
 func TestOffRouterHelpNamesItsOwnRoute(t *testing.T) {
 	out := captureStdout(t, func() { printAgentHelp(FindAgent("gemini")) })
-	for _, stale := range []string{"AI Router", "provider/model_id"} {
-		if strings.Contains(out, stale) {
-			t.Errorf("gemini help still says %q:\n%s", stale, out)
-		}
+	if strings.Contains(out, "provider/model_id") {
+		t.Errorf("gemini help still asks for a provider-qualified id:\n%s", out)
 	}
 	if !strings.Contains(out, "/v3/google") {
 		t.Errorf("gemini help never names /v3/google:\n%s", out)
 	}
-	claude := captureStdout(t, func() { printAgentHelp(FindAgent("claude")) })
-	if strings.Contains(claude, "AI Router") || !strings.Contains(claude, "/v3/anthropic") {
-		t.Errorf("claude help does not name /v3/anthropic:\n%s", claude)
+	if claude := captureStdout(t, func() { printAgentHelp(FindAgent("claude")) }); !strings.Contains(claude, "/v3/anthropic") {
+		t.Errorf("claude help never names /v3/anthropic:\n%s", claude)
 	}
-	if !strings.Contains(captureStdout(t, func() { printAgentHelp(FindAgent("codex")) }), "AI Router") {
-		t.Error("router agents lost the AI Router wording")
+	if !strings.Contains(captureStdout(t, func() { printAgentHelp(FindAgent("codex")) }), "the orq.ai AI Router.") {
+		t.Error("router agents lost the plain AI Router wording")
 	}
 }
 
