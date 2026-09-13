@@ -1,5 +1,10 @@
 package launch
 
+import (
+	"fmt"
+	"strings"
+)
+
 // AgentContext is everything an agent's Resolve needs, with injectable seams
 // for tests (Getenv, Fetch, ExecProbe).
 type AgentContext struct {
@@ -61,11 +66,19 @@ type AgentDef struct {
 	FetchesModels bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared
-	// OpenAI-compatible one (claude, gemini).
+	// OpenAI-compatible one (claude, gemini). Build HelpRoute with helpRoute
+	// rather than spelling the path out, so the help cannot go on naming a
+	// route the agent no longer resolves.
 	HelpRoute string
 	HelpModel string
 	Prompt    *PromptMapping
 	Resolve   func(*AgentContext) (*LaunchPlan, error)
+}
+
+// helpRoute names a native API surface on the orq.ai AI Router, deriving the
+// path from the gateway URL the agent actually resolves to.
+func helpRoute(api, gatewayURL string) string {
+	return fmt.Sprintf("the orq.ai AI Router, %s-native API (%s)", api, strings.TrimPrefix(gatewayURL, DefaultGatewayAPIBaseURL))
 }
 
 // Agents returns the registry, ordered for help output.

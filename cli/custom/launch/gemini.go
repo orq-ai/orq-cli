@@ -71,7 +71,7 @@ func geminiAgent() AgentDef {
 		Label:         "Gemini CLI",
 		InstallHint:   "npm install -g @google/gemini-cli",
 		FetchesModels: true,
-		HelpRoute:     "the orq.ai AI Router, Gemini-native API (/v3/google)",
+		HelpRoute:     helpRoute("Gemini", DefaultGeminiGatewayURL),
 		HelpModel:     "Gemini model id, bare (e.g. gemini-2.5-pro)",
 		// gemini-cli takes one --model per session and has no picker list to
 		// populate (settings.json holds auth and MCP servers, nothing about

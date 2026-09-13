@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -417,26 +418,47 @@ func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 
 // --no-input refuses `auth profile add` only when it would prompt; a supplied
 // key is the headless form and must keep working under ORQ_NO_INPUT.
-func TestNoInputGuardLetsProfileAddWithAKeyThrough(t *testing.T) {
-	add, _, err := buildRoot(t).Find([]string{"auth", "profile", "add"})
-	if err != nil || commandPath(add) != "auth profile add" {
-		t.Fatalf("auth profile add not found: %v", err)
-	}
-	wouldPrompt := interactiveWizardCommands["auth profile add"].wouldPrompt
-	if wouldPrompt == nil {
-		t.Fatal("`auth profile add` is not guarded under --no-input")
-	}
-	if !wouldPrompt(add, []string{"ci"}) {
-		t.Error("name only, no key: must be refused under --no-input")
-	}
-	if wouldPrompt(add, []string{"ci", "sk-positional"}) {
-		t.Error("key as argument: must not be refused")
-	}
-	if err := add.Flags().Set("api-key-file", "ci.key"); err != nil {
+//
+// Driven through Execute rather than by calling wouldPrompt directly: the
+// predicate is only half the guard, and a test that skips the PreRun stays
+// green if the guard block in installSessionPreRun is deleted — which is the
+// failure that would let CI hang on a prompt.
+func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "ci.key")
+	if err := os.WriteFile(keyFile, []byte("sk-from-file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if wouldPrompt(add, []string{"ci"}) {
-		t.Error("--api-key-file: must not be refused")
+
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		refused string // substring of the refusal, or "" to expect no refusal
+	}{
+		{"setup is a wizard throughout", []string{"auth", "setup"}, "`auth setup` would prompt"},
+		{"profile add with no key prompts", []string{"auth", "profile", "add", "ci"}, "--api-key-file <path>"},
+		{"profile add with a positional key", []string{"auth", "profile", "add", "ci", "sk-positional"}, ""},
+		{"profile add with --api-key-file", []string{"auth", "profile", "add", "ci", "--api-key-file", keyFile}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profileHarness(t, `{"profiles":{}}`)
+			root := buildRoot(t)
+			viper.Set("no-input", true)
+			t.Cleanup(func() { viper.Set("no-input", false) })
+			root.SetArgs(tc.args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+
+			err := root.Execute()
+			if tc.refused == "" {
+				if err != nil && strings.Contains(err.Error(), "would prompt") {
+					t.Fatalf("%v must not be refused under --no-input: %v", tc.args, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.refused) {
+				t.Fatalf("%v: want a refusal naming %q, got %v", tc.args, tc.refused, err)
+			}
+		})
 	}
 }
 
@@ -669,9 +691,9 @@ func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
 // subcommands disable flag parsing, so -h arrives as a plain argument.
 func TestHelpInvocationSkipsSkillsRefresh(t *testing.T) {
 	agent := &cobra.Command{Use: "claude", DisableFlagParsing: true}
-	launch := &cobra.Command{Use: "launch"}
-	launch.AddCommand(agent)
-	(&cobra.Command{Use: "orq"}).AddCommand(launch)
+	launchCmd := &cobra.Command{Use: "launch"}
+	launchCmd.AddCommand(agent)
+	(&cobra.Command{Use: "orq"}).AddCommand(launchCmd)
 
 	if !skillsCommand(agent) {
 		t.Fatal("launch must still be a skills command")
@@ -681,10 +703,18 @@ func TestHelpInvocationSkipsSkillsRefresh(t *testing.T) {
 			t.Errorf("%v should be a help invocation", args)
 		}
 	}
-	// Past `--` the flag belongs to the agent, so it does not make this one.
-	for _, args := range [][]string{{}, {"--dry-run"}, {"--", "-h"}} {
+	// The last three launch the agent and pass the flag on to it: past `--`,
+	// and past the first argument the launcher does not own — which is where a
+	// second hand-rolled scan disagreed with ParseArgv and skipped the refresh
+	// for a real launch.
+	for _, args := range [][]string{{}, {"--dry-run"}, {"--", "-h"}, {"mcp", "--help"}, {"notes.md", "-h"}} {
 		if helpInvocation(agent, args) {
 			t.Errorf("%v should not be a help invocation", args)
 		}
+	}
+	// A command outside launch never reaches here with help pending: cobra
+	// returns flag.ErrHelp before PersistentPreRunE.
+	if helpInvocation(&cobra.Command{Use: "connect"}, []string{"--help"}) {
+		t.Error("only the launch agent subcommands parse their own -h")
 	}
 }

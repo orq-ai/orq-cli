@@ -11,6 +11,7 @@ import (
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/commands"
+	"orq/cli/custom/launch"
 	"orq/cli/custom/skills"
 
 	colorable "github.com/mattn/go-colorable"
@@ -71,35 +72,49 @@ var profileExemptCommands = map[string]bool{
 // Keyed by command PATH, not name: orq's own `setup` is a different command
 // from bartolo's `auth setup`, honors --no-input itself, and is meant to run
 // headless in CI. Matching on the bare name refused it.
+//
+// The map is a workaround with a scheduled death: bartolo already has the
+// right non-interactive behaviour on every one of these paths, it just gates
+// on a TTY (cli.isInteractive) rather than on --no-input, so it prompts anyway
+// when a terminal is attached. Once bartolo lets a downstream CLI replace that
+// check, delete the map, `wizard` and the guard in installSessionPreRun
+// together. See orq-ai/bartolo#47.
 var interactiveWizardCommands = map[string]wizard{
+	// No predicate: bartolo's auth setup is a wizard from its first line.
 	"auth setup": {
-		wouldPrompt: func(*cobra.Command, []string) bool { return true },
-		hint:        "use `orq auth login` or set ORQ_API_KEY instead",
+		hint: "use `orq auth login` or set ORQ_API_KEY instead",
 	},
 	// Prompts only for a key it was not given, so the CI form (a key argument
 	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
 	"auth profile add": {
 		wouldPrompt: profileAddWouldPrompt,
-		hint:        "pass the key with --api-key-file <path> (`-` reads stdin)",
+		hint:        "pass the key with --api-key-file <path>",
 	},
 }
 
 type wizard struct {
+	// wouldPrompt reports whether this invocation reaches a prompt. Nil means
+	// it always does, which is both the safe default and the shorter literal.
 	wouldPrompt func(cmd *cobra.Command, args []string) bool
 	hint        string
 }
 
-// profileAddWouldPrompt mirrors bartolo's resolveProfileValue: each profile
-// key comes from --<key>-file, then the positional after the name, then a
-// prompt.
+func (w wizard) prompts(cmd *cobra.Command, args []string) bool {
+	return w.wouldPrompt == nil || w.wouldPrompt(cmd, args)
+}
+
+// profileAddWouldPrompt mirrors bartolo's resolveProfileValue for the one
+// profile key this CLI has: api_key comes from --api-key-file, then the
+// positional after the profile name, then a prompt.
+//
+// Deliberately concrete rather than a walk over the handler's ProfileKeys():
+// the generated client registers a single-key bearer handler, a generic walk
+// would have to filter RequiredProfileKeys() to stay correct for an optional
+// key bartolo never prompts for, and the whole function disappears with the
+// map above.
 func profileAddWouldPrompt(cmd *cobra.Command, args []string) bool {
-	for i, key := range bartolocli.AuthHandlers[""].ProfileKeys() {
-		file, _ := cmd.Flags().GetString(strings.ReplaceAll(key, "_", "-") + "-file")
-		if file == "" && i+1 >= len(args) {
-			return true
-		}
-	}
-	return false
+	file, _ := cmd.Flags().GetString("api-key-file")
+	return file == "" && len(args) < 2
 }
 
 // commandPath is the command's path with the root binary name removed, so the
@@ -197,7 +212,7 @@ func installSessionPreRun() {
 	chainPreRun(func(cmd *cobra.Command, args []string) error {
 		applyNoColor()
 		commands.SetUserEnvAPIKey(os.Getenv("ORQ_API_KEY"))
-		if w, ok := interactiveWizardCommands[commandPath(cmd)]; ok && viper.GetBool("no-input") && w.wouldPrompt(cmd, args) {
+		if w, ok := interactiveWizardCommands[commandPath(cmd)]; ok && viper.GetBool("no-input") && w.prompts(cmd, args) {
 			return fmt.Errorf("`%s` would prompt and --no-input/ORQ_NO_INPUT is set; %s", commandPath(cmd), w.hint)
 		}
 		resolveServer(cmd)
@@ -949,26 +964,26 @@ func skillsCommand(cmd *cobra.Command) bool {
 }
 
 // helpInvocation reports whether this invocation only prints help, and so
-// should not converge anything on disk. Cobra's own --help never reaches a
-// RunE, but the launch agent subcommands set DisableFlagParsing, so their -h
-// arrives as a plain argument and Run prints help itself — matched here the
-// same way ParseArgv matches it, before a `--` handing the rest to the agent.
+// should not converge anything on disk.
+//
+// Only the launch agent subcommands can reach a PreRun with help still
+// pending: everything else parses flags, and cobra returns flag.ErrHelp before
+// PersistentPreRunE runs. Those subcommands set DisableFlagParsing, so their
+// -h arrives as a plain argument and launch.Run prints help itself — which is
+// why the question is put to launch's own parser rather than answered again
+// here. A second scan drifted from ParseArgv immediately: ParseArgv stops at
+// the first agent-owned argument, so `orq launch codex exec -h` really does
+// launch codex, and skipping the refresh for it was wrong.
 func helpInvocation(cmd *cobra.Command, args []string) bool {
 	if cmd == nil {
 		return false
 	}
-	if help, err := cmd.Flags().GetBool("help"); err == nil && help {
-		return true
+	def := launch.FindAgent(cmd.Name())
+	if def == nil {
+		return false
 	}
-	for _, arg := range args {
-		switch arg {
-		case "--":
-			return false
-		case "-h", "--help":
-			return true
-		}
-	}
-	return false
+	flags, _, err := launch.ParseArgv(args, launch.ParseArgvOptions{Prompt: def.Prompt, AllowModels: def.AllowModels})
+	return err == nil && flags.Help
 }
 
 // improveArgErrors rewrites cobra's bare arity errors ("accepts 2 arg(s),
