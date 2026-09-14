@@ -1618,7 +1618,7 @@ components:
           properties:
             _id:
               type: "string"
-              default: "reasoning_01m28es552q7fd8gzxzp472he7"
+              default: "reasoning_01m2eye8zmkhg0snne2hxe0rnn"
               description: "Unique identifier for the part. Format: reasoning_{ulid} (e.g., reasoning_01hxyz...)"
               example: "reasoning_01hxyz123abc"
             kind:
@@ -3174,6 +3174,7 @@ components:
                     - "evaluators"
                     - "otel"
                     - "ai-chat"
+                    - "mcp_gateway"
                   description: "Orquesta product"
                 memory:
                   type: "object"
@@ -3265,6 +3266,7 @@ components:
                     - "evaluators"
                     - "otel"
                     - "ai-chat"
+                    - "mcp_gateway"
                   description: "Orquesta product"
                 memory:
                   type: "object"
@@ -3362,6 +3364,7 @@ components:
                     - "evaluators"
                     - "otel"
                     - "ai-chat"
+                    - "mcp_gateway"
                   description: "Orquesta product"
                 memory:
                   type: "object"
@@ -22715,7 +22718,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "cURL"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/agents/customer_support/responses' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"message\": {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"kind\": \"text\",\n          \"text\": \"Hi! I am testing your capabilities. Can you describe what you can do?\"\n        }\n      ]\n    }\n  }'"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/agents/customer_support/responses' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"message\": {\n      \"role\": \"user\",\n      \"parts\": [\n        {\n          \"kind\": \"text\",\n          \"text\": \"Hi! I am testing your capabilities. Can you describe what you can do?\"\n        }\n      ]\n    }\n  }'"
         - lang: "python"
           label: "Python"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(\n    api_key=os.environ.get(\"ORQ_API_KEY\")\n)\n\nresponse = client.agents.responses.create(\n    agent_key=\"customer_support\",\n    message={\n        \"role\": \"user\",\n        \"parts\": [\n            {\n                \"kind\": \"text\",\n                \"text\": \"Hi! I am testing your capabilities. Can you describe what you can do?\"\n            }\n        ]\n    }\n)\n\nprint(response.output[0].parts[0].text)\nprint(response.usage)"
@@ -27404,7 +27407,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M28ES57CCYHBHQDFD3D8GF1G"
+                                          default: "01M2EYE90YZ2FKQVMHW13B7MVZ"
                                         name:
                                           type: "string"
                                         description:
@@ -29001,7 +29004,7 @@ paths:
                                       properties:
                                         id:
                                           type: "string"
-                                          default: "01M28ES586K1MYDKVVXKZ5JA9V"
+                                          default: "01M2EYE91EZ299XBV52D99YSA5"
                                         name:
                                           type: "string"
                                         description:
@@ -30968,7 +30971,7 @@ paths:
                           content: "What is the weather today?"
                     model:
                       type: "string"
-                      description: "Model ID used to generate the response, like `openai/gpt-4o` or `anthropic/claude-3-5-sonnet-20241022`. For private models, use format: `{workspaceKey}@{provider}/{model}`. The full list of models can be found at https://docs.orq.ai/docs/ai-gateway-supported-models. Only chat models are supported."
+                      description: "Model ID used to generate the response, like `openai/gpt-4o` or `anthropic/claude-3-5-sonnet-20241022`. For private models, use format: `{workspaceKey}@{provider}/{model}`. The full list of models can be found at https://docs.orq.ai/docs/ai-gateway/supported-models. Only chat models are supported."
                       example: "openai/gpt-4o"
                     name:
                       type: "string"
@@ -33883,7 +33886,7 @@ paths:
                       type:
                         - "string"
                         - "null"
-                      description: "Model ID used to generate the response, like `openai/gpt-4o` or `anthropic/claude-3-5-sonnet-20241022`. For private models, use format: `{workspaceKey}@{provider}/{model}`. The full list of models can be found at https://docs.orq.ai/docs/ai-gateway-supported-models. Only chat models are supported."
+                      description: "Model ID used to generate the response, like `openai/gpt-4o` or `anthropic/claude-3-5-sonnet-20241022`. For private models, use format: `{workspaceKey}@{provider}/{model}`. The full list of models can be found at https://docs.orq.ai/docs/ai-gateway/supported-models. Only chat models are supported."
                       example: "openai/gpt-4o"
                     name:
                       type: "string"
@@ -37801,7 +37804,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M28ES5A0Q9AW3NN16JVVW26X"
+                              default: "tool_01M2EYE92KK1KMEJSWX4SWS6PV"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -37902,7 +37905,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M28ES5A171MF519N71RNC2VJ"
+                              default: "tool_01M2EYE92MATT36232CKX6GBRR"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38005,7 +38008,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M28ES5A2ADNCE49MBQT1Y2QF"
+                              default: "tool_01M2EYE92MQQRR6C4VSW2GWEA4"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38149,7 +38152,7 @@ paths:
                           properties:
                             _id:
                               type: "string"
-                              default: "tool_01M28ES5A5ERMGWSR005VRFQ1Q"
+                              default: "tool_01M2EYE92N4E0Q1RCT1WNATCBH"
                             path:
                               type: "string"
                               description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38636,7 +38639,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AACESQE95M2R4NXEWV"
+                        default: "tool_01M2EYE92TC7SYSAH5QQD507BJ"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38737,7 +38740,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AAKHXP1ZGSAF08XS12"
+                        default: "tool_01M2EYE92TFMP8BF4XFQDD15JD"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38840,7 +38843,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AB0W9JYSXPQVV37GNH"
+                        default: "tool_01M2EYE92V9PT9A5M4Y0EDPY5M"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -38984,7 +38987,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5ACRBCM7MNXEZKC03C7"
+                        default: "tool_01M2EYE92VY3CSEJGRESWV4727"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39482,7 +39485,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AF8ZQQ37BSVYWHM5D9"
+                        default: "tool_01M2EYE92XHVKWVQXNHPQA00XE"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39583,7 +39586,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AG7BXTT0QD62ZHX66E"
+                        default: "tool_01M2EYE92YG6W7CQRWBR2HGCV3"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39686,7 +39689,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AH10CR533V896FW0PY"
+                        default: "tool_01M2EYE92Y2CQ21M3KG623YB7G"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39830,7 +39833,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AJ4E7ADQRTRHJSVTFP"
+                        default: "tool_01M2EYE92ZMCHDG53Y2TT5RG3B"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -39991,7 +39994,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5ASB8D2RJASDPGDQYAD"
+                        default: "tool_01M2EYE934XT4GFETTCPFGV2F4"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40092,7 +40095,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5ASP7GVSX35SDJ8DTWV"
+                        default: "tool_01M2EYE934THJ1W1F0RBXP6AF7"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40195,7 +40198,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AT8MP6CT72GMJNQ2H7"
+                        default: "tool_01M2EYE935VKTGRJN9B7FHPFGN"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40339,7 +40342,7 @@ paths:
                     properties:
                       _id:
                         type: "string"
-                        default: "tool_01M28ES5AVKF1R9SWNKBY47XX2"
+                        default: "tool_01M2EYE935RJF2H7XXMNY5CKZT"
                       path:
                         type: "string"
                         description: "Entity storage path.\n\nWith workspace-level API keys, use the format `project/folder/subfolder/...`. The first element must be the display name of an existing project, followed by nested folders (auto-created as needed). Example: `Default Project/agents`.\n\nWith project-level API keys, the project is predetermined by the API key, so the path is relative to that project. Example: `agents`. For backward compatibility, a leading project name is ignored when it matches the scoped project."
@@ -40759,7 +40762,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-09-11T14:43:29.883Z"
+                          default: "2026-09-14T03:12:39.204Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -40767,7 +40770,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:29.884Z"
+                              default: "2026-09-14T03:12:39.205Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -40891,7 +40894,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-09-11T14:43:29.883Z"
+                    default: "2026-09-14T03:12:39.204Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -40899,7 +40902,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-09-11T14:43:29.884Z"
+                        default: "2026-09-14T03:12:39.205Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -41014,7 +41017,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-09-11T14:43:29.883Z"
+                    default: "2026-09-14T03:12:39.204Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -41022,7 +41025,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-09-11T14:43:29.884Z"
+                        default: "2026-09-14T03:12:39.205Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -41166,7 +41169,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-09-11T14:43:29.883Z"
+                    default: "2026-09-14T03:12:39.204Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -41174,7 +41177,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-09-11T14:43:29.884Z"
+                        default: "2026-09-14T03:12:39.205Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -41603,7 +41606,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-09-11T14:43:38.988Z"
+                                    default: "2026-09-14T03:12:46.191Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -41676,7 +41679,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-09-11T14:43:38.988Z"
+                                    default: "2026-09-14T03:12:46.191Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -41749,7 +41752,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-09-11T14:43:38.988Z"
+                                    default: "2026-09-14T03:12:46.191Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -41822,7 +41825,7 @@ paths:
                                   reviewed_at:
                                     type: "string"
                                     format: "date-time"
-                                    default: "2026-09-11T14:43:38.989Z"
+                                    default: "2026-09-14T03:12:46.192Z"
                                     deprecated: true
                                     description: "Deprecated. The date and time the item was reviewed"
                                   type:
@@ -41862,7 +41865,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-09-11T14:43:29.883Z"
+                          default: "2026-09-14T03:12:39.204Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -41870,7 +41873,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:29.884Z"
+                              default: "2026-09-14T03:12:39.205Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -42500,7 +42503,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-09-11T14:43:38.995Z"
+                                default: "2026-09-14T03:12:46.196Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -42573,7 +42576,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-09-11T14:43:38.995Z"
+                                default: "2026-09-14T03:12:46.196Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -42646,7 +42649,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-09-11T14:43:38.996Z"
+                                default: "2026-09-14T03:12:46.196Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -42719,7 +42722,7 @@ paths:
                               reviewed_at:
                                 type: "string"
                                 format: "date-time"
-                                default: "2026-09-11T14:43:38.996Z"
+                                default: "2026-09-14T03:12:46.197Z"
                                 deprecated: true
                                 description: "Deprecated. The date and time the item was reviewed"
                               type:
@@ -42759,7 +42762,7 @@ paths:
                           format: "date-time"
                         - type: "string"
                           format: "date-time"
-                      default: "2026-09-11T14:43:29.883Z"
+                      default: "2026-09-14T03:12:39.204Z"
                       readOnly: true
                       format: "date-time"
                       description: "The date and time the resource was created"
@@ -42767,7 +42770,7 @@ paths:
                       anyOf:
                         - type: "string"
                           format: "date-time"
-                          default: "2026-09-11T14:43:29.884Z"
+                          default: "2026-09-14T03:12:39.205Z"
                         - type: "string"
                           format: "date-time"
                       readOnly: true
@@ -43131,7 +43134,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:38.991Z"
+                              default: "2026-09-14T03:12:46.194Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -43204,7 +43207,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:38.992Z"
+                              default: "2026-09-14T03:12:46.194Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -43277,7 +43280,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:38.992Z"
+                              default: "2026-09-14T03:12:46.194Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -43350,7 +43353,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:38.992Z"
+                              default: "2026-09-14T03:12:46.194Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -43390,7 +43393,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-09-11T14:43:29.883Z"
+                    default: "2026-09-14T03:12:39.204Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -43398,7 +43401,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-09-11T14:43:29.884Z"
+                        default: "2026-09-14T03:12:39.205Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -44022,7 +44025,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:39.007Z"
+                              default: "2026-09-14T03:12:46.204Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -44095,7 +44098,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:39.007Z"
+                              default: "2026-09-14T03:12:46.204Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -44168,7 +44171,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:39.008Z"
+                              default: "2026-09-14T03:12:46.205Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -44241,7 +44244,7 @@ paths:
                             reviewed_at:
                               type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:39.008Z"
+                              default: "2026-09-14T03:12:46.205Z"
                               deprecated: true
                               description: "Deprecated. The date and time the item was reviewed"
                             type:
@@ -44281,7 +44284,7 @@ paths:
                         format: "date-time"
                       - type: "string"
                         format: "date-time"
-                    default: "2026-09-11T14:43:29.883Z"
+                    default: "2026-09-14T03:12:39.204Z"
                     readOnly: true
                     format: "date-time"
                     description: "The date and time the resource was created"
@@ -44289,7 +44292,7 @@ paths:
                     anyOf:
                       - type: "string"
                         format: "date-time"
-                        default: "2026-09-11T14:43:29.884Z"
+                        default: "2026-09-14T03:12:39.205Z"
                       - type: "string"
                         format: "date-time"
                     readOnly: true
@@ -45581,7 +45584,7 @@ paths:
                                       - "or"
                                     title: "or"
                                     description: "Or"
-                                description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information."
+                                description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information."
                               search_options:
                                 type: "object"
                                 properties:
@@ -45600,7 +45603,7 @@ paths:
                                 properties:
                                   model:
                                     type: "string"
-                                    description: "The name of the rerank model to use. Refer to the [model list](https://docs.orq.ai/docs/proxy#/rerank-models)."
+                                    description: "The name of the rerank model to use. Refer to the [model list](https://docs.orq.ai/docs/ai-gateway/supported-models#rerank-models)."
                                     example: "cohere/rerank-multilingual-v3.0"
                                   threshold:
                                     type: "number"
@@ -45622,7 +45625,7 @@ paths:
                                 properties:
                                   model:
                                     type: "string"
-                                    description: "The name of the model for the Agent to use. Refer to the [model list](https://docs.orq.ai/docs/proxy#/chat-models)."
+                                    description: "The name of the model for the Agent to use. Refer to the [model list](https://docs.orq.ai/docs/ai-gateway/supported-models#chat-models)."
                                 required:
                                   - "model"
                                 description: "Override the agentic RAG configuration for this search. If not provided, will use the knowledge base configured agentic RAG settings."
@@ -47944,7 +47947,7 @@ paths:
                                       - "or"
                                     title: "or"
                                     description: "Or"
-                                description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information."
+                                description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information."
                               search_options:
                                 type: "object"
                                 properties:
@@ -47963,7 +47966,7 @@ paths:
                                 properties:
                                   model:
                                     type: "string"
-                                    description: "The name of the rerank model to use. Refer to the [model list](https://docs.orq.ai/docs/proxy#/rerank-models)."
+                                    description: "The name of the rerank model to use. Refer to the [model list](https://docs.orq.ai/docs/ai-gateway/supported-models#rerank-models)."
                                     example: "cohere/rerank-multilingual-v3.0"
                                   threshold:
                                     type: "number"
@@ -47985,7 +47988,7 @@ paths:
                                 properties:
                                   model:
                                     type: "string"
-                                    description: "The name of the model for the Agent to use. Refer to the [model list](https://docs.orq.ai/docs/proxy#/chat-models)."
+                                    description: "The name of the model for the Agent to use. Refer to the [model list](https://docs.orq.ai/docs/ai-gateway/supported-models#chat-models)."
                                 required:
                                   - "model"
                                 description: "Override the agentic RAG configuration for this search. If not provided, will use the knowledge base configured agentic RAG settings."
@@ -48706,7 +48709,7 @@ paths:
               properties:
                 model:
                   type: "string"
-                  description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)"
+                  description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway/supported-models#image-models)"
                 image:
                   type: "string"
                   format: "binary"
@@ -50512,7 +50515,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-09-11T14:43:39.061Z"
+                      default: "2026-09-14T03:12:46.238Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -50554,7 +50557,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-09-11T14:43:39.061Z"
+                      default: "2026-09-14T03:12:46.239Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -50596,7 +50599,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-09-11T14:43:39.061Z"
+                      default: "2026-09-14T03:12:46.239Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -50638,7 +50641,7 @@ paths:
                     reviewed_at:
                       type: "string"
                       format: "date-time"
-                      default: "2026-09-11T14:43:39.062Z"
+                      default: "2026-09-14T03:12:46.239Z"
                       deprecated: true
                       description: "Deprecated. The date and time the item was reviewed"
                     type:
@@ -50700,6 +50703,7 @@ paths:
                     - "evaluators"
                     - "otel"
                     - "ai-chat"
+                    - "mcp_gateway"
               required:
                 - "id"
                 - "trace_id"
@@ -50737,6 +50741,7 @@ paths:
                       - "evaluators"
                       - "otel"
                       - "ai-chat"
+                      - "mcp_gateway"
                 required:
                   - "id"
                   - "trace_id"
@@ -50806,6 +50811,7 @@ paths:
                     - "evaluators"
                     - "otel"
                     - "ai-chat"
+                    - "mcp_gateway"
                   default: "deployments"
               required:
                 - "property"
@@ -50857,6 +50863,7 @@ paths:
                       - "evaluators"
                       - "otel"
                       - "ai-chat"
+                      - "mcp_gateway"
                     default: "deployments"
                 required:
                   - "property"
@@ -50965,7 +50972,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-09-11T14:43:29.883Z"
+                          default: "2026-09-14T03:12:39.204Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -50973,7 +50980,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:29.884Z"
+                              default: "2026-09-14T03:12:39.205Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -51043,7 +51050,7 @@ paths:
                               format: "date-time"
                             - type: "string"
                               format: "date-time"
-                          default: "2026-09-11T14:43:29.883Z"
+                          default: "2026-09-14T03:12:39.204Z"
                           readOnly: true
                           format: "date-time"
                           description: "The date and time the resource was created"
@@ -51051,7 +51058,7 @@ paths:
                           anyOf:
                             - type: "string"
                               format: "date-time"
-                              default: "2026-09-11T14:43:29.884Z"
+                              default: "2026-09-14T03:12:39.205Z"
                             - type: "string"
                               format: "date-time"
                           readOnly: true
@@ -51227,7 +51234,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51235,7 +51242,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -51305,7 +51312,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51313,7 +51320,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -51407,7 +51414,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51415,7 +51422,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -51485,7 +51492,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51493,7 +51500,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -51677,7 +51684,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51685,7 +51692,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -51755,7 +51762,7 @@ paths:
                             format: "date-time"
                           - type: "string"
                             format: "date-time"
-                        default: "2026-09-11T14:43:29.883Z"
+                        default: "2026-09-14T03:12:39.204Z"
                         readOnly: true
                         format: "date-time"
                         description: "The date and time the resource was created"
@@ -51763,7 +51770,7 @@ paths:
                         anyOf:
                           - type: "string"
                             format: "date-time"
-                            default: "2026-09-11T14:43:29.884Z"
+                            default: "2026-09-14T03:12:39.205Z"
                           - type: "string"
                             format: "date-time"
                         readOnly: true
@@ -52632,7 +52639,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List knowledge bases"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge?limit=25' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge?limit=25' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     post:
@@ -52661,7 +52668,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create knowledge base"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/knowledge' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"type\": \"internal\",\n    \"key\": \"product-docs\",\n    \"description\": \"Product documentation\",\n    \"embedding_model\": \"openai/text-embedding-3-small\",\n    \"path\": \"Default/knowledge\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/knowledge' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"type\": \"internal\",\n    \"key\": \"product-docs\",\n    \"description\": \"Product documentation\",\n    \"embedding_model\": \"openai/text-embedding-3-small\",\n    \"path\": \"Default/knowledge\"\n  }'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}:
@@ -52693,7 +52700,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve knowledge base"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -52718,7 +52725,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete knowledge base"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -52753,7 +52760,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update knowledge base"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"type\": \"internal\",\n    \"description\": \"Current product documentation\",\n    \"retrieval_settings\": {\n      \"retrieval_type\": \"hybrid_search\",\n      \"top_k\": 8,\n      \"threshold\": 0.2\n    }\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"type\": \"internal\",\n    \"description\": \"Current product documentation\",\n    \"retrieval_settings\": {\n      \"retrieval_type\": \"hybrid_search\",\n      \"top_k\": 8,\n      \"threshold\": 0.2\n    }\n  }'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources:
@@ -52831,7 +52838,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List datasources"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources?limit=50' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources?limit=50' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     post:
@@ -52868,7 +52875,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create datasource"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Product guide\",\n    \"file_id\": \"file_01JEXAMPLE00000000000001\",\n    \"chunking_options\": {\n      \"chunking_configuration\": {\n        \"type\": \"advanced\",\n        \"chunk_max_characters\": 800,\n        \"chunk_overlap\": 100\n      }\n    }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Product guide\",\n    \"file_id\": \"file_01JEXAMPLE00000000000001\",\n    \"chunking_options\": {\n      \"chunking_configuration\": {\n        \"type\": \"advanced\",\n        \"chunk_max_characters\": 800,\n        \"chunk_overlap\": 100\n      }\n    }\n  }'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/preview-chunks:
@@ -52935,7 +52942,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve datasource"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -52965,7 +52972,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete datasource"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -53005,7 +53012,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update datasource"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"display_name\":\"Product guide 2026\"}'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"display_name\":\"Product guide 2026\"}'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks:
@@ -53102,7 +53109,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List chunks"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks?limit=100' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks?limit=100' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     post:
@@ -53152,7 +53159,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create chunks"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '[\n    {\n      \"text\": \"ORQ routes each request to the configured model.\",\n      \"metadata\": {\"section\":\"routing\"}\n    }\n  ]'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '[\n    {\n      \"text\": \"ORQ routes each request to the configured model.\",\n      \"metadata\": {\"section\":\"routing\"}\n    }\n  ]'\n"
       security:
         - ApiKey: []
     delete:
@@ -53192,7 +53199,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete multiple chunks"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"chunk_ids\": [\n      \"chunk_01JEXAMPLE000000000001\",\n      \"chunk_01JEXAMPLE000000000002\"\n    ]\n  }'\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"chunk_ids\": [\n      \"chunk_01JEXAMPLE000000000001\",\n      \"chunk_01JEXAMPLE000000000002\"\n    ]\n  }'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/count:
@@ -53233,7 +53240,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Count chunks"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"q\":\"routing\",\"enabled\":true}'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"q\":\"routing\",\"enabled\":true}'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/list:
@@ -53274,7 +53281,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List a page of chunks"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/list' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"q\":\"routing\",\"limit\":25,\"page\":1}'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/list' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"q\":\"routing\",\"limit\":25,\"page\":1}'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}:
@@ -53314,7 +53321,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve chunk"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -53349,7 +53356,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete chunk"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -53394,7 +53401,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update chunk"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"text\": \"ORQ routes requests to the configured model.\",\n    \"metadata\": {\"section\":\"routing\",\"reviewed\":true}\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"text\": \"ORQ routes requests to the configured model.\",\n    \"metadata\": {\"section\":\"routing\",\"reviewed\":true}\n  }'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/chunks/{chunk_id}/enabled:
@@ -53440,7 +53447,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Set chunk enabled status"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001/enabled' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"enabled\":false}'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/chunks/chunk_01JEXAMPLE000000000001/enabled' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"enabled\":false}'\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/datasources/{datasource_id}/datasource-processing-status:
@@ -53475,7 +53482,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve datasource processing status"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/datasource-processing-status' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/datasources/01JEXAMPLEDATASOURCE0001/datasource-processing-status' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/knowledge/{knowledge_id}/search:
@@ -53513,7 +53520,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core"
-          source: "curl --request POST \\\n  --url \"https://api.orq.ai/v2/knowledge/$KNOWLEDGE_ID/search\" \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"query\": \"What is our refund policy?\",\n    \"top_k\": 10,\n    \"search_type\": \"hybrid_search\",\n    \"search_options\": {\n      \"include_vectors\": false,\n      \"include_metadata\": true,\n      \"include_scores\": true\n    }\n  }'"
+          source: "curl --request POST \\\n  --url \"https://my.orq.ai/v2/knowledge/$KNOWLEDGE_ID/search\" \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"query\": \"What is our refund policy?\",\n    \"top_k\": 10,\n    \"search_type\": \"hybrid_search\",\n    \"search_options\": {\n      \"include_vectors\": false,\n      \"include_metadata\": true,\n      \"include_scores\": true\n    }\n  }'"
         - lang: "typescript"
           label: "Node.js"
           source: "import { Orq } from \"@orq-ai/node\";\n\nconst orq = new Orq({\n  apiKey: process.env[\"ORQ_API_KEY\"]\n});\n\nconst result = await orq.knowledge.search({\n  knowledgeId: process.env[\"KNOWLEDGE_ID\"],\n  requestBody: {\n    query: \"What is our refund policy?\",\n    topK: 10,\n    searchType: \"hybrid_search\",\n    searchOptions: {\n      includeVectors: false,\n      includeMetadata: true,\n      includeScores: true\n    }\n  }\n});\n\nconsole.log(result.matches);"
@@ -53573,7 +53580,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create file upload policy"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/upload-file?fileName=guide.pdf&contentType=application%2Fpdf&datasourceId=01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/knowledge/01JEXAMPLEKNOWLEDGEBASE01/upload-file?fileName=guide.pdf&contentType=application%2Fpdf&datasourceId=01JEXAMPLEDATASOURCE0001' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/memory-stores:
@@ -54542,7 +54549,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Run an evaluator"
-          source: "curl 'https://api.orq.ai/v3/evaluators/01KT1FCSA8N3YD1K8YBPVTAV9E/invoke' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{\n    \"context\": {\n      \"input\": {\n        \"user_query\": \"What is the capital of France?\",\n        \"expected_output\": \"Paris\",\n        \"retrievals\": [\"The capital of France is Paris.\"]\n      },\n      \"output\": {\n        \"response\": \"The capital of France is Paris.\"\n      },\n      \"variables\": {\n        \"tone\": \"formal\"\n      }\n    }\n  }'\n"
+          source: "curl 'https://my.orq.ai/v3/evaluators/01KT1FCSA8N3YD1K8YBPVTAV9E/invoke' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{\n    \"context\": {\n      \"input\": {\n        \"user_query\": \"What is the capital of France?\",\n        \"expected_output\": \"Paris\",\n        \"retrievals\": [\"The capital of France is Paris.\"]\n      },\n      \"output\": {\n        \"response\": \"The capital of France is Paris.\"\n      },\n      \"variables\": {\n        \"tone\": \"formal\"\n      }\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Run an evaluator"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nevaluation = client.evals.invoke(\n    id=\"01KT1FCSA8N3YD1K8YBPVTAV9E\",\n    context={\n        \"input\": {\n            \"user_query\": \"What is the capital of France?\",\n            \"expected_output\": \"Paris\",\n            \"retrievals\": [\"The capital of France is Paris.\"],\n        },\n        \"output\": {\"response\": \"The capital of France is Paris.\"},\n        \"variables\": {\"tone\": \"formal\"},\n    },\n)\n\n# `passed` is the guardrail's decision when the evaluator has one, and the\n# grader's own judgement otherwise. `value` carries the verdict itself,\n# whose type follows the evaluator: a boolean, a score, a label.\nprint(evaluation.passed, evaluation.value)\n"
@@ -54551,7 +54558,7 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst orq = new Orq({ apiKey: process.env.ORQ_API_KEY });\n\nconst evaluation = await orq.evals.invoke({\n  id: '01KT1FCSA8N3YD1K8YBPVTAV9E',\n  requestBody: {\n    context: {\n      input: {\n        user_query: 'What is the capital of France?',\n        expected_output: 'Paris',\n        retrievals: ['The capital of France is Paris.'],\n      },\n      output: { response: 'The capital of France is Paris.' },\n      variables: { tone: 'formal' },\n    },\n  },\n});\n\nconsole.log(evaluation.passed, evaluation.value);\n"
         - lang: "curl"
           label: "Core - Grade a conversation instead of a single turn"
-          source: "curl 'https://api.orq.ai/v3/evaluators/01KT1FCSA8N3YD1K8YBPVTAV9E/invoke' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{\n    \"context\": {\n      \"messages\": [\n        {\"role\": \"user\", \"content\": \"What is the capital of France?\"},\n        {\"role\": \"assistant\", \"content\": \"The capital of France is Paris.\"}\n      ],\n      \"input\": {\n        \"expected_output\": \"Paris\"\n      }\n    }\n  }'\n"
+          source: "curl 'https://my.orq.ai/v3/evaluators/01KT1FCSA8N3YD1K8YBPVTAV9E/invoke' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{\n    \"context\": {\n      \"messages\": [\n        {\"role\": \"user\", \"content\": \"What is the capital of France?\"},\n        {\"role\": \"assistant\", \"content\": \"The capital of France is Paris.\"}\n      ],\n      \"input\": {\n        \"expected_output\": \"Paris\"\n      }\n    }\n  }'\n"
       security:
         - ApiKey: []
   /v2/pii/capabilities:
@@ -57512,7 +57519,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List annotation queues"
-          source: "curl --get 'https://api.orq.ai/v2/annotation-queues' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=50' \\\n  --data-urlencode 'search=support'\n"
+          source: "curl --get 'https://my.orq.ai/v2/annotation-queues' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=50' \\\n  --data-urlencode 'search=support'\n"
         - lang: "python"
           label: "Python - List annotation queues"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.annotation_queues.list(\n    limit=50,\n    search=\"support\",\n)\n\nfor queue in page.data:\n    print(queue.id, queue.display_name)\n"
@@ -57547,7 +57554,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create an annotation queue"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/annotation-queues' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"project_id\": \"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    \"display_name\": \"Support quality review\",\n    \"description\": \"Human review of support agent responses\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/annotation-queues' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"project_id\": \"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    \"display_name\": \"Support quality review\",\n    \"description\": \"Human review of support agent responses\"\n  }'\n"
         - lang: "python"
           label: "Python - Create an annotation queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nqueue = client.annotation_queues.create(\n    project_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    display_name=\"Support quality review\",\n    description=\"Human review of support agent responses\",\n)\n\nprint(queue.id)\n"
@@ -57583,7 +57590,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve an annotation queue"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an annotation queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nqueue = client.annotation_queues.retrieve(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n)\n\nprint(queue.display_name, queue.metadata.items_count)\n"
@@ -57618,7 +57625,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an annotation queue"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an annotation queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.annotation_queues.delete(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n)\n"
@@ -57659,7 +57666,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update an annotation queue"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Support quality review (Q3)\",\n    \"description\": \"Updated review scope\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Support quality review (Q3)\",\n    \"description\": \"Updated review scope\"\n  }'\n"
         - lang: "python"
           label: "Python - Update an annotation queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nqueue = client.annotation_queues.update(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    display_name=\"Support quality review (Q3)\",\n    description=\"Updated review scope\",\n)\n\nprint(queue.updated)\n"
@@ -57695,7 +57702,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Remove all items from a queue"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/clear' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/clear' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Remove all items from a queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.annotation_queues.clear(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n)\n"
@@ -57747,7 +57754,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List items in a queue"
-          source: "curl --get 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List items in a queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.annotation_queues.list_items(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    limit=25,\n)\n\nfor item in page.data:\n    print(item.id, item.type)\n"
@@ -57788,7 +57795,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Add span items to a queue"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"items\": [\n      { \"span_id\": \"span_01\", \"trace_id\": \"trace_01\" },\n      { \"span_id\": \"span_02\", \"trace_id\": \"trace_02\" }\n    ]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"items\": [\n      { \"span_id\": \"span_01\", \"trace_id\": \"trace_01\" },\n      { \"span_id\": \"span_02\", \"trace_id\": \"trace_02\" }\n    ]\n  }'\n"
         - lang: "python"
           label: "Python - Add span items to a queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.annotation_queues.add_items(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    items=[\n        {\"span_id\": \"span_01\", \"trace_id\": \"trace_01\"},\n        {\"span_id\": \"span_02\", \"trace_id\": \"trace_02\"},\n    ],\n)\n\nprint(f\"added {len(result)} items\")\n"
@@ -57830,7 +57837,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Remove span items from a queue"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items/remove' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"span_ids\": [\"span_01\", \"span_02\"]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items/remove' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"span_ids\": [\"span_01\", \"span_02\"]\n  }'\n"
         - lang: "python"
           label: "Python - Remove span items from a queue"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.annotation_queues.remove_items(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    span_ids=[\"span_01\", \"span_02\"],\n)\n"
@@ -57871,7 +57878,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve a queue item"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items/item_01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/annotation-queues/01HXXXXXXXXXXXXXXXXXXXXXXX/items/item_01' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve a queue item"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nitem = client.annotation_queues.retrieve_item(\n    annotation_queue_id=\"01HXXXXXXXXXXXXXXXXXXXXXXX\",\n    item_id=\"item_01\",\n)\n\nprint(item.span_id)\n"
@@ -57952,7 +57959,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List active project keys"
-          source: "curl --get 'https://api.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --data-urlencode 'status=API_KEY_STATUS_ACTIVE'\n"
+          source: "curl --get 'https://my.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --data-urlencode 'status=API_KEY_STATUS_ACTIVE'\n"
         - lang: "python"
           label: "Python - List active project keys"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\napi_keys = client.api_keys.list(\n    limit=25,\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    status=\"API_KEY_STATUS_ACTIVE\",\n)\n\nfor api_key in api_keys:\n    print(api_key.name, api_key.token)\n"
@@ -57985,7 +57992,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create service account key"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Production service key\",\n    \"owner\": {\n      \"service_account\": {}\n    },\n    \"project_scope\": {\n      \"all\": {}\n    },\n    \"permission_mode\": \"PERMISSION_MODE_ALL\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Production service key\",\n    \"owner\": {\n      \"service_account\": {}\n    },\n    \"project_scope\": {\n      \"all\": {}\n    },\n    \"permission_mode\": \"PERMISSION_MODE_ALL\"\n  }'\n"
         - lang: "python"
           label: "Python - Create service account key"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.api_keys.create(\n    name=\"Production service key\",\n    owner={\"service_account\": {}},\n    project_scope={\"all\": {}},\n    permission_mode=\"PERMISSION_MODE_ALL\",\n)\n\n# Store the token immediately. It is only returned once.\nprint(result.token)\n"
@@ -57994,7 +58001,7 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.apiKeys.create({\n  name: 'Production service key',\n  owner: {\n    serviceAccount: {},\n  },\n  projectScope: {\n    all: {},\n  },\n  permissionMode: 'PERMISSION_MODE_ALL',\n});\n\n// Store the token immediately. It is only returned once.\nconsole.log(result.token);\n"
         - lang: "curl"
           label: "Core - Create restricted project key"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Support automation key\",\n    \"project_scope\": {\n      \"single\": {\n        \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n      }\n    },\n    \"permission_mode\": \"PERMISSION_MODE_RESTRICTED\",\n    \"access\": {\n      \"agents\": \"ACCESS_LEVEL_WRITE\",\n      \"deployments\": \"ACCESS_LEVEL_READ\"\n    }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/api-keys' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Support automation key\",\n    \"project_scope\": {\n      \"single\": {\n        \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n      }\n    },\n    \"permission_mode\": \"PERMISSION_MODE_RESTRICTED\",\n    \"access\": {\n      \"agents\": \"ACCESS_LEVEL_WRITE\",\n      \"deployments\": \"ACCESS_LEVEL_READ\"\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Create restricted project key"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.api_keys.create(\n    name=\"Support automation key\",\n    project_scope={\n        \"single\": {\n            \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n        },\n    },\n    permission_mode=\"PERMISSION_MODE_RESTRICTED\",\n    access={\n        \"agents\": \"ACCESS_LEVEL_WRITE\",\n        \"deployments\": \"ACCESS_LEVEL_READ\",\n    },\n)\n\nprint(result.id)\nprint(result.token)\n"
@@ -58022,7 +58029,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List capability catalog"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/api-keys/capabilities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/api-keys/capabilities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - List capability catalog"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ncatalog = client.api_keys.list_capabilities()\n\nfor domain in catalog.domains:\n    print(domain.id, domain.display_name)\n"
@@ -58062,7 +58069,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve key metadata"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve key metadata"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.api_keys.get(\n    api_key_id=\"01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.name)\n"
@@ -58092,7 +58099,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete a key"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete a key"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.api_keys.delete(\n    api_key_id=\"01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -58132,7 +58139,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Disable a key"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"status\": \"API_KEY_STATUS_DISABLED\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/api-keys/01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"status\": \"API_KEY_STATUS_DISABLED\"\n  }'\n"
         - lang: "python"
           label: "Python - Disable a key"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.api_keys.update(\n    api_key_id=\"01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    status=\"API_KEY_STATUS_DISABLED\",\n)\n\nprint(result.status)\n"
@@ -58166,7 +58173,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "cURL"
-          source: "curl --request POST \\\n  --url https://api.orq.ai/v2/audit-logs/query \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header \"Content-Type: application/json\" \\\n  --data '{\n    \"filters\": {\n      \"operator\": \"and\",\n      \"filters\": [\n        {\n          \"type\": \"string\",\n          \"path\": \"entity_type\",\n          \"operator\": \"is\",\n          \"value\": \"skill\"\n        }\n      ]\n    },\n    \"pagination\": {\n      \"limit\": 20\n    },\n    \"sorting\": [\n      {\n        \"key\": \"created_at\",\n        \"direction\": \"desc\"\n      }\n    ]\n  }'\n"
+          source: "curl --request POST \\\n  --url https://my.orq.ai/v2/audit-logs/query \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header \"Content-Type: application/json\" \\\n  --data '{\n    \"filters\": {\n      \"operator\": \"and\",\n      \"filters\": [\n        {\n          \"type\": \"string\",\n          \"path\": \"entity_type\",\n          \"operator\": \"is\",\n          \"value\": \"skill\"\n        }\n      ]\n    },\n    \"pagination\": {\n      \"limit\": 20\n    },\n    \"sorting\": [\n      {\n        \"key\": \"created_at\",\n        \"direction\": \"desc\"\n      }\n    ]\n  }'\n"
         - lang: "typescript"
           label: "TypeScript"
           source: "const auditLogs = await client.auditLogs.query({\n  filters: {\n    operator: \"and\",\n    filters: [\n      {\n        type: \"string\",\n        path: \"entity_type\",\n        operator: \"is\",\n        value: \"skill\",\n      },\n    ],\n  },\n  pagination: {\n    limit: 20,\n  },\n  sorting: [\n    {\n      key: \"created_at\",\n      direction: \"desc\",\n    },\n  ],\n});\n"
@@ -58423,7 +58430,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List project files"
-          source: "curl --get 'https://api.orq.ai/v2/files' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V'\n"
+          source: "curl --get 'https://my.orq.ai/v2/files' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V'\n"
         - lang: "python"
           label: "Python - List project files"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.files.list(\n    limit=25,\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nfor file in page.data:\n    print(file.file_id, file.file_name)\n"
@@ -58456,7 +58463,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Upload retrieval file"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/files' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filename\": \"support-faq.md\",\n    \"content\": \"IyBTdXBwb3J0IEZBUQoKQ29tbW9uIHJlc29sdXRpb25zIGFuZCBlc2NhbGF0aW9uIHBhdGhzLg==\",\n    \"content_type\": \"text/markdown\",\n    \"purpose\": \"FILE_PURPOSE_RETRIEVAL\",\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/files' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filename\": \"support-faq.md\",\n    \"content\": \"IyBTdXBwb3J0IEZBUQoKQ29tbW9uIHJlc29sdXRpb25zIGFuZCBlc2NhbGF0aW9uIHBhdGhzLg==\",\n    \"content_type\": \"text/markdown\",\n    \"purpose\": \"FILE_PURPOSE_RETRIEVAL\",\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n  }'\n"
         - lang: "python"
           label: "Python - Upload retrieval file"
           source: "import base64\nimport os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\ncontent = base64.b64encode(\n    b\"# Support FAQ\\n\\nCommon resolutions and escalation paths.\"\n).decode(\"utf-8\")\n\nresult = client.files.create(\n    filename=\"support-faq.md\",\n    content=content,\n    content_type=\"text/markdown\",\n    purpose=\"FILE_PURPOSE_RETRIEVAL\",\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.file.file_id)\n"
@@ -58491,7 +58498,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Get download URL"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V/content' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V/content' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Get download URL"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.files.get_content(\n    file_id_or_path=\"file_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.download_url)\n"
@@ -58526,7 +58533,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve file metadata"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve file metadata"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.files.get(\n    file_id=\"file_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.file.file_name)\n"
@@ -58560,7 +58567,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete file"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete file"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.files.delete(\n    file_id=\"file_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -58600,7 +58607,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Rename file"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"file_name\": \"support-faq-v2.md\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/files/file_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"file_name\": \"support-faq-v2.md\"\n  }'\n"
         - lang: "python"
           label: "Python - Rename file"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.files.update(\n    file_id=\"file_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    file_name=\"support-faq-v2.md\",\n)\n\nprint(result.file.file_name)\n"
@@ -58667,7 +58674,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List guardrail rules"
-          source: "curl --get 'https://api.orq.ai/v2/guardrail-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/guardrail-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
       security:
         - ApiKey: []
     post:
@@ -58697,7 +58704,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create guardrail rule"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/guardrail-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Protect customer data\",\n    \"description\": \"Blocks sensitive customer data from model output.\",\n    \"enabled\": true,\n    \"guardrails\": [{\n      \"id\": \"orq_pii_detection\",\n      \"execute_on\": \"output\",\n      \"sample_rate\": 1,\n      \"is_guardrail\": true\n    }]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/guardrail-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Protect customer data\",\n    \"description\": \"Blocks sensitive customer data from model output.\",\n    \"enabled\": true,\n    \"guardrails\": [{\n      \"id\": \"orq_pii_detection\",\n      \"execute_on\": \"output\",\n      \"sample_rate\": 1,\n      \"is_guardrail\": true\n    }]\n  }'\n"
         - lang: "python"
           label: "Python - Create guardrail rule"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\nrule = client.guardrail_rules.create(\n    display_name=\"Protect customer data\",\n    description=\"Blocks sensitive customer data from model output.\",\n    enabled=True,\n    guardrails=[{\n        \"id\": \"orq_pii_detection\",\n        \"execute_on\": \"output\",\n        \"sample_rate\": 1,\n        \"is_guardrail\": True,\n    }],\n)\n\nprint(rule._id)\n"
@@ -58733,7 +58740,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List guardrails used by rules"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/guardrail-rules/used-guardrails' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/guardrail-rules/used-guardrails' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/guardrail-rules/{guardrail_rule_id}:
@@ -58764,7 +58771,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve guardrail rule"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -58794,7 +58801,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete guardrail rule"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -58830,7 +58837,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Configure guardrail rule"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"enabled\": true,\n    \"expression\": {\"cel\": \"model == '\\''openai/gpt-5'\\''\"},\n    \"guardrails\": [{\n      \"id\": \"orq_pii_detection\",\n      \"execute_on\": \"output\",\n      \"sample_rate\": 1,\n      \"is_guardrail\": true\n    }]\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/guardrail-rules/grl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"enabled\": true,\n    \"expression\": {\"cel\": \"model == '\\''openai/gpt-5'\\''\"},\n    \"guardrails\": [{\n      \"id\": \"orq_pii_detection\",\n      \"execute_on\": \"output\",\n      \"sample_rate\": 1,\n      \"is_guardrail\": true\n    }]\n  }'\n"
       security:
         - ApiKey: []
   /v2/hub/search:
@@ -58863,7 +58870,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Search hub items"
-          source: "curl --get 'https://api.orq.ai/v2/hub/search' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'q=summarize' \\\n  --data-urlencode 'types=prompt'\n"
+          source: "curl --get 'https://my.orq.ai/v2/hub/search' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'q=summarize' \\\n  --data-urlencode 'types=prompt'\n"
         - lang: "python"
           label: "Python - Search hub items"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.hub.search(\n    q=\"summarize\",\n    types=[\"prompt\"],\n)\n\nfor hit in result.hits:\n    print(hit.document.id, hit.document.display_name)\n"
@@ -58897,7 +58904,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve hub item"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/hub/hub_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/hub/hub_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve hub item"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.hub.get(\n    id=\"hub_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.hub_item.display_name)\n"
@@ -58970,7 +58977,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List identities by tag"
-          source: "curl --get 'https://api.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'search=acme' \\\n  --data-urlencode 'filter_by.tags=enterprise' \\\n  --data-urlencode 'include_metrics=true'\n"
+          source: "curl --get 'https://my.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'search=acme' \\\n  --data-urlencode 'filter_by.tags=enterprise' \\\n  --data-urlencode 'include_metrics=true'\n"
         - lang: "python"
           label: "Python - List identities by tag"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.identities.list(\n    limit=25,\n    search=\"acme\",\n    filter_by={\"tags\": [\"enterprise\"]},\n    include_metrics=True,\n)\n\nfor identity in page.data:\n    print(identity.external_id, identity.display_name)\n"
@@ -59010,7 +59017,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create customer identity"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"customer_12345\",\n    \"display_name\": \"Ada Lovelace\",\n    \"email\": \"ada@example.com\",\n    \"tags\": [\"enterprise\", \"beta\"],\n    \"metadata\": {\n      \"plan\": \"enterprise\",\n      \"region\": \"eu\"\n    }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"customer_12345\",\n    \"display_name\": \"Ada Lovelace\",\n    \"email\": \"ada@example.com\",\n    \"tags\": [\"enterprise\", \"beta\"],\n    \"metadata\": {\n      \"plan\": \"enterprise\",\n      \"region\": \"eu\"\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Create customer identity"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.identities.create(\n    external_id=\"customer_12345\",\n    display_name=\"Ada Lovelace\",\n    email=\"ada@example.com\",\n    tags=[\"enterprise\", \"beta\"],\n    metadata={\n        \"plan\": \"enterprise\",\n        \"region\": \"eu\",\n    },\n)\n\nprint(result.identity.external_id)\n"
@@ -59019,7 +59026,7 @@ paths:
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({\n  apiKey: process.env.ORQ_API_KEY,\n});\n\nconst result = await client.identities.create({\n  externalId: 'customer_12345',\n  displayName: 'Ada Lovelace',\n  email: 'ada@example.com',\n  tags: ['enterprise', 'beta'],\n  metadata: {\n    plan: 'enterprise',\n    region: 'eu',\n  },\n});\n\nconsole.log(result.identity.externalId);\n"
         - lang: "curl"
           label: "Core - Create minimal identity"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"user_9f4b2a\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/identities' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"user_9f4b2a\"\n  }'\n"
         - lang: "python"
           label: "Python - Create minimal identity"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.identities.create(\n    external_id=\"user_9f4b2a\",\n)\n\nprint(result.identity.external_id)\n"
@@ -59066,7 +59073,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve identity with metrics"
-          source: "curl --get 'https://api.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'include_metrics=true'\n"
+          source: "curl --get 'https://my.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'include_metrics=true'\n"
         - lang: "python"
           label: "Python - Retrieve identity with metrics"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.identities.retrieve(\n    id=\"customer_12345\",\n    include_metrics=True,\n)\n\nprint(result.identity.display_name)\nprint(result.identity.metrics.total_requests)\n"
@@ -59102,7 +59109,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete identity"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete identity"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.identities.delete(\n    id=\"customer_12345\",\n)\n"
@@ -59144,7 +59151,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update identity profile"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Ada L.\",\n    \"tags\": [\"enterprise\", \"priority\"],\n    \"metadata\": {\n      \"plan\": \"enterprise\",\n      \"lifecycle\": \"renewal\"\n    }\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/identities/customer_12345' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Ada L.\",\n    \"tags\": [\"enterprise\", \"priority\"],\n    \"metadata\": {\n      \"plan\": \"enterprise\",\n      \"lifecycle\": \"renewal\"\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Update identity profile"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.identities.update(\n    id=\"customer_12345\",\n    display_name=\"Ada L.\",\n    tags=[\"enterprise\", \"priority\"],\n    metadata={\n        \"plan\": \"enterprise\",\n        \"lifecycle\": \"renewal\",\n    },\n)\n\nprint(result.identity.display_name)\n"
@@ -59373,7 +59380,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List MCP gateways"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'status=MCP_GATEWAY_STATUS_ACTIVE'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'status=MCP_GATEWAY_STATUS_ACTIVE'\n"
         - lang: "python"
           label: "Python - List MCP gateways"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list(\n    limit=25,\n    status=\"MCP_GATEWAY_STATUS_ACTIVE\",\n)\n\nfor gateway in page.data:\n    print(gateway.key, gateway.public_url, gateway.exposed_tools_count)\n"
@@ -59408,7 +59415,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create MCP gateway"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"support-desk\",\n    \"display_name\": \"Support Desk\",\n    \"description\": \"Tools the support agent is allowed to call.\",\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n      }\n    ],\n    \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    \"mode\": \"MCP_GATEWAY_MODE_DIRECT\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-gateways' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"support-desk\",\n    \"display_name\": \"Support Desk\",\n    \"description\": \"Tools the support agent is allowed to call.\",\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n      }\n    ],\n    \"tool_naming\": \"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    \"mode\": \"MCP_GATEWAY_MODE_DIRECT\"\n  }'\n"
         - lang: "python"
           label: "Python - Create MCP gateway"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Each link needs an alias and a tool_exposure; both are required.\nresult = client.mcp_gateways.create(\n    key=\"support-desk\",\n    display_name=\"Support Desk\",\n    description=\"Tools the support agent is allowed to call.\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"},\n        },\n    ],\n    tool_naming=\"MCP_TOOL_NAMING_PREFIX_ON_COLLISION\",\n    mode=\"MCP_GATEWAY_MODE_DIRECT\",\n)\n\nprint(result.mcp_gateway.public_url)\n"
@@ -59466,10 +59473,10 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List the tools a gateway exposes"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=100'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=100'\n"
         - lang: "curl"
           label: "Core - List the tools contributed by one server"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'mcp_server_id=01JQ0K5R8N2ZC7X4M9T3V6HWBD'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC/tools' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'mcp_server_id=01JQ0K5R8N2ZC7X4M9T3V6HWBD'\n"
         - lang: "python"
           label: "Python - List the tools a gateway exposes"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_gateways.list_tools(\n    gateway_id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    limit=100,\n)\n\n# exposed_name is what MCP clients call; upstream_tool_name is the original.\nfor tool in page.data:\n    print(tool.exposed_name, \"->\", tool.upstream_tool_name)\n"
@@ -59506,7 +59513,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve an MCP gateway"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an MCP gateway"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_gateways.retrieve(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n\n# public_url is the endpoint MCP clients connect to.\nprint(result.mcp_gateway.public_url, result.mcp_gateway.status)\n"
@@ -59542,7 +59549,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an MCP gateway"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an MCP gateway"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Connected MCP clients start receiving \"gateway not found\".\nclient.mcp_gateways.delete(id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\")\n"
@@ -59584,10 +59591,10 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Narrow the tools a gateway exposes"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": {\n          \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n          \"tool_ids\": [\n            \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n            \"01JQ0KB5P9WF2G7H4J6K8L1NQD\"\n          ]\n        }\n      }\n    ]\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"server_links\": [\n      {\n        \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n        \"alias\": \"github\",\n        \"enabled\": true,\n        \"tool_exposure\": {\n          \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n          \"tool_ids\": [\n            \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n            \"01JQ0KB5P9WF2G7H4J6K8L1NQD\"\n          ]\n        }\n      }\n    ]\n  }'\n"
         - lang: "curl"
           label: "Core - Disable a gateway"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"status\": \"MCP_GATEWAY_STATUS_DISABLED\" }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-gateways/01JQ0M8W4T5YB2Q7N1F6K3PZRC' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{ \"status\": \"MCP_GATEWAY_STATUS_DISABLED\" }'\n"
         - lang: "python"
           label: "Python - Narrow the tools a gateway exposes"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_ids come from McpTool.id. A tool renamed upstream gets a new id\n# on the next sync, which drops it from this allowlist.\nresult = client.mcp_gateways.update(\n    id=\"01JQ0M8W4T5YB2Q7N1F6K3PZRC\",\n    server_links=[\n        {\n            \"mcp_server_id\": \"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n            \"alias\": \"github\",\n            \"enabled\": True,\n            \"tool_exposure\": {\n                \"mode\": \"MCP_TOOL_EXPOSURE_MODE_SELECTED\",\n                \"tool_ids\": [\n                    \"01JQ0KA2M7VD9E4R6T8Y1U3XSB\",\n                    \"01JQ0KB5P9WF2G7H4J6K8L1NQD\",\n                ],\n            },\n        },\n    ],\n)\n\nprint(result.mcp_gateway.exposed_tools_count)\n"
@@ -59639,7 +59646,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List MCP servers"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-servers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'search=github'\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-servers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25' \\\n  --data-urlencode 'search=github'\n"
         - lang: "python"
           label: "Python - List MCP servers"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.mcp_servers.list(\n    limit=25,\n    search=\"github\",\n)\n\nfor server in page.data:\n    print(server.key, server.sync_state.tools_total)\n"
@@ -59674,7 +59681,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create MCP server"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/mcp-servers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"github\",\n    \"display_name\": \"GitHub\",\n    \"description\": \"Repository and issue tools for the platform team.\",\n    \"connection\": {\n      \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n      \"url\": \"https://api.githubcopilot.com/mcp/\"\n    },\n    \"auth\": {\n      \"type\": \"MCP_AUTH_TYPE_STATIC_HEADERS\",\n      \"static_headers\": [\n        { \"key\": \"Authorization\", \"value\": \"Bearer ghp_example_token\" }\n      ]\n    },\n    \"default_tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"github\",\n    \"display_name\": \"GitHub\",\n    \"description\": \"Repository and issue tools for the platform team.\",\n    \"connection\": {\n      \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n      \"url\": \"https://api.githubcopilot.com/mcp/\"\n    },\n    \"auth\": {\n      \"type\": \"MCP_AUTH_TYPE_STATIC_HEADERS\",\n      \"static_headers\": [\n        { \"key\": \"Authorization\", \"value\": \"Bearer ghp_example_token\" }\n      ]\n    },\n    \"default_tool_exposure\": { \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\" }\n  }'\n"
         - lang: "python"
           label: "Python - Create MCP server"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.create(\n    key=\"github\",\n    display_name=\"GitHub\",\n    description=\"Repository and issue tools for the platform team.\",\n    connection={\n        \"type\": \"MCP_CONNECTION_TYPE_HTTP\",\n        \"url\": \"https://api.githubcopilot.com/mcp/\",\n    },\n    auth={\n        \"type\": \"MCP_AUTH_TYPE_STATIC_HEADERS\",\n        \"static_headers\": [\n            {\"key\": \"Authorization\", \"value\": \"Bearer ghp_example_token\"},\n        ],\n    },\n    default_tool_exposure={\"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\"},\n)\n\n# A new server has no tools until it is synced.\nprint(result.mcp_server.key)\n"
@@ -59711,7 +59718,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve an MCP server"
-          source: "curl --get 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --get 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve an MCP server"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.retrieve(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nfor tool in result.mcp_server.tools:\n    print(tool.name, tool.status)\n"
@@ -59747,7 +59754,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete an MCP server"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete an MCP server"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# Fails while any gateway still links this server.\nclient.mcp_servers.delete(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n"
@@ -59789,7 +59796,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update an MCP server"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GitHub (read only)\",\n    \"default_tool_exposure\": {\n      \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n      \"read_only\": true\n    }\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"GitHub (read only)\",\n    \"default_tool_exposure\": {\n      \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n      \"read_only\": true\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Update an MCP server"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# The key is immutable; sending a different one is rejected.\nresult = client.mcp_servers.update(\n    id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    display_name=\"GitHub (read only)\",\n    default_tool_exposure={\n        \"mode\": \"MCP_TOOL_EXPOSURE_MODE_ALL\",\n        \"read_only\": True,\n    },\n)\n\nprint(result.mcp_server.display_name)\n"
@@ -59832,7 +59839,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Test a single tool"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD/tools:test' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tool_name\": \"search_issues\",\n    \"arguments\": { \"query\": \"repo:orq-ai/orq-cli is:open label:bug\" }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD/tools:test' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tool_name\": \"search_issues\",\n    \"arguments\": { \"query\": \"repo:orq-ai/orq-cli is:open label:bug\" }\n  }'\n"
         - lang: "python"
           label: "Python - Test a single tool"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\n# tool_name is the upstream name, not a gateway's namespaced exposed_name.\nresult = client.mcp_servers.test_tool(\n    id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\",\n    tool_name=\"search_issues\",\n    arguments={\"query\": \"repo:orq-ai/orq-cli is:open label:bug\"},\n)\n\nprint(result.result.ok, result.result.latency_ms)\n"
@@ -59875,10 +59882,10 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Sync the tool catalog"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{}'\n"
         - lang: "curl"
           label: "Core - Sync a server that uses template variables"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"discovery_variables\": { \"github_token\": \"ghp_example_token\" }\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/mcp-servers/01JQ0K5R8N2ZC7X4M9T3V6HWBD:sync' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"discovery_variables\": { \"github_token\": \"ghp_example_token\" }\n  }'\n"
         - lang: "python"
           label: "Python - Sync the tool catalog"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.mcp_servers.sync(id=\"01JQ0K5R8N2ZC7X4M9T3V6HWBD\")\n\nstate = result.mcp_server.sync_state\n# A sync that discovers nothing still reports SYNCED with tools_total 0.\nprint(state.status, state.tools_added, state.tools_removed)\n"
@@ -60002,7 +60009,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List the model catalog"
-          source: "curl --get 'https://api.orq.ai/v2/model-catalog' \\\n  --data-urlencode 'provider=openai' \\\n  --data-urlencode 'limit=10'\n"
+          source: "curl --get 'https://my.orq.ai/v2/model-catalog' \\\n  --data-urlencode 'provider=openai' \\\n  --data-urlencode 'limit=10'\n"
         - lang: "python"
           label: "Python - List the model catalog"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.model_catalog.list(\n    provider=\"openai\",\n    limit=10,\n)\n\nfor model in page.data:\n    print(model.id, model.name)\n"
@@ -60127,7 +60134,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List model catalog offerings"
-          source: "curl --get 'https://api.orq.ai/v2/model-catalog/anthropic/claude-opus-4-7/offerings'\n"
+          source: "curl --get 'https://my.orq.ai/v2/model-catalog/anthropic/claude-opus-4-7/offerings'\n"
         - lang: "python"
           label: "Python - List model catalog offerings"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.model_catalog.list_offerings(\n    model=\"anthropic/claude-opus-4-7\",\n)\n\nfor offering in page.data:\n    print(offering.provider.id, offering.id)\n"
@@ -60166,7 +60173,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve a model catalog entry"
-          source: "curl --get 'https://api.orq.ai/v2/model-catalog/openai/gpt-4o'\n"
+          source: "curl --get 'https://my.orq.ai/v2/model-catalog/openai/gpt-4o'\n"
         - lang: "python"
           label: "Python - Retrieve a model catalog entry"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.model_catalog.get(\n    id=\"openai/gpt-4o\",\n)\n\nprint(result.model.name, result.model.pricing)\n"
@@ -60228,7 +60235,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List notifiers"
-          source: "curl --get 'https://api.orq.ai/v2/notifiers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/notifiers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'project_id=proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List notifiers"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.notifiers.list(\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    limit=25,\n)\n\nfor notifier in page.data:\n    print(notifier._id, notifier.display_name)\n"
@@ -60261,7 +60268,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create email notifier"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/notifiers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"display_name\": \"Production alerts\",\n    \"type\": \"NOTIFIER_TYPE_EMAIL\",\n    \"emails\": [\"ops@example.com\", \"alerts@example.com\"],\n    \"metadata\": {\"environment\": \"production\"}\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/notifiers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"display_name\": \"Production alerts\",\n    \"type\": \"NOTIFIER_TYPE_EMAIL\",\n    \"emails\": [\"ops@example.com\", \"alerts@example.com\"],\n    \"metadata\": {\"environment\": \"production\"}\n  }'\n"
         - lang: "python"
           label: "Python - Create email notifier"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.notifiers.create(\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    display_name=\"Production alerts\",\n    type=\"NOTIFIER_TYPE_EMAIL\",\n    emails=[\"ops@example.com\", \"alerts@example.com\"],\n    metadata={\"environment\": \"production\"},\n)\n\nprint(result.notifier._id)\n"
@@ -60295,7 +60302,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve notifier"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve notifier"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.notifiers.get(\n    notifier_id=\"notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.notifier.display_name)\n"
@@ -60328,7 +60335,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete notifier"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete notifier"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.notifiers.delete(\n    notifier_id=\"notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -60367,7 +60374,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update notifier"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Production incident alerts\",\n    \"emails\": [\"incidents@example.com\"]\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/notifiers/notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Production incident alerts\",\n    \"emails\": [\"incidents@example.com\"]\n  }'\n"
         - lang: "python"
           label: "Python - Update notifier"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.notifiers.update(\n    notifier_id=\"notifier_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    display_name=\"Production incident alerts\",\n    emails=[\"incidents@example.com\"],\n)\n\nprint(result.notifier.display_name)\n"
@@ -60412,7 +60419,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List projects"
-          source: "curl --get 'https://api.orq.ai/v2/projects' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/projects' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List projects"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.projects.list(\n    limit=25,\n)\n\nfor project in page.data:\n    print(project.project_id, project.name)\n"
@@ -60445,7 +60452,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create project"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/projects' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Customer Success\",\n    \"description\": \"Production automations for customer success workflows\",\n    \"teams\": [\"team_support\", \"team_growth\"]\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/projects' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Customer Success\",\n    \"description\": \"Production automations for customer success workflows\",\n    \"teams\": [\"team_support\", \"team_growth\"]\n  }'\n"
         - lang: "python"
           label: "Python - Create project"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.projects.create(\n    name=\"Customer Success\",\n    description=\"Production automations for customer success workflows\",\n    teams=[\"team_support\", \"team_growth\"],\n)\n\nprint(result.project.project_id)\n"
@@ -60480,7 +60487,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve project"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve project"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.projects.get(\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.project.name)\n"
@@ -60514,7 +60521,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete project"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete project"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.projects.delete(\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -60554,7 +60561,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update project"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Customer Success Production\",\n    \"description\": \"Production support and retention automations\",\n    \"teams\": [\"team_support\"]\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/projects/proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"name\": \"Customer Success Production\",\n    \"description\": \"Production support and retention automations\",\n    \"teams\": [\"team_support\"]\n  }'\n"
         - lang: "python"
           label: "Python - Update project"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.projects.update(\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    name=\"Customer Success Production\",\n    description=\"Production support and retention automations\",\n    teams=[\"team_support\"],\n)\n\nprint(result.project.name)\n"
@@ -60617,7 +60624,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List routing rules"
-          source: "curl --get 'https://api.orq.ai/v2/routing-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/routing-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List routing rules"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\npage = client.routing_rules.list(limit=25)\n\nfor rule in page.data:\n    print(rule._id, rule.display_name)\n"
@@ -60653,7 +60660,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create routing rule"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/routing-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Private customer traffic\",\n    \"description\": \"Routes private customer requests through the guarded model path.\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/routing-rules' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Private customer traffic\",\n    \"description\": \"Routes private customer requests through the guarded model path.\"\n  }'\n"
         - lang: "python"
           label: "Python - Create routing rule"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nrule = client.routing_rules.create(\n    display_name=\"Private customer traffic\",\n    description=\"Routes private customer requests through the guarded model path.\",\n)\n\nprint(rule._id)\n"
@@ -60689,7 +60696,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List models used by routing rules"
-          source: "curl --get 'https://api.orq.ai/v2/routing-rules/used-models' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --get 'https://my.orq.ai/v2/routing-rules/used-models' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - List routing rule models"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\nresult = client.routing_rules.list_used_models()\n\nprint(result.models)\n"
@@ -60726,7 +60733,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve routing rule"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve routing rule"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\nrule = client.routing_rules.retrieve(\n    routing_rule_id=\"rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(rule.display_name)\n"
@@ -60758,7 +60765,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete routing rule"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete routing rule"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\nclient.routing_rules.delete(\n    routing_rule_id=\"rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -60800,7 +60807,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Configure routing rule"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"enabled\": true,\n    \"priority\": 10,\n    \"models_config\": {\n      \"mode\": \"fallback\",\n      \"models\": [{\"model\": \"openai/gpt-5\"}]\n    }\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/routing-rules/rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"enabled\": true,\n    \"priority\": 10,\n    \"models_config\": {\n      \"mode\": \"fallback\",\n      \"models\": [{\"model\": \"openai/gpt-5\"}]\n    }\n  }'\n"
         - lang: "python"
           label: "Python - Configure routing rule"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\nrule = client.routing_rules.update(\n    routing_rule_id=\"rrl_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    enabled=True,\n    priority=10,\n    models_config={\n        \"mode\": \"fallback\",\n        \"models\": [{\"model\": \"openai/gpt-5\"}],\n    },\n)\n\nprint(rule.updated_at)\n"
@@ -60836,7 +60843,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create session"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/sessions' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"duration\": 1240,\n    \"contact_ids\": [],\n    \"billing\": {\n      \"input_cost\": 0.0012,\n      \"output_cost\": 0.0024,\n      \"total_cost\": 0.0036\n    },\n    \"usage\": {\n      \"prompt_tokens\": 480,\n      \"completion_tokens\": 132,\n      \"total_tokens\": 612\n    },\n    \"traces_count\": 1,\n    \"tags\": [\"support\"],\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/sessions' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"external_id\": \"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"duration\": 1240,\n    \"contact_ids\": [],\n    \"billing\": {\n      \"input_cost\": 0.0012,\n      \"output_cost\": 0.0024,\n      \"total_cost\": 0.0036\n    },\n    \"usage\": {\n      \"prompt_tokens\": 480,\n      \"completion_tokens\": 132,\n      \"total_tokens\": 612\n    },\n    \"traces_count\": 1,\n    \"tags\": [\"support\"],\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\"\n  }'\n"
         - lang: "python"
           label: "Python - Create session"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.sessions.create(\n    external_id=\"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    duration=1240,\n    contact_ids=[],\n    billing={\n        \"input_cost\": 0.0012,\n        \"output_cost\": 0.0024,\n        \"total_cost\": 0.0036,\n    },\n    usage={\n        \"prompt_tokens\": 480,\n        \"completion_tokens\": 132,\n        \"total_tokens\": 612,\n    },\n    traces_count=1,\n    tags=[\"support\"],\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.external_id)\n"
@@ -60872,7 +60879,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Count sessions"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/sessions/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filters\": {\n      \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n      \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n      \"tags\": [\"support\"]\n    },\n    \"limit\": 25,\n    \"page\": 1\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/sessions/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filters\": {\n      \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n      \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n      \"tags\": [\"support\"]\n    },\n    \"limit\": 25,\n    \"page\": 1\n  }'\n"
         - lang: "python"
           label: "Python - Count sessions"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.sessions.get_count(\n    filters={\n        \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n        \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n        \"tags\": [\"support\"],\n    },\n    limit=25,\n    page=1,\n)\n\nprint(result.count)\n"
@@ -60908,7 +60915,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List sessions"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/sessions/query' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filters\": {\n      \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n      \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n      \"tags\": [\"support\"]\n    },\n    \"limit\": 25,\n    \"page\": 1\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/sessions/query' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"filters\": {\n      \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n      \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n      \"tags\": [\"support\"]\n    },\n    \"limit\": 25,\n    \"page\": 1\n  }'\n"
         - lang: "python"
           label: "Python - List sessions"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.sessions.list(\n    filters={\n        \"interval\": \"SESSION_INTERVAL_LAST_24_HOURS\",\n        \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n        \"tags\": [\"support\"],\n    },\n    limit=25,\n    page=1,\n)\n\nfor session in page.data:\n    print(session.external_id, session.traces_count)\n"
@@ -60940,7 +60947,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List session tags"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/sessions/tags' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/sessions/tags' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - List session tags"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.sessions.list_tags()\n\nprint(result)\n"
@@ -60976,7 +60983,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve session"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve session"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.sessions.get(\n    session_id=\"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.traces_count)\n"
@@ -61007,7 +61014,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete session"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete session"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.sessions.delete(\n    session_id=\"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -61048,7 +61055,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update session"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tags\": [\"support\", \"escalated\"],\n    \"traces_count\": 3\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/sessions/thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"tags\": [\"support\", \"escalated\"],\n    \"traces_count\": 3\n  }'\n"
         - lang: "python"
           label: "Python - Update session"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.sessions.update(\n    session_id=\"thread_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    tags=[\"support\", \"escalated\"],\n    traces_count=3,\n)\n\nprint(result.tags)\n"
@@ -61093,7 +61100,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List skills"
-          source: "curl --get 'https://api.orq.ai/v2/skills' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/skills' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "python"
           label: "Python - List skills"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.skills.list(\n    limit=25,\n)\n\nfor skill in page.data:\n    print(skill.skill_id, skill.display_name)\n"
@@ -61126,7 +61133,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create project skill"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/skills' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"summarize_support_ticket\",\n    \"description\": \"Summarize support tickets into concise resolution notes.\",\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"path\": \"/customer-success/skills/summarize-support-ticket\",\n    \"tags\": [\"support\", \"summarization\"],\n    \"instructions\": \"Read the ticket conversation and return the problem, customer sentiment, and proposed next step.\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/skills' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"summarize_support_ticket\",\n    \"description\": \"Summarize support tickets into concise resolution notes.\",\n    \"project_id\": \"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"path\": \"/customer-success/skills/summarize-support-ticket\",\n    \"tags\": [\"support\", \"summarization\"],\n    \"instructions\": \"Read the ticket conversation and return the problem, customer sentiment, and proposed next step.\"\n  }'\n"
         - lang: "python"
           label: "Python - Create project skill"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.skills.create(\n    display_name=\"summarize_support_ticket\",\n    description=\"Summarize support tickets into concise resolution notes.\",\n    project_id=\"proj_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    path=\"/customer-success/skills/summarize-support-ticket\",\n    tags=[\"support\", \"summarization\"],\n    instructions=(\n        \"Read the ticket conversation and return the problem, \"\n        \"customer sentiment, and proposed next step.\"\n    ),\n)\n\nprint(result.skill.skill_id)\n"
@@ -61161,7 +61168,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve skill"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Retrieve skill"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.skills.get(\n    skill_id=\"skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n\nprint(result.skill.display_name)\n"
@@ -61195,7 +61202,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete skill"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "python"
           label: "Python - Delete skill"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nclient.skills.delete(\n    skill_id=\"skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n)\n"
@@ -61235,7 +61242,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update skill instructions"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"description\": \"Summarize support tickets for escalation handoff.\",\n    \"tags\": [\"support\", \"handoff\"],\n    \"instructions\": \"Return the issue summary, urgency, attempted fixes, and recommended owner.\"\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/skills/skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"description\": \"Summarize support tickets for escalation handoff.\",\n    \"tags\": [\"support\", \"handoff\"],\n    \"instructions\": \"Return the issue summary, urgency, attempted fixes, and recommended owner.\"\n  }'\n"
         - lang: "python"
           label: "Python - Update skill instructions"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\nresult = client.skills.update(\n    skill_id=\"skill_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    description=\"Summarize support tickets for escalation handoff.\",\n    tags=[\"support\", \"handoff\"],\n    instructions=(\n        \"Return the issue summary, urgency, attempted fixes, \"\n        \"and recommended owner.\"\n    ),\n)\n\nprint(result.skill.version)\n"
@@ -61291,7 +61298,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List Smart Routers"
-          source: "curl --get 'https://api.orq.ai/v2/smart-routers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
+          source: "curl --get 'https://my.orq.ai/v2/smart-routers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'limit=25'\n"
         - lang: "typescript"
           label: "Node.js - List Smart Routers"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst page = await client.smartRouters.list({ limit: 25 });\n\nfor (const router of page.data) {\n  console.log(router.key, router.profile);\n}\n"
@@ -61321,7 +61328,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create a Smart Router"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/smart-routers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"production-assistant\",\n    \"models\": [\n      \"anthropic/claude-opus-5\",\n      \"openai/gpt-5.4-mini\"\n    ],\n    \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/smart-routers' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"key\": \"production-assistant\",\n    \"models\": [\n      \"anthropic/claude-opus-5\",\n      \"openai/gpt-5.4-mini\"\n    ],\n    \"profile\": \"SMART_ROUTER_PROFILE_QUALITY\"\n  }'\n"
         - lang: "typescript"
           label: "Node.js - Create a Smart Router"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.smartRouters.create({\n  key: 'production-assistant',\n  models: ['anthropic/claude-opus-5', 'openai/gpt-5.4-mini'],\n  profile: 'SMART_ROUTER_PROFILE_QUALITY',\n});\n\nconsole.log(result.smartRouter.modelRef);\n"
@@ -61352,7 +61359,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve a Smart Router"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "typescript"
           label: "Node.js - Retrieve a Smart Router"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nconst result = await client.smartRouters.get({\n  smartRouterId: '019d-smart-router-id',\n});\n\nconsole.log(result.smartRouter.key);\n"
@@ -61382,7 +61389,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete a Smart Router"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
         - lang: "typescript"
           label: "Node.js - Delete a Smart Router"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nawait client.smartRouters.delete({\n  smartRouterId: '019d-smart-router-id',\n});\n"
@@ -61419,7 +61426,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update a Smart Router"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"profile\":\"SMART_ROUTER_PROFILE_COST\"}'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/smart-routers/019d-smart-router-id' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"profile\":\"SMART_ROUTER_PROFILE_COST\"}'\n"
         - lang: "typescript"
           label: "Node.js - Update a Smart Router"
           source: "import { Orq } from '@orq-ai/node';\n\nconst client = new Orq({ apiKey: process.env.ORQ_API_KEY });\nawait client.smartRouters.update(\n  { profile: 'SMART_ROUTER_PROFILE_COST' },\n  '019d-smart-router-id',\n);\n"
@@ -61487,7 +61494,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - List filtered webhooks"
-          source: "curl --get 'https://api.orq.ai/v2/webhooks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'search=production' \\\n  --data-urlencode 'event=llm.response' \\\n  --data-urlencode 'content_type=application/json' \\\n  --data-urlencode 'enabled=true' \\\n  --data-urlencode 'page=1' \\\n  --data-urlencode 'limit=20' \\\n  --data-urlencode 'sort=created' \\\n  --data-urlencode 'direction=desc'\n"
+          source: "curl --get 'https://my.orq.ai/v2/webhooks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --data-urlencode 'search=production' \\\n  --data-urlencode 'event=llm.response' \\\n  --data-urlencode 'content_type=application/json' \\\n  --data-urlencode 'enabled=true' \\\n  --data-urlencode 'page=1' \\\n  --data-urlencode 'limit=20' \\\n  --data-urlencode 'sort=created' \\\n  --data-urlencode 'direction=desc'\n"
         - lang: "python"
           label: "Python - List filtered webhooks"
           source: "import os\nfrom orq_ai_sdk import Orq\n\nclient = Orq(api_key=os.environ[\"ORQ_API_KEY\"])\n\npage = client.webhooks.list(\n    search=\"production\",\n    event=\"llm.response\",\n    content_type=\"application/json\",\n    enabled=True,\n    page=1,\n    limit=20,\n    sort=\"created\",\n    direction=\"desc\",\n)\n\nprint(f\"{page.count} matching webhooks\")\nfor webhook in page.items:\n    print(webhook._id, webhook.display_name)\nprint(f\"Has more: {page.has_more}\")\n"
@@ -61520,7 +61527,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Create webhook"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/webhooks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"_id\": \"webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"url\": \"https://example.com/orq-webhook\",\n    \"content_type\": \"application/json\",\n    \"display_name\": \"Production alerts\",\n    \"events\": [\"deployment.invoked\"],\n    \"secret\": \"orq_wh_example\",\n    \"enabled\": true\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/webhooks' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"_id\": \"webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V\",\n    \"url\": \"https://example.com/orq-webhook\",\n    \"content_type\": \"application/json\",\n    \"display_name\": \"Production alerts\",\n    \"events\": [\"deployment.invoked\"],\n    \"secret\": \"orq_wh_example\",\n    \"enabled\": true\n  }'\n"
       security:
         - ApiKey: []
   /v2/webhooks/count:
@@ -61542,7 +61549,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Count webhooks"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/webhooks/count' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/webhooks/query:
@@ -61571,7 +61578,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Query webhooks"
-          source: "curl --request POST \\\n  --url 'https://api.orq.ai/v2/webhooks/query' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"sortingProps\": [{\"key\": \"created\", \"direction\": \"desc\"}],\n    \"filters\": []\n  }'\n"
+          source: "curl --request POST \\\n  --url 'https://my.orq.ai/v2/webhooks/query' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"sortingProps\": [{\"key\": \"created\", \"direction\": \"desc\"}],\n    \"filters\": []\n  }'\n"
       security:
         - ApiKey: []
   /v2/webhooks/secret:
@@ -61593,7 +61600,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Generate webhook secret"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/secret' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/webhooks/secret' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
   /v2/webhooks/{id}:
@@ -61621,7 +61628,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Retrieve webhook"
-          source: "curl --request GET \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request GET \\\n  --url 'https://my.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     delete:
@@ -61648,7 +61655,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Delete webhook"
-          source: "curl --request DELETE \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
+          source: "curl --request DELETE \\\n  --url 'https://my.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\"\n"
       security:
         - ApiKey: []
     patch:
@@ -61681,7 +61688,7 @@ paths:
       x-code-samples:
         - lang: "curl"
           label: "Core - Update webhook"
-          source: "curl --request PATCH \\\n  --url 'https://api.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Updated alerts\",\n    \"enabled\": false\n  }'\n"
+          source: "curl --request PATCH \\\n  --url 'https://my.orq.ai/v2/webhooks/webhook_01HZXW2K7Y8Q9M0N1P2R3S4T5V' \\\n  --header \"Authorization: Bearer $ORQ_API_KEY\" \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"display_name\": \"Updated alerts\",\n    \"enabled\": false\n  }'\n"
       security:
         - ApiKey: []
   /v2/workspaces:
