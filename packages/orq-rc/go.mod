@@ -1,6 +1,6 @@
 module orq-rc
 
-go 1.25.0
+go 1.26.0
 
 // The rc CLI shares the root module's hand-written custom commands
 // (cli/custom) and only swaps in its own generated command set.
@@ -50,7 +50,7 @@ require (
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
