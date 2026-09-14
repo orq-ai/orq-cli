@@ -1,14 +1,17 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"time"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
+	"orq/cli/custom/launch"
 )
 
 // An explicit `orq update` may wait longer than the passive notice: the user
@@ -18,13 +21,16 @@ const updateFetchTimeout = 10 * time.Second
 // Overridable for tests, which must not shell out to the real npm or run the
 // real installer.
 //
-// The child's stdout is routed to stderr: npm's and install.sh's progress is
-// diagnostics, while stdout carries this command's own result, which `-o json`
-// promises is parseable.
-var runUpdateCommand = func(ctx context.Context, name string, args ...string) error {
+// out takes both of the child's streams. Callers pass stderr to show the child
+// as it runs, or a buffer to decide later whether it is worth showing; either
+// way it is never stdout, which carries this command's own result and which
+// `-o json` promises is parseable. env is merged over this process's
+// environment, so a child still sees ORQ_CLI_INSTALL_DIR and the rest.
+var runUpdateCommand = func(ctx context.Context, env map[string]string, out io.Writer, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
+	cmd.Stdout, cmd.Stderr = out, out
+	cmd.Env = launch.MergeEnv(os.Environ(), env)
 	return cmd.Run()
 }
 
@@ -78,19 +84,28 @@ func runUpdate(cmd *cobra.Command, checkOnly bool) error {
 		return emit(map[string]any{"install_method": string(installMethod), "from": current, "to": current, "updated": false})
 	}
 
-	// Both install methods install this exact version rather than resolving
-	// "newest" a second time from their own source. The version reported here is then the
-	// version that lands, and an rc build is not silently swapped for the older
-	// stable release that "latest" means to npm and to install.sh.
-	switch installMethod {
-	case methodNPM:
-		err = updateViaNPM(cmd.Context(), latest)
-	case methodInstaller:
-		err = updateViaInstaller(cmd.Context(), latest)
-	default:
+	if installMethod == methodUnknown {
 		return fmt.Errorf("cannot update: this binary was not installed by install.sh or npm (found at %s)\n"+
 			"  npm install:       npm install -g %s@latest\n"+
 			"  install.sh:        %s", path, npmPackage, installerCmd)
+	}
+
+	// Said before the work, not only after it: npm and install.sh can take a
+	// while, and until one of them finishes nothing on screen names the two
+	// versions involved. On stderr, beside the child's own output, so stdout
+	// still carries only this command's result.
+	if wantsHumanView(cmd) {
+		fmt.Fprintf(bartolocli.Stderr, "Updating orq %s -> %s (%s)\n", current, latest, installMethod)
+	}
+
+	// Both install methods install this exact version rather than resolving
+	// "newest" a second time from their own source. The version reported here is
+	// then the version that lands, and an rc build is not silently swapped for
+	// the older stable release that "latest" means to npm and to install.sh.
+	if installMethod == methodNPM {
+		err = updateViaNPM(cmd.Context(), latest)
+	} else {
+		err = updateViaInstaller(cmd.Context(), latest)
 	}
 	if err != nil {
 		return err
@@ -127,7 +142,14 @@ func updateViaNPM(ctx context.Context, version string) error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return fmt.Errorf("this binary was installed with npm, but npm is not on PATH. Run:\n  npm install -g %s", target)
 	}
-	if err := runUpdateCommand(ctx, "npm", "install", "-g", target); err != nil {
+	// Captured rather than shown, and replayed only if npm fails. No --loglevel
+	// does this: `error` drops npm's warnings while still printing "changed 2
+	// packages in 2s" (verified on npm 10.9), and `silent` swallows the E404 or
+	// EACCES that is the only thing explaining a failure. Success here is
+	// already reported by the two lines this command prints itself.
+	var output bytes.Buffer
+	if err := runUpdateCommand(ctx, nil, &output, "npm", "install", "-g", target); err != nil {
+		_, _ = io.Copy(bartolocli.Stderr, &output)
 		return fmt.Errorf("npm install failed: %w\nA global install needs write access to npm's prefix; run it yourself, with sudo if that is how your npm is set up:\n  npm install -g %s", err, target)
 	}
 	return nil
@@ -144,14 +166,19 @@ func updateViaNPM(ctx context.Context, version string) error {
 // ponytail: the installer is the update mechanism; --no-modify-path/--no-setup
 // keep it to the one job, since PATH and config are already done.
 func updateViaInstaller(ctx context.Context, version string) error {
-	// install.sh reads ORQ_CLI_INSTALL_DIR itself and the child inherits our
-	// environment, so this run adds nothing to it and the adapter can drop the
-	// helper's env argument.
-	run := func(ctx context.Context, _ map[string]string, name string, args ...string) error {
-		return runUpdateCommand(ctx, name, args...)
+	// The installer streams: it downloads ~25 MB and verifies a checksum, and
+	// what it still prints in quiet mode is a warning worth seeing as it
+	// happens rather than after the fact.
+	run := func(ctx context.Context, env map[string]string, name string, args ...string) error {
+		return runUpdateCommand(ctx, env, bartolocli.Stderr, name, args...)
 	}
 	return runShellInstaller(ctx, run, installerSpec{
-		URL:        installerURL,
+		URL: installerURL,
+		// ORQ_CLI_QUIET rather than a flag: this downloads whatever install.sh
+		// cli.orq.ai currently serves, and a script published before quiet mode
+		// existed would reject an unknown flag and fail the update outright,
+		// where it ignores an unknown variable.
+		Env:        map[string]string{"ORQ_CLI_QUIET": "1"},
 		Args:       []string{"--no-modify-path", "--no-setup", "--version", "v" + version},
 		Needs:      []string{"curl", "sh"},
 		TempPrefix: "orq-update-",

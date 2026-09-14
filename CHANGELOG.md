@@ -117,6 +117,19 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: `orq update` says what it is doing, and the child installer stops
+  greeting you.** The versions are printed before the install starts
+  (`Updating orq 8.0.0 -> 8.5.2 (npm)`) rather than only once it finishes, so a
+  slow npm or download is no longer an unexplained wait. npm's own output is
+  captured and replayed only if npm fails, which drops `changed 2 packages in
+  2s` from a successful update while keeping the E404 or EACCES that explains a
+  failed one. install.sh is run in a new quiet mode that leaves out its banner,
+  its installer/platform/version block, the download progress bar and the
+  next-steps epilogue — all of which introduce a first install, not an in-place
+  update — while every `!` warning and every error still prints. `-o json` is
+  unchanged. The quiet mode is available to anyone running install.sh directly
+  as `ORQ_CLI_QUIET=1`.
+
 ## [8.5.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.5.0) — 2026-09-10
 
 - **Added: `orq launch gemini`.** Gemini CLI joins the launch agents, wired

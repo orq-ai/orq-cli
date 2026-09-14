@@ -270,6 +270,37 @@ jobs:
             exit 1
           fi
           "$HOME/orq/orq" --version | grep -q 0.0.0-sentinel
+      - name: quiet mode prints nothing on a clean install
+        # `orq update` runs the installer this way and reports the version
+        # change itself; a banner there is a fresh-install greeting on an
+        # in-place upgrade. Both streams are checked: the progress bar is on
+        # stderr, so a stdout-only assertion would pass with it still drawn.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/quiet-home"
+          mkdir -p "$HOME"
+          ORQ_CLI_QUIET=1 SHELL=/bin/bash setsid dash install.sh \
+            --no-setup --no-modify-path --install-dir "$HOME/orq" \
+            < /dev/null > "$RUNNER_TEMP/quiet.out" 2> "$RUNNER_TEMP/quiet.err"
+          test -x "$HOME/orq/orq"
+          for stream in out err; do
+            if [ -s "$RUNNER_TEMP/quiet.$stream" ]; then
+              echo "quiet install printed on std$stream:" >&2
+              cat "$RUNNER_TEMP/quiet.$stream" >&2
+              exit 1
+            fi
+          done
+      - name: quiet mode still warns
+        # The other half of the contract, and the half a silence assertion
+        # cannot check: warn() lines survive quiet mode. An unrecognised $SHELL
+        # is the one warning reachable without breaking the install.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/quiet-warn-home"
+          mkdir -p "$HOME"
+          out=$(ORQ_CLI_QUIET=1 SHELL=/nonexistent/shell setsid dash install.sh \
+            --no-setup --install-dir "$HOME/orq" < /dev/null 2>&1)
+          printf '%s\n' "$out" | grep -q '! PATH not updated (unrecognised shell'
       - name: reject non-ASCII in output
         # Covers only the static --help text; an ungated glyph in the install flow itself would still pass.
         run: |
