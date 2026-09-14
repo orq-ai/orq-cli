@@ -2129,6 +2129,43 @@ func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
 	}
 }
 
+// The credential-free setup path has already collected the agent, capability,
+// and scope selections when it hands off to connect. That must not be confused
+// with consent to a later destructive question: an existing skill still needs
+// its own confirmation before it can be replaced.
+func TestCredentialFreeSetupDoesNotInventOverwriteConsent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	resetSetupMemos(t)
+	if bartolocli.Formatter == nil {
+		bartolocli.Formatter = bartolocli.NewDefaultFormatter(false, false)
+		t.Cleanup(func() { bartolocli.Formatter = nil })
+	}
+
+	names, err := skills.Names()
+	if err != nil || len(names) == 0 {
+		t.Fatalf("skills.Names: %v %v", names, err)
+	}
+	foreign := filepath.Join(home, ".agents", "skills", names[0])
+	if err := os.MkdirAll(foreign, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	foreignFile := filepath.Join(foreign, "SKILL.md")
+	if err := os.WriteFile(foreignFile, []byte("user-owned"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := connectCredentialFreeSelection(NewSetupCommand(), &setupOptions{scope: scopeGlobal},
+		[]string{"codex"}, []string{capSkills}); err != nil {
+		t.Fatalf("credential-free setup handoff: %v", err)
+	}
+	if got := string(mustRead(t, foreignFile)); got != "user-owned" {
+		t.Errorf("setup replaced an existing skill without overwrite consent: %q", got)
+	}
+}
+
 // mcpMachine is a machine with one agent's directory and nothing else, ready
 // for a run that needs no credential: an MCP entry is a URL, so nothing in
 // these tests may reach for a key.

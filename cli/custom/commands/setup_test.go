@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/viper"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/skills"
 )
 
 // chdir moves into dir for the duration of the test.
@@ -691,6 +692,73 @@ func TestGatewayWiringBranch(t *testing.T) {
 			}
 			if !strings.Contains(out.String(), "no models to offer") {
 				t.Errorf("gateway branch not entered\noutput:\n%s", out.String())
+			}
+		})
+	}
+}
+
+func TestSkillInstallAsksBeforeOverwritingExistingSkills(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		overwrite bool
+	}{
+		{name: "accepted", overwrite: true},
+		{name: "declined", overwrite: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			chdir(t, t.TempDir())
+
+			names, err := skills.Names()
+			if err != nil || len(names) == 0 {
+				t.Fatalf("skills.Names: %v %v", names, err)
+			}
+			foreign := filepath.Join(home, ".agents", "skills", names[0])
+			if err := os.MkdirAll(foreign, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			foreignFile := filepath.Join(foreign, "SKILL.md")
+			if err := os.WriteFile(foreignFile, []byte("user-owned"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			asked := 0
+			opts := &setupOptions{
+				noInput:   true,
+				noGateway: true,
+				agents:    []string{"codex"},
+				caps:      []string{capSkills},
+				confirmFn: func(message string, def bool) bool {
+					asked++
+					if !strings.Contains(message, "existing skill") || def {
+						t.Errorf("confirmation = %q (default %v), want an existing-skills prompt defaulting to no", message, def)
+					}
+					return tc.overwrite
+				},
+			}
+			if _, err := instrumentAgents(&reporter{w: &strings.Builder{}}, nil, nil, opts); err != nil {
+				t.Fatalf("instrumentAgents: %v", err)
+			}
+			if asked != 1 {
+				t.Fatalf("prompted %d times, want once", asked)
+			}
+
+			if tc.overwrite {
+				if got := string(mustRead(t, foreignFile)); got == "user-owned" {
+					t.Errorf("accepted overwrite left the foreign skill in place")
+				}
+			} else {
+				info, err := os.Lstat(foreign)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if info.Mode()&os.ModeSymlink != 0 {
+					t.Errorf("declined overwrite replaced the foreign directory")
+				}
+				if got := string(mustRead(t, foreignFile)); got != "user-owned" {
+					t.Errorf("declined overwrite changed the foreign skill to %q", got)
+				}
 			}
 		})
 	}

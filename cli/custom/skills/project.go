@@ -52,19 +52,80 @@ func linkMode() string {
 // The lock is what keeps a concurrent `orq launch` from losing this install's
 // records (see lock.go); the work itself is in install.
 func Install(agents []string, scope Scope) (*Result, error) {
+	return installReplacing(agents, scope, nil)
+}
+
+// InstallReplacing is Install with explicit permission to replace foreign
+// paths whose names collide with bundled skills. Only the paths supplied are
+// replaced, so a new collision appearing after an interactive preflight is
+// still preserved. Callers must obtain permission from the user first;
+// Install remains the safe default for every unattended caller.
+func InstallReplacing(agents []string, scope Scope, paths []string) (*Result, error) {
+	replace := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		replace[filepath.Clean(path)] = true
+	}
+	return installReplacing(agents, scope, replace)
+}
+
+func installReplacing(agents []string, scope Scope, replace map[string]bool) (*Result, error) {
 	if scope == ScopeBoth {
 		return &Result{}, errors.New("an install writes one scope; pick global or local")
 	}
 	res := &Result{}
 	err := withManifestLock(func() error {
 		var err error
-		res, err = install(agents, scope)
+		res, err = install(agents, scope, replace)
 		return err
 	})
 	return res, err
 }
 
-func install(agents []string, scope Scope) (*Result, error) {
+// Conflicts returns existing skill paths an install would preserve because
+// they are not owned by orq. It is read-only, so interactive callers can ask
+// once before deciding whether to use Install or InstallReplacing.
+func Conflicts(agents []string, scope Scope) ([]string, error) {
+	if scope == ScopeBoth {
+		return nil, errors.New("an install writes one scope; pick global or local")
+	}
+	var conflicts []string
+	err := withManifestLock(func() error {
+		targets, err := Targets(agents, scope)
+		if err != nil {
+			return err
+		}
+		names, err := Names()
+		if err != nil {
+			return err
+		}
+		m, err := LoadManifest()
+		if err != nil {
+			return err
+		}
+		for _, target := range targets {
+			for _, name := range names {
+				path := filepath.Join(target.Dir, name)
+				existing := (*Link)(nil)
+				if m != nil {
+					existing = findLink(m, path)
+				}
+				if existing == nil {
+					if exists(path) && !ourOrphan(path) {
+						conflicts = append(conflicts, path)
+					}
+					continue
+				}
+				if exists(path) && !isOurs(*existing) {
+					conflicts = append(conflicts, path)
+				}
+			}
+		}
+		return nil
+	})
+	return conflicts, err
+}
+
+func install(agents []string, scope Scope, replace map[string]bool) (*Result, error) {
 	gen, err := EnsureGeneration()
 	if err != nil {
 		return nil, err
@@ -98,6 +159,12 @@ func install(agents []string, scope Scope) (*Result, error) {
 			switch {
 			case existing == nil && exists(path):
 				if !ourOrphan(path) {
+					if replace[filepath.Clean(path)] {
+						if err := removePath(path); err != nil {
+							return nil, err
+						}
+						break
+					}
 					// Somebody else's skill by the same name. Theirs wins;
 					// ours is not installed, and the caller says so.
 					res.Skipped = append(res.Skipped, path)
@@ -120,6 +187,12 @@ func install(agents []string, scope Scope) (*Result, error) {
 				// one) must not be blown away and reprojected. isOurs is the
 				// same guard Remove and Refresh use before every deletion.
 				if exists(path) && !isOurs(*existing) {
+					if replace[filepath.Clean(path)] {
+						if err := removePath(path); err != nil {
+							return nil, err
+						}
+						break
+					}
 					res.Skipped = append(res.Skipped, path)
 					continue
 				}
