@@ -126,6 +126,13 @@ controls on surface changes, whichever side they originate from.
   `ORQ_NO_INPUT`) still fails immediately rather than waiting for an approval
   nobody is there to give: a pipe means "cannot prompt", the flag means "nobody
   is watching", and only the second is a reason not to log in.
+- **Fixed:** `orq setup` and `orq connect` printed nothing at all when run
+  without a terminal. Their progress output was suppressed whenever `--no-input`
+  was in force, and a missing TTY forces it — so the callers most in need of the
+  narration were the ones silenced, and a piped `orq setup` waiting on a device
+  login had no way to show the URL and code it was waiting for. Suppression now
+  follows an explicit `--no-input` only, and the device-login instructions print
+  even then.
 
 ## [8.6.5](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.5) — 2026-09-15
 

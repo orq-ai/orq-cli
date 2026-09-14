@@ -1101,16 +1101,29 @@ func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
 	auth.SetServer(srv.URL, "flag")
 	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
 
+	var opened []string
+	previousOpen := openBrowserFn
+	openBrowserFn = func(url string) bool {
+		opened = append(opened, url)
+		return true
+	}
+	t.Cleanup(func() { openBrowserFn = previousOpen })
+
 	var out strings.Builder
-	state, err := resolveAuth(context.Background(), &reporter{w: &out}, &setupOptions{noInput: true})
+	// quiet: true is the point. Production keys quiet to the explicit --no-input
+	// now, but these four lines are the login itself, so they have to reach a
+	// caller that asked for silence too — a suppressed code can only time out.
+	state, err := resolveAuth(context.Background(), &reporter{w: &out, quiet: true}, &setupOptions{noInput: true})
 	if err != nil {
 		t.Fatalf("resolveAuth: %v", err)
 	}
 	if starts.Load() != 1 {
 		t.Fatalf("device login starts = %d, want 1", starts.Load())
 	}
-	if !strings.Contains(out.String(), "https://login.example/device") || !strings.Contains(out.String(), "ABCD-EFGH") {
-		t.Errorf("headless login did not print its URL and code:\n%s", out.String())
+	for _, want := range []string{"https://login.example/device", "ABCD-EFGH", "Waiting for browser approval"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("headless login did not print %q:\n%s", want, out.String())
+		}
 	}
 	if state.session == nil || state.bearer != token {
 		t.Fatalf("state after login = %+v", state)
@@ -1118,6 +1131,11 @@ func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
 	saved, err := auth.ReadSession()
 	if err != nil || saved == nil || saved.User == nil || saved.User.Email != "agent@example.com" {
 		t.Fatalf("saved session = %+v, err = %v", saved, err)
+	}
+	// A pipe is usually an agent on the user's own desktop, so the tab is still
+	// wanted — but a test must never be the thing that opens it.
+	if len(opened) != 1 || opened[0] != "https://login.example/device" {
+		t.Errorf("browser launches = %v, want one for the verification URL", opened)
 	}
 }
 
@@ -3650,5 +3668,20 @@ func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
 				t.Errorf("storedWorkspaceToken = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// No test may open a real browser. Both launches go through openBrowserFn for
+// that reason, and this is what keeps a third one from reintroducing the tabs.
+func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
+	for _, name := range []string{"setup.go", "connect.go", "auth.go", "launch.go"} {
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		body := strings.ReplaceAll(string(src), "var openBrowserFn = auth.OpenBrowser", "")
+		if strings.Contains(body, "auth.OpenBrowser(") {
+			t.Errorf("%s calls auth.OpenBrowser directly; go through openBrowserFn so tests can stub it", name)
+		}
 	}
 }

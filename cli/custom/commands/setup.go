@@ -295,7 +295,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		return runConnect(cmd, opts, opts.caps, false)
 	}
 
-	rep := newReporter(opts.noInput)
+	// unattended, not noInput: a missing TTY forces noInput, so keying quiet to
+	// it silenced every agent run — the callers with the most need of the
+	// narration, and no prompt of their own to be spared.
+	rep := newReporter(opts.unattended)
 	printSplash(bartolocli.Stderr, cmd.Root().Version)
 
 	result := map[string]any{}
@@ -549,6 +552,11 @@ type deviceLoginResult struct {
 }
 
 // runDeviceLogin is the shared device-login flow; callers report success their own way.
+// openBrowserFn is the one seam every browser launch goes through, so a test
+// can take them all out at once: `go test` used to open real tabs at the
+// fixtures' URLs. Nothing here may call auth.OpenBrowser directly.
+var openBrowserFn = auth.OpenBrowser
+
 func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace string, openBrowser bool) (*deviceLoginResult, error) {
 	// Context-aware so Ctrl-C cancels the poll instead of waiting out the device-code expiry.
 	client := auth.NewClient(apiBase).WithContext(ctx)
@@ -556,16 +564,18 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	if err != nil {
 		return nil, err
 	}
-	rep.note("Open: %s", start.VerificationURIComplete)
-	rep.note("Code: %s", start.UserCode)
+	// info, not note: this is the whole login, not progress alongside it. A run
+	// that suppresses these has no way to be approved and can only time out.
+	rep.info("Open: %s", start.VerificationURIComplete)
+	rep.info("Code: %s", start.UserCode)
 	browserOpened := false
 	if openBrowser {
-		browserOpened = auth.OpenBrowser(start.VerificationURIComplete)
+		browserOpened = openBrowserFn(start.VerificationURIComplete)
 		if !browserOpened {
-			rep.note("Could not open the browser automatically. Open the URL manually.")
+			rep.info("Could not open the browser automatically. Open the URL manually.")
 		}
 	}
-	rep.note("Waiting for browser approval...")
+	rep.info("Waiting for browser approval...")
 
 	approved, err := client.AwaitDeviceApproval(ctx, start.DeviceCode, start.ExpiresIn, start.Interval)
 	if err != nil {
@@ -1333,7 +1343,7 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 	if models == "" || opts.noInput || !opts.confirm("Open the models page now?", true) {
 		return
 	}
-	if !auth.OpenBrowser(models) {
+	if !openBrowserFn(models) {
 		rep.note("  could not open a browser, the URL above is the one to visit")
 	}
 }
