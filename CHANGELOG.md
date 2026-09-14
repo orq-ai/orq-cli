@@ -124,6 +124,13 @@ controls on surface changes, whichever side they originate from.
   covers all conflicts instead of only reporting each one as “left alone.” A
   declined prompt or unattended run keeps the existing skills unchanged, while
   `--yes` accepts the replacement.
+- **Fixed:** commands no longer rewrite `~/.orq/credentials.json` on their own.
+  A profile an older build stored with `"type": "apikey"` was corrected in
+  memory on every run, and the next command that saved credentials, such as
+  `orq auth profile add`, wrote that correction to disk. The same correction
+  hid every other profile from `orq auth profile list` and could fail requests
+  with `profile "default" has no API key`. Those profiles now authenticate as
+  stored and the file is left untouched.
 
 ## [8.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.0) — 2026-09-14
 
