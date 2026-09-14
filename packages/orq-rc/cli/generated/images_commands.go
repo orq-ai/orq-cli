@@ -64,7 +64,7 @@ func registerimagesCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+							Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway/supported-models#image-models)",
 						},
 						{
 							Name:        "n",
@@ -181,7 +181,7 @@ func registerimagesCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway-supported-models#image-models)",
+					Description: "The model to use for image edit. [Check models](https://docs.orq.ai/docs/ai-gateway/supported-models#image-models)",
 				},
 				{
 					Name:        "n",
