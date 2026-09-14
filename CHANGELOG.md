@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.6.3](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.3) — 2026-09-14
+
 - **Fixed: `orq connect skills` now offers to replace conflicting skills.** When
   a bundled skill already exists but is not managed by orq, one confirmation
   covers all conflicts instead of only reporting each one as “left alone.” A
