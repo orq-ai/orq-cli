@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.6.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.0) — 2026-09-14
+
 - **Changed: `orq update` says what it is doing, and the child installer stops
   greeting you.** The versions are printed before the install starts
   (`Updating orq 8.0.0 -> 8.5.2 (npm)`) rather than only once it finishes, so a
