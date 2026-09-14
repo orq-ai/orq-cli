@@ -28,6 +28,7 @@ func claudeAgent() AgentDef {
 		Label:       "Claude Code",
 		InstallHint: "npm install -g @anthropic-ai/claude-code",
 		AllowModels: false,
+		HelpRoute:   helpRoute("Anthropic", DefaultClaudeGatewayURL),
 		Prompt:      nil, // claude's own -p passes through untouched
 		Resolve:     resolveClaude,
 	}

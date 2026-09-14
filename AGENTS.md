@@ -59,8 +59,12 @@ and the hand-written commands on top of the generated tree.
 **Guards that live in `register.go`,** and are the reason a new command sometimes
 fails in a non-obvious way:
 
-- `interactiveWizardCommands` — bartolo-owned prompts that ignore `--no-input`,
-  refused up front so `--no-input` never prompts.
+- `interactiveWizardCommands` — bartolo-owned prompts that gate on a TTY and so
+  ignore `--no-input`. Each entry gives the hint its refusal prints and,
+  optionally, a `wouldPrompt` predicate; no predicate means the command always
+  prompts. Refuse only the forms that would actually prompt — a blanket refusal
+  blocked the headless `auth profile add ci --api-key-file ci.key`. The whole
+  map goes away once bartolo gates on `--no-input` itself.
 - `commandGroup` in `groups.go` — every visible command needs an entry, or
   `groups_test.go` fails.
 

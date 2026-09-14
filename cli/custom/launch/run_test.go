@@ -89,6 +89,24 @@ func TestNoSkillsHelpDescribesWhatTheFlagNowDoes(t *testing.T) {
 	}
 }
 
+// claude and gemini speak the router's native-API surfaces, not the shared
+// OpenAI-compatible one, and gemini takes a bare model id.
+func TestOffRouterHelpNamesItsOwnRoute(t *testing.T) {
+	out := captureStdout(t, func() { printAgentHelp(FindAgent("gemini")) })
+	if strings.Contains(out, "provider/model_id") {
+		t.Errorf("gemini help still asks for a provider-qualified id:\n%s", out)
+	}
+	if !strings.Contains(out, "/v3/google") {
+		t.Errorf("gemini help never names /v3/google:\n%s", out)
+	}
+	if claude := captureStdout(t, func() { printAgentHelp(FindAgent("claude")) }); !strings.Contains(claude, "/v3/anthropic") {
+		t.Errorf("claude help never names /v3/anthropic:\n%s", claude)
+	}
+	if !strings.Contains(captureStdout(t, func() { printAgentHelp(FindAgent("codex")) }), "the orq.ai AI Router.") {
+		t.Error("router agents lost the plain AI Router wording")
+	}
+}
+
 // captureStdout collects what fn prints, so a help string can be asserted on.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()

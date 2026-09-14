@@ -131,6 +131,19 @@ controls on surface changes, whichever side they originate from.
   update — while every `!` warning and every error still prints. `-o json` is
   unchanged. The quiet mode is available to anyone running install.sh directly
   as `ORQ_CLI_QUIET=1`.
+- **Fixed: `--no-input` no longer refuses `orq auth profile add` when the key
+  is supplied.** `orq auth profile add ci --api-key-file ci.key` (or the key as
+  an argument) never prompts, so it now runs under `--no-input`/`ORQ_NO_INPUT`.
+  Only the form that would prompt, a name with no key, is still refused, and
+  its error now points at `--api-key-file`.
+- **Fixed: `orq launch gemini --help` and `orq launch claude --help` name the
+  router surface they speak.** Both read as if they used the shared
+  OpenAI-compatible one: gemini is on the Gemini-native API (`/v3/google`) and
+  takes a bare model id rather than a `provider/model_id`, and claude is on the
+  Anthropic-native API (`/v3/anthropic`).
+- **Fixed: `orq launch <agent> --help` no longer refreshes the installed
+  skills.** A help invocation launches nothing, so it now prints the help text
+  alone instead of the skills-update and skills-directory warnings first.
 
 ## [8.5.0](https://github.com/orq-ai/orq-cli/releases/tag/v8.5.0) — 2026-09-10
 

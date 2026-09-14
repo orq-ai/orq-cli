@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -415,11 +416,54 @@ func TestRouterModelsListIsTheRenamedOne(t *testing.T) {
 	}
 }
 
-// The canonical profile-add command must be covered by the --no-input guard.
-func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
-	if !interactiveWizardCommands["auth profile add"] {
-		t.Error("`auth profile add` must be refused under --no-input")
+// --no-input refuses `auth profile add` only when it would prompt; a supplied
+// key is the headless form and must keep working under ORQ_NO_INPUT.
+//
+// Driven through Execute rather than by calling wouldPrompt directly: the
+// predicate is only half the guard, and a test that skips the PreRun stays
+// green if the guard block in installSessionPreRun is deleted — which is the
+// failure that would let CI hang on a prompt.
+func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "ci.key")
+	if err := os.WriteFile(keyFile, []byte("sk-from-file"), 0o600); err != nil {
+		t.Fatal(err)
 	}
+
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		refused string // substring of the refusal, or "" to expect no refusal
+	}{
+		{"setup is a wizard throughout", []string{"auth", "setup"}, "`auth setup` would prompt"},
+		{"profile add with no key prompts", []string{"auth", "profile", "add", "ci"}, "--api-key-file <path>"},
+		{"profile add with a positional key", []string{"auth", "profile", "add", "ci", "sk-positional"}, ""},
+		{"profile add with --api-key-file", []string{"auth", "profile", "add", "ci", "--api-key-file", keyFile}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profileHarness(t, `{"profiles":{}}`)
+			root := buildRoot(t)
+			viper.Set("no-input", true)
+			t.Cleanup(func() { viper.Set("no-input", false) })
+			root.SetArgs(tc.args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+
+			err := root.Execute()
+			if tc.refused == "" {
+				if err != nil && strings.Contains(err.Error(), "would prompt") {
+					t.Fatalf("%v must not be refused under --no-input: %v", tc.args, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.refused) {
+				t.Fatalf("%v: want a refusal naming %q, got %v", tc.args, tc.refused, err)
+			}
+		})
+	}
+}
+
+// Deprecated aliases and `auth sessions` against the guard maps.
+func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	// Deprecated aliases remain guarded while they are present in surface.json.
 	surface, err := os.ReadFile(filepath.Join("..", "..", "surface.json"))
 	if err != nil {
@@ -434,7 +478,7 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 			t.Errorf("%q is gone from surface.json; drop it from profileExemptCommands", path)
 		}
 	}
-	if bytes.Contains(surface, []byte(`"orq auth add-profile"`)) != interactiveWizardCommands["auth add-profile"] {
+	if _, guarded := interactiveWizardCommands["auth add-profile"]; bytes.Contains(surface, []byte(`"orq auth add-profile"`)) != guarded {
 		t.Error("`auth add-profile` must be in interactiveWizardCommands exactly while it still ships")
 	}
 	// Listing logins must work before one exists.
@@ -639,5 +683,38 @@ func TestUpdateNoticeReachesTheHelpPathExactlyOnce(t *testing.T) {
 				t.Errorf("notice reached %d times, want exactly 1", calls)
 			}
 		})
+	}
+}
+
+// `orq launch claude --help` prints text and launches nothing, so the skills
+// refresh — and the warnings it prints — has no business running. The agent
+// subcommands disable flag parsing, so -h arrives as a plain argument.
+func TestHelpInvocationSkipsSkillsRefresh(t *testing.T) {
+	agent := &cobra.Command{Use: "claude", DisableFlagParsing: true}
+	launchCmd := &cobra.Command{Use: "launch"}
+	launchCmd.AddCommand(agent)
+	(&cobra.Command{Use: "orq"}).AddCommand(launchCmd)
+
+	if !skillsCommand(agent) {
+		t.Fatal("launch must still be a skills command")
+	}
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"--dry-run", "--help"}} {
+		if !helpInvocation(agent, args) {
+			t.Errorf("%v should be a help invocation", args)
+		}
+	}
+	// The last three launch the agent and pass the flag on to it: past `--`,
+	// and past the first argument the launcher does not own — which is where a
+	// second hand-rolled scan disagreed with ParseArgv and skipped the refresh
+	// for a real launch.
+	for _, args := range [][]string{{}, {"--dry-run"}, {"--", "-h"}, {"mcp", "--help"}, {"notes.md", "-h"}} {
+		if helpInvocation(agent, args) {
+			t.Errorf("%v should not be a help invocation", args)
+		}
+	}
+	// A command outside launch never reaches here with help pending: cobra
+	// returns flag.ErrHelp before PersistentPreRunE.
+	if helpInvocation(&cobra.Command{Use: "connect"}, []string{"--help"}) {
+		t.Error("only the launch agent subcommands parse their own -h")
 	}
 }
