@@ -1,8 +1,10 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"time"
@@ -19,13 +21,15 @@ const updateFetchTimeout = 10 * time.Second
 // Overridable for tests, which must not shell out to the real npm or run the
 // real installer.
 //
-// The child's stdout is routed to stderr: npm's and install.sh's progress is
-// diagnostics, while stdout carries this command's own result, which `-o json`
-// promises is parseable.
-var runUpdateCommand = func(ctx context.Context, env map[string]string, name string, args ...string) error {
+// out takes both of the child's streams. Callers pass stderr to show the child
+// as it runs, or a buffer to decide later whether it is worth showing; either
+// way it is never stdout, which carries this command's own result and which
+// `-o json` promises is parseable. env is merged over this process's
+// environment, so a child still sees ORQ_CLI_INSTALL_DIR and the rest.
+var runUpdateCommand = func(ctx context.Context, env map[string]string, out io.Writer, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
+	cmd.Stdout, cmd.Stderr = out, out
 	cmd.Env = launch.MergeEnv(os.Environ(), env)
 	return cmd.Run()
 }
@@ -138,10 +142,14 @@ func updateViaNPM(ctx context.Context, version string) error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return fmt.Errorf("this binary was installed with npm, but npm is not on PATH. Run:\n  npm install -g %s", target)
 	}
-	// --loglevel=error: npm's "changed 2 packages in 2s" is its own bookkeeping,
-	// and this command has already said which versions are involved. Errors and
-	// warnings still print.
-	if err := runUpdateCommand(ctx, nil, "npm", "install", "-g", "--loglevel=error", target); err != nil {
+	// Captured rather than shown, and replayed only if npm fails. No --loglevel
+	// does this: `error` drops npm's warnings while still printing "changed 2
+	// packages in 2s" (verified on npm 10.9), and `silent` swallows the E404 or
+	// EACCES that is the only thing explaining a failure. Success here is
+	// already reported by the two lines this command prints itself.
+	var output bytes.Buffer
+	if err := runUpdateCommand(ctx, nil, &output, "npm", "install", "-g", target); err != nil {
+		_, _ = io.Copy(bartolocli.Stderr, &output)
 		return fmt.Errorf("npm install failed: %w\nA global install needs write access to npm's prefix; run it yourself, with sudo if that is how your npm is set up:\n  npm install -g %s", err, target)
 	}
 	return nil
@@ -158,7 +166,13 @@ func updateViaNPM(ctx context.Context, version string) error {
 // ponytail: the installer is the update mechanism; --no-modify-path/--no-setup
 // keep it to the one job, since PATH and config are already done.
 func updateViaInstaller(ctx context.Context, version string) error {
-	return runShellInstaller(ctx, runUpdateCommand, installerSpec{
+	// The installer streams: it downloads ~25 MB and verifies a checksum, and
+	// what it still prints in quiet mode is a warning worth seeing as it
+	// happens rather than after the fact.
+	run := func(ctx context.Context, env map[string]string, name string, args ...string) error {
+		return runUpdateCommand(ctx, env, bartolocli.Stderr, name, args...)
+	}
+	return runShellInstaller(ctx, run, installerSpec{
 		URL: installerURL,
 		// ORQ_CLI_QUIET rather than a flag: this downloads whatever install.sh
 		// cli.orq.ai currently serves, and a script published before quiet mode

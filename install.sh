@@ -52,13 +52,19 @@ err() {
   echo "orq-cli installer: $*" >&2
 }
 
-# say is every line that only narrates progress. Warnings ("!" lines) and err()
-# stay loud in quiet mode: the caller asked for less chatter, not for a silent
-# unverified install.
+# Three output levels, so whether a line survives quiet mode is decided by which
+# function a line goes through rather than by remembering a convention: say for
+# progress, warn for the "!" lines, err for failures. A quiet caller asked for
+# less chatter, not for a silent unverified install.
 say() {
   if [ "$QUIET" = "1" ]; then
     return 0
   fi
+  # shellcheck disable=SC2059 # the format string is this script's own
+  printf "$@"
+}
+
+warn() {
   # shellcheck disable=SC2059 # the format string is this script's own
   printf "$@"
 }
@@ -424,7 +430,7 @@ if [ "${already_current:-0}" != "1" ]; then
         err "refusing to install unverified; pin an older release with --version if that is what you want"
         exit 1
       fi
-      printf '! installing UNVERIFIED: %s publishes no .sha256\n' "$VERSION"
+      warn '! installing UNVERIFIED: %s publishes no .sha256\n' "$VERSION"
       unverified=1
       ;;
     *)
@@ -497,7 +503,7 @@ if [ "${already_current:-0}" != "1" ]; then
     fi
     say '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
     if [ "$unverified" = "1" ]; then
-      printf '! this binary was NOT checksum-verified\n'
+      warn '! this binary was NOT checksum-verified\n'
     fi
   elif [ -n "$previous" ]; then
     if ! mv "$previous" "$target"; then
@@ -544,11 +550,13 @@ profile=""
 if [ "$path_already_set" = "1" ]; then
   : # nothing to do
 elif [ "$MODIFY_PATH" = "0" ]; then
+  # say, not warn: this reports back a flag the caller passed, so a quiet
+  # caller is only being told about its own decision.
   say '! PATH not updated (--no-modify-path)\n'
 else
   profile="$(profile_for_shell)"
   if [ -z "$profile" ]; then
-    printf '! PATH not updated (unrecognised shell: %s)\n' "${SHELL:-unknown}"
+    warn '! PATH not updated (unrecognised shell: %s)\n' "${SHELL:-unknown}"
   elif [ -f "$profile" ] && grep -qF "$PATH_MARKER_START" "$profile" 2>/dev/null; then
     say '%s PATH already configured in %s\n' "$G_OK" "$profile"
   else
@@ -579,7 +587,7 @@ else
 
     case "$reply" in
       [nN]*)
-        printf '! PATH not updated (declined)\n'
+        warn '! PATH not updated (declined)\n'
         profile=""
         ;;
       *)
@@ -603,7 +611,7 @@ fi
 # terminal directly.
 if [ "$RUN_SETUP" = "1" ] && ! "$target" --help 2>/dev/null | grep -q '^  setup '; then
   # Installed release predates 'orq setup'; don't invoke a command that errors.
-  printf '\n! this release has no '\''orq setup'\'' yet - skipping setup\n'
+  warn '\n! this release has no '\''orq setup'\'' yet - skipping setup\n'
   RUN_SETUP=0
   setup_missing=1
 fi

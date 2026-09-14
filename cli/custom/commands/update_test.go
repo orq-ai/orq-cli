@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +34,7 @@ func updateCmdEnvTags(t *testing.T, method installMethod, tags map[string]string
 	bartolocli.Stdout = stdout
 	detectInstallMethod = func() (installMethod, string) { return method, "/somewhere/orq" }
 	executed := []string{}
-	runUpdateCommand = func(_ context.Context, env map[string]string, name string, args ...string) error {
+	runUpdateCommand = func(_ context.Context, env map[string]string, _ io.Writer, name string, args ...string) error {
 		line := strings.Join(append([]string{name}, args...), " ")
 		for k, v := range env {
 			line += " [" + k + "=" + v + "]"
@@ -72,7 +74,7 @@ func TestUpdateViaNPMInstallMethod(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(*ran) != 1 || (*ran)[0] != "npm install -g --loglevel=error @orq-ai/cli@4.13.22" {
+	if len(*ran) != 1 || (*ran)[0] != "npm install -g @orq-ai/cli@4.13.22" {
 		t.Fatalf("executed %v, want the npm global install", *ran)
 	}
 	if got := stdout.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
@@ -132,7 +134,7 @@ func TestUpdateViaInstallerInstallMethod(t *testing.T) {
 func TestUpdateAbortsWhenTheInstallerCannotBeDownloaded(t *testing.T) {
 	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(_ context.Context, _ map[string]string, name string, args ...string) error {
+	runUpdateCommand = func(_ context.Context, _ map[string]string, _ io.Writer, name string, args ...string) error {
 		*ran = append(*ran, name)
 		if name == "curl" {
 			return errors.New("exit status 22")
@@ -211,7 +213,7 @@ func TestUpdateCheckReportsWithoutInstalling(t *testing.T) {
 func TestUpdatePropagatesInstallerFailure(t *testing.T) {
 	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(_ context.Context, _ map[string]string, name string, _ ...string) error {
+	runUpdateCommand = func(_ context.Context, _ map[string]string, _ io.Writer, name string, _ ...string) error {
 		if name == "sh" {
 			return errors.New("exit status 1")
 		}
@@ -308,7 +310,9 @@ func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
 func TestUpdateFailureLeavesTheNoticeArmed(t *testing.T) {
 	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(context.Context, map[string]string, string, ...string) error { return errors.New("exit status 1") }
+	runUpdateCommand = func(context.Context, map[string]string, io.Writer, string, ...string) error {
+		return errors.New("exit status 1")
+	}
 
 	if err := runUpdateCmd(t, "4.13.18"); err == nil {
 		t.Fatal("expected the update to fail")
@@ -330,8 +334,76 @@ func TestUpdateCommandSuppressesItsOwnNotice(t *testing.T) {
 }
 
 func TestUpdateAnnouncesTheVersionsBeforeInstalling(t *testing.T) {
-	_, ran := updateCmdEnv(t, methodNPM, "4.13.22")
+	_, _ = updateCmdEnv(t, methodNPM, "4.13.22")
 	stubOnPath(t, "npm")
+	stderr := &bytes.Buffer{}
+	orig := bartolocli.Stderr
+	t.Cleanup(func() { bartolocli.Stderr = orig })
+	bartolocli.Stderr = stderr
+
+	// Read inside the child rather than after it: the whole point of the line
+	// is that it is on screen while npm runs, and a test that only reads the
+	// buffer at the end passes just as happily when it is printed afterwards.
+	seenByChild := ""
+	runUpdateCommand = func(context.Context, map[string]string, io.Writer, string, ...string) error {
+		seenByChild = stderr.String()
+		return nil
+	}
+
+	if err := runUpdateCmd(t, "4.13.18"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	for _, want := range []string{"Updating orq", "4.13.18 -> 4.13.22", "npm"} {
+		if !strings.Contains(seenByChild, want) {
+			t.Errorf("stderr at the moment the install started was %q, missing %q", seenByChild, want)
+		}
+	}
+}
+
+// npm's own output is worth nothing on a success this command already reports,
+// and is the only explanation of a failure.
+func TestUpdateReplaysNPMOutputOnlyWhenItFails(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		npmErr   error
+		wantSeen bool
+	}{
+		{"success", nil, false},
+		{"failure", errors.New("exit status 1"), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, _ = updateCmdEnv(t, methodNPM, "4.13.22")
+			stubOnPath(t, "npm")
+			stderr := &bytes.Buffer{}
+			orig := bartolocli.Stderr
+			t.Cleanup(func() { bartolocli.Stderr = orig })
+			bartolocli.Stderr = stderr
+
+			runUpdateCommand = func(_ context.Context, _ map[string]string, out io.Writer, _ string, _ ...string) error {
+				fmt.Fprintln(out, "npm error code E404")
+				return c.npmErr
+			}
+
+			err := runUpdateCmd(t, "4.13.18")
+			if (err != nil) != c.wantSeen {
+				t.Fatalf("update error = %v, want failure = %v", err, c.wantSeen)
+			}
+			if got := strings.Contains(stderr.String(), "E404"); got != c.wantSeen {
+				t.Errorf("npm output on stderr = %v, want %v (stderr: %q)", got, c.wantSeen, stderr.String())
+			}
+		})
+	}
+}
+
+// The progress line is human-only: a script parsing -o json gets its payload on
+// stdout and nothing extra on stderr.
+func TestUpdateMachineOutputCarriesNoProgressLine(t *testing.T) {
+	stdout, _ := updateCmdEnv(t, methodNPM, "4.13.22")
+	stubOnPath(t, "npm")
+	ensureFormatter(t)
+	origHuman := humanOutput
+	t.Cleanup(func() { humanOutput = origHuman })
+	humanOutput = func() bool { return false }
 	stderr := &bytes.Buffer{}
 	orig := bartolocli.Stderr
 	t.Cleanup(func() { bartolocli.Stderr = orig })
@@ -340,14 +412,12 @@ func TestUpdateAnnouncesTheVersionsBeforeInstalling(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(*ran) != 1 {
-		t.Fatalf("executed %v, want the install", *ran)
+	if strings.Contains(stderr.String(), "Updating orq") {
+		t.Errorf("machine-format run printed the human progress line: %q", stderr.String())
 	}
-	// The line npm's own output cannot give: which version is being replaced,
-	// on screen while npm runs rather than once it is done.
-	for _, want := range []string{"Updating orq", "4.13.18 -> 4.13.22", "npm"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Errorf("progress line %q missing %q", stderr.String(), want)
+	for _, want := range []string{"install_method", "4.13.22", "updated"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("machine payload %q missing %q", stdout.String(), want)
 		}
 	}
 }
