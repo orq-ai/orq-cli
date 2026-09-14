@@ -51,7 +51,12 @@ type setupOptions struct {
 	caps          []string
 	noGateway     bool
 	noInput       bool
-	yes           bool
+	// unattended is an explicit --no-input/ORQ_NO_INPUT, as opposed to the
+	// noInput a missing TTY forces. A pipe means "cannot prompt" and is how
+	// every coding agent runs; the flag means "nobody is watching". Only the
+	// second is a reason to refuse a device login rather than start one.
+	unattended bool
+	yes        bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
 	// finalScreen marks a run that ends in printFinalScreen, which reports every
@@ -244,6 +249,8 @@ left exported in your shell because setup writes persistent configuration.`),
 // an interactive prompt can never block a pipeline.
 func applyGlobalFlags(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
+	// Read before the TTY override below, which is what makes the two distinguishable.
+	opts.unattended = opts.noInput
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
 	}
@@ -277,10 +284,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	// A skills-only run unpacks files out of this binary and touches nothing
 	// else: no key to mint, no workspace to pick, nothing to verify against the
-	// API. Sending it through steps 1 and 2 made `orq setup --capability skills`
-	// die at "no TTY available for browser login". connect already is that run,
-	// credential gate and all, so hand it over rather than growing a second
-	// credential-free path here.
+	// API. Sending it through steps 1 and 2 charged it a full authentication —
+	// once a hard failure without a TTY, now a device login it has no use for.
+	// connect already is that run, credential gate and all, so hand it over
+	// rather than growing a second credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
 		if !opts.noInput {
 			return runCredentialFreeSetup(cmd, opts)
@@ -479,6 +486,11 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	}
 
 	if session == nil {
+		// A device login waits for a human to approve it. Nobody asked to be
+		// waited on here, so fail now rather than at the device code's expiry.
+		if opts.unattended {
+			return nil, errors.New("--no-input given and no credential is available\n  Pass --api-key <key> or set ORQ_API_KEY, then re-run")
+		}
 		session, err = deviceLogin(ctx, rep, opts)
 		if err != nil {
 			return nil, err
@@ -515,10 +527,10 @@ func apiBaseFromEnv() string {
 }
 
 func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
-	// Device login itself needs no terminal: in a piped run the URL and code are
-	// still visible in output, and the poll can wait for approval normally. Only
-	// skip launching a browser, which is surprising in an unattended process.
-	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, !opts.noInput)
+	// Open the browser either way. A piped run is usually an agent on the user's
+	// own desktop, where the tab is what they want, and OpenBrowser reports a
+	// failure rather than blocking on a machine that has none.
+	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, true)
 	if err != nil {
 		return nil, err
 	}

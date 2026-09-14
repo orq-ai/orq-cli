@@ -117,11 +117,15 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-- **Fixed:** `orq setup` now starts the OAuth device flow when run without a
-  terminal and no credential exists, printing the verification URL and code
-  before waiting for approval. Coding agents and piped shells can therefore
-  complete clean-machine onboarding without first running a separate login
-  command.
+- **Fixed:** `orq setup` failed with `no TTY available for browser login` when
+  run without a terminal and no credential existed, and the remedy it named —
+  pass `--api-key` — was circular, since `setup` is the command that mints that
+  key. It now starts the OAuth device flow instead, which needs no terminal, so
+  coding agents and piped shells can complete clean-machine onboarding without
+  first running a separate login command. An explicit `--no-input` (or
+  `ORQ_NO_INPUT`) still fails immediately rather than waiting for an approval
+  nobody is there to give: a pipe means "cannot prompt", the flag means "nobody
+  is watching", and only the second is a reason not to log in.
 
 ## [8.6.5](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.5) — 2026-09-15
 

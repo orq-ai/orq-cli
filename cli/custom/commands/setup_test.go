@@ -1044,11 +1044,29 @@ func TestApplyGlobalFlagsForcesNoInputWithoutATTY(t *testing.T) {
 	if opts.interactive {
 		t.Error("--no-input did not clear -i")
 	}
+	if opts.unattended {
+		t.Error("a missing TTY set unattended; only an explicit --no-input means nobody is watching")
+	}
+}
+
+// The flag and the TTY fold set the same noInput, and resolveAuth has to tell
+// them apart: a pipe gets a device login, an explicit --no-input gets the fast
+// failure. Nothing else records which one spoke.
+func TestApplyGlobalFlagsMarksExplicitNoInputUnattended(t *testing.T) {
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", false) })
+	opts := &setupOptions{}
+	if err := applyGlobalFlags(opts); err != nil {
+		t.Fatalf("applyGlobalFlags: %v", err)
+	}
+	if !opts.unattended {
+		t.Error("explicit --no-input did not set unattended")
+	}
 }
 
 // Device login is a URL, a code and a poll; none of those needs a terminal.
-// A coding agent starts setup through a pipe, so noInput must suppress only the
-// browser launch, not the login that creates the credential setup needs.
+// A coding agent starts setup through a pipe, so a forced noInput must still
+// reach the login that creates the credential setup needs.
 func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
 	const token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig"
 	var starts atomic.Int32
@@ -1100,6 +1118,42 @@ func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
 	saved, err := auth.ReadSession()
 	if err != nil || saved == nil || saved.User == nil || saved.User.Email != "agent@example.com" {
 		t.Fatalf("saved session = %+v, err = %v", saved, err)
+	}
+}
+
+// The other half of that split: an explicit --no-input says nobody is watching,
+// and a device login is a wait for a human. Fail on the spot with the remedy
+// rather than at the device code's expiry, with nothing said in between.
+func TestResolveAuthRefusesDeviceLoginWhenUnattended(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unattended run reached %s; it must not start a login nobody will approve", r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+
+	var out strings.Builder
+	opts := &setupOptions{noInput: true, unattended: true}
+	_, err := resolveAuth(context.Background(), &reporter{w: &out}, opts)
+	if err == nil {
+		t.Fatal("unattended resolveAuth succeeded; it should refuse before the device flow")
+	}
+	// The remedy is the whole point: the old message pointed at --api-key, and
+	// losing it is what turned a clear failure into a silent wait.
+	for _, want := range []string{"--api-key", "ORQ_API_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not name %s:\n%v", want, err)
+		}
 	}
 }
 
