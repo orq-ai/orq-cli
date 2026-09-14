@@ -484,7 +484,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		savedKey, savedWS := savedAPIKey()
 		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
 			// Which one won is the fact; why lives in 'orq doctor'.
-			rep.note("following your login, not the exported ORQ_API_KEY")
+			rep.info("following your login, not the exported ORQ_API_KEY")
 		}
 	}
 
@@ -1167,7 +1167,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case gatewayKeyDueForRenewal(time.Now()):
 		// The superseded key is left alive until its own expiry: that overlap is
 		// what keeps an agent config working until this run rewrites it.
-		rep.note("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
+		rep.info("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
 		token = ""
 	default:
 		rep.ok("using your saved key")
@@ -1220,7 +1220,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 		// Say what it is scoped to, because the dashboard lists it only as
 		// "Restricted", and because a key that cannot see the rest of the
 		// workspace is a surprise worth naming once.
-		rep.note("the key is scoped to this project; it routes model calls for the coding agents and reaches nothing else")
+		rep.info("the key is scoped to this project; it routes model calls for the coding agents and reaches nothing else")
 	}
 	rep.ok("gateway key created — expires in %d days", int(gatewayKeyLifetime.Hours()/24))
 	return minted, true, nil
@@ -1344,7 +1344,7 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 		return
 	}
 	if !openBrowserFn(models) {
-		rep.note("  could not open a browser, the URL above is the one to visit")
+		rep.info("could not open a browser, the URL above is the one to visit")
 	}
 }
 
