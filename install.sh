@@ -15,6 +15,9 @@
 #   --help               Show this help.
 #
 # Environment (flags win when both are given):
+#   ORQ_CLI_QUIET         Set to 1 to drop the banner and the progress lines,
+#                         keeping warnings and errors. Used by 'orq update',
+#                         which reports the version change itself.
 #   ORQ_CLI_VERSION       Same as --version.
 #   ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
 #                         when --version pins a release.
@@ -37,6 +40,7 @@ INSTALL_DIR="${ORQ_CLI_INSTALL_DIR:-$HOME/.orq/bin}"
 VERSION="${ORQ_CLI_VERSION:-}"
 CHANNEL="${ORQ_CLI_CHANNEL:-stable}"
 CHANNEL_EXPLICIT=0
+QUIET="${ORQ_CLI_QUIET:-0}"
 MODIFY_PATH=1
 RUN_SETUP=1
 unverified=0
@@ -46,6 +50,17 @@ PATH_MARKER_END="# <<< orq cli <<<"
 
 err() {
   echo "orq-cli installer: $*" >&2
+}
+
+# say is every line that only narrates progress. Warnings ("!" lines) and err()
+# stay loud in quiet mode: the caller asked for less chatter, not for a silent
+# unverified install.
+say() {
+  if [ "$QUIET" = "1" ]; then
+    return 0
+  fi
+  # shellcheck disable=SC2059 # the format string is this script's own
+  printf "$@"
 }
 
 # Inline, not read from the file: under `curl | sh` the script is on stdin and "$0" is the shell.
@@ -67,6 +82,8 @@ Options:
   --help               Show this help.
 
 Environment (flags win when both are given):
+  ORQ_CLI_QUIET         Set to 1 to drop the banner and the progress lines,
+                        keeping warnings and errors.
   ORQ_CLI_VERSION       Same as --version.
   ORQ_CLI_CHANNEL       Same as --channel, but ignored rather than rejected
                         when --version pins a release.
@@ -290,12 +307,14 @@ download_url="https://github.com/$REPO/releases/download/${VERSION}/${asset}"
 checksum_url="${download_url}.sha256"
 target="$INSTALL_DIR/orq"
 
-banner
-printf '  %s installer     %s\n' "$G_BULLET" "$INSTALLER_VERSION"
-printf '  %s platform      %s-%s\n' "$G_BULLET" "$os" "$arch"
-printf '  %s version       %s\n' "$G_BULLET" "$version_label"
-printf '  %s install dir   %s\n' "$G_BULLET" "$INSTALL_DIR"
-printf '\n'
+if [ "$QUIET" != "1" ]; then
+  banner
+fi
+say '  %s installer     %s\n' "$G_BULLET" "$INSTALLER_VERSION"
+say '  %s platform      %s-%s\n' "$G_BULLET" "$os" "$arch"
+say '  %s version       %s\n' "$G_BULLET" "$version_label"
+say '  %s install dir   %s\n' "$G_BULLET" "$INSTALL_DIR"
+say '\n'
 
 # --- Skip when already current ---------------------------------------------
 
@@ -312,7 +331,7 @@ if [ -x "$target" ]; then
   fi
   case "$current_version" in
     "$expected_version")
-      printf '%s already up to date  (%s)\n' "$G_OK" "$current"
+      say '%s already up to date  (%s)\n' "$G_OK" "$current"
       # Skip the download, but still let the PATH check run: an existing binary
       # does not mean an existing PATH entry.
       RUN_SETUP=0
@@ -340,7 +359,11 @@ if [ "${already_current:-0}" != "1" ]; then
   }
   trap cleanup EXIT INT TERM HUP
 
-  if ! fetch -f --progress-bar -o "$tmp_file" "$download_url"; then
+  progress='--progress-bar'
+  if [ "$QUIET" = "1" ]; then
+    progress='-sS'
+  fi
+  if ! fetch -f "$progress" -o "$tmp_file" "$download_url"; then
     err "failed to download $download_url"
     err "verify the release exists: https://github.com/$REPO/releases"
     exit 1
@@ -419,7 +442,7 @@ if [ "${already_current:-0}" != "1" ]; then
       err "Refusing to install. Report this at https://github.com/$REPO/issues"
       exit 1
     fi
-    printf '%s checksum verified (sha256)\n' "$G_OK"
+    say '%s checksum verified (sha256)\n' "$G_OK"
   fi
 
   chmod +x "$tmp_file"
@@ -472,7 +495,7 @@ if [ "${already_current:-0}" != "1" ]; then
     if [ -n "$previous" ]; then
       rm -f "$previous" || true
     fi
-    printf '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
+    say '%s installed      %s  (%s)\n' "$G_OK" "$target" "$installed_version"
     if [ "$unverified" = "1" ]; then
       printf '! this binary was NOT checksum-verified\n'
     fi
@@ -521,13 +544,13 @@ profile=""
 if [ "$path_already_set" = "1" ]; then
   : # nothing to do
 elif [ "$MODIFY_PATH" = "0" ]; then
-  printf '! PATH not updated (--no-modify-path)\n'
+  say '! PATH not updated (--no-modify-path)\n'
 else
   profile="$(profile_for_shell)"
   if [ -z "$profile" ]; then
     printf '! PATH not updated (unrecognised shell: %s)\n' "${SHELL:-unknown}"
   elif [ -f "$profile" ] && grep -qF "$PATH_MARKER_START" "$profile" 2>/dev/null; then
-    printf '%s PATH already configured in %s\n' "$G_OK" "$profile"
+    say '%s PATH already configured in %s\n' "$G_OK" "$profile"
   else
     case "$profile" in
       *config.fish) path_line="fish_add_path \"$INSTALL_DIR\"" ;;
@@ -567,8 +590,8 @@ else
           echo "$path_line"
           echo "$PATH_MARKER_END"
         } >> "$profile"
-        printf '%s PATH updated   %s\n' "$G_OK" "$profile"
-        printf '      %s\n' "$path_line"
+        say '%s PATH updated   %s\n' "$G_OK" "$profile"
+        say '      %s\n' "$path_line"
         ;;
     esac
   fi
@@ -604,23 +627,23 @@ if [ "$RUN_SETUP" = "1" ] && have_tty; then
   fi
 fi
 
-printf '\n'
+say '\n'
 
 if [ "$path_already_set" != "1" ]; then
   if [ -n "$profile" ]; then
-    printf '  To use orq in this shell, run:\n'
-    printf '      exec %s -l\n\n' "${SHELL:-sh}"
+    say '  To use orq in this shell, run:\n'
+    say '      exec %s -l\n\n' "${SHELL:-sh}"
   else
-    printf '  Add to your shell profile:\n'
-    printf '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
+    say '  Add to your shell profile:\n'
+    say '      export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
   fi
 fi
 
 if [ "${setup_missing:-0}" != "1" ] && [ "$setup_ran" = "0" ]; then
-  printf '  Next:\n'
+  say '  Next:\n'
   if [ "$path_already_set" = "1" ]; then
-    printf '      orq setup\n\n'
+    say '      orq setup\n\n'
   else
-    printf '      %s setup\n\n' "$target"
+    say '      %s setup\n\n' "$target"
   fi
 fi

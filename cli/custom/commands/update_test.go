@@ -32,8 +32,12 @@ func updateCmdEnvTags(t *testing.T, method installMethod, tags map[string]string
 	bartolocli.Stdout = stdout
 	detectInstallMethod = func() (installMethod, string) { return method, "/somewhere/orq" }
 	executed := []string{}
-	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
-		executed = append(executed, strings.Join(append([]string{name}, args...), " "))
+	runUpdateCommand = func(_ context.Context, env map[string]string, name string, args ...string) error {
+		line := strings.Join(append([]string{name}, args...), " ")
+		for k, v := range env {
+			line += " [" + k + "=" + v + "]"
+		}
+		executed = append(executed, line)
 		return nil
 	}
 	return stdout, &executed
@@ -68,7 +72,7 @@ func TestUpdateViaNPMInstallMethod(t *testing.T) {
 	if err := runUpdateCmd(t, "4.13.18"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(*ran) != 1 || (*ran)[0] != "npm install -g @orq-ai/cli@4.13.22" {
+	if len(*ran) != 1 || (*ran)[0] != "npm install -g --loglevel=error @orq-ai/cli@4.13.22" {
 		t.Fatalf("executed %v, want the npm global install", *ran)
 	}
 	if got := stdout.String(); !strings.Contains(got, "4.13.18 -> 4.13.22") {
@@ -128,7 +132,7 @@ func TestUpdateViaInstallerInstallMethod(t *testing.T) {
 func TestUpdateAbortsWhenTheInstallerCannotBeDownloaded(t *testing.T) {
 	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(_ context.Context, name string, args ...string) error {
+	runUpdateCommand = func(_ context.Context, _ map[string]string, name string, args ...string) error {
 		*ran = append(*ran, name)
 		if name == "curl" {
 			return errors.New("exit status 22")
@@ -207,7 +211,7 @@ func TestUpdateCheckReportsWithoutInstalling(t *testing.T) {
 func TestUpdatePropagatesInstallerFailure(t *testing.T) {
 	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(_ context.Context, name string, _ ...string) error {
+	runUpdateCommand = func(_ context.Context, _ map[string]string, name string, _ ...string) error {
 		if name == "sh" {
 			return errors.New("exit status 1")
 		}
@@ -304,7 +308,7 @@ func TestUpdateCheckMachineOutputCarriesUpdateAvailable(t *testing.T) {
 func TestUpdateFailureLeavesTheNoticeArmed(t *testing.T) {
 	_, _ = updateCmdEnv(t, methodInstaller, "4.13.22")
 	stubOnPath(t, "curl", "sh")
-	runUpdateCommand = func(context.Context, string, ...string) error { return errors.New("exit status 1") }
+	runUpdateCommand = func(context.Context, map[string]string, string, ...string) error { return errors.New("exit status 1") }
 
 	if err := runUpdateCmd(t, "4.13.18"); err == nil {
 		t.Fatal("expected the update to fail")
@@ -322,5 +326,57 @@ func TestUpdateCommandSuppressesItsOwnNotice(t *testing.T) {
 	MaybePrintUpdateNotice(root.Commands()[0])
 	if got := stderr.String(); got != "" {
 		t.Errorf("orq update printed the passive notice too: %q", got)
+	}
+}
+
+func TestUpdateAnnouncesTheVersionsBeforeInstalling(t *testing.T) {
+	_, ran := updateCmdEnv(t, methodNPM, "4.13.22")
+	stubOnPath(t, "npm")
+	stderr := &bytes.Buffer{}
+	orig := bartolocli.Stderr
+	t.Cleanup(func() { bartolocli.Stderr = orig })
+	bartolocli.Stderr = stderr
+
+	if err := runUpdateCmd(t, "4.13.18"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(*ran) != 1 {
+		t.Fatalf("executed %v, want the install", *ran)
+	}
+	// The line npm's own output cannot give: which version is being replaced,
+	// on screen while npm runs rather than once it is done.
+	for _, want := range []string{"Updating orq", "4.13.18 -> 4.13.22", "npm"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("progress line %q missing %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestUpdateSaysNothingBeforeRefusingAnUnknownInstall(t *testing.T) {
+	_, _ = updateCmdEnv(t, methodUnknown, "4.13.22")
+	stderr := &bytes.Buffer{}
+	orig := bartolocli.Stderr
+	t.Cleanup(func() { bartolocli.Stderr = orig })
+	bartolocli.Stderr = stderr
+
+	if err := runUpdateCmd(t, "4.13.18"); err == nil {
+		t.Fatal("expected a refusal on an install method this command cannot act on")
+	}
+	if strings.Contains(stderr.String(), "Updating orq") {
+		t.Errorf("announced an update it then refused to do: %q", stderr.String())
+	}
+}
+
+func TestUpdateRunsTheInstallerQuietly(t *testing.T) {
+	_, ran := updateCmdEnv(t, methodInstaller, "4.13.22")
+	stubOnPath(t, "curl", "sh")
+
+	if err := runUpdateCmd(t, "4.13.18"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	// install.sh's banner and install report greet a fresh install; this
+	// command has already said what it is doing.
+	if len(*ran) != 2 || !strings.Contains((*ran)[1], "[ORQ_CLI_QUIET=1]") {
+		t.Errorf("installer run %v does not ask the script for quiet mode", *ran)
 	}
 }

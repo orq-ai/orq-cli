@@ -472,6 +472,7 @@ so and stops.
 | `ORQ_CLI_VERSION` | Version to install via `install.sh` |
 | `ORQ_CLI_CHANNEL` | Release line for `install.sh`: `stable` (default) or `rc` |
 | `ORQ_CLI_INSTALL_DIR` | Install directory for `install.sh` |
+| `ORQ_CLI_QUIET` | Set to `1` to run `install.sh` without its banner and progress lines, keeping warnings and errors. What `orq update` uses |
 | `ORQ_WEB_BASE_URL` | Web app base URL used for the links `orq setup` prints |
 | `ORQ_NO_SPLASH` | Suppress the `orq setup` banner |
 | `ORQ_NO_UPDATE_CHECK` | Suppress the update notice and the version check behind it |
@@ -500,6 +501,12 @@ older stable release. A binary that
 arrived some other way is refused rather than overwritten, with both commands
 printed so you can pick. `orq update --check` reports the versions and changes
 nothing.
+
+Both versions are named on stderr before the install starts (`Updating orq
+8.0.0 -> 8.5.2 (npm)`), and the child is kept quiet: npm runs at
+`--loglevel=error`, and install.sh runs with `ORQ_CLI_QUIET=1`, without the
+banner and progress lines it prints for a first install. Warnings and errors
+from either still come through.
 
 At most once a day, after a command finishes, the CLI also checks the npm
 dist-tag for its release line and caches the answer. When a newer version

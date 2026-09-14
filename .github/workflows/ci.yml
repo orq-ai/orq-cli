@@ -270,6 +270,22 @@ jobs:
             exit 1
           fi
           "$HOME/orq/orq" --version | grep -q 0.0.0-sentinel
+      - name: quiet mode prints nothing but warnings
+        # `orq update` runs the installer this way and reports the version
+        # change itself; a banner there is a fresh-install greeting on an
+        # in-place upgrade.
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/quiet-home"
+          mkdir -p "$HOME"
+          out=$(ORQ_CLI_QUIET=1 SHELL=/bin/bash setsid dash install.sh \
+            --no-setup --no-modify-path --install-dir "$HOME/orq" < /dev/null)
+          test -x "$HOME/orq/orq"
+          if [ -n "$out" ]; then
+            echo "quiet install still printed:" >&2
+            printf '%s\n' "$out" >&2
+            exit 1
+          fi
       - name: reject non-ASCII in output
         # Covers only the static --help text; an ungated glyph in the install flow itself would still pass.
         run: |
