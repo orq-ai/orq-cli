@@ -350,7 +350,7 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create-aws-bedrock",
 			Short:   "Create AWS Bedrock custom model",
-			Long:    bartolocli.Markdown("Registers an AWS Bedrock inference profile as a custom model for the workspace. Credentials are resolved at request time via either the integration reference or pod-identity — nothing is stored with the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `description` (string)\n- `display_name` (string, required)\n- `has_reasoning` (boolean)\n- ... and 17 more fields\n\nRequired fields: `auth_mode`, `display_name`, `model_developer`, `model_id`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Registers an AWS Bedrock inference profile as a custom model for the workspace. Credentials are resolved at request time via either the integration reference or pod-identity — nothing is stored with the model.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `auth_mode` (string, required)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `description` (string)\n- ... and 19 more fields\n\nRequired fields: `auth_mode`, `display_name`, `model_developer`, `model_id`, `region`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -389,6 +389,18 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "autorouter_version",
 							FlagName:    "autorouter-version",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "cache_read_cost",
+							FlagName:    "cache-read-cost",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "cache_write_cost",
+							FlagName:    "cache-write-cost",
+							Type:        "float64",
 							Description: "",
 						},
 						{
@@ -563,6 +575,18 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "autorouter_version",
 					FlagName:    "autorouter-version",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "cache_read_cost",
+					FlagName:    "cache-read-cost",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "cache_write_cost",
+					FlagName:    "cache-write-cost",
+					Type:        "float64",
 					Description: "",
 				},
 				{
@@ -1552,13 +1576,13 @@ func registermodelsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update-aws-bedrock id",
 			Short:   "Update AWS Bedrock custom model",
-			Long:    bartolocli.Markdown("Updates an AWS Bedrock custom model. ARN changes are format-validated (live AWS validation lives in the dedicated validate endpoint). Configuration and metadata are spread-merged. Parameters are replaced only when the request produces a non-empty list.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `description` (string)\n- `display_name` (string)\n- `has_reasoning` (boolean)\n- `input_cost` (number)\n- ... and 14 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
+			Long:    bartolocli.Markdown("Updates an AWS Bedrock custom model. ARN changes are format-validated (live AWS validation lives in the dedicated validate endpoint). Configuration and metadata are spread-merged. Parameters are replaced only when the request produces a non-empty list.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `assume_role_arn` (string)\n- `assume_role_external_id` (string)\n- `autorouter_id` (string)\n- `autorouter_version` (string)\n- `cache_read_cost` (number)\n- `cache_write_cost` (number)\n- `description` (string)\n- `display_name` (string)\n- ... and 16 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id` — The ID of the model"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"assume_role_arn\": \"assume_role_arn\",\n  \"assume_role_external_id\": \"assume_role_external_id\",\n  \"autorouter_id\": \"autorouter_id\",\n  \"autorouter_version\": \"autorouter_version\",\n  \"cache_read_cost\": 0,\n  \"cache_write_cost\": 0,\n  \"description\": \"description\",\n  \"display_name\": \"display_name\",\n  \"has_reasoning\": false,\n  \"input_cost\": 0,\n  \"max_tokens\": 0,\n  \"model_developer\": \"model_developer\",\n  \"model_family\": \"model_family\",\n  \"model_id\": \"model_id\",\n  \"output_cost\": 0,\n  \"region\": \"region\",\n  \"supports_adaptive_reasoning\": false,\n  \"supports_extended_thinking\": false,\n  \"supports_json_mode\": false,\n  \"supports_json_schema\": false,\n  \"supports_strict_tool\": false,\n  \"supports_tool_calling\": false,\n  \"supports_vision\": false,\n  \"temperature\": 0\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -1585,6 +1609,18 @@ func registermodelsCommands(root *cobra.Command) {
 							Name:        "autorouter_version",
 							FlagName:    "autorouter-version",
 							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "cache_read_cost",
+							FlagName:    "cache-read-cost",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "cache_write_cost",
+							FlagName:    "cache-write-cost",
+							Type:        "float64",
 							Description: "",
 						},
 						{
@@ -1741,6 +1777,18 @@ func registermodelsCommands(root *cobra.Command) {
 					Name:        "autorouter_version",
 					FlagName:    "autorouter-version",
 					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "cache_read_cost",
+					FlagName:    "cache-read-cost",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "cache_write_cost",
+					FlagName:    "cache-write-cost",
+					Type:        "float64",
 					Description: "",
 				},
 				{
