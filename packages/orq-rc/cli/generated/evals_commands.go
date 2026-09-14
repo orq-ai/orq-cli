@@ -187,7 +187,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string",
-							Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own (duplicate-eval.handler.ts's isNonNullish check).",
+							Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
 						},
 						{
 							Name:        "key",
@@ -223,7 +223,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string",
-					Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own (duplicate-eval.handler.ts's isNonNullish check).",
+					Description: "Presence-sensitive: an explicit \"\" overrides the copied description,\n an absent field keeps the source evaluator's own.",
 				},
 				{
 					Name:        "key",
@@ -350,7 +350,7 @@ func registerevalsCommands(root *cobra.Command) {
 							Name:        "context",
 							FlagName:    "context",
 							Type:        "json",
-							Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+							Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn.",
 						},
 						{
 							Name:        "messages",
@@ -422,7 +422,7 @@ func registerevalsCommands(root *cobra.Command) {
 					Name:        "context",
 					FlagName:    "context",
 					Type:        "json",
-					Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn. Mirrors graders-api buildGraderRequest.",
+					Description: "The data to grade. When `messages` is present it is the conversation and\n `input.user_query` is ignored; `output.response` is appended only when the\n conversation carries no assistant turn.",
 				},
 				{
 					Name:        "messages",

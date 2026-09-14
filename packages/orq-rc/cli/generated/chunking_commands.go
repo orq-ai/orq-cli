@@ -83,7 +83,7 @@ func registerchunkingCommands(root *cobra.Command) {
 							Name:        "embedding_model",
 							FlagName:    "embedding-model",
 							Type:        "string",
-							Description: "Embedding model to use for semantic similarity. (Available embedding models)[https://docs.orq.ai/docs/proxy/supported-models#embedding-models]",
+							Description: "Embedding model to use for semantic similarity. [Available embedding models](/docs/ai-gateway/supported-models#embedding-models)",
 						},
 						{
 							Name:        "forward_fallback",
@@ -129,7 +129,7 @@ func registerchunkingCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "Model to use for chunking. (Available models)[https://docs.orq.ai/docs/proxy/supported-models#chat-models]",
+							Description: "Model to use for chunking. [Available models](/docs/ai-gateway/supported-models#chat-models)",
 						},
 						{
 							Name:        "pattern",
@@ -268,7 +268,7 @@ func registerchunkingCommands(root *cobra.Command) {
 					Name:        "embedding_model",
 					FlagName:    "embedding-model",
 					Type:        "string",
-					Description: "Embedding model to use for semantic similarity. (Available embedding models)[https://docs.orq.ai/docs/proxy/supported-models#embedding-models]",
+					Description: "Embedding model to use for semantic similarity. [Available embedding models](/docs/ai-gateway/supported-models#embedding-models)",
 				},
 				{
 					Name:        "forward_fallback",
@@ -314,7 +314,7 @@ func registerchunkingCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "Model to use for chunking. (Available models)[https://docs.orq.ai/docs/proxy/supported-models#chat-models]",
+					Description: "Model to use for chunking. [Available models](/docs/ai-gateway/supported-models#chat-models)",
 				},
 				{
 					Name:        "pattern",

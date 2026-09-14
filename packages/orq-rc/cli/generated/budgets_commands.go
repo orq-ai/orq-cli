@@ -254,7 +254,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List budgets",
-			Long:    bartolocli.Markdown("Returns budgets visible to the current workspace, ordered by creation time with the newest first. Supports filtering by scope kind, scope target id, period, and active state, plus an optional free-text query that searches across denormalized target names via Typesense. Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets."),
+			Long:    bartolocli.Markdown("Returns budgets visible to the current workspace, ordered by most recently updated with the newest first. Supports filtering by scope kind, scope target id, period, and active state, plus an optional free-text query that matches scope target names and ids. Requires a Management Key with the Budgets permission; project-scoped API keys cannot manage budgets."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -283,7 +283,7 @@ func registerbudgetsCommands(root *cobra.Command) {
 		cmd.Flags().String("scope-target-id", "", "Optional filter: only return budgets whose scope target id matches.")
 		cmd.Flags().Bool("is-active", false, "Optional filter: only return budgets with this active state.")
 		cmd.Flags().String("period", "", "Optional filter: only return budgets whose limits.period matches one of the listed values. Empty means no period filter.")
-		cmd.Flags().String("query", "", "Optional free-text query. Server translates this into a Typesense search over the denormalized `scope_target_name` and id fields on the per-workspace `{workspace_id}_budgets` collection.")
+		cmd.Flags().String("query", "", "Optional free-text query matched against a budget's scope target name and id.")
 		cmd.Flags().String("sort-by", "", "Field used to order the list. Unset orders by most-recently-updated. (one of: BUDGET_SORT_FIELD_UNSPECIFIED, BUDGET_SORT_FIELD_EXPIRES_AT, BUDGET_SORT_FIELD_CREATED_AT, BUDGET_SORT_FIELD_UPDATED_AT)")
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 			return []string{"BUDGET_SORT_FIELD_UNSPECIFIED", "BUDGET_SORT_FIELD_EXPIRES_AT", "BUDGET_SORT_FIELD_CREATED_AT", "BUDGET_SORT_FIELD_UPDATED_AT"}, cobra.ShellCompDirectiveNoFileComp

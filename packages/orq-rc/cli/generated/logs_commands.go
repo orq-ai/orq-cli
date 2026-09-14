@@ -57,7 +57,7 @@ func registerlogsCommands(root *cobra.Command) {
 							Name:        "grain",
 							FlagName:    "grain",
 							Type:        "string",
-							Description: "Time bucket grain: \"auto\" | \"minute\" | \"hour\" | \"day\", matching the shared\n libs/go/reporting Grain vocabulary used by the traces reporting API. Empty\n defaults to \"auto\" (grain picked from the time range).",
+							Description: "Time bucket grain: \"auto\" | \"minute\" | \"hour\" | \"day\". \"auto\" picks the\n grain from the requested time range. Empty returns rows without time\n buckets.",
 						},
 						{
 							Name:        "to",
@@ -105,7 +105,7 @@ func registerlogsCommands(root *cobra.Command) {
 					Name:        "grain",
 					FlagName:    "grain",
 					Type:        "string",
-					Description: "Time bucket grain: \"auto\" | \"minute\" | \"hour\" | \"day\", matching the shared\n libs/go/reporting Grain vocabulary used by the traces reporting API. Empty\n defaults to \"auto\" (grain picked from the time range).",
+					Description: "Time bucket grain: \"auto\" | \"minute\" | \"hour\" | \"day\". \"auto\" picks the\n grain from the requested time range. Empty returns rows without time\n buckets.",
 				},
 				{
 					Name:        "to",
