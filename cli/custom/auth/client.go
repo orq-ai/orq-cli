@@ -199,12 +199,22 @@ func (c *Client) PollDeviceLogin(ctx context.Context, deviceCode string, interva
 	}
 }
 
+// pollInterval floors the server's cadence at a second. The value is taken from
+// the device-login response, and a zero there made time.After fire at once — one
+// login then meant thousands of requests over the device code's lifetime.
+func pollInterval(seconds int) int {
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
 // AwaitDeviceApproval polls until the browser approves the device login. It
 // honors ctx between polls and inside the HTTP request, so Ctrl+C interrupts
 // the wait immediately instead of only once the device code expires.
 func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, expiresIn, initialInterval int) (*ApprovedDeviceLogin, error) {
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	interval := initialInterval
+	interval := pollInterval(initialInterval)
 	for time.Now().Before(deadline) {
 		result, err := c.PollDeviceLogin(ctx, deviceCode, interval)
 		if err != nil {
@@ -213,7 +223,7 @@ func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, exp
 		if result.Status == "approved" {
 			return result.Approved, nil
 		}
-		interval = result.Interval
+		interval = pollInterval(result.Interval)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

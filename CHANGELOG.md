@@ -126,6 +126,10 @@ controls on surface changes, whichever side they originate from.
   `ORQ_NO_INPUT`) still fails immediately rather than waiting for an approval
   nobody is there to give: a pipe means "cannot prompt", the flag means "nobody
   is watching", and only the second is a reason not to log in.
+- **Fixed:** the device-login poll took its cadence from the server with no
+  floor, so a response naming a zero-second interval re-requested as fast as the
+  network allowed — thousands of requests over one device code's lifetime. It is
+  now floored at one second.
 - **Fixed:** `orq setup` and `orq connect` printed nothing at all when run
   without a terminal. Their progress output was suppressed whenever `--no-input`
   was in force, and a missing TTY forces it — so the callers most in need of the

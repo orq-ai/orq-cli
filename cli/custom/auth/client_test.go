@@ -341,3 +341,13 @@ func TestReLoginAsAnotherUserWarnsTheExportedKeyStillWins(t *testing.T) {
 		t.Errorf("stderr = %q, want it to name the command that replaces the key", out.String())
 	}
 }
+
+func TestPollIntervalFloorsAtOneSecond(t *testing.T) {
+	for _, tc := range []struct{ in, want int }{
+		{-1, 1}, {0, 1}, {1, 1}, {5, 5}, {10, 10},
+	} {
+		if got := pollInterval(tc.in); got != tc.want {
+			t.Errorf("pollInterval(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
