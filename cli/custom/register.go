@@ -77,8 +77,9 @@ var profileExemptCommands = map[string]bool{
 // right non-interactive behaviour on every one of these paths, it just gates
 // on a TTY (cli.isInteractive) rather than on --no-input, so it prompts anyway
 // when a terminal is attached. Once bartolo lets a downstream CLI replace that
-// check, delete the map, `wizard` and the guard in installSessionPreRun
-// together. See RES-1571.
+// check — an exported hook standing in for hasInteractiveInput is enough —
+// delete the map, `wizard` and the guard in installSessionPreRun together.
+// RES-1571.
 var interactiveWizardCommands = map[string]wizard{
 	// No predicate: bartolo's auth setup is a wizard from its first line.
 	"auth setup": {
