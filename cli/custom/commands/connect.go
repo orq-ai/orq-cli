@@ -1577,10 +1577,16 @@ func runCredentialFreeSetup(cmd *cobra.Command, opts *setupOptions) error {
 	if err := resolveScope(rep, opts, caps); err != nil {
 		return fmt.Errorf("setup cancelled at the scope selection: %w", err)
 	}
+	return connectCredentialFreeSelection(cmd, opts, agents, caps)
+}
+
+// connectCredentialFreeSelection hands the choices already made by setup to
+// connect without asking for agents, capabilities, or scope a second time.
+// The named args carry those answers; --yes must retain its original meaning
+// so a later overwrite confirmation is never accepted implicitly.
+func connectCredentialFreeSelection(cmd *cobra.Command, opts *setupOptions, agents, caps []string) error {
 	args := append(append([]string{}, agents...), caps...)
 	wireOpts := *opts
-	wireOpts.noInput = true
-	wireOpts.yes = true
 	return runConnect(cmd, &wireOpts, args, false)
 }
 

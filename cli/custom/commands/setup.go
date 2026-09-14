@@ -1423,7 +1423,19 @@ func instrumentAgents(rep *reporter, client *auth.Client, state *authState, opts
 
 	if len(selected) > 0 && hasCap(opts.caps, capSkills) {
 		scope := skillsWriteScope(opts)
-		res, err := skills.Install(selected, scope)
+		conflicts, err := skills.Conflicts(selected, scope)
+		if err != nil {
+			return nil, fmt.Errorf("checking existing skills: %w", err)
+		}
+		overwrite := len(conflicts) > 0 && opts.confirm(
+			fmt.Sprintf("%d existing skill%s detected. Overwrite %s with the versions bundled with orq?",
+				len(conflicts), plural(len(conflicts), "", "s"), plural(len(conflicts), "it", "them")), false)
+		var res *skills.Result
+		if overwrite {
+			res, err = skills.InstallReplacing(selected, scope, conflicts)
+		} else {
+			res, err = skills.Install(selected, scope)
+		}
 		if err != nil {
 			// Connect's only job for this capability is the thing that just
 			// failed, so it is fatal here. launch degrades instead.
