@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.6.5](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.5) — 2026-09-15
+
 - **Changed (breaking): `orq` no longer reads `.env` or `.env.local`.** The
   directory you happened to stand in decided which credentials the CLI sent,
   with nothing in the output saying so. `ORQ_API_KEY` in a project `.env` is
