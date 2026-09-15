@@ -115,6 +115,8 @@ type DeviceLoginStart struct {
 	Interval                int    `json:"interval"`
 }
 
+const defaultDevicePollInterval = 5
+
 type ApprovedDeviceLogin struct {
 	RefreshToken string
 	AccessToken  string
@@ -125,7 +127,10 @@ func (c *Client) StartDeviceLogin(clientName string) (*DeviceLoginStart, error) 
 	if clientName == "" {
 		clientName = "orq-cli"
 	}
-	var resp DeviceLoginStart
+	// RFC 8628 makes interval optional and requires clients to use five seconds
+	// when it is absent. Initializing before unmarshal preserves that distinction:
+	// an explicit zero still reaches pollInterval's defensive one-second floor.
+	resp := DeviceLoginStart{Interval: defaultDevicePollInterval}
 	err := c.jsonRequest(
 		http.MethodPost,
 		c.URLs.AuthBaseURL+"/cli/device/start",
@@ -223,7 +228,9 @@ func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, exp
 		if result.Status == "approved" {
 			return result.Approved, nil
 		}
-		interval = pollInterval(result.Interval)
+		// PollDeviceLogin returns either the already-normalized cadence or that
+		// cadence plus five seconds for slow_down, so it cannot fall below one.
+		interval = result.Interval
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

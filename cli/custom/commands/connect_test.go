@@ -111,8 +111,13 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("connect: %v", err)
+	out := captureOutput(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "workspace acme") {
+		t.Errorf("piped connect suppressed progress output:\n%s", out)
 	}
 
 	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))

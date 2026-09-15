@@ -128,15 +128,17 @@ controls on surface changes, whichever side they originate from.
   is watching", and only the second is a reason not to log in.
 - **Fixed:** the device-login poll took its cadence from the server with no
   floor, so a response naming a zero-second interval re-requested as fast as the
-  network allowed — thousands of requests over one device code's lifetime. It is
-  now floored at one second.
+  network allowed — thousands of requests over one device code's lifetime. A
+  missing interval now uses the protocol's five-second default, and an explicit
+  zero is floored at one second.
 - **Fixed:** `orq setup` and `orq connect` printed nothing at all when run
   without a terminal. Their progress output was suppressed whenever `--no-input`
   was in force, and a missing TTY forces it — so the callers most in need of the
   narration were the ones silenced, and a piped `orq setup` waiting on a device
   login had no way to show the URL and code it was waiting for. Suppression now
-  follows an explicit `--no-input` only, and the device-login instructions print
-  even then.
+  follows an explicit `--no-input` only: a piped setup prints the device-login
+  instructions, while an explicit unattended run fails before starting that
+  flow.
 
 ## [8.6.5](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.5) — 2026-09-15
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -349,5 +350,52 @@ func TestPollIntervalFloorsAtOneSecond(t *testing.T) {
 		if got := pollInterval(tc.in); got != tc.want {
 			t.Errorf("pollInterval(%d) = %d, want %d", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestStartDeviceLoginDefaultsMissingPollIntervalToFiveSeconds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH",`+
+			`"verification_uri":"https://login.example","expires_in":60}`)
+	}))
+	defer srv.Close()
+
+	start, err := NewClient(srv.URL).StartDeviceLogin("orq-cli")
+	if err != nil {
+		t.Fatalf("StartDeviceLogin: %v", err)
+	}
+	if start.Interval != 5 {
+		t.Errorf("missing interval defaulted to %d seconds, want 5", start.Interval)
+	}
+}
+
+func TestAwaitDeviceApprovalAppliesPollIntervalAfterPendingResponse(t *testing.T) {
+	requests := atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		request := requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if request == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"authorization_pending"}`)
+			return
+		}
+		fmt.Fprint(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600}`)
+	}))
+	defer srv.Close()
+
+	started := time.Now()
+	approved, err := NewClient(srv.URL).AwaitDeviceApproval(t.Context(), "device", 5, 0)
+	if err != nil {
+		t.Fatalf("AwaitDeviceApproval: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed < 900*time.Millisecond {
+		t.Errorf("second poll started after %v, want the one-second floor to apply", elapsed)
+	}
+	if requests.Load() != 2 {
+		t.Errorf("token requests = %d, want 2", requests.Load())
+	}
+	if approved.AccessToken != "access" {
+		t.Errorf("access token = %q, want access", approved.AccessToken)
 	}
 }

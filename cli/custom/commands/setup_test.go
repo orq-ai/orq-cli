@@ -1064,6 +1064,92 @@ func TestApplyGlobalFlagsMarksExplicitNoInputUnattended(t *testing.T) {
 	}
 }
 
+func TestRunSetupReportsDeviceLoginWithoutATTY(t *testing.T) {
+	previousNoInput := viper.GetBool("no-input")
+	viper.Set("no-input", false)
+	t.Cleanup(func() { viper.Set("no-input", previousNoInput) })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cli/device/start"):
+			fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://login.example",`+
+				`"verification_uri_complete":"https://login.example/device","expires_in":60,"interval":1}`)
+		case strings.HasSuffix(r.URL.Path, "/cli/device/token"):
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"access_denied"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	previousOpen := openBrowserFn
+	openBrowserFn = func(string) bool { return true }
+	t.Cleanup(func() { openBrowserFn = previousOpen })
+
+	cmd := NewSetupCommand()
+	cmd.SetContext(context.Background())
+	out := captureOutput(t, func() {
+		err := runSetup(cmd, &setupOptions{})
+		if err == nil || !strings.Contains(err.Error(), "device login was denied") {
+			t.Fatalf("runSetup error = %v, want device login denial", err)
+		}
+	})
+	for _, want := range []string{"Step 1/4", "https://login.example/device", "ABCD-EFGH"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("piped setup did not print %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunSetupExplicitNoInputFailsQuietlyBeforeDeviceLogin(t *testing.T) {
+	requests := atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	previousNoInput := viper.GetBool("no-input")
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", previousNoInput) })
+
+	cmd := NewSetupCommand()
+	cmd.SetContext(context.Background())
+	out := captureOutput(t, func() {
+		err := runSetup(cmd, &setupOptions{})
+		if err == nil || !strings.Contains(err.Error(), "--no-input given") {
+			t.Fatalf("runSetup error = %v, want explicit --no-input failure", err)
+		}
+	})
+	if requests.Load() != 0 {
+		t.Errorf("explicit --no-input made %d network requests, want 0", requests.Load())
+	}
+	if out != "" {
+		t.Errorf("explicit --no-input wrote progress output:\n%s", out)
+	}
+}
+
 // Device login is a URL, a code and a poll; none of those needs a terminal.
 // A coding agent starts setup through a pipe, so a forced noInput must still
 // reach the login that creates the credential setup needs.
@@ -1110,10 +1196,7 @@ func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
 	t.Cleanup(func() { openBrowserFn = previousOpen })
 
 	var out strings.Builder
-	// quiet: true is the point. Production keys quiet to the explicit --no-input
-	// now, but these four lines are the login itself, so they have to reach a
-	// caller that asked for silence too — a suppressed code can only time out.
-	state, err := resolveAuth(context.Background(), &reporter{w: &out, quiet: true}, &setupOptions{noInput: true})
+	state, err := resolveAuth(context.Background(), &reporter{w: &out}, &setupOptions{noInput: true})
 	if err != nil {
 		t.Fatalf("resolveAuth: %v", err)
 	}
@@ -3674,7 +3757,15 @@ func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
 // No test may open a real browser. Both launches go through openBrowserFn for
 // that reason, and this is what keeps a third one from reintroducing the tabs.
 func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
-	for _, name := range []string{"setup.go", "connect.go", "auth.go", "launch.go"} {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
 		src, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
