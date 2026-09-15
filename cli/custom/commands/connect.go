@@ -357,7 +357,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
-	rep := newReporter(opts.noInput)
+	rep := newReporter(opts.unattended)
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
 		return err
@@ -494,7 +494,7 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
-	rep := newReporter(opts.noInput)
+	rep := newReporter(opts.unattended)
 
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
@@ -957,7 +957,7 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	if err := applyGlobalFlags(opts); err != nil {
 		return err
 	}
-	rep := newReporter(opts.noInput)
+	rep := newReporter(opts.unattended)
 
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
@@ -1554,7 +1554,7 @@ func bothScopePaths(resolve func(bool) (string, error)) []string {
 // without authentication. It keeps the interactive onboarding order identical
 // to the authenticated path: agents, functionality, then scope.
 func runCredentialFreeSetup(cmd *cobra.Command, opts *setupOptions) error {
-	rep := newReporter(opts.noInput)
+	rep := newReporter(opts.unattended)
 	agents, err := promptForAgents(rep, availableCapabilities())
 	if err != nil {
 		return fmt.Errorf("setup cancelled at the agent selection: %w", err)

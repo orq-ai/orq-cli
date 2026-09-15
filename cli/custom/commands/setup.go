@@ -51,7 +51,12 @@ type setupOptions struct {
 	caps          []string
 	noGateway     bool
 	noInput       bool
-	yes           bool
+	// unattended is an explicit --no-input/ORQ_NO_INPUT, as opposed to the
+	// noInput a missing TTY forces. A pipe means "cannot prompt" and is how
+	// every coding agent runs; the flag means "nobody is watching". Only the
+	// second is a reason to refuse a device login rather than start one.
+	unattended bool
+	yes        bool
 	// persistKey allows --api-key to replace the saved credential; only 'orq setup' sets it.
 	persistKey bool
 	// finalScreen marks a run that ends in printFinalScreen, which reports every
@@ -244,6 +249,8 @@ left exported in your shell because setup writes persistent configuration.`),
 // an interactive prompt can never block a pipeline.
 func applyGlobalFlags(opts *setupOptions) error {
 	opts.noInput = viper.GetBool("no-input")
+	// Read before the TTY override below, which is what makes the two distinguishable.
+	opts.unattended = opts.noInput
 	if ws := strings.TrimSpace(viper.GetString("workspace")); ws != "" {
 		opts.workspace = ws
 	}
@@ -277,10 +284,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 
 	// A skills-only run unpacks files out of this binary and touches nothing
 	// else: no key to mint, no workspace to pick, nothing to verify against the
-	// API. Sending it through steps 1 and 2 made `orq setup --capability skills`
-	// die at "no TTY available for browser login". connect already is that run,
-	// credential gate and all, so hand it over rather than growing a second
-	// credential-free path here.
+	// API. Sending it through steps 1 and 2 charged it a full authentication —
+	// once a hard failure without a TTY, now a device login it has no use for.
+	// connect already is that run, credential gate and all, so hand it over
+	// rather than growing a second credential-free path here.
 	if len(opts.caps) > 0 && !capsNeedCredential(opts.caps) {
 		if !opts.noInput {
 			return runCredentialFreeSetup(cmd, opts)
@@ -288,7 +295,10 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 		return runConnect(cmd, opts, opts.caps, false)
 	}
 
-	rep := newReporter(opts.noInput)
+	// unattended, not noInput: a missing TTY forces noInput, so keying quiet to
+	// it silenced every agent run — the callers with the most need of the
+	// narration, and no prompt of their own to be spared.
+	rep := newReporter(opts.unattended)
 	printSplash(bartolocli.Stderr, cmd.Root().Version)
 
 	result := map[string]any{}
@@ -474,13 +484,15 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		savedKey, savedWS := savedAPIKey()
 		if auth.EnvKeyShadowsWorkspace(envKey, savedKey, savedWS, activeWorkspaceKey(session)) {
 			// Which one won is the fact; why lives in 'orq doctor'.
-			rep.note("following your login, not the exported ORQ_API_KEY")
+			rep.info("following your login, not the exported ORQ_API_KEY")
 		}
 	}
 
 	if session == nil {
-		if opts.noInput {
-			return nil, errors.New("no TTY available for browser login\n  Pass --api-key <key> or set ORQ_API_KEY, then re-run")
+		// A device login waits for a human to approve it. Nobody asked to be
+		// waited on here, so fail now rather than at the device code's expiry.
+		if opts.unattended {
+			return nil, errors.New("--no-input given and no credential is available\n  Pass --api-key <key> or set ORQ_API_KEY, then re-run")
 		}
 		session, err = deviceLogin(ctx, rep, opts)
 		if err != nil {
@@ -518,6 +530,9 @@ func apiBaseFromEnv() string {
 }
 
 func deviceLogin(ctx context.Context, rep *reporter, opts *setupOptions) (*auth.Session, error) {
+	// Open the browser either way. A piped run is usually an agent on the user's
+	// own desktop, where the tab is what they want, and OpenBrowser reports a
+	// failure rather than blocking on a machine that has none.
 	result, err := runDeviceLogin(ctx, rep, serverURL(), opts.workspace, true)
 	if err != nil {
 		return nil, err
@@ -537,6 +552,11 @@ type deviceLoginResult struct {
 }
 
 // runDeviceLogin is the shared device-login flow; callers report success their own way.
+// openBrowserFn is the one seam every browser launch goes through, so a test
+// can take them all out at once: `go test` used to open real tabs at the
+// fixtures' URLs. Nothing here may call auth.OpenBrowser directly.
+var openBrowserFn = auth.OpenBrowser
+
 func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace string, openBrowser bool) (*deviceLoginResult, error) {
 	// Context-aware so Ctrl-C cancels the poll instead of waiting out the device-code expiry.
 	client := auth.NewClient(apiBase).WithContext(ctx)
@@ -544,16 +564,18 @@ func runDeviceLogin(ctx context.Context, rep *reporter, apiBase, workspace strin
 	if err != nil {
 		return nil, err
 	}
-	rep.note("Open: %s", start.VerificationURIComplete)
-	rep.note("Code: %s", start.UserCode)
+	// info, not note: this is the whole login, not progress alongside it. A run
+	// that suppresses these has no way to be approved and can only time out.
+	rep.info("Open: %s", start.VerificationURIComplete)
+	rep.info("Code: %s", start.UserCode)
 	browserOpened := false
 	if openBrowser {
-		browserOpened = auth.OpenBrowser(start.VerificationURIComplete)
+		browserOpened = openBrowserFn(start.VerificationURIComplete)
 		if !browserOpened {
-			rep.note("Could not open the browser automatically. Open the URL manually.")
+			rep.info("Could not open the browser automatically. Open the URL manually.")
 		}
 	}
-	rep.note("Waiting for browser approval...")
+	rep.info("Waiting for browser approval...")
 
 	approved, err := client.AwaitDeviceApproval(ctx, start.DeviceCode, start.ExpiresIn, start.Interval)
 	if err != nil {
@@ -1145,7 +1167,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 	case gatewayKeyDueForRenewal(time.Now()):
 		// The superseded key is left alive until its own expiry: that overlap is
 		// what keeps an agent config working until this run rewrites it.
-		rep.note("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
+		rep.info("saved key expires soon — creating its replacement; run 'orq connect' to rewire the agents")
 		token = ""
 	default:
 		rep.ok("using your saved key")
@@ -1198,7 +1220,7 @@ func ensureDurableKey(rep *reporter, client *auth.Client, state *authState, opts
 		// Say what it is scoped to, because the dashboard lists it only as
 		// "Restricted", and because a key that cannot see the rest of the
 		// workspace is a surprise worth naming once.
-		rep.note("the key is scoped to this project; it routes model calls for the coding agents and reaches nothing else")
+		rep.info("the key is scoped to this project; it routes model calls for the coding agents and reaches nothing else")
 	}
 	rep.ok("gateway key created — expires in %d days", int(gatewayKeyLifetime.Hours()/24))
 	return minted, true, nil
@@ -1321,8 +1343,8 @@ func reportGatewayReadiness(rep *reporter, state *authState, opts *setupOptions,
 	if models == "" || opts.noInput || !opts.confirm("Open the models page now?", true) {
 		return
 	}
-	if !auth.OpenBrowser(models) {
-		rep.note("  could not open a browser, the URL above is the one to visit")
+	if !openBrowserFn(models) {
+		rep.info("could not open a browser, the URL above is the one to visit")
 	}
 }
 

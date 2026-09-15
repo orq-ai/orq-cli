@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1042,6 +1043,218 @@ func TestApplyGlobalFlagsForcesNoInputWithoutATTY(t *testing.T) {
 	}
 	if opts.interactive {
 		t.Error("--no-input did not clear -i")
+	}
+	if opts.unattended {
+		t.Error("a missing TTY set unattended; only an explicit --no-input means nobody is watching")
+	}
+}
+
+// The flag and the TTY fold set the same noInput, and resolveAuth has to tell
+// them apart: a pipe gets a device login, an explicit --no-input gets the fast
+// failure. Nothing else records which one spoke.
+func TestApplyGlobalFlagsMarksExplicitNoInputUnattended(t *testing.T) {
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", false) })
+	opts := &setupOptions{}
+	if err := applyGlobalFlags(opts); err != nil {
+		t.Fatalf("applyGlobalFlags: %v", err)
+	}
+	if !opts.unattended {
+		t.Error("explicit --no-input did not set unattended")
+	}
+}
+
+func TestRunSetupReportsDeviceLoginWithoutATTY(t *testing.T) {
+	previousNoInput := viper.GetBool("no-input")
+	viper.Set("no-input", false)
+	t.Cleanup(func() { viper.Set("no-input", previousNoInput) })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cli/device/start"):
+			fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://login.example",`+
+				`"verification_uri_complete":"https://login.example/device","expires_in":60,"interval":1}`)
+		case strings.HasSuffix(r.URL.Path, "/cli/device/token"):
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"access_denied"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	previousOpen := openBrowserFn
+	openBrowserFn = func(string) bool { return true }
+	t.Cleanup(func() { openBrowserFn = previousOpen })
+
+	cmd := NewSetupCommand()
+	cmd.SetContext(context.Background())
+	out := captureOutput(t, func() {
+		err := runSetup(cmd, &setupOptions{})
+		if err == nil || !strings.Contains(err.Error(), "device login was denied") {
+			t.Fatalf("runSetup error = %v, want device login denial", err)
+		}
+	})
+	for _, want := range []string{"Step 1/4", "https://login.example/device", "ABCD-EFGH"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("piped setup did not print %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunSetupExplicitNoInputFailsQuietlyBeforeDeviceLogin(t *testing.T) {
+	requests := atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	previousNoInput := viper.GetBool("no-input")
+	viper.Set("no-input", true)
+	t.Cleanup(func() { viper.Set("no-input", previousNoInput) })
+
+	cmd := NewSetupCommand()
+	cmd.SetContext(context.Background())
+	out := captureOutput(t, func() {
+		err := runSetup(cmd, &setupOptions{})
+		if err == nil || !strings.Contains(err.Error(), "--no-input given") {
+			t.Fatalf("runSetup error = %v, want explicit --no-input failure", err)
+		}
+	})
+	if requests.Load() != 0 {
+		t.Errorf("explicit --no-input made %d network requests, want 0", requests.Load())
+	}
+	if out != "" {
+		t.Errorf("explicit --no-input wrote progress output:\n%s", out)
+	}
+}
+
+// Device login is a URL, a code and a poll; none of those needs a terminal.
+// A coding agent starts setup through a pipe, so a forced noInput must still
+// reach the login that creates the credential setup needs.
+func TestResolveAuthStartsDeviceLoginWithoutATTY(t *testing.T) {
+	const token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig"
+	var starts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cli/device/start"):
+			starts.Add(1)
+			fmt.Fprint(w, `{"device_code":"device","user_code":"ABCD-EFGH","verification_uri":"https://login.example",`+
+				`"verification_uri_complete":"https://login.example/device","expires_in":60,"interval":0}`)
+		case strings.HasSuffix(r.URL.Path, "/cli/device/token"):
+			fmt.Fprintf(w, `{"access_token":%q,"refresh_token":"refresh","expires_in":3600}`, token)
+		case r.URL.Path == auth.ProfileRPCPath:
+			fmt.Fprint(w, `{"profile":{"id":"user","email":"agent@example.com","display_name":"Agent",`+
+				`"workspaces":[{"key":"acme","name":"Acme"}],"preferences":{"active_workspace":"acme"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/access-token"):
+			fmt.Fprintf(w, `{"access_token":%q}`, token)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+
+	var opened []string
+	previousOpen := openBrowserFn
+	openBrowserFn = func(url string) bool {
+		opened = append(opened, url)
+		return true
+	}
+	t.Cleanup(func() { openBrowserFn = previousOpen })
+
+	var out strings.Builder
+	state, err := resolveAuth(context.Background(), &reporter{w: &out}, &setupOptions{noInput: true})
+	if err != nil {
+		t.Fatalf("resolveAuth: %v", err)
+	}
+	if starts.Load() != 1 {
+		t.Fatalf("device login starts = %d, want 1", starts.Load())
+	}
+	for _, want := range []string{"https://login.example/device", "ABCD-EFGH", "Waiting for browser approval"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("headless login did not print %q:\n%s", want, out.String())
+		}
+	}
+	if state.session == nil || state.bearer != token {
+		t.Fatalf("state after login = %+v", state)
+	}
+	saved, err := auth.ReadSession()
+	if err != nil || saved == nil || saved.User == nil || saved.User.Email != "agent@example.com" {
+		t.Fatalf("saved session = %+v, err = %v", saved, err)
+	}
+	// A pipe is usually an agent on the user's own desktop, so the tab is still
+	// wanted — but a test must never be the thing that opens it.
+	if len(opened) != 1 || opened[0] != "https://login.example/device" {
+		t.Errorf("browser launches = %v, want one for the verification URL", opened)
+	}
+}
+
+// The other half of that split: an explicit --no-input says nobody is watching,
+// and a device login is a wait for a human. Fail on the spot with the remedy
+// rather than at the device code's expiry, with nothing said in between.
+func TestResolveAuthRefusesDeviceLoginWhenUnattended(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unattended run reached %s; it must not start a login nobody will approve", r.URL.Path)
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	previousCreds := bartolocli.Creds
+	bartolocli.Creds = newTestCreds(t)
+	t.Cleanup(func() { bartolocli.Creds = previousCreds })
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+
+	var out strings.Builder
+	opts := &setupOptions{noInput: true, unattended: true}
+	_, err := resolveAuth(context.Background(), &reporter{w: &out}, opts)
+	if err == nil {
+		t.Fatal("unattended resolveAuth succeeded; it should refuse before the device flow")
+	}
+	// The remedy is the whole point: the old message pointed at --api-key, and
+	// losing it is what turned a clear failure into a silent wait.
+	for _, want := range []string{"--api-key", "ORQ_API_KEY"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not name %s:\n%v", want, err)
+		}
 	}
 }
 
@@ -3538,5 +3751,28 @@ func TestStoredWorkspaceTokenFindsTheProjectScopedEntry(t *testing.T) {
 				t.Errorf("storedWorkspaceToken = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// No test may open a real browser. Both launches go through openBrowserFn for
+// that reason, and this is what keeps a third one from reintroducing the tabs.
+func TestNoDirectBrowserLaunchOutsideTheSeam(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		body := strings.ReplaceAll(string(src), "var openBrowserFn = auth.OpenBrowser", "")
+		if strings.Contains(body, "auth.OpenBrowser(") {
+			t.Errorf("%s calls auth.OpenBrowser directly; go through openBrowserFn so tests can stub it", name)
+		}
 	}
 }

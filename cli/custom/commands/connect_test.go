@@ -111,8 +111,13 @@ func TestConnectWiresTheSavedKey(t *testing.T) {
 
 	cmd := NewConnectCommand()
 	cmd.SetArgs([]string{"kimi"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("connect: %v", err)
+	out := captureOutput(t, func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "workspace acme") {
+		t.Errorf("piped connect suppressed progress output:\n%s", out)
 	}
 
 	data, err := os.ReadFile(filepath.Join(home, ".kimi-code", "config.toml"))
@@ -2102,8 +2107,8 @@ func TestDecliningTheLoginStillInstallsSkills(t *testing.T) {
 
 // Skills unpack out of this binary onto the local filesystem, so a skills-only
 // run has nothing to authenticate. `orq setup --capability skills` still walked
-// through step 1 and died at "no TTY available for browser login" on a machine
-// with no saved credential.
+// through step 1 on a machine with no saved credential, where it once died
+// outright without a TTY and would now sit in a device login it does not need.
 func TestSetupSkillsOnlyNeedsNoCredential(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

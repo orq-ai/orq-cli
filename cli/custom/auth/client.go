@@ -115,6 +115,8 @@ type DeviceLoginStart struct {
 	Interval                int    `json:"interval"`
 }
 
+const defaultDevicePollInterval = 5
+
 type ApprovedDeviceLogin struct {
 	RefreshToken string
 	AccessToken  string
@@ -125,7 +127,10 @@ func (c *Client) StartDeviceLogin(clientName string) (*DeviceLoginStart, error) 
 	if clientName == "" {
 		clientName = "orq-cli"
 	}
-	var resp DeviceLoginStart
+	// RFC 8628 makes interval optional and requires clients to use five seconds
+	// when it is absent. Initializing before unmarshal preserves that distinction:
+	// an explicit zero still reaches pollInterval's defensive one-second floor.
+	resp := DeviceLoginStart{Interval: defaultDevicePollInterval}
 	err := c.jsonRequest(
 		http.MethodPost,
 		c.URLs.AuthBaseURL+"/cli/device/start",
@@ -199,12 +204,22 @@ func (c *Client) PollDeviceLogin(ctx context.Context, deviceCode string, interva
 	}
 }
 
+// pollInterval floors the server's cadence at a second. The value is taken from
+// the device-login response, and a zero there made time.After fire at once — one
+// login then meant thousands of requests over the device code's lifetime.
+func pollInterval(seconds int) int {
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
 // AwaitDeviceApproval polls until the browser approves the device login. It
 // honors ctx between polls and inside the HTTP request, so Ctrl+C interrupts
 // the wait immediately instead of only once the device code expires.
 func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, expiresIn, initialInterval int) (*ApprovedDeviceLogin, error) {
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	interval := initialInterval
+	interval := pollInterval(initialInterval)
 	for time.Now().Before(deadline) {
 		result, err := c.PollDeviceLogin(ctx, deviceCode, interval)
 		if err != nil {
@@ -213,6 +228,8 @@ func (c *Client) AwaitDeviceApproval(ctx context.Context, deviceCode string, exp
 		if result.Status == "approved" {
 			return result.Approved, nil
 		}
+		// PollDeviceLogin returns either the already-normalized cadence or that
+		// cadence plus five seconds for slow_down, so it cannot fall below one.
 		interval = result.Interval
 		select {
 		case <-ctx.Done():
