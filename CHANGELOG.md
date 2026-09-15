@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [8.6.6](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.6) — 2026-09-15
+
 - **Fixed:** `orq setup` failed with `no TTY available for browser login` when
   run without a terminal and no credential existed, and the remedy it named —
   pass `--api-key` — was circular, since `setup` is the command that mints that
