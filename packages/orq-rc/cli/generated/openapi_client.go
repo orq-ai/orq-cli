@@ -881,7 +881,7 @@ func OpenapiAlertUpdate(paramAlertId string, params *viper.Viper, body string) (
 }
 
 // OpenapiAddAnnotationQueueItems Add items to an annotation queue
-func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "annotation-queues add-items annotation-queue-id"
 	server := bartolocli.ResolveServer()
 
@@ -905,7 +905,7 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -917,18 +917,14 @@ func OpenapiAddAnnotationQueueItems(paramAnnotationQueueId string, params *viper
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
 }
 
 // OpenapiClearAnnotationQueue Clear an annotation queue
-func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "annotation-queues clear annotation-queue-id"
 	server := bartolocli.ResolveServer()
 
@@ -948,7 +944,7 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -960,11 +956,7 @@ func OpenapiClearAnnotationQueue(paramAnnotationQueueId string, params *viper.Vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -1013,7 +1005,7 @@ func OpenapiCreateAnnotationQueue(params *viper.Viper, body string) (*gentleman.
 }
 
 // OpenapiDeleteAnnotationQueue Delete an annotation queue
-func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "annotation-queues delete annotation-queue-id"
 	server := bartolocli.ResolveServer()
 
@@ -1033,7 +1025,7 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1045,11 +1037,7 @@ func OpenapiDeleteAnnotationQueue(paramAnnotationQueueId string, params *viper.V
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -1261,7 +1249,7 @@ func OpenapiListAnnotationQueueItems(paramAnnotationQueueId string, params *vipe
 }
 
 // OpenapiRemoveAnnotationQueueItems Remove items from an annotation queue
-func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "annotation-queues remove-items annotation-queue-id"
 	server := bartolocli.ResolveServer()
 
@@ -1285,7 +1273,7 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -1297,11 +1285,7 @@ func OpenapiRemoveAnnotationQueueItems(paramAnnotationQueueId string, params *vi
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
