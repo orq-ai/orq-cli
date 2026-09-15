@@ -30,7 +30,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new project",
-			Long:    bartolocli.Markdown("Creates a project in the current workspace. Projects are workspace-level containers for resources such as skills, deployments, datasets, rules, and related team access.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string, required)\n- `teams` (array)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a project in the current workspace. Projects are workspace-level containers for resources such as skills, deployments, datasets, rules, and related team access. Requires a key with write access to Projects (management key or API key), or an admin session. Project-scoped API keys are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string, required)\n- `teams` (array)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -122,7 +122,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete project-id",
 			Short:   "Delete a project",
-			Long:    bartolocli.Markdown("Deletes a project from the workspace. The response body is empty when the delete succeeds.\n\n## Arguments\n\n- `project-id` — Project ID to delete."),
+			Long:    bartolocli.Markdown("Deletes a project from the workspace. The response body is empty when the delete succeeds. Requires a key with write access to Projects (management key or API key), or an admin session. Project-scoped API keys are rejected.\n\n## Arguments\n\n- `project-id` — Project ID to delete."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -252,7 +252,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update project-id",
 			Short:   "Update a project",
-			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `project-id` — Project ID to update."),
+			Long:    bartolocli.Markdown("Updates the specified project by setting the values of the parameters passed. Requires a key with write access to Projects (management key or API key), or an admin session. Project-scoped API keys are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `name` (string)\n- `teams` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `project-id` — Project ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
