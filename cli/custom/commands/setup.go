@@ -458,9 +458,9 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		return nil, err
 	}
 
-	// Bartolo auto-loads ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
+	// Under $ORQ_DOTENV=1 bartolo imports ./.env at startup, so "unset ORQ_API_KEY" is wrong advice when a file re-injects it every run.
 	if envKey := UserEnvAPIKey(); envKey != "" && session == nil {
-		if file, v := dotEnvAPIKey(); file != "" && v == envKey {
+		if file := dotEnvOrigin("ORQ_API_KEY"); file != "" {
 			// Naming the file is the action: unsetting the shell variable will not help.
 			rep.ok("using the API key from ./%s", file)
 		} else {
@@ -1033,53 +1033,28 @@ func storedAPIKeyProfile() bool {
 	return bartolocli.Creds != nil && strings.TrimSpace(bartolocli.GetProfile()["api_key"]) != ""
 }
 
-// Bartolo loads these files before any command runs, so a key here outlives 'unset' and logout; the parsing mirrors its loadDotEnvFile.
-func dotEnvAPIKey() (file, value string) {
-	for _, name := range []string{".env", ".env.local"} {
-		data, err := os.ReadFile(name)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-			k, v, ok := strings.Cut(line, "=")
-			if !ok || strings.TrimSpace(k) != "ORQ_API_KEY" {
-				continue
-			}
-			v = strings.TrimSpace(v)
-			if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
-				v = v[1 : len(v)-1]
-			}
-			// A placeholder (ORQ_API_KEY=) is no credential and must not hide a later file that holds one.
-			if v == "" {
-				continue
-			}
-			return name, v
-		}
-	}
-	return "", ""
-}
+// dotEnvOrigin names the dotenv file a variable was imported from, or "".
+// Bartolo imports one only under $ORQ_DOTENV=1; with loading off a .env line is
+// inert, so nothing here may claim the file supplied the key. Indirected for
+// the tests, which cannot reach bartolo's origin map.
+var dotEnvOrigin = bartolocli.DotEnvOrigin
 
 // warnLingeringAPIKeys names the credentials logout cannot clear, or the next command silently authenticates again.
 func warnLingeringAPIKeys() {
-	file, v := dotEnvAPIKey()
-	if file != "" {
-		Warn("./%s still sets ORQ_API_KEY and orq loads it automatically — remove that line to fully sign out", file)
+	for _, name := range APIKeyEnvVars {
+		if file := dotEnvOrigin(name); file != "" {
+			Warn("./%s still sets %s and $ORQ_DOTENV=1 loads it — remove that line to fully sign out", file, name)
+		}
 	}
-	// Independent sources: explicitAPIKey is snapshotted before our PreRun injects a token, and an export matching the dotenv value is indistinguishable from it.
+	// explicitAPIKey is snapshotted before our PreRun injects a token.
 	if explicitAPIKey {
 		var exported []string
 		for _, name := range APIKeyEnvVars {
-			value := strings.TrimSpace(os.Getenv(name))
-			if value == "" {
+			if strings.TrimSpace(os.Getenv(name)) == "" {
 				continue
 			}
-			// The dotenv line above already covers a key this shell got from the file.
-			if name == APIKeyEnvVars[0] && file != "" && v == value {
+			// A value bartolo imported from a dotenv file is warned about above, and 'unset' would not fix it.
+			if dotEnvOrigin(name) != "" {
 				continue
 			}
 			exported = append(exported, name)

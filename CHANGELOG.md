@@ -117,6 +117,31 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed (breaking): `orq` no longer reads `.env` or `.env.local`.** The
+  directory you happened to stand in decided which credentials the CLI sent,
+  with nothing in the output saying so. `ORQ_API_KEY` in a project `.env` is
+  now ignored; export it, put it in a profile, or set `ORQ_DOTENV=1` to opt
+  back in for that command. There is deliberately no config-file equivalent.
+  When loading is on, `orq doctor` reports a `dotenv` auth source and names the
+  file, so a key from a file is never mistaken for one you exported. Only
+  `ORQ_`-prefixed variables are imported, so a project `.env` no longer leaks
+  `OPENAI_API_KEY` or `DATABASE_URL` into the CLI process.
+- **Fixed: `orq auth logout` no longer points at an inert `.env`.** It warned
+  that `./.env` "still sets ORQ_API_KEY and orq loads it automatically" even
+  when nothing had been loaded, sending users to edit a file that was not
+  signing them back in. The warning now names only a file the key was actually
+  imported from, and covers `ORQ_TOKEN` and `ORQ_AUTHORIZATION` alongside
+  `ORQ_API_KEY`.
+- **Fixed: `--no-input` reaches every prompt.** A prompt raised below the
+  command layer could still block an unattended run.
+- **Fixed:** commands no longer rewrite `~/.orq/credentials.json` on their own.
+  A profile an older build stored with `"type": "apikey"` was corrected in
+  memory on every run, and the next command that saved credentials, such as
+  `orq auth profile add`, wrote that correction to disk. The same correction
+  hid every other profile from `orq auth profile list` and could fail requests
+  with `profile "default" has no API key`. Those profiles now authenticate as
+  stored and the file is left untouched.
+
 ## [8.6.3](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.3) — 2026-09-14
 
 - **Fixed: `orq connect skills` now offers to replace conflicting skills.** When
