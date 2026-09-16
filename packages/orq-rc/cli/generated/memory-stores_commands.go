@@ -690,13 +690,13 @@ func registermemoryStoresCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update memory-store-key",
 			Short:   "Update memory store",
-			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `ttl` (number | null)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`"),
+			Long:    bartolocli.Markdown("Update the memory store configuration\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `path` (string)\n- `project_id` (string)\n- `ttl` (number | null)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `memory-store-key`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"path\": \"path\",\n  \"ttl\": 0\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"description\",\n  \"path\": \"path\",\n  \"project_id\": \"project_id\",\n  \"ttl\": 0\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -712,6 +712,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 							FlagName:    "path",
 							Type:        "string",
 							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "New containing project. Omit to keep the current project; `path` resolves inside it.",
 						},
 						{
 							Name:        "ttl",
@@ -754,6 +760,12 @@ func registermemoryStoresCommands(root *cobra.Command) {
 					FlagName:    "path",
 					Type:        "string",
 					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "New containing project. Omit to keep the current project; `path` resolves inside it.",
 				},
 				{
 					Name:        "ttl",

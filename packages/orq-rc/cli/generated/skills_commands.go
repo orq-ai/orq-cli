@@ -282,7 +282,7 @@ func registerskillsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update skill-id",
 			Short:   "Update a skill",
-			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted optional fields keep their current values. Repeated fields such as `tags` replace the existing collection when provided.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID to update."),
+			Long:    bartolocli.Markdown("Updates mutable skill fields. Omitted fields keep their current values. When `tags` is provided it replaces the existing tags; send an empty array to clear them.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `instructions` (string)\n- `path` (string)\n- `project_id` (string)\n- `tags` (array)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `skill-id` — Skill ID to update."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -327,7 +327,7 @@ func registerskillsCommands(root *cobra.Command) {
 							Name:        "tags",
 							FlagName:    "tags",
 							Type:        "string-slice",
-							Description: "Replacement tag list. Leave empty to clear tags.",
+							Description: "Replacement tag list. When provided, replaces the current tags; send an empty array to clear them.",
 						},
 					},
 				)
@@ -387,7 +387,7 @@ func registerskillsCommands(root *cobra.Command) {
 					Name:        "tags",
 					FlagName:    "tags",
 					Type:        "string-slice",
-					Description: "Replacement tag list. Leave empty to clear tags.",
+					Description: "Replacement tag list. When provided, replaces the current tags; send an empty array to clear them.",
 				},
 			},
 		)
