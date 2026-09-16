@@ -325,6 +325,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("search", "", "Filter datasets by display name (case-insensitive match).")
 		cmd.Flags().String("updated-by", "", "Comma-separated list of user IDs; returns datasets last updated by any of them.")
+		cmd.Flags().String("project-id", "", "Restricts results to a single project. Defaults to every project the caller can access.")
 
 		bartolocli.SetCustomFlags(cmd)
 

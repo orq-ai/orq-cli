@@ -50,11 +50,14 @@ func registerevalsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default (10).")
-		cmd.Flags().String("starting-after", "", "")
-		cmd.Flags().String("ending-before", "", "")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
+		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
+		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("search", "", "")
-		cmd.Flags().String("sort", "", "")
+		cmd.Flags().String("sort", "", " (one of: asc, desc)")
+		_ = cmd.RegisterFlagCompletionFunc("sort", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"asc", "desc"}, cobra.ShellCompDirectiveNoFileComp
+		})
 		cmd.Flags().String("project-id", "", "")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -72,17 +75,133 @@ func registerevalsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " create --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create an Evaluator",
-			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`"),
+			Long:    bartolocli.Markdown("Create a new evaluator in the workspace.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `jury` (object)\n- `key` (string, required)\n- ... and 8 more fields\n\nRequired fields: `key`, `type`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"description\": \"\",\n  \"key\": \"key\",\n  \"mode\": \"single\",\n  \"model\": \"model\",\n  \"output_type\": \"boolean\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"prompt\": \"prompt\",\n  \"type\": \"llm_eval\"\n}") {
+					return nil
+				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "categorical_labels",
+							FlagName:    "categorical-labels",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "categories",
+							FlagName:    "categories",
+							Type:        "string-slice",
+							Description: "",
+						},
+						{
+							Name:        "code",
+							FlagName:    "code",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "dataset_id",
+							FlagName:    "dataset-id",
+							Type:        "string-nullable",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "guardrail_config",
+							FlagName:    "guardrail-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "jury",
+							FlagName:    "jury",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "mode",
+							FlagName:    "mode",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"single",
+								"jury",
+							},
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "output_type",
+							FlagName:    "output-type",
+							Type:        "enum-string",
+							Description: "The type of output expected from the evaluator",
+							Enum: []string{
+								"boolean",
+								"categorical",
+								"number",
+								"string",
+							},
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Legacy alternative to `project_id`. Storage path whose first segment names the project that owns the evaluator. Mutually exclusive with `project_id`.",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Mutually exclusive with `path`.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "repetitions",
+							FlagName:    "repetitions",
+							Type:        "int64-nullable",
+							Description: "",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"llm_eval",
+								"python_eval",
+							},
+						},
+					},
 				)
 				if err != nil {
 					return errors.Wrap(err, "unable to get body")
@@ -103,8 +222,120 @@ func registerevalsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "categorical_labels",
+					FlagName:    "categorical-labels",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "categories",
+					FlagName:    "categories",
+					Type:        "string-slice",
+					Description: "",
+				},
+				{
+					Name:        "code",
+					FlagName:    "code",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "dataset_id",
+					FlagName:    "dataset-id",
+					Type:        "string-nullable",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "guardrail_config",
+					FlagName:    "guardrail-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "jury",
+					FlagName:    "jury",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "mode",
+					FlagName:    "mode",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"single",
+						"jury",
+					},
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "output_type",
+					FlagName:    "output-type",
+					Type:        "enum-string",
+					Description: "The type of output expected from the evaluator",
+					Enum: []string{
+						"boolean",
+						"categorical",
+						"number",
+						"string",
+					},
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Legacy alternative to `project_id`. Storage path whose first segment names the project that owns the evaluator. Mutually exclusive with `project_id`.",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Mutually exclusive with `path`.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "repetitions",
+					FlagName:    "repetitions",
+					Type:        "int64-nullable",
+					Description: "",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"llm_eval",
+						"python_eval",
+					},
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)
@@ -528,17 +759,170 @@ func registerevalsCommands(root *cobra.Command) {
 
 		var examples string
 
+		examples += "  " + parent.CommandPath() + " update id --example\n"
+
 		cmd := &cobra.Command{
 			Use:     "update id",
 			Short:   "Update an Evaluator",
-			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level type: `object`\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Update an evaluator by ID with the provided fields.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `categorical_labels` (array | null)\n- `categories` (array | null)\n- `code` (string)\n- `dataset_id` (string | null)\n- `description` (string)\n- `guardrail_config` (anyOf)\n- `headers` (object)\n- `jury` (object)\n- ... and 15 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
+				if bartolocli.PrintBodyExample(params, "{\n  \"mode\": \"single\",\n  \"path\": \"Default\",\n  \"project_id\": \"01JMDPA3QW5C1V0NJ1PW34T4E5\",\n  \"versionIncrement\": \"major\"\n}") {
+					return nil
+				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
-					[]bartolocli.BodyField{},
+					[]bartolocli.BodyField{
+						{
+							Name:        "categorical_labels",
+							FlagName:    "categorical-labels",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "categories",
+							FlagName:    "categories",
+							Type:        "string-slice",
+							Description: "",
+						},
+						{
+							Name:        "code",
+							FlagName:    "code",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "dataset_id",
+							FlagName:    "dataset-id",
+							Type:        "string-nullable",
+							Description: "",
+						},
+						{
+							Name:        "description",
+							FlagName:    "description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "guardrail_config",
+							FlagName:    "guardrail-config",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "headers",
+							FlagName:    "headers",
+							Type:        "string-map",
+							Description: "",
+						},
+						{
+							Name:        "jury",
+							FlagName:    "jury",
+							Type:        "json",
+							Description: "",
+						},
+						{
+							Name:        "key",
+							FlagName:    "key",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "method",
+							FlagName:    "method",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "mode",
+							FlagName:    "mode",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"single",
+								"jury",
+							},
+						},
+						{
+							Name:        "model",
+							FlagName:    "model",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "output_type",
+							FlagName:    "output-type",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Legacy alternative to `project_id`. Project path. Optional on update — the evaluator keeps its current project when both are omitted. Mutually exclusive with `project_id`.",
+						},
+						{
+							Name:        "payload",
+							FlagName:    "payload",
+							Type:        "string-map",
+							Description: "",
+						},
+						{
+							Name:        "project_id",
+							FlagName:    "project-id",
+							Type:        "string",
+							Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Optional on update — the evaluator keeps its current project when omitted; supplying a different id moves it. Mutually exclusive with `path`.",
+						},
+						{
+							Name:        "prompt",
+							FlagName:    "prompt",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "repetitions",
+							FlagName:    "repetitions",
+							Type:        "float64",
+							Description: "",
+						},
+						{
+							Name:        "schema",
+							FlagName:    "schema",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "type",
+							FlagName:    "type",
+							Type:        "string",
+							Description: "Evaluator type. Optional on update — inferred from existing evaluator.",
+						},
+						{
+							Name:        "url",
+							FlagName:    "url",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "versionDescription",
+							FlagName:    "version-description",
+							Type:        "string",
+							Description: "",
+						},
+						{
+							Name:        "versionIncrement",
+							FlagName:    "version-increment",
+							Type:        "enum-string",
+							Description: "",
+							Enum: []string{
+								"major",
+								"minor",
+								"patch",
+							},
+						},
+					},
 				)
 				if err != nil {
 					return errors.Wrap(err, "unable to get body")
@@ -559,8 +943,157 @@ func registerevalsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 		bartolocli.AddBodyFlags(cmd)
+		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
-			[]bartolocli.BodyField{},
+			[]bartolocli.BodyField{
+				{
+					Name:        "categorical_labels",
+					FlagName:    "categorical-labels",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "categories",
+					FlagName:    "categories",
+					Type:        "string-slice",
+					Description: "",
+				},
+				{
+					Name:        "code",
+					FlagName:    "code",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "dataset_id",
+					FlagName:    "dataset-id",
+					Type:        "string-nullable",
+					Description: "",
+				},
+				{
+					Name:        "description",
+					FlagName:    "description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "guardrail_config",
+					FlagName:    "guardrail-config",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "headers",
+					FlagName:    "headers",
+					Type:        "string-map",
+					Description: "",
+				},
+				{
+					Name:        "jury",
+					FlagName:    "jury",
+					Type:        "json",
+					Description: "",
+				},
+				{
+					Name:        "key",
+					FlagName:    "key",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "method",
+					FlagName:    "method",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "mode",
+					FlagName:    "mode",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"single",
+						"jury",
+					},
+				},
+				{
+					Name:        "model",
+					FlagName:    "model",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "output_type",
+					FlagName:    "output-type",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Legacy alternative to `project_id`. Project path. Optional on update — the evaluator keeps its current project when both are omitted. Mutually exclusive with `project_id`.",
+				},
+				{
+					Name:        "payload",
+					FlagName:    "payload",
+					Type:        "string-map",
+					Description: "",
+				},
+				{
+					Name:        "project_id",
+					FlagName:    "project-id",
+					Type:        "string",
+					Description: "Unique identifier of the project that owns the evaluator, as returned by `GET /v2/projects`. Optional on update — the evaluator keeps its current project when omitted; supplying a different id moves it. Mutually exclusive with `path`.",
+				},
+				{
+					Name:        "prompt",
+					FlagName:    "prompt",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "repetitions",
+					FlagName:    "repetitions",
+					Type:        "float64",
+					Description: "",
+				},
+				{
+					Name:        "schema",
+					FlagName:    "schema",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "type",
+					FlagName:    "type",
+					Type:        "string",
+					Description: "Evaluator type. Optional on update — inferred from existing evaluator.",
+				},
+				{
+					Name:        "url",
+					FlagName:    "url",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "versionDescription",
+					FlagName:    "version-description",
+					Type:        "string",
+					Description: "",
+				},
+				{
+					Name:        "versionIncrement",
+					FlagName:    "version-increment",
+					Type:        "enum-string",
+					Description: "",
+					Enum: []string{
+						"major",
+						"minor",
+						"patch",
+					},
+				},
+			},
 		)
 
 		bartolocli.SetCustomFlags(cmd)

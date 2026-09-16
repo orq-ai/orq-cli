@@ -2253,6 +2253,10 @@ func OpenapiListDatasets(params *viper.Viper) (*gentleman.Response, map[string]i
 	if bartolocli.FlagPassed(params, "updated-by") || paramUpdatedBy != "" {
 		req = req.AddQuery("updated_by", fmt.Sprintf("%v", paramUpdatedBy))
 	}
+	paramProjectId := params.GetString("project-id")
+	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
+		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
+	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
 
@@ -2731,6 +2735,13 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 	}
 	paramSort := params.GetString("sort")
 	if bartolocli.FlagPassed(params, "sort") || paramSort != "" {
+		{
+			normalized, err := bartolocli.NormalizeParam("--sort", paramSort, "", []string{"asc", "desc"})
+			if err != nil {
+				return nil, nil, err
+			}
+			paramSort = normalized
+		}
 		req = req.AddQuery("sort", fmt.Sprintf("%v", paramSort))
 	}
 	paramProjectId := params.GetString("project-id")
@@ -2768,7 +2779,7 @@ func OpenapiGetEvals(params *viper.Viper) (*gentleman.Response, map[string]inter
 }
 
 // OpenapiCreateEval Create an Evaluator
-func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "evals create"
 	server := bartolocli.ResolveServer()
 
@@ -2787,7 +2798,7 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, m
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2799,18 +2810,14 @@ func OpenapiCreateEval(params *viper.Viper, body string) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
 }
 
 // OpenapiDeleteEval Delete an Evaluator
-func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "evals delete id"
 	server := bartolocli.ResolveServer()
 
@@ -2830,7 +2837,7 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2842,11 +2849,7 @@ func OpenapiDeleteEval(paramId string, params *viper.Viper) (*gentleman.Response
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -2900,7 +2903,7 @@ func OpenapiDuplicateEval(paramId string, params *viper.Viper, body string) (*ge
 }
 
 // OpenapiGetEval Retrieve an Evaluator
-func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "evals get id"
 	server := bartolocli.ResolveServer()
 
@@ -2920,7 +2923,7 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, m
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -2932,11 +2935,7 @@ func OpenapiGetEval(paramId string, params *viper.Viper) (*gentleman.Response, m
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
@@ -3093,7 +3092,7 @@ func OpenapiListEvalVersions(paramId string, params *viper.Viper) (*gentleman.Re
 }
 
 // OpenapiUpdateEval Update an Evaluator
-func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "evals update id"
 	server := bartolocli.ResolveServer()
 
@@ -3117,7 +3116,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 		return nil, nil, errors.Wrap(err, "request failed")
 	}
 
-	var decoded map[string]interface{}
+	var decoded interface{}
 
 	if resp.StatusCode < 400 {
 		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
@@ -3129,11 +3128,7 @@ func OpenapiUpdateEval(paramId string, params *viper.Viper, body string) (*gentl
 
 	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
 	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
+		decoded = after
 	}
 
 	return resp, decoded, nil
