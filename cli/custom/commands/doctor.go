@@ -271,11 +271,6 @@ func emitBugReport(cmd *cobra.Command) error {
 // report is reserved for scripts and `-o json`), so it writes to stdout.
 func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCheck) {
 	out := bartolocli.Stdout
-	// Names the host every *_base_url row below probes, once instead of per row.
-	if baseURL != "" {
-		fmt.Fprintln(out, paint(ansiDim, "Base URL: "+baseURL))
-		fmt.Fprintln(out)
-	}
 	authLine := authStatus
 	if authStatus == "authenticated" && userEmail != "" {
 		authLine = "authenticated as " + userEmail
@@ -296,6 +291,11 @@ func printDoctorSummary(authStatus, userEmail, baseURL string, checks []doctorCh
 		rows = append(rows, tableRow{marker: statusGlyph(c.Status), cells: []string{c.ID, c.Message}})
 	}
 	printTable(out, []string{"CHECK", "RESULT"}, rows)
+	// Names the host the *_base_url rows probe, once instead of per row, so it
+	// sits with those rows rather than floating above the whole checklist.
+	if baseURL != "" {
+		fmt.Fprintln(out, "\nBase URL: "+baseURL)
+	}
 	fmt.Fprintln(out, paint(ansiDim, "\nRun `orq doctor -o json` for full details."))
 }
 
