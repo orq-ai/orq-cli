@@ -1345,7 +1345,7 @@ func TestDoctorSummaryPrintsBaseURLOnce(t *testing.T) {
 	if n := strings.Count(out, "https://my.orq.ai"); n != 1 {
 		t.Fatalf("base URL printed %d times, want 1:\n%s", n, out)
 	}
-	if !strings.Contains(strings.SplitN(out, "\n", 2)[0], "Base URL: https://my.orq.ai") {
-		t.Fatalf("base URL is not the first line:\n%s", out)
+	if !strings.Contains(out[strings.Index(out, "auth_base_url"):], "Base URL: https://my.orq.ai") {
+		t.Fatalf("base URL does not follow the *_base_url rows:\n%s", out)
 	}
 }
