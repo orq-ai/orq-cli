@@ -73,4 +73,5 @@ func Register(root *cobra.Command) {
 	registerschedulesCommands(root)
 	registerlogsCommands(root)
 	registerresponsesCommands(root)
+	registertelemetryCommands(root)
 }
