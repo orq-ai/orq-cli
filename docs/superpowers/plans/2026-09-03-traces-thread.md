@@ -1,5 +1,10 @@
 # Trace Thread View Implementation Plan
 
+> **Done and superseded.** This plan shipped, and the command it describes was
+> later renamed: `orq traces thread` is now `orq traces conversation` (alias
+> `conv`), the files are `cli/custom/commands/conversation*.go`, and the xml
+> framing tag is `<conversation>`. Read this for the design; do not execute it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `orq traces thread <trace-id> [span-id]`, which normalizes Chat Completions and Responses conversations from hydrated spans and renders readable XML-demarcated text or a canonical structured representation.

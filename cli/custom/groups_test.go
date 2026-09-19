@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -146,5 +147,13 @@ func TestTracesConversationAttachesToGeneratedTracesParent(t *testing.T) {
 	}
 	if got := conversation.Use; got != "conversation trace-id [span-id]" {
 		t.Errorf("conversation Use = %q", got)
+	}
+	// `conv` is the spelling people type; `thread`, the old name, resolves to
+	// nothing on purpose.
+	if got := conversation.Aliases; !slices.Equal(got, []string{"conv"}) {
+		t.Errorf("conversation Aliases = %v", got)
+	}
+	if found, _, err := traces.Find([]string{"thread"}); err == nil && found != nil && found.Name() == "conversation" {
+		t.Error("traces thread still resolves to the conversation command")
 	}
 }
