@@ -31,9 +31,9 @@ type TraceAPI struct {
 	GetResponse func(responseID string, params *viper.Viper) (map[string]any, error)
 }
 
-// NewTracesThreadCommand builds `orq traces thread`, rendering the newest
-// conversational span selected from a trace as a portable Thread.
-func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
+// NewTracesConversationCommand builds `orq traces conversation`, rendering the newest
+// conversational span selected from a trace as a portable Conversation.
+func NewTracesConversationCommand(api TraceAPI) *cobra.Command {
 	var slice string
 	var include []string
 	var match string
@@ -42,10 +42,11 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
-		Use:   "thread trace-id [span-id]",
-		Short: "Render a trace conversation as a thread",
+		Use:     "conversation trace-id [span-id]",
+		Aliases: []string{"conv"},
+		Short:   "Render a trace's conversation",
 		Long: strings.Join([]string{
-			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable thread.",
+			"Render a trace's conversational span as XML-demarcated text, Markdown, or a canonical machine-readable conversation.",
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
@@ -62,25 +63,25 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"--max-chars cuts each rendered block and says how much it left out; 0 renders everything. It is the last thing applied, so a match is found in the full text even when the render shows a cut of it.",
 		}, "\n"),
 		Example: strings.Join([]string{
-			"  orq traces thread tr_123                           # the newest conversational span",
-			"  orq traces thread tr_123 --spans                   # which span that is, and the alternatives",
-			"  orq traces thread tr_123 span_456                  # read one of them yourself",
+			"  orq traces conv tr_123                             # the newest conversational span",
+			"  orq traces conv tr_123 --spans                     # which span that is, and the alternatives",
+			"  orq traces conv tr_123 span_456                    # read one of them yourself",
 			"",
-			"  orq traces thread tr_123 -o markdown               # to paste into a ticket or chat",
-			"  orq traces thread tr_123 -o json                   # the canonical thread, for scripts",
+			"  orq traces conv tr_123 -o markdown                 # to paste into a ticket or chat",
+			"  orq traces conv tr_123 -o json                     # the canonical conversation, for scripts",
 			"",
-			"  orq traces thread tr_123 --slice -4:               # the last four messages",
-			"  orq traces thread tr_123 --match search_docs       # the turns that mention a tool",
-			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
-			"  orq traces thread tr_123 -i reasoning              # only the thinking",
-			"  orq traces thread tr_123 --reasoning=false         # same as -i for every role but reasoning",
+			"  orq traces conv tr_123 --slice -4:                 # the last four messages",
+			"  orq traces conv tr_123 --match search_docs         # the turns that mention a tool",
+			"  orq traces conv tr_123 -i user,assistant           # the conversation without the thinking",
+			"  orq traces conv tr_123 -i reasoning                # only the thinking",
+			"  orq traces conv tr_123 --reasoning=false           # same as -i for every role but reasoning",
 			"",
-			"  orq traces thread tr_123 --match error -i tool --max-chars 0",
+			"  orq traces conv tr_123 --match error -i tool --max-chars 0",
 		}, "\n"),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			bartolocli.MarkPassedFlags(cmd, params)
-			resolved, err := resolveThreadFormat(cmd)
+			resolved, err := resolveConversationFormat(cmd)
 			if err != nil {
 				return err
 			}
@@ -88,17 +89,17 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 				if optionalArg(args, 1) != "" {
 					return bartolocli.NewValueError(errors.New("--spans lists the spans to choose between, so it takes no span-id argument"))
 				}
-				return renderThreadSpans(api, args[0], params, resolved)
+				return renderConversationSpans(api, args[0], params, resolved)
 			}
-			thread, err := resolveTraceThread(api, args[0], optionalArg(args, 1), params)
+			conversation, err := resolveTraceConversation(api, args[0], optionalArg(args, 1), params)
 			if err != nil {
 				return err
 			}
 			// Position, then content, then parts. --slice runs first so its
-			// indices mean what the thread recorded: a slice of whatever
+			// indices mean what the conversation recorded: a slice of whatever
 			// --match happened to keep would move under the pattern.
 			if slice != "" {
-				thread, err = SliceThread(thread, slice)
+				conversation, err = SliceConversation(conversation, slice)
 				if err != nil {
 					// A malformed --slice is a typed-it-wrong error, the same
 					// class as an output format the command does not know.
@@ -106,30 +107,30 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 				}
 			}
 			if match != "" {
-				thread, err = MatchThread(thread, match)
+				conversation, err = MatchConversation(conversation, match)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
 			}
 			if len(include) > 0 {
-				if !reasoning && slices.Contains(include, threadKindReasoning) {
+				if !reasoning && slices.Contains(include, conversationKindReasoning) {
 					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --include reasoning"))
 				}
-				thread, err = FilterThread(thread, include)
+				conversation, err = FilterConversation(conversation, include)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
 			}
 			if !reasoning {
-				for index := range thread.Messages {
-					thread.Messages[index].Reasoning = nil
+				for index := range conversation.Messages {
+					conversation.Messages[index].Reasoning = nil
 				}
 			}
 			switch resolved {
-			case threadFormatXML:
-				return RenderThread(bartolocli.Stdout, thread, maxChars)
-			case threadFormatMarkdown:
-				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars)
+			case conversationFormatXML:
+				return RenderConversation(bartolocli.Stdout, conversation, maxChars)
+			case conversationFormatMarkdown:
+				return RenderConversationMarkdown(bartolocli.Stdout, conversation, maxChars)
 			}
 			// The local flag is not the one viper is bound to, so the shared
 			// formatter still holds the global value; point it at what this
@@ -139,13 +140,13 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 				return err
 			}
 			defer restore()
-			return emit(thread)
+			return emit(conversation)
 		},
 	}
 	cmd.Flags().StringVar(&slice, "slice", "", "Select messages with a Python-style slice (for example 2:, :-1, or -1)")
-	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering a thread")
+	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering the conversation")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
-	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
+	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ConversationKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this
@@ -155,27 +156,27 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// flag can carry either render.
 	// The annotation says this command's format comes from that flag alone; it
 	// is what ui.go classifies by.
-	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
-	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and neither %s nor the config file is read)", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
+	cmd.Annotations = map[string]string{conversationFormatAnnotation: "true"}
+	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and neither %s nor the config file is read)", strings.Join(conversationFormats, ", "), conversationFormatXML, outputFormatEnvVar))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
 	return cmd
 }
 
 const (
-	threadFormatXML      = "xml"
-	threadFormatMarkdown = "markdown"
-	// threadFormatAnnotation marks the command that resolves its format from
+	conversationFormatXML      = "xml"
+	conversationFormatMarkdown = "markdown"
+	// conversationFormatAnnotation marks the command that resolves its format from
 	// its own -o alone: the flag takes two renders bartolo's list does not
 	// have, and no standing default reaches it.
-	threadFormatAnnotation = "orq.thread-output-format"
+	conversationFormatAnnotation = "orq.conversation-output-format"
 )
 
-// threadFormats are the values -o takes on this command: the two reading views,
+// conversationFormats are the values -o takes on this command: the two reading views,
 // then the serializations of bartolo's OutputFormats — that list minus `table`,
 // which names a layout this command has no render for.
-var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yaml", "toon"}
+var conversationFormats = []string{conversationFormatXML, conversationFormatMarkdown, "json", "yaml", "toon"}
 
-// resolveThreadFormat reads the format from -o, and renders the XML view when
+// resolveConversationFormat reads the format from -o, and renders the XML view when
 // the flag did not name one.
 //
 // The flag is the only source. ORQ_OUTPUT_FORMAT and the config file state a
@@ -186,25 +187,25 @@ var threadFormats = []string{threadFormatXML, threadFormatMarkdown, "json", "yam
 // to read. `table`, the CLI-wide default, names a layout a conversation has no
 // columns for; asked for with -o it is an error. The flag is how this command
 // is asked.
-func resolveThreadFormat(cmd *cobra.Command) (string, error) {
+func resolveConversationFormat(cmd *cobra.Command) (string, error) {
 	flag := cmd.Flags().Lookup("output-format")
 	if flag == nil || !flag.Changed {
-		return threadFormatXML, nil
+		return conversationFormatXML, nil
 	}
-	return normalizeThreadFormat(flag.Value.String(), "--output-format")
+	return normalizeConversationFormat(flag.Value.String(), "--output-format")
 }
 
-func normalizeThreadFormat(value, source string) (string, error) {
+func normalizeConversationFormat(value, source string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
-	if slices.Contains(threadFormats, normalized) {
+	if slices.Contains(conversationFormats, normalized) {
 		return normalized, nil
 	}
 	if normalized == outputFormatTable {
 		return "", bartolocli.NewValueError(fmt.Errorf(
 			"%s: %q is the CLI-wide default layout, and a conversation has no columns to lay out. This command takes [%s]; %s is what it renders when you ask for nothing",
-			source, value, strings.Join(threadFormats, ", "), threadFormatXML))
+			source, value, strings.Join(conversationFormats, ", "), conversationFormatXML))
 	}
-	return "", bartolocli.NewValueError(fmt.Errorf("%s: %q is not one of [%s]", source, value, strings.Join(threadFormats, ", ")))
+	return "", bartolocli.NewValueError(fmt.Errorf("%s: %q is not one of [%s]", source, value, strings.Join(conversationFormats, ", ")))
 }
 
 func optionalArg(args []string, index int) string {
@@ -214,26 +215,26 @@ func optionalArg(args []string, index int) string {
 	return ""
 }
 
-func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, error) {
+func resolveTraceConversation(api TraceAPI, traceID, spanID string, params *viper.Viper) (Conversation, error) {
 	if api.GetSpan == nil {
-		return Thread{}, fmt.Errorf("trace API is unavailable")
+		return Conversation{}, fmt.Errorf("trace API is unavailable")
 	}
 	if spanID != "" {
-		thread, err := hydrateThread(api, traceID, spanID, params)
+		conversation, err := hydrateConversation(api, traceID, spanID, params)
 		if err != nil {
-			return Thread{}, fmt.Errorf("%w%s", err, NotFoundScopeHint(err))
+			return Conversation{}, fmt.Errorf("%w%s", err, NotFoundScopeHint(err))
 		}
-		return thread, nil
+		return conversation, nil
 	}
 	if api.GetTrace == nil {
-		return Thread{}, fmt.Errorf("trace API is unavailable")
+		return Conversation{}, fmt.Errorf("trace API is unavailable")
 	}
 
-	fallbackIDs, err := threadFallbackIDs(api, traceID, params)
+	fallbackIDs, err := conversationFallbackIDs(api, traceID, params)
 	if err != nil {
-		return Thread{}, err
+		return Conversation{}, err
 	}
-	candidates, excluded, listErr := listThreadCandidates(api, traceID, params)
+	candidates, excluded, listErr := listConversationCandidates(api, traceID, params)
 	if listErr != nil {
 		// Every path below can still return a span, from the partial listing or
 		// from the trace's own fallback IDs, so the paging failure would
@@ -241,35 +242,35 @@ func resolveTraceThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 		// answer. Say which pool the selection came from.
 		Warn("%v; selecting from the %d span(s) listed before the failure", listErr, len(candidates))
 	}
-	return selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr, nil)
+	return selectConversation(api, traceID, params, candidates, fallbackIDs, excluded, listErr, nil)
 }
 
-// threadFallbackIDs are the span ids the trace names itself, read when the
+// conversationFallbackIDs are the span ids the trace names itself, read when the
 // listing offers nothing that hydrates.
-func threadFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
+func conversationFallbackIDs(api TraceAPI, traceID string, params *viper.Viper) ([]string, error) {
 	response, err := api.GetTrace(traceID, params)
 	if err != nil {
 		return nil, fmt.Errorf("get trace %q: %w%s", traceID, err, NotFoundScopeHint(err))
 	}
-	trace := unwrapThreadEnvelope(response, "trace")
-	return uniqueThreadIDs(threadString(trace["leading_span_id"]), threadString(trace["root_span_id"])), nil
+	trace := unwrapConversationEnvelope(response, "trace")
+	return uniqueConversationIDs(conversationString(trace["leading_span_id"]), conversationString(trace["root_span_id"])), nil
 }
 
-// threadNotFound reports the 404 that project scoping produces. The generated
+// conversationNotFound reports the 404 that project scoping produces. The generated
 // operations wrap a failed request as `HTTP <code>:\n<body>` and hand back no
 // response object, so the status is only readable off that prefix; a transport
 // that never reached the API has no status, hence the phrase fallback.
-func threadNotFound(err error) bool {
-	if status := threadHTTPStatus(err); status != 0 {
+func conversationNotFound(err error) bool {
+	if status := conversationHTTPStatus(err); status != 0 {
 		return status == http.StatusNotFound
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not found")
 }
 
-// threadHTTPStatus is the status the API answered with, or 0 when the error
+// conversationHTTPStatus is the status the API answered with, or 0 when the error
 // carries none.
-func threadHTTPStatus(err error) int {
-	match := threadStatusPattern.FindStringSubmatch(err.Error())
+func conversationHTTPStatus(err error) int {
+	match := conversationStatusPattern.FindStringSubmatch(err.Error())
 	if match == nil {
 		return 0
 	}
@@ -280,40 +281,40 @@ func threadHTTPStatus(err error) int {
 	return status
 }
 
-var threadStatusPattern = regexp.MustCompile(`\bHTTP (\d{3})\b`)
+var conversationStatusPattern = regexp.MustCompile(`\bHTTP (\d{3})\b`)
 
-// selectThread reads the candidates in order, then the trace's own fallbacks,
+// selectConversation reads the candidates in order, then the trace's own fallbacks,
 // and returns the conversation it settles on. It is separate from the paging
 // and the trace fetch so --spans can show that selection over the same listing
 // it already paid for, rather than running the whole thing twice.
-// threadOutcome is what reading one span produced: how many turns it held, or
-// why it held none. --spans reports it; selection itself only needs the thread.
-type threadOutcome struct {
+// conversationOutcome is what reading one span produced: how many turns it held, or
+// why it held none. --spans reports it; selection itself only needs the conversation.
+type conversationOutcome struct {
 	Messages int
 	Read     bool
 	Note     string
 }
 
-func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, outcomes map[string]threadOutcome) (Thread, error) {
+func selectConversation(api TraceAPI, traceID string, params *viper.Viper, candidates []conversationCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, outcomes map[string]conversationOutcome) (Conversation, error) {
 	record := func(spanID, note string) {
 		if outcomes != nil {
-			outcomes[spanID] = threadOutcome{Note: note}
+			outcomes[spanID] = conversationOutcome{Note: note}
 		}
 	}
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
-	var best *Thread
+	var best *Conversation
 	degraded := false
 	// The newest span usually holds the whole history, so it returns as soon as
 	// it hydrates; once one is missing content, a sibling that kept it is worth
 	// finding, and it is not always the next span tried.
-	consider := func(spanID string) *Thread {
-		thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
+	consider := func(spanID string) *Conversation {
+		conversation, note, err := hydrateNotedConversation(api, traceID, spanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				record(spanID, orThreadNote(note, threadNoteUnsupported))
+				record(spanID, orConversationNote(note, conversationNoteUnsupported))
 			} else {
-				record(spanID, threadNoteUnreadable)
+				record(spanID, conversationNoteUnreadable)
 				if operationalErr == nil {
 					operationalErr = err
 				}
@@ -321,12 +322,12 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 			return nil
 		}
 		if outcomes != nil {
-			outcomes[spanID] = threadOutcome{Messages: len(thread.Messages), Read: true}
+			outcomes[spanID] = conversationOutcome{Messages: len(conversation.Messages), Read: true}
 		}
-		if best == nil || betterThread(thread, *best) {
-			best = &thread
+		if best == nil || betterConversation(conversation, *best) {
+			best = &conversation
 		}
-		if !threadIsWhole(thread) {
+		if !conversationIsWhole(conversation) {
 			if outcomes != nil {
 				outcome := outcomes[spanID]
 				outcome.Note = note
@@ -343,8 +344,8 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 			continue
 		}
 		tried[candidate.id] = true
-		if thread := consider(candidate.id); thread != nil {
-			return *thread, nil
+		if conversation := consider(candidate.id); conversation != nil {
+			return *conversation, nil
 		}
 	}
 	for _, fallbackID := range fallbackIDs {
@@ -352,47 +353,47 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 			continue
 		}
 		tried[fallbackID] = true
-		if thread := consider(fallbackID); thread != nil {
-			return *thread, nil
+		if conversation := consider(fallbackID); conversation != nil {
+			return *conversation, nil
 		}
 	}
 	if best != nil {
 		return *best, nil
 	}
 	if operationalErr != nil {
-		return Thread{}, operationalErr
+		return Conversation{}, operationalErr
 	}
 	if listErr != nil {
-		return Thread{}, listErr
+		return Conversation{}, listErr
 	}
-	return Thread{}, fmt.Errorf("no supported conversation found in trace %q", traceID)
+	return Conversation{}, fmt.Errorf("no supported conversation found in trace %q", traceID)
 }
 
-// betterThread prefers the thread with more readable messages, and on a tie the
+// betterConversation prefers the conversation with more readable messages, and on a tie the
 // one with no dropped content, so an explicit gap never wins over a span that
 // kept the same turns intact.
-func betterThread(candidate, best Thread) bool {
-	candidateCount, bestCount := threadContentMessages(candidate), threadContentMessages(best)
+func betterConversation(candidate, best Conversation) bool {
+	candidateCount, bestCount := conversationContentMessages(candidate), conversationContentMessages(best)
 	if candidateCount != bestCount {
 		return candidateCount > bestCount
 	}
-	return threadIsWhole(candidate) && !threadIsWhole(best)
+	return conversationIsWhole(candidate) && !conversationIsWhole(best)
 }
 
-// threadIsWhole reports a thread with no content the collector dropped. A
+// conversationIsWhole reports a conversation with no content the collector dropped. A
 // conversation that never reached an answer is not whole either: the orq agent
 // runtime records the opening turn on the span and holds the reply elsewhere,
 // so a span with input alone would otherwise end the search over its siblings.
-func threadIsWhole(thread Thread) bool {
-	if len(thread.Messages) > 0 && !threadHasAnswer(thread) {
+func conversationIsWhole(conversation Conversation) bool {
+	if len(conversation.Messages) > 0 && !conversationHasAnswer(conversation) {
 		return false
 	}
-	return !threadDropsContent(thread)
+	return !conversationDropsContent(conversation)
 }
 
-// threadDropsContent reports a thread the collector recorded without its text.
-func threadDropsContent(thread Thread) bool {
-	for _, message := range thread.Messages {
+// conversationDropsContent reports a conversation the collector recorded without its text.
+func conversationDropsContent(conversation Conversation) bool {
+	for _, message := range conversation.Messages {
 		for _, part := range message.Content {
 			if part.Type == "unavailable" {
 				return true
@@ -402,9 +403,9 @@ func threadDropsContent(thread Thread) bool {
 	return false
 }
 
-// threadHasAnswer reports a thread that holds a reply, not just the prompt.
-func threadHasAnswer(thread Thread) bool {
-	for _, message := range thread.Messages {
+// conversationHasAnswer reports a conversation that holds a reply, not just the prompt.
+func conversationHasAnswer(conversation Conversation) bool {
+	for _, message := range conversation.Messages {
 		if message.Role == "assistant" {
 			return true
 		}
@@ -412,12 +413,12 @@ func threadHasAnswer(thread Thread) bool {
 	return false
 }
 
-// threadContentMessages counts the messages that carry something to read. A
+// conversationContentMessages counts the messages that carry something to read. A
 // message whose content the collector dropped does not count, so a span that
 // kept a turn outranks one that only reports the turn missing.
-func threadContentMessages(thread Thread) int {
+func conversationContentMessages(conversation Conversation) int {
 	total := 0
-	for _, message := range thread.Messages {
+	for _, message := range conversation.Messages {
 		if len(message.ToolCalls) > 0 || len(message.Reasoning) > 0 {
 			total++
 			continue
@@ -432,7 +433,7 @@ func threadContentMessages(thread Thread) int {
 	return total
 }
 
-func uniqueThreadIDs(ids ...string) []string {
+func uniqueConversationIDs(ids ...string) []string {
 	unique := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -445,91 +446,91 @@ func uniqueThreadIDs(ids ...string) []string {
 	return unique
 }
 
-func hydrateThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, error) {
-	thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
+func hydrateConversation(api TraceAPI, traceID, spanID string, params *viper.Viper) (Conversation, error) {
+	conversation, note, err := hydrateNotedConversation(api, traceID, spanID, params)
 	// One span, one note: --spans carries these in its own column, but a
 	// rendered conversation would otherwise show `[content unavailable]` with
 	// no word on whether the turns are gone or merely unreadable right now.
 	if err == nil && note != "" {
 		Warn("%s", note)
 	}
-	return thread, err
+	return conversation, err
 }
 
-// hydrateNotedThread reads a span's conversation and says what stands between
+// hydrateNotedConversation reads a span's conversation and says what stands between
 // it and the whole one. The note is what --spans prints: "content dropped" is
 // three different states to whoever has to decide whether the turns exist
 // somewhere — never recorded, recorded and reachable, recorded and gone — and
 // only the read knows which.
-func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Viper) (Thread, string, error) {
+func hydrateNotedConversation(api TraceAPI, traceID, spanID string, params *viper.Viper) (Conversation, string, error) {
 	spanResponse, err := api.GetSpan(traceID, spanID, params)
 	if err != nil {
-		return Thread{}, "", fmt.Errorf("get span %q for trace %q: %w", spanID, traceID, err)
+		return Conversation{}, "", fmt.Errorf("get span %q for trace %q: %w", spanID, traceID, err)
 	}
-	span := unwrapThreadEnvelope(spanResponse, "span")
-	thread, err := NormalizeThread(span, ThreadSource{TraceID: traceID, SpanID: spanID})
+	span := unwrapConversationEnvelope(spanResponse, "span")
+	conversation, err := NormalizeConversation(span, ConversationSource{TraceID: traceID, SpanID: spanID})
 	if err != nil && !errors.Is(err, ErrUnsupportedConversation) {
-		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
+		return Conversation{}, "", fmt.Errorf("span %q: %w", spanID, err)
 	}
 	if errors.Is(err, ErrUnsupportedConversation) {
-		if note := threadFailureNote(span); note != "" {
-			return Thread{}, note, fmt.Errorf("span %q: %w", spanID, err)
+		if note := conversationFailureNote(span); note != "" {
+			return Conversation{}, note, fmt.Errorf("span %q: %w", spanID, err)
 		}
 	}
-	if err == nil && threadIsWhole(thread) {
-		return thread, "", nil
+	if err == nil && conversationIsWhole(conversation) {
+		return conversation, "", nil
 	}
 	stored, note := hydrateStoredResponse(api, traceID, spanID, span, params)
-	if stored != nil && (err != nil || betterThread(*stored, thread)) {
-		if !threadIsWhole(*stored) {
-			return *stored, threadNoteDropped, nil
+	if stored != nil && (err != nil || betterConversation(*stored, conversation)) {
+		if !conversationIsWhole(*stored) {
+			return *stored, conversationNoteDropped, nil
 		}
 		return *stored, "", nil
 	}
 	if err != nil {
-		return Thread{}, "", fmt.Errorf("span %q: %w", spanID, err)
+		return Conversation{}, "", fmt.Errorf("span %q: %w", spanID, err)
 	}
 	// A span that kept every turn it recorded but recorded no reply is a
 	// different gap from a dropped payload, and only the answer is missing.
-	if len(thread.Messages) > 0 && !threadHasAnswer(thread) && !threadDropsContent(thread) {
-		note = threadNoteNoAnswer
+	if len(conversation.Messages) > 0 && !conversationHasAnswer(conversation) && !conversationDropsContent(conversation) {
+		note = conversationNoteNoAnswer
 	}
-	return thread, note, nil
+	return conversation, note, nil
 }
 
 const (
-	threadNoteDropped     = "content dropped by the collector"
-	threadNoteUnstored    = "content dropped by the collector, and the span names no stored response to read it from"
-	threadNoteProviderID  = "content dropped by the collector, and the response id the span names is the provider's own, which this API cannot read"
-	threadNoteStoredGone  = "the stored response this span names is gone"
-	threadNoteNoAnswer    = "no reply recorded on this span: the runtime holds it outside the trace"
-	threadNoteUnsupported = "no conversation recorded"
-	threadNoteUnreadable  = "could not be read"
+	conversationNoteDropped     = "content dropped by the collector"
+	conversationNoteUnstored    = "content dropped by the collector, and the span names no stored response to read it from"
+	conversationNoteProviderID  = "content dropped by the collector, and the response id the span names is the provider's own, which this API cannot read"
+	conversationNoteStoredGone  = "the stored response this span names is gone"
+	conversationNoteNoAnswer    = "no reply recorded on this span: the runtime holds it outside the trace"
+	conversationNoteUnsupported = "no conversation recorded"
+	conversationNoteUnreadable  = "could not be read"
 )
 
-// threadStoredReadNote reports a stored response this command asked for and did
+// conversationStoredReadNote reports a stored response this command asked for and did
 // not get. A 404 means the payload is gone; anything else — an expired token, a
 // gateway error — means the turns may well still exist, and a reader deciding
 // whether to retry needs the difference.
-func threadStoredReadNote(err error) string {
-	if threadHTTPStatus(err) == http.StatusNotFound {
-		return threadNoteStoredGone
+func conversationStoredReadNote(err error) string {
+	if conversationHTTPStatus(err) == http.StatusNotFound {
+		return conversationNoteStoredGone
 	}
-	return fmt.Sprintf("the stored response this span names could not be read: %s", threadFirstLine(err.Error()))
+	return fmt.Sprintf("the stored response this span names could not be read: %s", conversationFirstLine(err.Error()))
 }
 
-// threadFailureNote explains a span that recorded no conversation because it
+// conversationFailureNote explains a span that recorded no conversation because it
 // failed. The collector writes nothing on a rejected request, so "no
 // conversation recorded" alone reads as a gap in this command rather than what
 // it is: the call never produced one.
-func threadFailureNote(span map[string]any) string {
+func conversationFailureNote(span map[string]any) string {
 	// The same reading the source header does, so the note and the header can
 	// never disagree about whether a span failed.
-	var source ThreadSource
-	describeThreadSpan(&source, span)
+	var source ConversationSource
+	describeConversationSpan(&source, span)
 	cause := ""
-	if value, ok := threadLookup(span, "error.type"); ok {
-		cause = threadScalar(value)
+	if value, ok := conversationLookup(span, "error.type"); ok {
+		cause = conversationScalar(value)
 	}
 	if cause == "" {
 		cause = source.Error
@@ -542,12 +543,12 @@ func threadFailureNote(span map[string]any) string {
 	if cause == "" {
 		return ""
 	}
-	return fmt.Sprintf("the span failed (%s), so no conversation was recorded", threadFirstLine(cause))
+	return fmt.Sprintf("the span failed (%s), so no conversation was recorded", conversationFirstLine(cause))
 }
 
-// threadFirstLine keeps a note to one line: the generated client puts the whole
+// conversationFirstLine keeps a note to one line: the generated client puts the whole
 // response body in the error, and --spans prints one row per span.
-func threadFirstLine(text string) string {
+func conversationFirstLine(text string) string {
 	line, _, _ := strings.Cut(text, "\n")
 	if len(line) > 120 {
 		return line[:117] + "..."
@@ -561,42 +562,42 @@ func threadFirstLine(text string) string {
 // `gen_ai.response.id`, which is the only route back to the text. A provider's
 // own id is not that route: only ids the gateway minted resolve, so this asks
 // for one it can recognise rather than spending a request on every span.
-func hydrateStoredResponse(api TraceAPI, traceID, spanID string, span map[string]any, params *viper.Viper) (*Thread, string) {
+func hydrateStoredResponse(api TraceAPI, traceID, spanID string, span map[string]any, params *viper.Viper) (*Conversation, string) {
 	responseID := storedResponseID(span)
 	if api.GetResponse == nil || responseID == "" {
 		if namesProviderResponseID(span) {
-			return nil, threadNoteProviderID
+			return nil, conversationNoteProviderID
 		}
-		return nil, threadNoteUnstored
+		return nil, conversationNoteUnstored
 	}
 	payload, err := api.GetResponse(responseID, params)
 	if err != nil {
 		// The span still renders what it kept; a payload that cannot be read
 		// costs the turns, not the command.
-		return nil, threadStoredReadNote(err)
+		return nil, conversationStoredReadNote(err)
 	}
 	// The stored payload carries the same `input`/`output` item arrays the
 	// span carries counts of, so it normalises through the Responses dialect
 	// already implemented rather than a second reader of the same shapes.
-	source := ThreadSource{TraceID: traceID, SpanID: spanID, ResponseID: responseID}
-	thread, err := NormalizeThread(map[string]any{"openresponses": map[string]any{
+	source := ConversationSource{TraceID: traceID, SpanID: spanID, ResponseID: responseID}
+	conversation, err := NormalizeConversation(map[string]any{"openresponses": map[string]any{
 		"instructions": payload["instructions"],
 		"input":        payload["input"],
 		"output":       payload["output"],
 	}}, source)
 	if err != nil {
-		return nil, threadStoredReadNote(err)
+		return nil, conversationStoredReadNote(err)
 	}
-	describeThreadSpan(&thread.Source, span)
-	thread.Source.ResponseID = responseID
-	return &thread, ""
+	describeConversationSpan(&conversation.Source, span)
+	conversation.Source.ResponseID = responseID
+	return &conversation, ""
 }
 
 // storedResponseID is the gateway response id a span names, or "" when it
 // names none this command can fetch.
 func storedResponseID(span map[string]any) string {
-	value, _ := threadLookup(span, "gen_ai.response.id")
-	id := threadString(value)
+	value, _ := conversationLookup(span, "gen_ai.response.id")
+	id := conversationString(value)
 	if strings.HasPrefix(id, storedResponsePrefix) {
 		return id
 	}
@@ -611,30 +612,30 @@ const storedResponsePrefix = "resp_"
 // cannot fetch, as opposed to naming none at all: the turns exist at the
 // provider, just not behind any orq route.
 func namesProviderResponseID(span map[string]any) bool {
-	value, _ := threadLookup(span, "gen_ai.response.id")
-	return threadString(value) != ""
+	value, _ := conversationLookup(span, "gen_ai.response.id")
+	return conversationString(value) != ""
 }
 
-// orThreadNote prefers the note the read produced over the generic one.
-func orThreadNote(note, fallback string) string {
+// orConversationNote prefers the note the read produced over the generic one.
+func orConversationNote(note, fallback string) string {
 	if note != "" {
 		return note
 	}
 	return fallback
 }
 
-type threadCandidate struct {
+type conversationCandidate struct {
 	id        string
 	startedAt time.Time
 	depth     int
 	order     int
 }
 
-// ThreadSpan is one row of --spans: a span of the trace, and whether this
+// ConversationSpan is one row of --spans: a span of the trace, and whether this
 // command would read the conversation from it. Order is its 1-based position in
 // the try order and is zero on a skipped span, so the two are one sorted list
 // rather than two lists a reader has to merge.
-type ThreadSpan struct {
+type ConversationSpan struct {
 	SpanID    string `json:"span_id"`
 	Name      string `json:"name,omitempty"`
 	Type      string `json:"type,omitempty"`
@@ -646,28 +647,28 @@ type ThreadSpan struct {
 	// Absent on one that was not: --spans reads what it must to answer, not
 	// every span it lists.
 	Messages *int `json:"messages,omitempty"`
-	// Selected marks the span a plain `orq traces thread trace-id` reads. It
+	// Selected marks the span a plain `orq traces conversation trace-id` reads. It
 	// is the answer selection actually reached, not the first in the try
 	// order: a span that hydrates with content dropped loses to a later one
 	// that kept more.
 	Selected bool `json:"selected,omitempty"`
 }
 
-func listThreadCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, error) {
-	candidates, excluded, _, err := listThreadSpans(api, traceID, params)
+func listConversationCandidates(api TraceAPI, traceID string, params *viper.Viper) ([]conversationCandidate, map[string]bool, error) {
+	candidates, excluded, _, err := listConversationSpans(api, traceID, params)
 	return candidates, excluded, err
 }
 
-// listThreadSpans pages the trace's spans once and reports both what selection
+// listConversationSpans pages the trace's spans once and reports both what selection
 // will try, newest first, and every span it summarised — the skipped ones
 // included, since --spans exists to show what the pick was made between.
-func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threadCandidate, map[string]bool, []ThreadSpan, error) {
+func listConversationSpans(api TraceAPI, traceID string, params *viper.Viper) ([]conversationCandidate, map[string]bool, []ConversationSpan, error) {
 	if api.ListSpans == nil {
 		// Listing improves selection but is not required: the trace response
 		// still provides leading/root fallback IDs.
 		return nil, map[string]bool{}, nil, nil
 	}
-	var summaries []ThreadSpan
+	var summaries []ConversationSpan
 	initialPageToken := params.GetString("page-token")
 	defer params.Set("page-token", initialPageToken)
 	var spans []map[string]any
@@ -680,7 +681,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 			break
 		}
 		spans = append(spans, listEnvelopeData(response)...)
-		next := threadString(response["next_page_token"])
+		next := conversationString(response["next_page_token"])
 		if next == "" || seenTokens[next] {
 			break
 		}
@@ -688,21 +689,21 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 		params.Set("page-token", next)
 	}
 
-	excluded := readableThreadExclusions(spans, evaluatorExclusions(spans))
-	depths := threadSpanDepths(spans)
-	candidates := make([]threadCandidate, 0, len(spans))
+	excluded := readableConversationExclusions(spans, evaluatorExclusions(spans))
+	depths := conversationSpanDepths(spans)
+	candidates := make([]conversationCandidate, 0, len(spans))
 	seenIDs := make(map[string]bool, len(spans))
 	for index, span := range spans {
-		id := threadString(span["span_id"])
+		id := conversationString(span["span_id"])
 		if id == "" || seenIDs[id] {
 			continue
 		}
 		seenIDs[id] = true
-		summary := ThreadSpan{
+		summary := ConversationSpan{
 			SpanID:    id,
-			Name:      threadString(span["name"]),
-			Type:      threadString(span["type"]),
-			StartedAt: threadString(span["started_at"]),
+			Name:      conversationString(span["name"]),
+			Type:      conversationString(span["type"]),
+			StartedAt: conversationString(span["started_at"]),
 		}
 		switch {
 		case excluded[id]:
@@ -715,7 +716,7 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 			continue
 		}
 		startedAt, _ := time.Parse(time.RFC3339Nano, summary.StartedAt)
-		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, depth: depths[id], order: index})
+		candidates = append(candidates, conversationCandidate{id: id, startedAt: startedAt, depth: depths[id], order: index})
 	}
 	// Depth first, and only then time. The conversation lives in the most
 	// specific span that recorded one — a model call under an agent under the
@@ -752,7 +753,7 @@ func listEnvelopeData(response map[string]any) []map[string]any {
 	data, _ := response["data"].([]any)
 	spans := make([]map[string]any, 0, len(data))
 	for _, value := range data {
-		if span, ok := threadMap(value); ok {
+		if span, ok := conversationMap(value); ok {
 			spans = append(spans, span)
 		}
 	}
@@ -763,11 +764,11 @@ func evaluatorExclusions(spans []map[string]any) map[string]bool {
 	children := map[string][]string{}
 	excluded := map[string]bool{}
 	for _, span := range spans {
-		id := threadString(span["span_id"])
+		id := conversationString(span["span_id"])
 		if id == "" {
 			continue
 		}
-		if parent := threadString(span["parent_span_id"]); parent != "" {
+		if parent := conversationString(span["parent_span_id"]); parent != "" {
 			children[parent] = append(children[parent], id)
 		}
 		if evaluatorSpan(span) {
@@ -792,17 +793,17 @@ func evaluatorExclusions(spans []map[string]any) map[string]bool {
 	return excluded
 }
 
-// readableThreadExclusions drops the evaluator exclusion when honouring it
+// readableConversationExclusions drops the evaluator exclusion when honouring it
 // would leave nothing to read. Skipping an evaluator subtree keeps a judge's
 // own conversation from being returned instead of the conversation it judged —
 // but a trace whose root is the evaluator has no other subtree, and excluding
 // all of it turns a readable trace into "no supported conversation found".
-func readableThreadExclusions(spans []map[string]any, excluded map[string]bool) map[string]bool {
+func readableConversationExclusions(spans []map[string]any, excluded map[string]bool) map[string]bool {
 	if len(excluded) == 0 {
 		return excluded
 	}
 	for _, span := range spans {
-		id := threadString(span["span_id"])
+		id := conversationString(span["span_id"])
 		if id == "" || excluded[id] || span["has_detail"] == false {
 			continue
 		}
@@ -816,7 +817,7 @@ func readableThreadExclusions(spans []map[string]any, excluded map[string]bool) 
 
 func evaluatorSpan(span map[string]any) bool {
 	for _, key := range []string{"type", "name", "operation"} {
-		value := strings.ToLower(threadString(span[key]))
+		value := strings.ToLower(conversationString(span[key]))
 		if strings.Contains(value, "evaluator") || hasEvalToken(value) {
 			return true
 		}
@@ -837,19 +838,19 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
-func unwrapThreadEnvelope(response map[string]any, key string) map[string]any {
-	if value, ok := threadMap(response[key]); ok {
+func unwrapConversationEnvelope(response map[string]any, key string) map[string]any {
+	if value, ok := conversationMap(response[key]); ok {
 		return value
 	}
 	return response
 }
 
-// renderThreadSpans answers --spans: the spans of the trace, in the order
+// renderConversationSpans answers --spans: the spans of the trace, in the order
 // selection would try them, with the skipped ones and why. The reader who gets
 // a conversation they did not expect has no other way to see what it was chosen
 // between, or which span id to pass as the second argument.
-func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format string) error {
-	candidates, excluded, summaries, err := listThreadSpans(api, traceID, params)
+func renderConversationSpans(api TraceAPI, traceID string, params *viper.Viper, format string) error {
+	candidates, excluded, summaries, err := listConversationSpans(api, traceID, params)
 	if err != nil {
 		// The same partial-listing rule as selection: report what was listed
 		// before the failure rather than claiming the trace has only these.
@@ -864,24 +865,24 @@ func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format
 		// wants, and they are not the same string.
 		Warn("no spans listed for trace %q; `orq traces search` returns both an `id` and a `trace_id`, and this command takes the trace_id", traceID)
 	}
-	fallbackIDs, traceErr := threadFallbackIDs(api, traceID, params)
+	fallbackIDs, traceErr := conversationFallbackIDs(api, traceID, params)
 	if traceErr != nil {
 		// Selection would fail here too, but --spans is what a reader runs to
 		// find out why; report the listing rather than nothing.
 		Warn("%v; the trace's own leading and root span are not shown", traceErr)
 	}
-	summaries = orderThreadFallbacks(summaries, fallbackIDs, excluded)
+	summaries = orderConversationFallbacks(summaries, fallbackIDs, excluded)
 	if traceErr == nil {
-		summaries = markThreadSelection(api, traceID, params, candidates, fallbackIDs, excluded, err, summaries)
+		summaries = markConversationSelection(api, traceID, params, candidates, fallbackIDs, excluded, err, summaries)
 	}
-	if format == threadFormatXML || format == threadFormatMarkdown {
-		printThreadSpans(summaries)
+	if format == conversationFormatXML || format == conversationFormatMarkdown {
+		printConversationSpans(summaries)
 		return nil
 	}
 	if summaries == nil {
 		// An absent list and an empty one are the same fact to a reader, and
 		// `null` is the one a script has to special-case.
-		summaries = []ThreadSpan{}
+		summaries = []ConversationSpan{}
 	}
 	restore, err := bartolocli.SetOutputFormat(format)
 	if err != nil {
@@ -889,11 +890,11 @@ func renderThreadSpans(api TraceAPI, traceID string, params *viper.Viper, format
 	}
 	defer restore()
 	return emit(struct {
-		Spans []ThreadSpan `json:"spans"`
+		Spans []ConversationSpan `json:"spans"`
 	}{summaries})
 }
 
-func printThreadSpans(summaries []ThreadSpan) {
+func printConversationSpans(summaries []ConversationSpan) {
 	if len(summaries) == 0 {
 		fmt.Fprintln(bartolocli.Stdout, "No spans listed for this trace.")
 		return
@@ -921,12 +922,12 @@ func printThreadSpans(summaries []ThreadSpan) {
 	printTable(bartolocli.Stdout, []string{"TRY", "SPAN", "TYPE", "STARTED", "TURNS", "NAME", "NOTE"}, rows)
 }
 
-// orderThreadFallbacks completes the try order with the spans the trace names
+// orderConversationFallbacks completes the try order with the spans the trace names
 // itself. Selection falls back to the leading and root span ids when the
 // listing offers nothing that hydrates, and it does so even for a span the
 // listing reported as having no detail — so a listing-only table calls a span
 // skipped that selection is willing to read.
-func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded map[string]bool) []ThreadSpan {
+func orderConversationFallbacks(summaries []ConversationSpan, fallbackIDs []string, excluded map[string]bool) []ConversationSpan {
 	next := 0
 	byID := make(map[string]int, len(summaries))
 	for index, span := range summaries {
@@ -943,7 +944,7 @@ func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded
 		}
 		next++
 		if !listed {
-			summaries = append(summaries, ThreadSpan{SpanID: id, Order: next, Note: "named by the trace, not in its span listing"})
+			summaries = append(summaries, ConversationSpan{SpanID: id, Order: next, Note: "named by the trace, not in its span listing"})
 			continue
 		}
 		summaries[index].Order, summaries[index].Note, summaries[index].Skipped = next, "tried anyway: "+summaries[index].Skipped, ""
@@ -958,14 +959,14 @@ func orderThreadFallbacks(summaries []ThreadSpan, fallbackIDs []string, excluded
 	return summaries
 }
 
-// markThreadSelection runs the selection the reader is asking about and marks
+// markConversationSelection runs the selection the reader is asking about and marks
 // what it reached. The try order alone cannot answer it: the first span is read
 // only if it hydrates whole, and a later one that kept more turns wins
 // otherwise. Running it costs what running the command costs, since selection
 // stops at the first span that answers.
-func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, candidates []threadCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, summaries []ThreadSpan) []ThreadSpan {
-	outcomes := map[string]threadOutcome{}
-	thread, err := selectThread(api, traceID, params, candidates, fallbackIDs, excluded, listErr, outcomes)
+func markConversationSelection(api TraceAPI, traceID string, params *viper.Viper, candidates []conversationCandidate, fallbackIDs []string, excluded map[string]bool, listErr error, summaries []ConversationSpan) []ConversationSpan {
+	outcomes := map[string]conversationOutcome{}
+	conversation, err := selectConversation(api, traceID, params, candidates, fallbackIDs, excluded, listErr, outcomes)
 	for index := range summaries {
 		outcome, read := outcomes[summaries[index].SpanID]
 		if !read {
@@ -987,61 +988,61 @@ func markThreadSelection(api TraceAPI, traceID string, params *viper.Viper, cand
 	}
 	found := false
 	for index := range summaries {
-		if summaries[index].SpanID == thread.Source.SpanID {
+		if summaries[index].SpanID == conversation.Source.SpanID {
 			summaries[index].Selected = true
 			found = true
 		}
 	}
-	if !found && thread.Source.SpanID != "" {
-		summaries = append(summaries, ThreadSpan{SpanID: thread.Source.SpanID, Selected: true, Note: "read, but not in the listing this command saw"})
+	if !found && conversation.Source.SpanID != "" {
+		summaries = append(summaries, ConversationSpan{SpanID: conversation.Source.SpanID, Selected: true, Note: "read, but not in the listing this command saw"})
 	}
-	return countRemainingThreadSpans(api, traceID, params, summaries, outcomes)
+	return countRemainingConversationSpans(api, traceID, params, summaries, outcomes)
 }
 
-// threadSpanReadLimit caps the spans --spans reads to fill in turn counts.
+// conversationSpanReadLimit caps the spans --spans reads to fill in turn counts.
 // Selection stops at the first span that answers, so the rest are read only to
 // report them, and a trace with hundreds of spans should not turn one
 // diagnostic command into hundreds of requests.
-const threadSpanReadLimit = 25
+const conversationSpanReadLimit = 25
 
-// countRemainingThreadSpans reads the candidates selection stopped short of, so
+// countRemainingConversationSpans reads the candidates selection stopped short of, so
 // the turn count is there for every span the reader is choosing between rather
 // than only for the ones selection happened to need. A span it cannot read
 // keeps the reason instead of a count.
-func countRemainingThreadSpans(api TraceAPI, traceID string, params *viper.Viper, summaries []ThreadSpan, outcomes map[string]threadOutcome) []ThreadSpan {
+func countRemainingConversationSpans(api TraceAPI, traceID string, params *viper.Viper, summaries []ConversationSpan, outcomes map[string]conversationOutcome) []ConversationSpan {
 	read := len(outcomes)
 	for index := range summaries {
 		if summaries[index].Order == 0 || summaries[index].Messages != nil || summaries[index].Note != "" {
 			continue
 		}
-		if read >= threadSpanReadLimit {
+		if read >= conversationSpanReadLimit {
 			break
 		}
 		read++
-		thread, note, err := hydrateNotedThread(api, traceID, summaries[index].SpanID, params)
+		conversation, note, err := hydrateNotedConversation(api, traceID, summaries[index].SpanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
-				summaries[index].Note = orThreadNote(note, threadNoteUnsupported)
+				summaries[index].Note = orConversationNote(note, conversationNoteUnsupported)
 			} else {
-				summaries[index].Note = threadNoteUnreadable
+				summaries[index].Note = conversationNoteUnreadable
 			}
 			continue
 		}
 		summaries[index].Note = note
-		messages := len(thread.Messages)
+		messages := len(conversation.Messages)
 		summaries[index].Messages = &messages
 	}
 	return summaries
 }
 
-// threadSpanDepths counts each span's distance from its root through the parent
+// conversationSpanDepths counts each span's distance from its root through the parent
 // links. A cycle or a parent the listing never returned stops the walk, so a
 // truncated page costs depth rather than a hang.
-func threadSpanDepths(spans []map[string]any) map[string]int {
+func conversationSpanDepths(spans []map[string]any) map[string]int {
 	parents := make(map[string]string, len(spans))
 	for _, span := range spans {
-		if id := threadString(span["span_id"]); id != "" {
-			parents[id] = threadString(span["parent_span_id"])
+		if id := conversationString(span["span_id"]); id != "" {
+			parents[id] = conversationString(span["parent_span_id"])
 		}
 	}
 	depths := make(map[string]int, len(spans))
