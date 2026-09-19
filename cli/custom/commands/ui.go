@@ -96,7 +96,7 @@ const (
 //
 // It asks which source named a format, and what it named, rather than comparing
 // the resolved value against the flag's default: that default is per-command —
-// `orq traces thread` registers its own -o — so a comparison reads every one of
+// `orq traces conversation` registers its own -o — so a comparison reads every one of
 // that command's runs as a request.
 //
 // The flag names a format for one invocation. The environment and the config
@@ -107,7 +107,7 @@ const (
 // A command that reads only its own -o answers separately, in
 // ownFormatRequested.
 func machineFormatRequested(cmd *cobra.Command) bool {
-	if cmd.Annotations[threadFormatAnnotation] != "" {
+	if cmd.Annotations[conversationFormatAnnotation] != "" {
 		return ownFormatRequested(cmd)
 	}
 	f := cmd.Flags().Lookup("output-format")
@@ -123,19 +123,19 @@ func machineFormatRequested(cmd *cobra.Command) bool {
 // ownFormatRequested answers for a command that resolves its format from its
 // own -o and reads no other source. That flag is all it reads, so a standing
 // default cannot be a request here: counting one would drop the notices written
-// for a person on the very run that renders them the readable thread.
+// for a person on the very run that renders them the readable conversation.
 func ownFormatRequested(cmd *cobra.Command) bool {
 	f := cmd.Flags().Lookup("output-format")
 	return f != nil && f.Changed && namesMachineFormat(f.Value.String())
 }
 
 // namesMachineFormat reports whether a named format is a serialization for a
-// program to read. `xml` and `markdown`, the two renders `orq traces thread`
+// program to read. `xml` and `markdown`, the two renders `orq traces conversation`
 // adds, are reading views for a person: naming one is not a reason to drop the
 // notices and friendly views that exist for the person doing the reading.
 func namesMachineFormat(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", threadFormatXML, threadFormatMarkdown:
+	case "", conversationFormatXML, conversationFormatMarkdown:
 		return false
 	}
 	return true

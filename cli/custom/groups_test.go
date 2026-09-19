@@ -1,6 +1,7 @@
 package custom
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -128,23 +129,31 @@ func TestCustomCommandsDoNotCollideWithGenerated(t *testing.T) {
 	walk(root, "orq")
 }
 
-func TestTracesThreadAttachesToGeneratedTracesParent(t *testing.T) {
+func TestTracesConversationAttachesToGeneratedTracesParent(t *testing.T) {
 	root := buildRoot(t)
 	traces, _, err := root.Find([]string{"traces"})
 	if err != nil || traces == nil {
 		t.Fatalf("generated traces parent = %v, %v", traces, err)
 	}
-	var thread *cobra.Command
+	var conversation *cobra.Command
 	for _, child := range traces.Commands() {
-		if child.Name() == "thread" {
-			thread = child
+		if child.Name() == "conversation" {
+			conversation = child
 			break
 		}
 	}
-	if thread == nil {
-		t.Fatal("traces thread command is not registered")
+	if conversation == nil {
+		t.Fatal("traces conversation command is not registered")
 	}
-	if got := thread.Use; got != "thread trace-id [span-id]" {
-		t.Errorf("thread Use = %q", got)
+	if got := conversation.Use; got != "conversation trace-id [span-id]" {
+		t.Errorf("conversation Use = %q", got)
+	}
+	// `conv` is the spelling people type; `thread`, the old name, resolves to
+	// nothing on purpose.
+	if got := conversation.Aliases; !slices.Equal(got, []string{"conv"}) {
+		t.Errorf("conversation Aliases = %v", got)
+	}
+	if found, _, err := traces.Find([]string{"thread"}); err == nil && found != nil && found.Name() == "conversation" {
+		t.Error("traces thread still resolves to the conversation command")
 	}
 }
