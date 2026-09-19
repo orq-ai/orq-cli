@@ -12,7 +12,7 @@ import (
 // existed. Returns "" for any other error, and for a 404 there is nothing to
 // say about.
 func NotFoundScopeHint(err error) string {
-	if err == nil || !threadNotFound(err) {
+	if err == nil || !conversationNotFound(err) {
 		return ""
 	}
 	// An API key carries its own scope, and `orq projects use` does not change
