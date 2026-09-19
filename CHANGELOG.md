@@ -117,11 +117,14 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-- **Changed:** `orq traces thread` is now `orq traces conversation`, with the
-  short alias `orq traces conv`. `thread` is gone — scripts calling it must be
-  updated. Every flag is unchanged, and so is the `-o json` schema; the `xml`
-  render now frames the conversation in `<conversation>` rather than
-  `<thread>`, so anything matching that tag needs updating too.
+- **Changed (breaking): `orq traces thread` is now `orq traces
+  conversation`,** with the short alias `orq traces conv`. `thread` is gone in
+  this release rather than kept hidden and warning for one, which the stability
+  contract above otherwise asks for: the old spelling was dropped deliberately,
+  so scripts calling it must be updated now. Every flag is unchanged, and so is
+  the `-o json` schema; the `xml` render now frames the conversation in
+  `<conversation>` rather than `<thread>`, so anything matching that tag needs
+  updating too.
 
 ## [8.6.6](https://github.com/orq-ai/orq-cli/releases/tag/v8.6.6) — 2026-09-15
 
