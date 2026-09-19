@@ -12582,6 +12582,575 @@ func OpenapiWebhookUpdate(paramId string, params *viper.Viper, body string) (*ge
 	return resp, decoded, nil
 }
 
+// OpenapiCreateWiki Create
+func OpenapiCreateWiki(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis create"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiDeleteWiki Delete
+func OpenapiDeleteWiki(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis delete wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Delete().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetWiki Get
+func OpenapiGetWiki(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis get wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetWikiPage Get Page
+func OpenapiGetWikiPage(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis get-page wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/page"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramPath := params.GetString("path")
+	if bartolocli.FlagPassed(params, "path") || paramPath != "" {
+		req = req.AddQuery("path", fmt.Sprintf("%v", paramPath))
+	}
+	paramRunId := params.GetString("run-id")
+	if bartolocli.FlagPassed(params, "run-id") || paramRunId != "" {
+		req = req.AddQuery("run_id", fmt.Sprintf("%v", paramRunId))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiGetWikiTree Get Tree
+func OpenapiGetWikiTree(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis get-tree wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/tree"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiInspectRepositoryWiki Inspect Repository
+func OpenapiInspectRepositoryWiki(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis inspect-repository"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/inspect-repository"
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiListWikis List
+func OpenapiListWikis(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis list"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis"
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+	paramStartingAfter := params.GetString("starting-after")
+	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
+		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
+	}
+	paramEndingBefore := params.GetString("ending-before")
+	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
+		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
+	}
+	paramRepositoryKey := params.GetString("repository-key")
+	if bartolocli.FlagPassed(params, "repository-key") || paramRepositoryKey != "" {
+		req = req.AddQuery("repository_key", fmt.Sprintf("%v", paramRepositoryKey))
+	}
+	paramBranch := params.GetString("branch")
+	if bartolocli.FlagPassed(params, "branch") || paramBranch != "" {
+		req = req.AddQuery("branch", fmt.Sprintf("%v", paramBranch))
+	}
+	paramFactoryId := params.GetString("factory-id")
+	if bartolocli.FlagPassed(params, "factory-id") || paramFactoryId != "" {
+		req = req.AddQuery("factory_id", fmt.Sprintf("%v", paramFactoryId))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiListWikiRuns List Runs
+func OpenapiListWikiRuns(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis list-runs wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/runs"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiRefreshWiki Refresh
+func OpenapiRefreshWiki(paramWikiId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis refresh wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/refresh"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Post().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiSearchWiki Search
+func OpenapiSearchWiki(paramWikiId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis search wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/search"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramQuery := params.GetString("query")
+	if bartolocli.FlagPassed(params, "query") || paramQuery != "" {
+		req = req.AddQuery("query", fmt.Sprintf("%v", paramQuery))
+	}
+	paramLimit := params.GetInt64("limit")
+	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
+		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiUpdateWiki Update
+func OpenapiUpdateWiki(paramWikiId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis update wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Patch().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
+// OpenapiUpdateWikiPage Update Page
+func OpenapiUpdateWikiPage(paramWikiId string, params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "wikis update-page wiki-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v2/wikis/{wiki_id}/page"
+	if paramWikiId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter wiki_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{wiki_id}", neturl.PathEscape(paramWikiId), 1)
+
+	req := bartolocli.Client.Patch().URL(url)
+
+	if body != "" {
+		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiWorkspaceSettingsGet Retrieve workspace settings
 func OpenapiWorkspaceSettingsGet(params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "workspace-settings get"

@@ -67,6 +67,7 @@ func Register(root *cobra.Command) {
 	registertoolsCommands(root)
 	registertracesCommands(root)
 	registerwebhooksCommands(root)
+	registerwikisCommands(root)
 	registerworkspaceSettingsCommands(root)
 	registerworkspacesCommands(root)
 	registerworkspaceSecurityCommands(root)
