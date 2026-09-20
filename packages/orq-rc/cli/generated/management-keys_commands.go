@@ -30,7 +30,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new management key",
-			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Mints a new opaque management key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `name` (string, required)\n- `permission_mode` (string, required)\n\nRequired fields: `name`, `permission_mode`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,7 +63,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
 							Type:        "enum-string",
-							Description: "Permission preset. Defaults to MANAGEMENT_PERMISSION_MODE_ALL when omitted.",
+							Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
 							Enum: []string{
 								"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 								"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -117,7 +117,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
 					Type:        "enum-string",
-					Description: "Permission preset. Defaults to MANAGEMENT_PERMISSION_MODE_ALL when omitted.",
+					Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
 					Enum: []string{
 						"MANAGEMENT_PERMISSION_MODE_UNSPECIFIED",
 						"MANAGEMENT_PERMISSION_MODE_ALL",
@@ -373,7 +373,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 							Name:        "status",
 							FlagName:    "status",
 							Type:        "enum-string",
-							Description: "New lifecycle status. Omit to keep current.",
+							Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
 							Enum: []string{
 								"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 								"MANAGEMENT_KEY_STATUS_ACTIVE",
@@ -445,7 +445,7 @@ func registermanagementKeysCommands(root *cobra.Command) {
 					Name:        "status",
 					FlagName:    "status",
 					Type:        "enum-string",
-					Description: "New lifecycle status. Omit to keep current.",
+					Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
 					Enum: []string{
 						"MANAGEMENT_KEY_STATUS_UNSPECIFIED",
 						"MANAGEMENT_KEY_STATUS_ACTIVE",
