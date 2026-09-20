@@ -14,13 +14,13 @@ import (
 // whether to keep trying other spans.
 var ErrUnsupportedConversation = errors.New("span does not contain a supported Chat Completions or Responses conversation")
 
-// NormalizeThread converts supported Chat Completions and Responses span payloads
+// NormalizeConversation converts supported Chat Completions and Responses span payloads
 // into a single loss-conscious representation.
-func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
-	responsesInstructions, _ := threadLookup(span, "openresponses.instructions")
-	responsesInput, _ := threadLookup(span, "openresponses.input")
-	responsesOutput, _ := threadLookup(span, "openresponses.output")
-	responsesInstructionsOK := usableThreadParts(responsesInstructions)
+func NormalizeConversation(span map[string]any, source ConversationSource) (Conversation, error) {
+	responsesInstructions, _ := conversationLookup(span, "openresponses.instructions")
+	responsesInput, _ := conversationLookup(span, "openresponses.input")
+	responsesOutput, _ := conversationLookup(span, "openresponses.output")
+	responsesInstructionsOK := usableConversationParts(responsesInstructions)
 	responsesInputOK := usableResponsesValue(responsesInput)
 	responsesOutputOK := usableResponsesValue(responsesOutput)
 
@@ -28,48 +28,48 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	chatOutput := firstUsableChatValue(span, "gen_ai.output", "output", chatOutputMessages)
 	chatInputOK, chatOutputOK := len(chatMessages(chatInput)) > 0, len(chatOutputMessages(chatOutput)) > 0
 	if !responsesInstructionsOK && !responsesInputOK && !responsesOutputOK && !chatInputOK && !chatOutputOK {
-		return Thread{}, ErrUnsupportedConversation
+		return Conversation{}, ErrUnsupportedConversation
 	}
 
-	thread := Thread{Source: source}
+	conversation := Conversation{Source: source}
 	if responsesInstructionsOK {
-		thread.Messages = append(thread.Messages, ThreadMessage{Role: "system", Content: threadParts(responsesInstructions)})
+		conversation.Messages = append(conversation.Messages, ConversationMessage{Role: "system", Content: conversationParts(responsesInstructions)})
 	}
-	inputCount, pending, toolNames := 0, []ThreadPart(nil), map[string]string{}
+	inputCount, pending, toolNames := 0, []ConversationPart(nil), map[string]string{}
 	if responsesInputOK {
 		inputItems := responseItems(responsesInput)
-		if count, unavailable := unavailableThreadCount(responsesInput); unavailable && len(inputItems) == 0 {
-			thread.Messages = append(thread.Messages, ThreadMessage{Index: 0, Role: "user", Content: []ThreadPart{{Type: "unavailable", Count: count}}})
+		if count, unavailable := unavailableConversationCount(responsesInput); unavailable && len(inputItems) == 0 {
+			conversation.Messages = append(conversation.Messages, ConversationMessage{Index: 0, Role: "user", Content: []ConversationPart{{Type: "unavailable", Count: count}}})
 			inputCount = count
 		} else {
 			inputCount = len(inputItems)
 			for index, item := range inputItems {
-				pending = thread.appendResponseItem(item, index, pending, toolNames)
+				pending = conversation.appendResponseItem(item, index, pending, toolNames)
 			}
 		}
 	} else if chatInputOK {
-		inputCount, pending = appendChatInput(&thread, chatInput, !responsesInstructionsOK, toolNames, pending)
+		inputCount, pending = appendChatInput(&conversation, chatInput, !responsesInstructionsOK, toolNames, pending)
 	}
 	if responsesOutputOK {
 		outputItems := responseItems(responsesOutput)
 		boundaryChecked := false
 		for offset, item := range outputItems {
-			before := len(thread.Messages)
-			pending = thread.appendResponseItem(item, inputCount+offset, pending, toolNames)
-			if !boundaryChecked && len(thread.Messages) > before {
+			before := len(conversation.Messages)
+			pending = conversation.appendResponseItem(item, inputCount+offset, pending, toolNames)
+			if !boundaryChecked && len(conversation.Messages) > before {
 				boundaryChecked = true
-				last := len(thread.Messages) - 1
-				if last > 0 && thread.Messages[last-1].Role == "assistant" && thread.Messages[last].Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[last-1]), withoutIndex(thread.Messages[last])) {
-					thread.Messages = thread.Messages[:last]
+				last := len(conversation.Messages) - 1
+				if last > 0 && conversation.Messages[last-1].Role == "assistant" && conversation.Messages[last].Role == "assistant" && reflect.DeepEqual(withoutIndex(conversation.Messages[last-1]), withoutIndex(conversation.Messages[last])) {
+					conversation.Messages = conversation.Messages[:last]
 				}
 			}
 		}
-		if count, unavailable := unavailableThreadCount(responsesOutput); unavailable && len(outputItems) == 0 {
-			thread.Messages = append(thread.Messages, ThreadMessage{Index: inputCount, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: count}}, Reasoning: pending})
+		if count, unavailable := unavailableConversationCount(responsesOutput); unavailable && len(outputItems) == 0 {
+			conversation.Messages = append(conversation.Messages, ConversationMessage{Index: inputCount, Role: "assistant", Content: []ConversationPart{{Type: "unavailable", Count: count}}, Reasoning: pending})
 			pending = nil
 		}
 	} else if chatOutputOK {
-		pending = appendChatOutput(&thread, chatOutput, inputCount, toolNames, pending)
+		pending = appendChatOutput(&conversation, chatOutput, inputCount, toolNames, pending)
 	}
 	if len(pending) > 0 {
 		outputCount := 0
@@ -78,25 +78,25 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 		} else if chatOutputOK {
 			outputCount = len(chatOutputMessages(chatOutput))
 		}
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: inputCount + outputCount, Role: "assistant", Content: []ThreadPart{}, Reasoning: pending})
+		conversation.Messages = append(conversation.Messages, ConversationMessage{Index: inputCount + outputCount, Role: "assistant", Content: []ConversationPart{}, Reasoning: pending})
 	}
 	if responsesInstructionsOK || responsesInputOK || responsesOutputOK {
-		thread.Source.Representation = "responses"
+		conversation.Source.Representation = "responses"
 	} else {
-		thread.Source.Representation = "chat_completions"
+		conversation.Source.Representation = "chat_completions"
 	}
-	describeThreadSpan(&thread.Source, span)
-	for index := range thread.Messages {
-		thread.Messages[index].Index = index
+	describeConversationSpan(&conversation.Source, span)
+	for index := range conversation.Messages {
+		conversation.Messages[index].Index = index
 	}
-	return thread, nil
+	return conversation, nil
 }
 
-func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string, pending []ThreadPart) (int, []ThreadPart) {
+func appendChatInput(conversation *Conversation, input any, keepInstructions bool, toolNames map[string]string, pending []ConversationPart) (int, []ConversationPart) {
 	inputMessages := chatMessages(input)
 	for index, raw := range inputMessages {
 		if responseItemType(raw) != "" {
-			pending = thread.appendResponseItem(raw, index, pending, toolNames)
+			pending = conversation.appendResponseItem(raw, index, pending, toolNames)
 			continue
 		}
 		message, ok := normalizeChatMessage(raw, index)
@@ -105,28 +105,28 @@ func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames
 		}
 		if isInstructionRole(message.Role) {
 			if keepInstructions {
-				thread.Messages = append(thread.Messages, message)
+				conversation.Messages = append(conversation.Messages, message)
 			}
 			continue
 		}
 		resolveChatToolName(&message, toolNames)
 		rememberChatToolNames(message, toolNames)
 		if message.Role == "assistant" && len(pending) > 0 {
-			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+			message.Reasoning = append(append([]ConversationPart(nil), pending...), message.Reasoning...)
 			pending = nil
 		}
-		thread.Messages = append(thread.Messages, message)
+		conversation.Messages = append(conversation.Messages, message)
 	}
 	return len(inputMessages), pending
 }
 
 func isInstructionRole(role string) bool { return role == "system" || role == "developer" }
 
-func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[string]string, pending []ThreadPart) []ThreadPart {
+func appendChatOutput(conversation *Conversation, output any, inputCount int, toolNames map[string]string, pending []ConversationPart) []ConversationPart {
 	outputMessages := chatOutputMessages(output)
 	for offset, raw := range outputMessages {
 		if responseItemType(raw) != "" {
-			pending = thread.appendResponseItem(raw, inputCount+offset, pending, toolNames)
+			pending = conversation.appendResponseItem(raw, inputCount+offset, pending, toolNames)
 			continue
 		}
 		message, ok := normalizeChatMessage(raw, inputCount+offset)
@@ -135,19 +135,19 @@ func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[
 		}
 		resolveChatToolName(&message, toolNames)
 		rememberChatToolNames(message, toolNames)
-		if offset == 0 && len(thread.Messages) > 0 && thread.Messages[len(thread.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
+		if offset == 0 && len(conversation.Messages) > 0 && conversation.Messages[len(conversation.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(conversation.Messages[len(conversation.Messages)-1]), withoutIndex(message)) {
 			continue
 		}
 		if message.Role == "assistant" && len(pending) > 0 {
-			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+			message.Reasoning = append(append([]ConversationPart(nil), pending...), message.Reasoning...)
 			pending = nil
 		}
-		thread.Messages = append(thread.Messages, message)
+		conversation.Messages = append(conversation.Messages, message)
 	}
 	return pending
 }
 
-func rememberChatToolNames(message ThreadMessage, toolNames map[string]string) {
+func rememberChatToolNames(message ConversationMessage, toolNames map[string]string) {
 	if message.Role != "assistant" {
 		return
 	}
@@ -158,24 +158,24 @@ func rememberChatToolNames(message ThreadMessage, toolNames map[string]string) {
 	}
 }
 
-func resolveChatToolName(message *ThreadMessage, toolNames map[string]string) {
+func resolveChatToolName(message *ConversationMessage, toolNames map[string]string) {
 	if message.Role == "tool" && message.Name == "" {
 		message.Name = toolNames[message.ToolCallID]
 	}
 }
 
-func withoutIndex(message ThreadMessage) ThreadMessage { message.Index = 0; return message }
+func withoutIndex(message ConversationMessage) ConversationMessage { message.Index = 0; return message }
 
 func chatMessages(value any) []any {
-	value = decodeThreadValue(value)
+	value = decodeConversationValue(value)
 	if messages, ok := value.([]any); ok {
 		return messages
 	}
-	if text, ok := bareThreadText(value); ok {
+	if text, ok := bareConversationText(value); ok {
 		return []any{map[string]any{"role": "user", "content": text}}
 	}
-	if object, ok := threadMap(value); ok {
-		if messages := threadList(object["messages"]); messages != nil {
+	if object, ok := conversationMap(value); ok {
+		if messages := conversationList(object["messages"]); messages != nil {
 			return messages
 		}
 		// OTel GenAI records a single turn per span, under the singular key.
@@ -187,21 +187,21 @@ func chatMessages(value any) []any {
 }
 
 func chatOutputMessages(value any) []any {
-	value = decodeThreadValue(value)
+	value = decodeConversationValue(value)
 	if items, ok := value.([]any); ok {
 		return items
 	}
-	if text, ok := bareThreadText(value); ok {
+	if text, ok := bareConversationText(value); ok {
 		return []any{map[string]any{"role": "assistant", "content": text}}
 	}
-	if object, ok := threadMap(value); ok {
-		if messages := threadList(object["messages"]); messages != nil {
+	if object, ok := conversationMap(value); ok {
+		if messages := conversationList(object["messages"]); messages != nil {
 			return messages
 		}
-		if choices, ok := decodeThreadValue(object["choices"]).([]any); ok {
+		if choices, ok := decodeConversationValue(object["choices"]).([]any); ok {
 			messages := make([]any, 0, len(choices))
 			for _, choice := range choices {
-				if choiceMap, ok := threadMap(choice); ok && choiceMap["message"] != nil {
+				if choiceMap, ok := conversationMap(choice); ok && choiceMap["message"] != nil {
 					messages = append(messages, choiceMap["message"])
 				}
 			}
@@ -217,9 +217,9 @@ func chatOutputMessages(value any) []any {
 	return nil
 }
 
-// bareThreadText reports a whole input or output recorded as plain text. Agent
+// bareConversationText reports a whole input or output recorded as plain text. Agent
 // spans store the task and the final answer that way, with no envelope.
-func bareThreadText(value any) (string, bool) {
+func bareConversationText(value any) (string, bool) {
 	text, ok := value.(string)
 	if !ok || strings.TrimSpace(text) == "" {
 		return "", false
@@ -235,28 +235,28 @@ func bareThreadText(value any) (string, bool) {
 // Agent spans serialize their whole item list into gen_ai.input, tool calls
 // and all, so a span is not one dialect end to end.
 func responseItemType(raw any) string {
-	object, ok := threadMap(decodeThreadValue(raw))
+	object, ok := conversationMap(decodeConversationValue(raw))
 	if !ok {
 		return ""
 	}
-	itemType := threadString(object["type"])
-	if itemType == "" || threadString(object["role"]) != "" {
+	itemType := conversationString(object["type"])
+	if itemType == "" || conversationString(object["role"]) != "" {
 		return ""
 	}
 	return itemType
 }
 
-func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
-	object, ok := threadMap(decodeThreadValue(raw))
+func normalizeChatMessage(raw any, index int) (ConversationMessage, bool) {
+	object, ok := conversationMap(decodeConversationValue(raw))
 	if !ok {
-		return ThreadMessage{}, false
+		return ConversationMessage{}, false
 	}
-	role := threadString(object["role"])
+	role := conversationString(object["role"])
 	if role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool" {
-		return ThreadMessage{}, false
+		return ConversationMessage{}, false
 	}
 	content := messageContent(object)
-	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(content), ToolCallID: threadString(object["tool_call_id"])}
+	message := ConversationMessage{Index: index, Role: role, Name: conversationString(object["name"]), Content: conversationParts(content), ToolCallID: conversationString(object["tool_call_id"])}
 	message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 	if message.ToolCallID == "" {
 		message.ToolCallID = contentToolCallID(content)
@@ -265,7 +265,7 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 		message.Reasoning = append(recordedReasoning(object), contentReasoning(content)...)
 		calls := chatToolCalls(object["tool_calls"])
 		// Chat Completions before tool_calls put one call here, unnamed by id.
-		if legacy, ok := threadMap(decodeThreadValue(object["function_call"])); ok {
+		if legacy, ok := conversationMap(decodeConversationValue(object["function_call"])); ok {
 			calls = append(calls, responseToolCall(legacy))
 		}
 		message.ToolCalls = append(calls, message.ToolCalls...)
@@ -276,21 +276,24 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 }
 
 func firstUsableChatValue(span map[string]any, primary, fallback string, decode func(any) []any) any {
-	if value, ok := threadLookup(span, primary); ok && len(decode(value)) > 0 {
+	if value, ok := conversationLookup(span, primary); ok && len(decode(value)) > 0 {
 		return value
 	}
-	if value, ok := threadLookup(span, fallback); ok && len(decode(value)) > 0 {
+	if value, ok := conversationLookup(span, fallback); ok && len(decode(value)) > 0 {
 		return value
 	}
 	return nil
 }
 
 func usableResponsesValue(value any) bool {
-	return len(responseItems(value)) > 0 || hasUnavailableThreadCount(value)
+	return len(responseItems(value)) > 0 || hasUnavailableConversationCount(value)
 }
-func hasUnavailableThreadCount(value any) bool { _, ok := unavailableThreadCount(value); return ok }
-func usableThreadParts(value any) bool {
-	for _, part := range threadParts(value) {
+func hasUnavailableConversationCount(value any) bool {
+	_, ok := unavailableConversationCount(value)
+	return ok
+}
+func usableConversationParts(value any) bool {
+	for _, part := range conversationParts(value) {
 		if part.Text != "" || part.Type == "json" || part.Type == "unavailable" || part.Type == "unsupported" {
 			return true
 		}
@@ -299,24 +302,24 @@ func usableThreadParts(value any) bool {
 }
 
 func responseItems(value any) []any {
-	value = decodeThreadValue(value)
+	value = decodeConversationValue(value)
 	if items, ok := value.([]any); ok {
 		return items
 	}
-	if object, ok := threadMap(value); ok {
-		if items, ok := decodeThreadValue(object["items"]).([]any); ok {
+	if object, ok := conversationMap(value); ok {
+		if items, ok := decodeConversationValue(object["items"]).([]any); ok {
 			return items
 		}
 	}
 	return nil
 }
 
-func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPart, toolNames map[string]string) []ThreadPart {
-	item, ok := threadMap(decodeThreadValue(raw))
+func (conversation *Conversation) appendResponseItem(raw any, index int, pending []ConversationPart, toolNames map[string]string) []ConversationPart {
+	item, ok := conversationMap(decodeConversationValue(raw))
 	if !ok {
 		return pending
 	}
-	itemType := threadString(item["type"])
+	itemType := conversationString(item["type"])
 	// Every Responses item that invokes a tool shares function_call's shape, so
 	// the built-in ones read as tool calls rather than vanishing.
 	switch {
@@ -329,12 +332,12 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 	case "reasoning":
 		return append(pending, responseReasoning(item)...)
 	case "message":
-		role := threadString(item["role"])
+		role := conversationString(item["role"])
 		if role == "" {
 			role = "assistant"
 		}
 		content := messageContent(item)
-		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(content), ToolCallID: threadString(item["call_id"])}
+		message := ConversationMessage{Index: index, Role: role, Name: conversationString(item["name"]), Content: conversationParts(content), ToolCallID: conversationString(item["call_id"])}
 		message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 		if message.ToolCallID == "" {
 			message.ToolCallID = contentToolCallID(content)
@@ -343,39 +346,39 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 			message.Reasoning = pending
 			pending = nil
 		}
-		thread.Messages = append(thread.Messages, message)
+		conversation.Messages = append(conversation.Messages, message)
 	case "tool_call":
 		call := responseToolCall(item)
 		if toolNames != nil {
 			toolNames[call.ID] = call.Name
 		}
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{}, Reasoning: pending, ToolCalls: []ThreadToolCall{call}})
+		conversation.Messages = append(conversation.Messages, ConversationMessage{Index: index, Role: "assistant", Content: []ConversationPart{}, Reasoning: pending, ToolCalls: []ConversationToolCall{call}})
 		return nil
 	case "tool_result":
-		callID := firstThreadString(item["call_id"], item["id"])
-		name := threadString(item["name"])
+		callID := firstConversationString(item["call_id"], item["id"])
+		name := conversationString(item["name"])
 		if name == "" && toolNames != nil {
 			name = toolNames[callID]
 		}
 		if name == "" {
 			name = toolItemName(item)
 		}
-		content := firstThreadPresent(item, "output", "content", "result")
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "tool", Name: name, ToolCallID: callID, Content: threadParts(content)})
+		content := firstConversationPresent(item, "output", "content", "result")
+		conversation.Messages = append(conversation.Messages, ConversationMessage{Index: index, Role: "tool", Name: name, ToolCallID: callID, Content: conversationParts(content)})
 	case "error", "exception":
-		role := threadString(item["role"])
+		role := conversationString(item["role"])
 		if role != "user" && role != "assistant" && role != "tool" {
 			role = "assistant"
 		}
 		content := item["content"]
 		if content == nil {
-			content = item[threadString(item["type"])]
+			content = item[conversationString(item["type"])]
 		}
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: role, Content: threadErrorParts(content, threadString(item["type"]))})
+		conversation.Messages = append(conversation.Messages, ConversationMessage{Index: index, Role: role, Content: conversationErrorParts(content, conversationString(item["type"]))})
 	default:
 		// A dropped item reads as a gap with no sign it ever existed.
 		if itemType != "" {
-			thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "assistant", Content: []ThreadPart{{Type: "unsupported", UnsupportedType: itemType}}, Reasoning: pending})
+			conversation.Messages = append(conversation.Messages, ConversationMessage{Index: index, Role: "assistant", Content: []ConversationPart{{Type: "unsupported", UnsupportedType: itemType}}, Reasoning: pending})
 			return nil
 		}
 	}
@@ -391,7 +394,7 @@ func isToolResultItem(itemType string) bool {
 // toolItemName names a built-in tool call, which reports its identity in the
 // item type instead of a name field the way a function call does.
 func toolItemName(item map[string]any) string {
-	itemType := threadString(item["type"])
+	itemType := conversationString(item["type"])
 	for _, suffix := range []string{"_call_output", "_call_result", "_call"} {
 		if trimmed, ok := strings.CutSuffix(itemType, suffix); ok {
 			return trimmed
@@ -400,34 +403,34 @@ func toolItemName(item map[string]any) string {
 	return ""
 }
 
-func responseToolCall(item map[string]any) ThreadToolCall {
-	arguments := firstThreadPresent(item, "arguments", "args", "input", "action", "query")
+func responseToolCall(item map[string]any) ConversationToolCall {
+	arguments := firstConversationPresent(item, "arguments", "args", "input", "action", "query")
 	if raw, ok := arguments.(string); ok {
 		arguments = decodeJSONOrString(raw)
 	}
-	name := threadString(item["name"])
+	name := conversationString(item["name"])
 	if name == "" {
 		name = toolItemName(item)
 	}
-	return ThreadToolCall{ID: firstThreadString(item["call_id"], item["id"]), Name: name, Arguments: arguments}
+	return ConversationToolCall{ID: firstConversationString(item["call_id"], item["id"]), Name: name, Arguments: arguments}
 }
 
-func chatToolCalls(value any) []ThreadToolCall {
-	items := threadList(value)
+func chatToolCalls(value any) []ConversationToolCall {
+	items := conversationList(value)
 	if len(items) == 0 {
 		return nil
 	}
-	calls := make([]ThreadToolCall, 0, len(items))
+	calls := make([]ConversationToolCall, 0, len(items))
 	for _, raw := range items {
-		item, ok := threadMap(raw)
+		item, ok := conversationMap(raw)
 		if !ok {
 			continue
 		}
-		function, _ := threadMap(item["function"])
-		name, arguments := threadString(item["name"]), item["arguments"]
+		function, _ := conversationMap(item["function"])
+		name, arguments := conversationString(item["name"]), item["arguments"]
 		if function != nil {
 			if name == "" {
-				name = threadString(function["name"])
+				name = conversationString(function["name"])
 			}
 			if arguments == nil {
 				arguments = function["arguments"]
@@ -436,19 +439,19 @@ func chatToolCalls(value any) []ThreadToolCall {
 		if rawArguments, ok := arguments.(string); ok {
 			arguments = decodeJSONOrString(rawArguments)
 		}
-		calls = append(calls, ThreadToolCall{ID: firstThreadString(item["id"], item["call_id"]), Name: name, Arguments: arguments})
+		calls = append(calls, ConversationToolCall{ID: firstConversationString(item["id"], item["call_id"]), Name: name, Arguments: arguments})
 	}
 	return calls
 }
 
-func responseReasoning(item map[string]any) []ThreadPart {
-	if states := stateThreadParts(item); len(states) > 0 {
+func responseReasoning(item map[string]any) []ConversationPart {
+	if states := stateConversationParts(item); len(states) > 0 {
 		return states
 	}
-	var parts []ThreadPart
+	var parts []ConversationPart
 	for _, key := range []string{"content", "summary", "summaries", "reasoning", "thinking"} {
 		if value := item[key]; value != nil {
-			parsed := reasoningThreadParts(value)
+			parsed := reasoningConversationParts(value)
 			if key == "summary" || key == "summaries" {
 				for index := range parsed {
 					if parsed[index].Type == "text" {
@@ -459,60 +462,60 @@ func responseReasoning(item map[string]any) []ThreadPart {
 			parts = append(parts, parsed...)
 		}
 	}
-	return append(parts, stateThreadParts(item)...)
+	return append(parts, stateConversationParts(item)...)
 }
 
-func recordedReasoning(message map[string]any) []ThreadPart {
-	if states := stateThreadParts(message); len(states) > 0 {
+func recordedReasoning(message map[string]any) []ConversationPart {
+	if states := stateConversationParts(message); len(states) > 0 {
 		return states
 	}
-	var parts []ThreadPart
+	var parts []ConversationPart
 	for _, key := range []string{"reasoning_content", "reasoning", "thinking", "summary", "summaries", "reasoning_summary"} {
 		if value := message[key]; value != nil {
-			parsed := reasoningThreadParts(value)
+			parsed := reasoningConversationParts(value)
 			if key == "summary" || key == "summaries" || key == "reasoning_summary" {
-				parsed = markThreadPartsSummary(parsed)
+				parsed = markConversationPartsSummary(parsed)
 			}
 			parts = append(parts, parsed...)
 		}
 	}
-	return append(parts, stateThreadParts(message)...)
+	return append(parts, stateConversationParts(message)...)
 }
 
-func reasoningThreadParts(value any) []ThreadPart {
-	if object, ok := threadMap(value); ok {
-		if states := stateThreadParts(object); len(states) > 0 {
+func reasoningConversationParts(value any) []ConversationPart {
+	if object, ok := conversationMap(value); ok {
+		if states := stateConversationParts(object); len(states) > 0 {
 			return states
 		}
 	}
-	switch typed := decodeThreadValue(value).(type) {
+	switch typed := decodeConversationValue(value).(type) {
 	case string:
-		return []ThreadPart{{Type: "text", Text: typed}}
+		return []ConversationPart{{Type: "text", Text: typed}}
 	case []any:
-		var parts []ThreadPart
+		var parts []ConversationPart
 		for _, item := range typed {
-			parts = append(parts, reasoningThreadParts(item)...)
+			parts = append(parts, reasoningConversationParts(item)...)
 		}
 		return parts
 	case map[string]any:
-		var parts []ThreadPart
+		var parts []ConversationPart
 		for _, key := range []string{"content", "text"} {
 			if nested := typed[key]; nested != nil {
-				parts = append(parts, reasoningThreadParts(nested)...)
+				parts = append(parts, reasoningConversationParts(nested)...)
 			}
 		}
 		for _, key := range []string{"summary", "summaries"} {
 			if nested := typed[key]; nested != nil {
-				parts = append(parts, markThreadPartsSummary(reasoningThreadParts(nested))...)
+				parts = append(parts, markConversationPartsSummary(reasoningConversationParts(nested))...)
 			}
 		}
-		return append(parts, stateThreadParts(typed)...)
+		return append(parts, stateConversationParts(typed)...)
 	default:
 		return nil
 	}
 }
 
-func markThreadPartsSummary(parts []ThreadPart) []ThreadPart {
+func markConversationPartsSummary(parts []ConversationPart) []ConversationPart {
 	for index := range parts {
 		if parts[index].Type == "text" {
 			parts[index].Type = "summary"
@@ -524,17 +527,17 @@ func markThreadPartsSummary(parts []ThreadPart) []ThreadPart {
 // contentPartKind reads the discriminator of a content part. OTel-shaped
 // payloads spell it `kind` where the provider SDKs spell it `type`.
 func contentPartKind(object map[string]any) string {
-	return firstThreadString(object["type"], object["kind"])
+	return firstConversationString(object["type"], object["kind"])
 }
 
-// threadList reads a value recorded as a list, accepting the map-keyed-by-position
+// conversationList reads a value recorded as a list, accepting the map-keyed-by-position
 // form an OTel collector produces when it flattens `parts.0`, `parts.1`, ...
-func threadList(value any) []any {
-	value = decodeThreadValue(value)
+func conversationList(value any) []any {
+	value = decodeConversationValue(value)
 	if list, ok := value.([]any); ok {
 		return list
 	}
-	object, ok := threadMap(value)
+	object, ok := conversationMap(value)
 	if !ok || len(object) == 0 {
 		return nil
 	}
@@ -553,14 +556,14 @@ func threadList(value any) []any {
 // messageContent reads a message body, which OTel GenAI spells `parts` where the
 // provider SDKs spell it `content`.
 func messageContent(object map[string]any) any {
-	content := firstThreadPresent(object, "content", "parts")
-	if list := threadList(content); list != nil {
+	content := firstConversationPresent(object, "content", "parts")
+	if list := conversationList(content); list != nil {
 		return list
 	}
 	return content
 }
 
-func firstThreadPresent(object map[string]any, keys ...string) any {
+func firstConversationPresent(object map[string]any, keys ...string) any {
 	for _, key := range keys {
 		if value := object[key]; value != nil {
 			return value
@@ -581,19 +584,19 @@ func carriedOffBody(kind string) bool {
 
 // contentReasoning lifts thinking expressed as a content part onto the message,
 // where the reasoning recorded in a dedicated field already lands.
-func contentReasoning(value any) []ThreadPart {
-	var parts []ThreadPart
-	for _, raw := range threadList(value) {
-		object, ok := threadMap(decodeThreadValue(raw))
+func contentReasoning(value any) []ConversationPart {
+	var parts []ConversationPart
+	for _, raw := range conversationList(value) {
+		object, ok := conversationMap(decodeConversationValue(raw))
 		if !ok {
 			continue
 		}
 		switch contentPartKind(object) {
 		case "thinking", "reasoning":
-			parts = append(parts, threadParts(firstThreadPresent(object, "thinking", "text", "reasoning", "content"))...)
+			parts = append(parts, conversationParts(firstConversationPresent(object, "thinking", "text", "reasoning", "content"))...)
 		case "redacted_thinking":
 			// The provider withheld the text; say so instead of nothing.
-			parts = append(parts, ThreadPart{Type: "state", State: "redacted thinking"})
+			parts = append(parts, ConversationPart{Type: "state", State: "redacted thinking"})
 		}
 	}
 	return parts
@@ -608,7 +611,7 @@ func mediaReference(part map[string]any) string {
 		}
 	}
 	for _, key := range []string{"image_url", "source", "file", "input_file", "image", "audio", "document"} {
-		if nested, ok := threadMap(decodeThreadValue(part[key])); ok {
+		if nested, ok := conversationMap(decodeConversationValue(part[key])); ok {
 			if reference := mediaReference(nested); reference != "" {
 				return reference
 			}
@@ -622,7 +625,7 @@ func mediaReference(part map[string]any) string {
 // namedMediaReference reads a reference that names the media. An inline data
 // URI names nothing; it is the payload this part is left unrendered to avoid.
 func namedMediaReference(value any) string {
-	reference := threadString(value)
+	reference := conversationString(value)
 	if strings.HasPrefix(reference, "data:") {
 		return ""
 	}
@@ -631,26 +634,26 @@ func namedMediaReference(value any) string {
 
 // contentToolCalls lifts tool calls expressed as content parts, the shape
 // Anthropic-style messages use, onto the message that made them.
-func contentToolCalls(value any) []ThreadToolCall {
-	items, ok := decodeThreadValue(value).([]any)
+func contentToolCalls(value any) []ConversationToolCall {
+	items, ok := decodeConversationValue(value).([]any)
 	if !ok {
 		return nil
 	}
-	var calls []ThreadToolCall
+	var calls []ConversationToolCall
 	for _, raw := range items {
-		object, ok := threadMap(decodeThreadValue(raw))
+		object, ok := conversationMap(decodeConversationValue(raw))
 		if !ok {
 			continue
 		}
 		switch contentPartKind(object) {
 		case "tool_use", "tool_call", "function_call":
-			arguments := firstThreadPresent(object, "input", "arguments", "args")
+			arguments := firstConversationPresent(object, "input", "arguments", "args")
 			if text, ok := arguments.(string); ok {
 				arguments = decodeJSONOrString(text)
 			}
-			calls = append(calls, ThreadToolCall{
-				ID:        firstThreadString(object["id"], object["call_id"], object["tool_call_id"]),
-				Name:      threadString(object["name"]),
+			calls = append(calls, ConversationToolCall{
+				ID:        firstConversationString(object["id"], object["call_id"], object["tool_call_id"]),
+				Name:      conversationString(object["name"]),
 				Arguments: arguments,
 			})
 		}
@@ -660,17 +663,17 @@ func contentToolCalls(value any) []ThreadToolCall {
 
 // contentToolCallID reads the call a tool_result content part answers.
 func contentToolCallID(value any) string {
-	items, ok := decodeThreadValue(value).([]any)
+	items, ok := decodeConversationValue(value).([]any)
 	if !ok {
 		return ""
 	}
 	for _, raw := range items {
-		object, ok := threadMap(decodeThreadValue(raw))
+		object, ok := conversationMap(decodeConversationValue(raw))
 		if !ok {
 			continue
 		}
 		if kind := contentPartKind(object); kind == "tool_result" || kind == "function_call_output" {
-			if id := firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"]); id != "" {
+			if id := firstConversationString(object["tool_use_id"], object["tool_call_id"], object["call_id"]); id != "" {
 				return id
 			}
 		}
@@ -678,38 +681,38 @@ func contentToolCallID(value any) string {
 	return ""
 }
 
-func threadErrorParts(value any, kind string) []ThreadPart {
-	switch typed := decodeThreadValue(value).(type) {
+func conversationErrorParts(value any, kind string) []ConversationPart {
+	switch typed := decodeConversationValue(value).(type) {
 	case string:
-		return []ThreadPart{{Type: kind, Text: typed}}
+		return []ConversationPart{{Type: kind, Text: typed}}
 	case []any:
-		var parts []ThreadPart
+		var parts []ConversationPart
 		for _, item := range typed {
-			parts = append(parts, threadErrorParts(item, kind)...)
+			parts = append(parts, conversationErrorParts(item, kind)...)
 		}
 		return parts
 	case map[string]any:
 		for _, key := range []string{"message", "text", "content"} {
 			if nested := typed[key]; nested != nil {
-				return threadErrorParts(nested, kind)
+				return conversationErrorParts(nested, kind)
 			}
 		}
 	}
 	return nil
 }
 
-func stateThreadParts(object map[string]any) []ThreadPart {
+func stateConversationParts(object map[string]any) []ConversationPart {
 	states := []struct{ key, state string }{{"encrypted", "encrypted"}, {"redacted", "redacted"}, {"masked", "masked"}, {"truncated", "truncated"}, {"signature", "redacted"}}
-	var parts []ThreadPart
+	var parts []ConversationPart
 	seen := map[string]bool{}
 	for _, candidate := range states {
 		for key, value := range object {
 			lowerKey := strings.ToLower(key)
-			byKey := strings.Contains(lowerKey, candidate.key) && threadStateValuePresent(value)
-			byDiscriminator := (lowerKey == "type" || lowerKey == "state" || lowerKey == "status") && strings.Contains(strings.ToLower(threadString(value)), candidate.key)
+			byKey := strings.Contains(lowerKey, candidate.key) && conversationStateValuePresent(value)
+			byDiscriminator := (lowerKey == "type" || lowerKey == "state" || lowerKey == "status") && strings.Contains(strings.ToLower(conversationString(value)), candidate.key)
 			if byKey || byDiscriminator {
 				if !seen[candidate.state] {
-					parts = append(parts, ThreadPart{Type: "state", State: candidate.state})
+					parts = append(parts, ConversationPart{Type: "state", State: candidate.state})
 					seen[candidate.state] = true
 				}
 				break
@@ -719,7 +722,7 @@ func stateThreadParts(object map[string]any) []ThreadPart {
 	return parts
 }
 
-func threadStateValuePresent(value any) bool {
+func conversationStateValuePresent(value any) bool {
 	switch typed := value.(type) {
 	case nil:
 		return false
@@ -732,67 +735,67 @@ func threadStateValuePresent(value any) bool {
 	}
 }
 
-func threadParts(value any) []ThreadPart {
-	if object, ok := threadMap(value); ok {
+func conversationParts(value any) []ConversationPart {
+	if object, ok := conversationMap(value); ok {
 		// Before state detection, which would claim a redacted thinking part.
 		if carriedOffBody(contentPartKind(object)) {
 			return nil
 		}
-		if states := stateThreadParts(object); len(states) > 0 {
+		if states := stateConversationParts(object); len(states) > 0 {
 			return states
 		}
 	}
-	if count, unavailable := unavailableThreadCount(value); unavailable {
-		return []ThreadPart{{Type: "unavailable", Count: count}}
+	if count, unavailable := unavailableConversationCount(value); unavailable {
+		return []ConversationPart{{Type: "unavailable", Count: count}}
 	}
-	value = decodeThreadValue(value)
+	value = decodeConversationValue(value)
 	switch typed := value.(type) {
 	case nil:
 		return nil
 	case string:
-		return []ThreadPart{{Type: "text", Text: typed}}
+		return []ConversationPart{{Type: "text", Text: typed}}
 	case []any:
-		var parts []ThreadPart
+		var parts []ConversationPart
 		for _, item := range typed {
-			parts = append(parts, threadParts(item)...)
+			parts = append(parts, conversationParts(item)...)
 		}
 		return parts
 	case map[string]any:
 		kind := contentPartKind(typed)
 		if kind == "" {
 			if text, ok := typed["text"]; ok {
-				return threadParts(text)
+				return conversationParts(text)
 			}
-			return []ThreadPart{{Type: "json", Value: typed}}
+			return []ConversationPart{{Type: "json", Value: typed}}
 		}
 		switch kind {
 		case "text", "input_text", "output_text", "summary_text", "refusal":
-			return threadParts(typed["text"])
+			return conversationParts(typed["text"])
 		case "tool_result", "function_call_output":
-			return threadParts(firstThreadPresent(typed, "result", "content", "output"))
+			return conversationParts(firstConversationPresent(typed, "result", "content", "output"))
 		default:
-			return []ThreadPart{{Type: "unsupported", UnsupportedType: kind, Text: mediaReference(typed)}}
+			return []ConversationPart{{Type: "unsupported", UnsupportedType: kind, Text: mediaReference(typed)}}
 		}
 	default:
-		return []ThreadPart{{Type: "json", Value: typed}}
+		return []ConversationPart{{Type: "json", Value: typed}}
 	}
 }
 
-func threadLookup(span map[string]any, key string) (any, bool) {
+func conversationLookup(span map[string]any, key string) (any, bool) {
 	if value, ok := span[key]; ok {
 		return value, true
 	}
-	if attrs, ok := threadMap(span["attributes"]); ok {
+	if attrs, ok := conversationMap(span["attributes"]); ok {
 		if value, ok := attrs[key]; ok {
 			return value, true
 		}
 	}
 	parts := strings.Split(key, ".")
-	for _, root := range []map[string]any{span, mapThreadValue(span["attributes"])} {
+	for _, root := range []map[string]any{span, mapConversationValue(span["attributes"])} {
 		var current any = root
 		found := true
 		for _, part := range parts {
-			object, ok := threadMap(current)
+			object, ok := conversationMap(current)
 			if !ok {
 				found = false
 				break
@@ -810,44 +813,50 @@ func threadLookup(span map[string]any, key string) (any, bool) {
 	return nil, false
 }
 
-func mapThreadValue(value any) map[string]any { object, _ := threadMap(value); return object }
-func threadMap(value any) (map[string]any, bool) {
+func mapConversationValue(value any) map[string]any {
+	object, _ := conversationMap(value)
+	return object
+}
+func conversationMap(value any) (map[string]any, bool) {
 	object, ok := value.(map[string]any)
 	return object, ok
 }
-func threadString(value any) string { text, _ := decodeThreadValue(value).(string); return text }
-func firstThreadString(values ...any) string {
+func conversationString(value any) string {
+	text, _ := decodeConversationValue(value).(string)
+	return text
+}
+func firstConversationString(values ...any) string {
 	for _, value := range values {
-		if text := threadString(value); text != "" {
+		if text := conversationString(value); text != "" {
 			return text
 		}
 	}
 	return ""
 }
 
-func decodeThreadValue(value any) any {
+func decodeConversationValue(value any) any {
 	switch typed := value.(type) {
 	case string:
 		return decodeJSONOrString(typed)
 	case []any:
 		result := make([]any, len(typed))
 		for index, item := range typed {
-			result[index] = decodeThreadValue(item)
+			result[index] = decodeConversationValue(item)
 		}
 		return result
 	case map[string]any:
-		if len(stateThreadParts(typed)) > 0 {
+		if len(stateConversationParts(typed)) > 0 {
 			return typed
 		}
 		if wrapped, ok := typed["_value"]; ok {
-			return decodeThreadValue(wrapped)
+			return decodeConversationValue(wrapped)
 		}
 		if wrapped, ok := typed["string"]; ok {
-			return decodeThreadValue(wrapped)
+			return decodeConversationValue(wrapped)
 		}
 		result := make(map[string]any, len(typed))
 		for key, item := range typed {
-			result[key] = decodeThreadValue(item)
+			result[key] = decodeConversationValue(item)
 		}
 		return result
 	default:
@@ -860,31 +869,31 @@ func decodeJSONOrString(text string) any {
 	if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) || (strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
 		var value any
 		if json.Unmarshal([]byte(trimmed), &value) == nil {
-			return decodeThreadValue(value)
+			return decodeConversationValue(value)
 		}
 	}
 	return text
 }
 
-func unavailableThreadCount(value any) (int, bool) {
+func unavailableConversationCount(value any) (int, bool) {
 	if text, ok := value.(string); ok {
 		decoded := decodeJSONOrString(text)
 		if decodedText, unchanged := decoded.(string); unchanged && decodedText == text {
 			return 0, false
 		}
-		return unavailableThreadCount(decoded)
+		return unavailableConversationCount(decoded)
 	}
-	object, ok := threadMap(value)
+	object, ok := conversationMap(value)
 	if !ok {
 		return 0, false
 	}
 	if wrapped, ok := object["_value"]; ok {
-		return unavailableThreadCount(wrapped)
+		return unavailableConversationCount(wrapped)
 	}
 	if wrapped, ok := object["string"]; ok {
-		return unavailableThreadCount(wrapped)
+		return unavailableConversationCount(wrapped)
 	}
-	items, ok := threadMap(object["items"])
+	items, ok := conversationMap(object["items"])
 	if !ok {
 		return 0, false
 	}
@@ -935,19 +944,19 @@ func clampSliceBound(value, length int) int {
 	return value
 }
 
-// describeThreadSpan records the span facts a reader needs to judge the
+// describeConversationSpan records the span facts a reader needs to judge the
 // conversation: which model produced it, what it cost in time and tokens, and
 // whether it failed. Status is reported only for a failure — a healthy span
 // says nothing, so a status line always means something went wrong.
-func describeThreadSpan(source *ThreadSource, span map[string]any) {
-	summary, _ := threadMap(span["summary"])
+func describeConversationSpan(source *ConversationSource, span map[string]any) {
+	summary, _ := conversationMap(span["summary"])
 	lookup := func(keys ...string) string {
 		for _, key := range keys {
-			if value := threadScalar(summary[key]); value != "" {
+			if value := conversationScalar(summary[key]); value != "" {
 				return value
 			}
-			if value, ok := threadLookup(span, key); ok {
-				if scalar := threadScalar(value); scalar != "" {
+			if value, ok := conversationLookup(span, key); ok {
+				if scalar := conversationScalar(value); scalar != "" {
 					return scalar
 				}
 			}
@@ -956,9 +965,9 @@ func describeThreadSpan(source *ThreadSource, span map[string]any) {
 	}
 	source.Model = lookup("model", "gen_ai.request.model", "gen_ai.response.model")
 	// A collector writes zero when it did not measure, not when nothing happened.
-	source.DurationMS = nonZeroThreadCount(lookup("duration_ms"))
-	if usage, ok := threadMap(summary["usage"]); ok {
-		source.Tokens = nonZeroThreadCount(threadScalar(usage["total_tokens"]))
+	source.DurationMS = nonZeroConversationCount(lookup("duration_ms"))
+	if usage, ok := conversationMap(summary["usage"]); ok {
+		source.Tokens = nonZeroConversationCount(conversationScalar(usage["total_tokens"]))
 	}
 	status := strings.ToLower(lookup("status"))
 	if status == "" || status == "ok" || status == "unset" || status == "success" {
@@ -968,9 +977,9 @@ func describeThreadSpan(source *ThreadSource, span map[string]any) {
 	source.Error = lookup("status_message", "error.message", "exception.message", "error")
 }
 
-// threadScalar renders an attribute value that is a single number or string.
-func threadScalar(value any) string {
-	switch typed := decodeThreadValue(value).(type) {
+// conversationScalar renders an attribute value that is a single number or string.
+func conversationScalar(value any) string {
+	switch typed := decodeConversationValue(value).(type) {
 	case string:
 		return typed
 	case float64:
@@ -983,7 +992,7 @@ func threadScalar(value any) string {
 	return ""
 }
 
-func nonZeroThreadCount(value string) string {
+func nonZeroConversationCount(value string) string {
 	if value == "0" {
 		return ""
 	}
