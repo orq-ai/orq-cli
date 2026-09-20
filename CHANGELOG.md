@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [9.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v9.0.0) — 2026-09-20
+
 - **Changed (breaking): `orq traces thread` is now `orq traces
   conversation`,** with the short alias `orq traces conv`. `thread` is gone in
   this release rather than kept hidden and warning for one, which the stability
