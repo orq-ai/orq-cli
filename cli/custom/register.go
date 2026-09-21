@@ -653,7 +653,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
-	attachTracesConversation(root, traceAPI)
+	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
@@ -841,14 +841,14 @@ func attachProjectsUse(root *cobra.Command) {
 	}
 }
 
-// attachTracesConversation extends the generated parent rather than creating a
+// attachTracesThread extends the generated parent rather than creating a
 // parallel top-level command. Register accepts a zero TraceAPI in unit tests,
 // so help and command-surface checks always see the command even without an
 // executable generated client behind it.
-func attachTracesConversation(root *cobra.Command, api commands.TraceAPI) {
+func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
 	for _, c := range root.Commands() {
 		if c.Name() == "traces" {
-			c.AddCommand(commands.NewTracesConversationCommand(api))
+			c.AddCommand(commands.NewTracesThreadCommand(api))
 			return
 		}
 	}
@@ -993,7 +993,7 @@ func explainNotFoundScope(cmd *cobra.Command) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			err := run(c, args)
 			hint := commands.NotFoundScopeHint(err)
-			// A command that already named the scope itself — `traces conversation`
+			// A command that already named the scope itself — `traces thread`
 			// names the project holding the trace — needs no second copy.
 			if hint == "" || strings.Contains(err.Error(), "orq projects use") {
 				return err

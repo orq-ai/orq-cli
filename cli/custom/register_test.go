@@ -521,9 +521,9 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	}
 }
 
-// conversationSpanServer answers the two calls `orq traces conversation tr_x span-1`
+// threadSpanServer answers the two calls `orq traces thread tr_x span-1`
 // makes, so a binary-level run reaches a render instead of the network.
-func conversationSpanServer(t *testing.T) *httptest.Server {
+func threadSpanServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -541,9 +541,9 @@ func conversationSpanServer(t *testing.T) *httptest.Server {
 	return server
 }
 
-// conversationHome is a HOME whose config file names format, or a bare one when it
+// threadHome is a HOME whose config file names format, or a bare one when it
 // is empty.
-func conversationHome(t *testing.T, format string) string {
+func threadHome(t *testing.T, format string) string {
 	t.Helper()
 	home := t.TempDir()
 	if format == "" {
@@ -558,30 +558,30 @@ func conversationHome(t *testing.T, format string) string {
 	return home
 }
 
-// `orq traces conversation` takes its format from -o alone. Both standing sources —
+// `orq traces thread` takes its format from -o alone. Both standing sources —
 // the exported variable and the config file — answer for every command in a
 // shell or a tree, and neither may swap the render a person came to read.
 // Only the real binary has those tiers populated at all.
-func TestConversationIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
+func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
-	server := conversationSpanServer(t)
+	server := threadSpanServer(t)
 	for _, source := range []string{"environment", "config"} {
 		t.Run(source, func(t *testing.T) {
-			home := conversationHome(t, "")
+			home := threadHome(t, "")
 			env := []string{"HOME=" + home, "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_API_KEY=stub-key", "ORQ_SERVER=" + server.URL, "ORQ_OUTPUT_FORMAT="}
 			if source == "environment" {
 				env[len(env)-1] = "ORQ_OUTPUT_FORMAT=json"
 			} else {
-				env[0] = "HOME=" + conversationHome(t, "json")
+				env[0] = "HOME=" + threadHome(t, "json")
 			}
-			cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1")
+			cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
 			cmd.Dir = t.TempDir()
 			cmd.Env = append(os.Environ(), env...)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatalf("traces conversation: %v\n%s", err, out)
+				t.Fatalf("traces thread: %v\n%s", err, out)
 			}
-			if !strings.Contains(string(out), "<conversation ") || strings.Contains(string(out), `"messages"`) {
+			if !strings.Contains(string(out), "<thread ") || strings.Contains(string(out), `"messages"`) {
 				t.Fatalf("a standing %s format decided the render: %s", source, out)
 			}
 		})
@@ -592,13 +592,13 @@ func TestConversationIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 // and it reaches the command without any relaxation of bartolo's check: the
 // local flag shadows the bound global one, so nothing this command is asked
 // ever lands in viper. This is the test that fails if that stops being true.
-func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
+func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
-	server := conversationSpanServer(t)
-	cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1", "-o", "markdown")
+	server := threadSpanServer(t)
+	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1", "-o", "markdown")
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(),
-		"HOME="+conversationHome(t, ""),
+		"HOME="+threadHome(t, ""),
 		"NO_COLOR=",
 		"ORQ_NO_COLOR=",
 		"ORQ_API_KEY=stub-key",
@@ -606,7 +606,7 @@ func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("traces conversation -o markdown: %v\n%s", err, out)
+		t.Fatalf("traces thread -o markdown: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "## USER") {
 		t.Fatalf("output = %s, want the markdown render", out)
@@ -614,7 +614,7 @@ func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 }
 
 // A standing value bartolo does not know is refused before any command runs.
-// `orq traces conversation` used to be exempted from that check, so a config file
+// `orq traces thread` used to be exempted from that check, so a config file
 // naming `markdown` — a value every other command rejects — worked there and
 // nowhere else. One answer for the whole CLI is the point: the same value
 // fails the same way whichever command it is handed to.
@@ -622,16 +622,16 @@ func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
 	binPath := buildOrqBinary(t)
 	// Reachable and credentialed, so a run that gets past the check succeeds
 	// and the exit code alone says the check was skipped.
-	server := conversationSpanServer(t)
+	server := threadSpanServer(t)
 	const want = `--output-format: "markdown" is not one of`
 	for _, source := range []string{"environment", "config"} {
 		t.Run(source, func(t *testing.T) {
-			for _, args := range [][]string{{"version"}, {"traces", "conversation", "tr_x", "span-1"}} {
+			for _, args := range [][]string{{"version"}, {"traces", "thread", "tr_x", "span-1"}} {
 				cmd := exec.Command(binPath, args...)
 				cmd.Dir = t.TempDir()
-				home, format := conversationHome(t, ""), ""
+				home, format := threadHome(t, ""), ""
 				if source == "config" {
-					home = conversationHome(t, "markdown")
+					home = threadHome(t, "markdown")
 				} else {
 					format = "markdown"
 				}

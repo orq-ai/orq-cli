@@ -7,15 +7,15 @@ import (
 	"strings"
 )
 
-// Conversation is the canonical, portable representation of a traced conversation.
-type Conversation struct {
-	Messages []ConversationMessage `json:"messages"`
-	Source   ConversationSource    `json:"source"`
+// Thread is the canonical, portable representation of a traced conversation.
+type Thread struct {
+	Messages []ThreadMessage `json:"messages"`
+	Source   ThreadSource    `json:"source"`
 }
 
-// ConversationSource identifies the origin of a normalized conversation, and reports the
+// ThreadSource identifies the origin of a normalized thread, and reports the
 // span facts needed to judge the conversation it holds.
-type ConversationSource struct {
+type ThreadSource struct {
 	Representation string `json:"representation"`
 	TraceID        string `json:"trace_id,omitempty"`
 	SpanID         string `json:"span_id,omitempty"`
@@ -31,20 +31,20 @@ type ConversationSource struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// ConversationMessage is a message in conversation order, including system and developer
+// ThreadMessage is a message in conversation order, including system and developer
 // messages. Index is its zero-based position, which is also its --slice position.
-type ConversationMessage struct {
-	Index      int                    `json:"index"`
-	Role       string                 `json:"role"`
-	Name       string                 `json:"name,omitempty"`
-	Content    []ConversationPart     `json:"content"`
-	Reasoning  []ConversationPart     `json:"reasoning,omitempty"`
-	ToolCalls  []ConversationToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string                 `json:"tool_call_id,omitempty"`
+type ThreadMessage struct {
+	Index      int              `json:"index"`
+	Role       string           `json:"role"`
+	Name       string           `json:"name,omitempty"`
+	Content    []ThreadPart     `json:"content"`
+	Reasoning  []ThreadPart     `json:"reasoning,omitempty"`
+	ToolCalls  []ThreadToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
 }
 
-// ConversationPart is content, a safely-rendered state, or an explicitly unavailable value.
-type ConversationPart struct {
+// ThreadPart is content, a safely-rendered state, or an explicitly unavailable value.
+type ThreadPart struct {
 	Type            string `json:"type"`
 	Text            string `json:"text,omitempty"`
 	Value           any    `json:"value,omitempty"`
@@ -53,18 +53,18 @@ type ConversationPart struct {
 	UnsupportedType string `json:"unsupported_type,omitempty"`
 }
 
-// ConversationToolCall is an assistant request to invoke a tool.
-type ConversationToolCall struct {
+// ThreadToolCall is an assistant request to invoke a tool.
+type ThreadToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments any    `json:"arguments"`
 }
 
-// SliceConversation applies a zero-based Python-style slice to conversation messages.
-func SliceConversation(conversation Conversation, expression string) (Conversation, error) {
+// SliceThread applies a zero-based Python-style slice to thread messages.
+func SliceThread(thread Thread, expression string) (Thread, error) {
 	expression = strings.TrimSpace(expression)
 	if expression == "" {
-		return Conversation{}, fmt.Errorf("invalid slice expression: empty expression")
+		return Thread{}, fmt.Errorf("invalid slice expression: empty expression")
 	}
 	colons := 0
 	for _, r := range expression {
@@ -73,14 +73,14 @@ func SliceConversation(conversation Conversation, expression string) (Conversati
 		}
 	}
 	if colons > 1 {
-		return Conversation{}, fmt.Errorf("invalid slice expression %q: stride syntax is not supported", expression)
+		return Thread{}, fmt.Errorf("invalid slice expression %q: stride syntax is not supported", expression)
 	}
-	n := len(conversation.Messages)
+	n := len(thread.Messages)
 	start, stop := 0, n
 	if colons == 0 {
 		index, err := parseSliceInteger(expression)
 		if err != nil {
-			return Conversation{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
+			return Thread{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
 		}
 		if index < 0 {
 			index += n
@@ -96,7 +96,7 @@ func SliceConversation(conversation Conversation, expression string) (Conversati
 		if parts[0] != "" {
 			start, err = parseSliceInteger(parts[0])
 			if err != nil {
-				return Conversation{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
+				return Thread{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
 			}
 			if start < 0 {
 				start += n
@@ -105,7 +105,7 @@ func SliceConversation(conversation Conversation, expression string) (Conversati
 		if parts[1] != "" {
 			stop, err = parseSliceInteger(parts[1])
 			if err != nil {
-				return Conversation{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
+				return Thread{}, fmt.Errorf("invalid slice expression %q: %w", expression, err)
 			}
 			if stop < 0 {
 				stop += n
@@ -117,20 +117,20 @@ func SliceConversation(conversation Conversation, expression string) (Conversati
 			stop = start
 		}
 	}
-	result := conversation
-	result.Messages = append([]ConversationMessage{}, conversation.Messages[start:stop]...)
+	result := thread
+	result.Messages = append([]ThreadMessage{}, thread.Messages[start:stop]...)
 	return result, nil
 }
 
-// ConversationKinds are the kinds --include selects from: the four roles a reader sees
+// ThreadKinds are the kinds --include selects from: the four roles a reader sees
 // in the render, and reasoning, which is a section inside a message rather than
 // a message of its own. `system` covers the developer role, which the render
 // presents as an instruction the same way.
-var ConversationKinds = []string{"system", "user", "assistant", "tool", conversationKindReasoning}
+var ThreadKinds = []string{"system", "user", "assistant", "tool", threadKindReasoning}
 
-const conversationKindReasoning = "reasoning"
+const threadKindReasoning = "reasoning"
 
-// FilterConversation keeps only the selected kinds. Role names decide whose messages
+// FilterThread keeps only the selected kinds. Role names decide whose messages
 // survive; reasoning decides whether the recorded thinking inside them does. A
 // selection naming no role keeps every role, so --include reasoning reads as "the
 // thinking, wherever it was recorded" rather than as nothing at all.
@@ -140,7 +140,7 @@ const conversationKindReasoning = "reasoning"
 // for a turn that happened with nothing recorded and that is a fact about the
 // trace rather than something the filter was asked to hide — but not a
 // reasoning-only selection, which asked about sections and not about turns.
-func FilterConversation(conversation Conversation, kinds []string) (Conversation, error) {
+func FilterThread(thread Thread, kinds []string) (Thread, error) {
 	selected := map[string]bool{}
 	roles := false
 	for _, kind := range kinds {
@@ -148,22 +148,22 @@ func FilterConversation(conversation Conversation, kinds []string) (Conversation
 		if kind == "" {
 			continue
 		}
-		if !slices.Contains(ConversationKinds, kind) {
-			return Conversation{}, fmt.Errorf("unknown message type %q: expected one of %s", kind, strings.Join(ConversationKinds, ", "))
+		if !slices.Contains(ThreadKinds, kind) {
+			return Thread{}, fmt.Errorf("unknown message type %q: expected one of %s", kind, strings.Join(ThreadKinds, ", "))
 		}
 		selected[kind] = true
-		roles = roles || kind != conversationKindReasoning
+		roles = roles || kind != threadKindReasoning
 	}
 	if len(selected) == 0 {
-		return conversation, nil
+		return thread, nil
 	}
-	kept := make([]ConversationMessage, 0, len(conversation.Messages))
-	for _, message := range conversation.Messages {
-		if roles && !selected[conversationRoleKind(message.Role)] {
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
+		if roles && !selected[threadRoleKind(message.Role)] {
 			continue
 		}
 		had := len(message.Content) > 0 || len(message.Reasoning) > 0 || len(message.ToolCalls) > 0
-		if !selected[conversationKindReasoning] {
+		if !selected[threadKindReasoning] {
 			message.Reasoning = nil
 		}
 		if !roles {
@@ -174,53 +174,53 @@ func FilterConversation(conversation Conversation, kinds []string) (Conversation
 		}
 		kept = append(kept, message)
 	}
-	result := conversation
+	result := thread
 	result.Messages = kept
 	return result, nil
 }
 
-func conversationRoleKind(role string) string {
+func threadRoleKind(role string) string {
 	if isInstructionRole(role) {
 		return "system"
 	}
 	return role
 }
 
-// MatchConversation keeps the messages whose recorded text matches. Everything a
+// MatchThread keeps the messages whose recorded text matches. Everything a
 // render puts on the page is searched, tool calls included: a call's name and
 // its arguments are recorded text like any other, and "where did it call
 // search_docs" is the question this exists to answer. Matching is
 // case-insensitive; a pattern that means the case it wrote says so with the
 // inline `(?-i)` flag.
-func MatchConversation(conversation Conversation, pattern string) (Conversation, error) {
+func MatchThread(thread Thread, pattern string) (Thread, error) {
 	expression, err := regexp.Compile("(?i)" + pattern)
 	if err != nil {
-		return Conversation{}, fmt.Errorf("invalid match pattern %q: %w", pattern, err)
+		return Thread{}, fmt.Errorf("invalid match pattern %q: %w", pattern, err)
 	}
-	kept := make([]ConversationMessage, 0, len(conversation.Messages))
-	for _, message := range conversation.Messages {
+	kept := make([]ThreadMessage, 0, len(thread.Messages))
+	for _, message := range thread.Messages {
 		if messageMatches(message, expression) {
 			kept = append(kept, message)
 		}
 	}
-	result := conversation
+	result := thread
 	result.Messages = kept
 	return result, nil
 }
 
-func messageMatches(message ConversationMessage, expression *regexp.Regexp) bool {
+func messageMatches(message ThreadMessage, expression *regexp.Regexp) bool {
 	// The result of a call carries the call's id and nothing else that names
 	// it, so searching for that id has to find both sides of the pair.
 	if expression.MatchString(message.Name) || expression.MatchString(message.ToolCallID) {
 		return true
 	}
-	for _, parts := range [][]ConversationPart{message.Content, message.Reasoning} {
+	for _, parts := range [][]ThreadPart{message.Content, message.Reasoning} {
 		for _, part := range parts {
 			if expression.MatchString(part.Text) || expression.MatchString(part.UnsupportedType) {
 				return true
 			}
 			if part.Value != nil {
-				if encoded, _ := encodeConversationValue(part.Value); expression.MatchString(encoded) {
+				if encoded, _ := encodeThreadValue(part.Value); expression.MatchString(encoded) {
 					return true
 				}
 			}
@@ -231,7 +231,7 @@ func messageMatches(message ConversationMessage, expression *regexp.Regexp) bool
 			return true
 		}
 		if call.Arguments != nil {
-			if encoded, _ := encodeConversationValue(call.Arguments); expression.MatchString(encoded) {
+			if encoded, _ := encodeThreadValue(call.Arguments); expression.MatchString(encoded) {
 				return true
 			}
 		}
