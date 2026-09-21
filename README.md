@@ -261,7 +261,7 @@ Persist a new default:
 orq default-format json
 ```
 
-`orq traces conversation` is the one command where `-o` takes a different set of
+`orq traces thread` is the one command where `-o` takes a different set of
 formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
 and `toon`. It refuses `-o table` — a conversation is nested (messages holding
 content parts, tool calls, reasoning) and has no columns to lay out.

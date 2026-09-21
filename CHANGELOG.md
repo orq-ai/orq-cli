@@ -11,9 +11,9 @@ What you may depend on, and what you may not:
 - **`-o json` output on stdout is the machine contract.** For commands backed
   directly by an orq API endpoint, field names and structure follow that
   endpoint's response. Documented transformation commands may instead expose
-  their own documented derived schema; for example, `orq traces conversation`
-  returns a canonical normalized conversation. Scripts should parse `-o json`
-  and nothing else. Caveat on what CI enforces: the
+  their own documented derived schema; for example, `orq traces thread`
+  returns a canonical normalized thread. Scripts should parse `-o json` and
+  nothing else. Caveat on what CI enforces: the
   `surface.json` gate below covers command paths and flags only, not response
   field shapes. A renamed or dropped API response field flows through
   regeneration into `-o json` with nothing in CI failing, so response
@@ -116,6 +116,12 @@ API version happened to land. The `surface.json` gate plus this file remain the
 controls on surface changes, whichever side they originate from.
 
 ## Unreleased
+
+- **Changed (breaking): `orq traces conversation` is `orq traces thread`
+  again,** reverting the 9.0.0 rename. `conversation` and its `conv` alias are
+  gone; the old spelling is restored unchanged, and the `xml` render frames the
+  turns in `<thread>` again. Flags and the `-o json` schema were never touched
+  by either move.
 
 ## [9.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v9.0.0) — 2026-09-20
 
