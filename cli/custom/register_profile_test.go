@@ -106,6 +106,29 @@ func TestUnknownProfileStillAllowsTheCommandsThatFixIt(t *testing.T) {
 	}
 }
 
+// Every `auth profile` subcommand manages profiles rather than calling the orq
+// API, so none of them may be what the unknown-profile guard stops — otherwise
+// a broken selection locks the user out of the very command that repairs it.
+// Written as a sweep over the built tree rather than a fixed list so a
+// subcommand bartolo adds later (`remove`, RES-1610) is covered the moment the
+// dependency bump brings it in.
+func TestEveryProfileSubcommandIsExemptFromTheGuard(t *testing.T) {
+	profileHarness(t, `{"profiles":{}}`)
+	root := buildRoot(t)
+	viper.Set("profile", "acme")
+
+	profile := findCommand(t, root, "auth", "profile")
+	subcommands := profile.Commands()
+	if len(subcommands) == 0 {
+		t.Fatal("`auth profile` has no subcommands; the sweep would pass vacuously")
+	}
+	for _, sub := range subcommands {
+		if err := rejectUnknownProfile(sub); err != nil {
+			t.Errorf("%s: %v", commandPath(sub), err)
+		}
+	}
+}
+
 func TestAKnownProfilePassesTheGuard(t *testing.T) {
 	profileHarness(t, `{"profiles":{"acme":{"api_key":"sk-orq-real","type":"apikey"}}}`)
 	root := buildRoot(t)
