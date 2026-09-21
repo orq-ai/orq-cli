@@ -24,7 +24,6 @@ func Register(root *cobra.Command) {
 	registeralertsCommands(root)
 	registerannotationQueuesCommands(root)
 	registerapiKeysCommands(root)
-	registerauditLogsCommands(root)
 	registerbudgetsCommands(root)
 	registerchunkingCommands(root)
 	registerdatasetsCommands(root)

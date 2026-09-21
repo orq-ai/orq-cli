@@ -1630,48 +1630,6 @@ func OpenapiApiKeyUpdate(paramApiKeyId string, params *viper.Viper, body string)
 	return resp, decoded, nil
 }
 
-// OpenapiAuditLogQuery Query audit logs
-func OpenapiAuditLogQuery(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
-	handlerPath := "audit-logs query"
-	server := bartolocli.ResolveServer()
-
-	url := server + "/v2/audit-logs/query"
-
-	req := bartolocli.Client.Post().URL(url)
-
-	if body != "" {
-		req = req.AddHeader("Content-Type", "application/json").BodyString(body)
-	}
-
-	bartolocli.HandleBefore(handlerPath, params, req)
-
-	resp, err := req.Do()
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "request failed")
-	}
-
-	var decoded map[string]interface{}
-
-	if resp.StatusCode < 400 {
-		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
-			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
-		}
-	} else {
-		return nil, nil, bartolocli.ResponseError(resp)
-	}
-
-	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
-	if after != nil {
-		replaced, ok := after.(map[string]interface{})
-		if !ok {
-			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
-		}
-		decoded = replaced
-	}
-
-	return resp, decoded, nil
-}
-
 // OpenapiBudgetCreate Create a new budget
 func OpenapiBudgetCreate(params *viper.Viper, body string) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "budgets create"
