@@ -206,7 +206,7 @@ func registerprojectsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List all projects",
-			Long:    bartolocli.Markdown("Returns projects visible to the current workspace, ordered by creation time with the newest project first. Use `starting_after` or `ending_before` to page through large collections."),
+			Long:    bartolocli.Markdown("Returns projects visible to the current workspace, ordered by creation time with the newest project first. Use `starting_after` or `ending_before` to page through large collections; the two cursors are mutually exclusive."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -229,8 +229,8 @@ func registerprojectsCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1-200. Unset uses the server default.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `project_id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `project_id` of the first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `project_id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `project_id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 
 		bartolocli.SetCustomFlags(cmd)
 
