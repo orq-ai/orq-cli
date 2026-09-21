@@ -2,6 +2,8 @@ package launch
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -22,6 +24,20 @@ func recordingProbe(calls *[]probeCall, listOutput string, failOn string) func(s
 	}
 }
 
+// resolveTraced resolves and releases the plan when the test ends, so the
+// session plugin directory does not outlive it.
+func resolveTraced(t *testing.T, ctx *AgentContext) *LaunchPlan {
+	t.Helper()
+	plan, err := resolveClaude(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		t.Cleanup(plan.Cleanup)
+	}
+	return plan
+}
+
 func traceCtx(flags GatewayFlags, probe func(string, ...string) (string, error)) *AgentContext {
 	ctx := claudeCtx(nil, flags)
 	ctx.ExecProbe = probe
@@ -36,10 +52,7 @@ func TestTraceNeverEnablesTheNativeTraceExporter(t *testing.T) {
 		{Trace: true, DryRun: true},
 		{Trace: true, Router: true, DryRun: true},
 	} {
-		plan, err := resolveClaude(traceCtx(flags, nil))
-		if err != nil {
-			t.Fatal(err)
-		}
+		plan := resolveTraced(t, traceCtx(flags, nil))
 		if got := plan.Env["OTEL_TRACES_EXPORTER"]; got != "none" {
 			t.Errorf("%+v: OTEL_TRACES_EXPORTER = %q, want none", flags, got)
 		}
@@ -67,7 +80,7 @@ func TestTraceOffByDefault(t *testing.T) {
 }
 
 func TestTraceEndpoint(t *testing.T) {
-	plan, _ := resolveClaude(traceCtx(GatewayFlags{Trace: true, DryRun: true}, nil))
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true, DryRun: true}, nil))
 	if got := plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"]; got != DefaultGatewayAPIBaseURL+"/v2/otel" {
 		t.Errorf("hosted endpoint: %q", got)
 	}
@@ -78,68 +91,93 @@ func TestTraceEndpoint(t *testing.T) {
 	// Self-hosted installs must keep their telemetry inside their own network.
 	ctx := traceCtx(GatewayFlags{Trace: true, DryRun: true}, nil)
 	ctx.Creds.APIBaseURL = "https://orq.acme.internal/"
-	plan, _ = resolveClaude(ctx)
+	plan = resolveTraced(t, ctx)
 	if got := plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"]; got != "https://orq.acme.internal/v2/otel" {
 		t.Errorf("on-prem endpoint: %q", got)
 	}
-}
-
-func TestTraceDryRunTouchesNothing(t *testing.T) {
-	var calls []probeCall
-	plan, _ := resolveClaude(traceCtx(GatewayFlags{Trace: true, DryRun: true}, recordingProbe(&calls, "", "")))
-	if len(calls) != 0 {
-		t.Fatalf("dry run ran claude: %v", calls)
-	}
-	if !strings.Contains(strings.Join(plan.Notes, "\n"), tracePluginID) {
-		t.Fatalf("notes: %v", plan.Notes)
+	// The plugin cannot see OTEL_* (claude strips them from hook env), so its
+	// own destination has to arrive through ORQ_BASE_URL.
+	if got := plan.Env["ORQ_BASE_URL"]; got != "https://orq.acme.internal/" {
+		t.Errorf("plugin base URL: %q", got)
 	}
 }
 
-func TestTraceInstallsWhenMissing(t *testing.T) {
+func pluginDirArg(plan *LaunchPlan) string {
+	for i, a := range plan.PreArgs {
+		if a == "--plugin-dir" && i+1 < len(plan.PreArgs) {
+			return plan.PreArgs[i+1]
+		}
+	}
+	return ""
+}
+
+// The plugin is loaded for one session and never installed: the only claude
+// command the launcher may run is the read-only list.
+func TestTraceLoadsThePluginForTheSessionOnly(t *testing.T) {
 	var calls []probeCall
 	plan, err := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "[]", "")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{
-		"claude plugin list --json",
-		"claude plugin marketplace add " + tracePluginMarketplace,
-		"claude plugin install " + tracePluginID,
+	dir := pluginDirArg(plan)
+	if dir == "" {
+		t.Fatalf("no --plugin-dir: %v", plan.PreArgs)
 	}
-	if len(calls) != len(want) {
-		t.Fatalf("calls: %v", calls)
-	}
-	for i, c := range calls {
-		if strings.Join(c, " ") != want[i] {
-			t.Errorf("call %d: %q, want %q", i, strings.Join(c, " "), want[i])
+	for _, f := range []string{".claude-plugin/plugin.json", "hooks/session-end.js", "src/otlp.js", "package.json"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("plugin file %s missing: %v", f, err)
 		}
 	}
-	if len(plan.Warnings) != 0 {
-		t.Fatalf("warnings: %v", plan.Warnings)
+	assertDeclaredIfPath(t, dir, plan.TempDirs)
+	for _, c := range calls {
+		if strings.Join(c, " ") != "claude plugin list --json" {
+			t.Errorf("launcher changed claude config: %v", c)
+		}
+	}
+	plan.Cleanup()
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("plugin dir outlived the session: %v", err)
 	}
 }
 
-func TestTraceUpdatesWhenInstalled(t *testing.T) {
+func TestTraceDefersToAnInstalledPlugin(t *testing.T) {
 	var calls []probeCall
-	listed := `[{"id": "` + tracePluginID + `", "enabled": true}]`
-	resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, listed, "")))
-	if len(calls) != 2 || strings.Join(calls[1], " ") != "claude plugin update "+tracePluginID {
-		t.Fatalf("calls: %v", calls)
+	listed := `[{"id": "orq-trace@orq-claude-plugin", "enabled": true}]`
+	plan, _ := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, listed, "")))
+	if dir := pluginDirArg(plan); dir != "" {
+		t.Fatalf("second copy of the hooks loaded (%s): every span would land twice", dir)
 	}
-}
-
-// A failed install must not stop the session: it degrades to metrics and logs
-// with a warning that says how to finish the job by hand.
-func TestTraceInstallFailureIsAWarning(t *testing.T) {
-	var calls []probeCall
-	plan, err := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "[]", "marketplace add")))
-	if err != nil {
-		t.Fatalf("install failure must not abort the launch: %v", err)
-	}
-	if !warningsContain(plan, "orq-trace") || !warningsContain(plan, "claude plugin install "+tracePluginID) {
+	if !warningsContain(plan, "already installed") {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 	if plan.Env["OTEL_TRACES_EXPORTER"] != "none" {
-		t.Fatalf("env dropped on failure: %v", plan.Env)
+		t.Fatalf("env: %v", plan.Env)
+	}
+}
+
+// A disabled install does not trace, so the session copy is still needed.
+func TestTraceIgnoresADisabledInstall(t *testing.T) {
+	var calls []probeCall
+	listed := `[{"id": "orq-trace@orq-claude-plugin", "enabled": false}]`
+	plan, _ := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, listed, "")))
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if pluginDirArg(plan) == "" {
+		t.Fatal("disabled install must not suppress the session plugin")
+	}
+}
+
+func TestTraceListFailureStillLoadsThePlugin(t *testing.T) {
+	var calls []probeCall
+	plan, err := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "", "plugin list")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Cleanup != nil {
+		defer plan.Cleanup()
+	}
+	if pluginDirArg(plan) == "" {
+		t.Fatal("no plugin loaded")
 	}
 }

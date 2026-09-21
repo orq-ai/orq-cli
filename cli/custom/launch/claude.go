@@ -58,7 +58,12 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
 	}
 	if ctx.Flags.Trace {
-		wireTrace(ctx, plan)
+		if err := wireTrace(ctx, plan); err != nil {
+			if plan.Cleanup != nil {
+				plan.Cleanup()
+			}
+			return nil, fmt.Errorf("--trace: %w", err)
+		}
 	}
 
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {

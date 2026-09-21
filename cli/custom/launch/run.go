@@ -99,8 +99,9 @@ Flags:
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
 	if def.Traceable {
-		fmt.Print(`  --trace               Capture the session as an orq trace: installs the orq-trace
-                        plugin and turns on Claude Code's metrics and logs export
+		fmt.Print(`  --trace               Capture the session as an orq trace: loads the orq-trace
+                        plugin for this session only and turns on Claude Code's
+                        metrics and logs export
   --router              Send model traffic through the orq.ai AI Router instead of
                         your own Anthropic login. Usage then bills to the orq
                         workspace, not your subscription

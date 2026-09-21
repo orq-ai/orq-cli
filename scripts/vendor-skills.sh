@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Syncs the skills tree from orq-ai/assistant-plugins into the CLI for embedding.
+# Syncs the skills tree and the orq-trace plugin from orq-ai/assistant-plugins
+# into the CLI for embedding.
 # Run at release time; the result is committed so builds are hermetic.
 set -euo pipefail
 
 REPO="${ORQ_SKILLS_REPO:-https://github.com/orq-ai/assistant-plugins.git}"
 REF="${1:?usage: vendor-skills.sh <git-ref>}"
 DEST="cli/custom/skills/assets"
+TRACE_DEST="cli/custom/launch/assets/orq-trace"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -18,9 +20,18 @@ rm -rf "$DEST"
 mkdir -p "$DEST"
 cp -R "$tmp/src/skills/." "$DEST/"
 
+# Only what the plugin runs: hooks, sources and manifests. `orq launch claude
+# --trace` loads it with --plugin-dir for one session, so nothing is installed.
+rm -rf "$TRACE_DEST"
+mkdir -p "$TRACE_DEST"
+for part in .claude-plugin hooks src package.json; do
+  cp -R "$tmp/src/plugins/trace-hooks/$part" "$TRACE_DEST/"
+done
+
 resolved="$(git -C "$tmp/src" rev-parse HEAD)"
 cat > "$DEST/SOURCE.json" <<JSON
 {"repo": "$REPO", "ref": "$REF", "commit": "$resolved"}
 JSON
 
+echo "vendored the orq-trace plugin $(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$TRACE_DEST/.claude-plugin/plugin.json")"
 echo "vendored $(find "$DEST" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills from $resolved"

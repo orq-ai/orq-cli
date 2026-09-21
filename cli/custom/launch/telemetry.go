@@ -1,14 +1,22 @@
 package launch
 
 import (
-	"fmt"
+	"embed"
+	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
-const (
-	tracePluginMarketplace = "orq-ai/assistant-plugins"
-	tracePluginID          = "orq-trace@orq-claude-plugin"
-)
+// tracePlugin is the orq-trace Claude Code plugin, vendored from
+// orq-ai/assistant-plugins by scripts/vendor-skills.sh at the same ref as the
+// skills.
+//
+//go:embed all:assets/orq-trace
+var tracePlugin embed.FS
+
+const tracePluginName = "orq-trace"
 
 // otlpEndpoint is the base Claude Code appends /v1/metrics and /v1/logs to,
 // and the orq-trace plugin appends /v1/traces to.
@@ -31,48 +39,64 @@ func traceEnv(ctx *AgentContext) map[string]string {
 		"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
 		"OTEL_EXPORTER_OTLP_ENDPOINT":  otlpEndpoint(ctx.Creds.APIBaseURL),
 		"OTEL_EXPORTER_OTLP_HEADERS":   "Authorization=Bearer " + ctx.Creds.APIKey,
+		// Claude Code strips OTEL_* from the env its hooks run with, so the
+		// plugin never sees the endpoint above. It derives its own from this
+		// instead, which keeps a self-hosted install's traces on its own host.
+		"ORQ_BASE_URL": firstNonEmpty(ctx.Creds.APIBaseURL, DefaultGatewayAPIBaseURL),
 	}
 }
 
-// wireTrace turns telemetry on and makes sure the orq-trace plugin is
-// installed. The plugin resolves its own key from the ORQ_API_KEY already in
-// the plan. Failure to install is a warning, not an error: a session without
-// traces beats a launcher that refuses to start.
-func wireTrace(ctx *AgentContext, plan *LaunchPlan) {
+// wireTrace turns telemetry on and loads the orq-trace plugin for this session
+// only, through --plugin-dir, so nothing is left in the user's claude config
+// to trace sessions they did not launch with --trace. The plugin resolves its
+// key from the ORQ_API_KEY already in the plan.
+func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	for k, v := range traceEnv(ctx) {
 		plan.Env[k] = v
 	}
-	if ctx.Flags.DryRun {
-		// A dry run must not touch the user's claude configuration.
-		plan.Notes = append(plan.Notes, fmt.Sprintf(
-			"a real run would add the %s marketplace and install or update %s", tracePluginMarketplace, tracePluginID))
-		return
+	// A second copy of the hooks would write every span twice.
+	if tracePluginInstalled(ctx.ExecProbe) {
+		plan.Warnings = append(plan.Warnings,
+			"using the orq-trace plugin already installed in your claude config instead of loading the one this CLI ships")
+		return nil
 	}
-	if err := ensureTracePlugin(ctx.ExecProbe); err != nil {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"could not install the orq-trace plugin (%v); this session exports metrics and logs but no traces. Install it with: claude plugin marketplace add %s && claude plugin install %s",
-			err, tracePluginMarketplace, tracePluginID))
-	}
-}
-
-// ensureTracePlugin installs the plugin, or updates it when already present.
-// An update only takes effect on the next start, which is acceptable: the
-// installed version is always one the marketplace published.
-func ensureTracePlugin(run func(binary string, args ...string) (string, error)) error {
-	if run == nil {
-		return fmt.Errorf("no way to run claude")
-	}
-	listed, err := run("claude", "plugin", "list", "--json")
+	dir, err := os.MkdirTemp("", "orq-claude-trace-")
 	if err != nil {
 		return err
 	}
-	if strings.Contains(listed, `"`+tracePluginID+`"`) {
-		_, err = run("claude", "plugin", "update", tracePluginID)
+	plan.AddCleanup(func() { _ = os.RemoveAll(dir) })
+	plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
+	pluginDir := filepath.Join(dir, tracePluginName)
+	src, _ := fs.Sub(tracePlugin, "assets/orq-trace")
+	if err := os.CopyFS(pluginDir, src); err != nil {
 		return err
 	}
-	if _, err := run("claude", "plugin", "marketplace", "add", tracePluginMarketplace); err != nil {
-		return err
+	plan.PreArgs = append(plan.PreArgs, "--plugin-dir", pluginDir)
+	return nil
+}
+
+// tracePluginInstalled reports whether the user has orq-trace installed and
+// enabled through a marketplace. Any failure to tell counts as not installed:
+// the worst case is then a duplicate span, not a session with no trace at all.
+func tracePluginInstalled(run func(string, ...string) (string, error)) bool {
+	if run == nil {
+		return false
 	}
-	_, err = run("claude", "plugin", "install", tracePluginID)
-	return err
+	out, err := run("claude", "plugin", "list", "--json")
+	if err != nil {
+		return false
+	}
+	var plugins []struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	}
+	if json.Unmarshal([]byte(out), &plugins) != nil {
+		return false
+	}
+	for _, p := range plugins {
+		if p.Enabled && strings.HasPrefix(p.ID, tracePluginName+"@") {
+			return true
+		}
+	}
+	return false
 }
