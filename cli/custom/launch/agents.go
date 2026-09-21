@@ -64,6 +64,9 @@ type AgentDef struct {
 	// anthropic-native endpoint and resolves its model from env/defaults, so
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
+	// Traceable agents accept --trace (capture the session into orq) and
+	// --router (send model traffic through the orq.ai AI Router).
+	Traceable bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared
 	// OpenAI-compatible one (claude, gemini). Build HelpRoute with helpRoute

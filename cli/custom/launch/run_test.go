@@ -126,3 +126,14 @@ func captureStdout(t *testing.T, fn func()) string {
 	os.Stdout = prev
 	return <-done
 }
+
+func TestDryRunRedactsAKeyInsideACompositeValue(t *testing.T) {
+	out := captureStdout(t, func() {
+		printDryRun(&AgentDef{Binary: "claude"}, nil, &LaunchPlan{Env: map[string]string{
+			"OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer sk-secret",
+		}}, "sk-secret")
+	})
+	if strings.Contains(out, "sk-secret") || !strings.Contains(out, "Authorization=Bearer <redacted>") {
+		t.Fatalf("dry-run output: %q", out)
+	}
+}

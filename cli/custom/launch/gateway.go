@@ -71,6 +71,9 @@ type GatewayFlags struct {
 	NoSkills bool
 	DryRun   bool
 	Help     bool
+	// Router and Trace are only parsed for agents with Traceable set.
+	Router bool
+	Trace  bool
 }
 
 // GatewayConfig is the fully resolved routing configuration for one launch.

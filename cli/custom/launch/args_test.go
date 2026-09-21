@@ -162,3 +162,18 @@ func TestMergeEnv(t *testing.T) {
 		t.Fatalf("merge broken: %v", got)
 	}
 }
+
+func TestParseArgvTraceFlags(t *testing.T) {
+	flags, rest, err := ParseArgv([]string{"--trace", "--router", "--model", "opus"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || !flags.Trace || !flags.Router || flags.Model != "opus" || len(rest) != 0 {
+		t.Fatalf("%+v %v %v", flags, rest, err)
+	}
+	// Agents that cannot trace leave both flags to the agent.
+	flags, rest, _ = ParseArgv([]string{"--trace"}, ParseArgvOptions{})
+	if flags.Trace || len(rest) != 1 || rest[0] != "--trace" {
+		t.Fatalf("%+v %v", flags, rest)
+	}
+	if flags, _, _ := ParseArgv(nil, ParseArgvOptions{AllowTrace: true}); flags.Trace || flags.Router {
+		t.Fatalf("must be off by default: %+v", flags)
+	}
+}

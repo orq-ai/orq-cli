@@ -56,6 +56,11 @@ func TestCanaryKeyNeverLeaks(t *testing.T) {
 					}
 				}
 				for k, v := range plan.Env {
+					// The one composed value: an OTLP header is how Claude Code's
+					// own exporter authenticates, and it has no other channel.
+					if k == "OTEL_EXPORTER_OTLP_HEADERS" && v == "Authorization=Bearer "+canaryKey {
+						continue
+					}
 					if v != canaryKey && strings.Contains(v, canaryKey) {
 						t.Fatalf("key embedded in composed env %s=%q", k, v)
 					}
@@ -141,6 +146,7 @@ func flagStates() []struct {
 	}{
 		{GatewayFlags{}, ""},
 		{GatewayFlags{MCP: true}, "/--mcp"},
+		{GatewayFlags{MCP: true, Router: true, Trace: true, DryRun: true}, "/--router--trace"},
 	}
 }
 
@@ -209,7 +215,14 @@ func TestParseArgvLeadingOnly(t *testing.T) {
 // TestCompletionFlagsMatchParser enforces the claim that the completion list
 // mirrors ParseArgv: every advertised flag must be consumed when leading.
 func TestCompletionFlagsMatchParser(t *testing.T) {
-	def := FindAgent("opencode") // AllowModels + prompt mapping = fullest list
+	for _, name := range []string{"opencode", "claude"} { // opencode: models + prompt; claude: trace
+		def := FindAgent(name)
+		assertCompletionFlagsParse(t, def)
+	}
+}
+
+func assertCompletionFlagsParse(t *testing.T, def *AgentDef) {
+	t.Helper()
 	for _, flag := range CompletionFlags(def, "-") {
 		argv := []string{flag}
 		switch flag {
@@ -218,6 +231,7 @@ func TestCompletionFlagsMatchParser(t *testing.T) {
 		}
 		flags, rest, err := ParseArgv(argv, ParseArgvOptions{
 			AllowModels: def.AllowModels,
+			AllowTrace:  def.Traceable,
 			Prompt:      def.Prompt,
 		})
 		if err != nil {

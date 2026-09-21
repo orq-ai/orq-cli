@@ -18,6 +18,7 @@ type PromptMapping struct {
 type ParseArgvOptions struct {
 	Prompt      *PromptMapping
 	AllowModels bool
+	AllowTrace  bool // --trace and --router
 }
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
@@ -34,6 +35,9 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if def.AllowModels {
 		flags = append(flags, "--models")
 	}
+	if def.Traceable {
+		flags = append(flags, "--router", "--trace")
+	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
 	}
@@ -48,7 +52,8 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
-// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h — are recognized
+// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h (and
+// --router/--trace for traceable agents) — are recognized
 // only at the FRONT of argv: the first arg the launcher doesn't own ends
 // launcher parsing and everything from there on belongs to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
@@ -143,6 +148,10 @@ scan:
 			flags.NoSkills = true
 		case arg == "--dry-run":
 			flags.DryRun = true
+		case opts.AllowTrace && arg == "--router":
+			flags.Router = true
+		case opts.AllowTrace && arg == "--trace":
+			flags.Trace = true
 		case opts.Prompt != nil && slices.Contains(opts.Prompt.Flags, arg):
 			v, err := takeValue(arg, &i)
 			if err != nil {
