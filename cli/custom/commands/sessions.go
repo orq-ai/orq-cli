@@ -19,9 +19,9 @@ func NewSessionsCommand() *cobra.Command {
 the host decides which login authenticates a call — not the workspace, which is
 selected inside a login by ` + "`orq switch`" + `.
 
-So switching login means switching server: ` + "`orq server set <url>`" + ` for a new
-default, ` + "`--server`" + ` for one call, and ` + "`orq doctor`" + ` reports which one won and
-why. A host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
+So switching login means switching server, and ` + "`orq doctor -o json`" + ` reports
+which host won and why. A host with no login yet needs one ` + "`orq auth login`" + `
+under it.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
@@ -33,7 +33,7 @@ why. A host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
 					Notice("No logins. Use `%s auth login` to create one.", cmd.Root().Name())
 					return nil
 				}
-				printSessionList(sessions, cmd)
+				printSessionList(sessions, cmd.Root().Name())
 				warnIfActiveSessionShadowed(sessions)
 				return nil
 			}
@@ -44,7 +44,7 @@ why. A host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
 }
 
 // printSessionList renders the logins and marks the resolved host.
-func printSessionList(rows []auth.SessionListEntry, cmd *cobra.Command) {
+func printSessionList(rows []auth.SessionListEntry, binary string) {
 	out := bartolocli.Stdout
 	heading("Logins")
 	anyActive := false
@@ -65,19 +65,38 @@ func printSessionList(rows []auth.SessionListEntry, cmd *cobra.Command) {
 	}
 	// Nothing else on screen says the server is what selects a login.
 	if target := switchTarget(rows); target != "" {
-		fmt.Fprintln(out, paint(ansiDim, fmt.Sprintf(
-			"Use another login with `%s server set %s`, or one call at a time with `--server`.",
-			cmd.Root().Name(), target)))
+		fmt.Fprintln(out, paint(ansiDim, switchHint(binary, target, auth.ServerSource())))
+	}
+}
+
+// switchHint says how to reach target, which depends on what put this run on
+// the current host: `server set` writes the persisted default, and every
+// source above it in resolveServer's order goes on outranking what it wrote.
+// Naming it unconditionally sends anyone on ORQ_SERVER or a profile to a
+// command that changes nothing.
+func switchHint(binary, target, source string) string {
+	perCall := fmt.Sprintf("`--server %s` uses it for one call.", target)
+	switch source {
+	case "env":
+		return fmt.Sprintf("Another login lives at %s, but ORQ_SERVER picks the host — unset it to leave this one. %s", target, perCall)
+	case "profile":
+		return fmt.Sprintf("Another login lives at %s, but the profile in force binds this host — leave that profile to reach it. %s", target, perCall)
+	case "flag":
+		return fmt.Sprintf("Another login lives at %s. %s", target, perCall)
+	default:
+		return fmt.Sprintf("Use another login with `%s server set %s`, or one call at a time: %s", binary, target, perCall)
 	}
 }
 
 // switchTarget is the server URL the hint names: a login on another host that
 // is usable as it stands. It is the row's stored server rather than its HOST
-// cell, which is a file name — a port lands there as `_8080`, which `server
-// set` would reject.
+// cell, which is a file name — a ported host lands there as
+// `self.example.com_8080`, which `server set` does not reject, it persists as
+// an `https://` host that resolves to nothing. ListSessions only fills Server
+// once validateSession has passed, so a usable row always has one.
 func switchTarget(rows []auth.SessionListEntry) string {
 	for _, r := range rows {
-		if !r.Active && r.Server != "" && usableSessionStatus(r.Status) {
+		if !r.Active && usableSessionStatus(r.Status) {
 			return r.Server
 		}
 	}

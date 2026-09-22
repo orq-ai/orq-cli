@@ -147,9 +147,12 @@ controls on surface changes, whichever side they originate from.
 
 - **Changed: `orq auth sessions` says how to use another login.** The table
   lists logins from other hosts without ever saying that the host is what
-  selects one, so a usable login elsewhere now comes with a line naming it:
-  `orq server set <that server>`, or `--server` for one call. The command's
-  help says the same at length: logins are per host, and `orq switch` moves
+  selects one, so a usable login elsewhere now comes with a line naming it and
+  the way to reach it. Which way depends on what chose the current host: with a
+  persisted default it is `orq server set <that server>`, but under `ORQ_SERVER`
+  or a profile-bound server that command would be outranked, so the line names
+  those instead. `--server <that server>` is offered throughout for one call.
+  The command's help adds the rest: logins are per host, and `orq switch` moves
   workspace and project inside one rather than between them.
 
 - **Changed: `orq auth setup` now runs the `orq setup` wizard.** It used to be
@@ -157,10 +160,14 @@ controls on surface changes, whichever side they originate from.
   paste a key — which since the profile rework opened by demanding a profile
   name, even though this CLI puts nobody on a profile by default. The path
   still resolves, hidden, so muscle memory lands on the real wizard, and it now
-  takes `orq setup`'s flags on top of the global ones. `--profile` still
-  selects the profile the key is written to (it is the global flag now; the
-  local one only shadowed it), and `--type` is gone — it chose a bartolo auth
-  handler, and this CLI has only ever registered one. To write a key to a named
+  takes `orq setup`'s flags on top of the global ones. `--profile` still names
+  the credential the wizard authenticates with, and is where a key passed with
+  `--api-key` is saved (it is the global flag now; the local one only shadowed
+  it) — a bare run signs you in instead of creating the profile bartolo's
+  wizard would have. `--type` is gone: it chose a bartolo auth handler, and
+  this CLI has only ever registered one. Neither removal is breaking, because
+  the old command prompted from its first line and was refused under
+  `--no-input`, so no script could reach either flag. To write a key to a named
   profile without the wizard, use `orq auth profile add <name>`; to sign in,
   use `orq auth login`.
 

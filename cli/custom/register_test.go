@@ -475,9 +475,7 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			profileHarness(t, `{"profiles":{}}`)
 			root := buildRoot(t)
-			viper.Set("no-input", true)
-			t.Cleanup(func() { viper.Set("no-input", false) })
-			root.SetArgs(tc.args)
+			root.SetArgs(append([]string{"--no-input"}, tc.args...))
 			root.SetOut(io.Discard)
 			root.SetErr(io.Discard)
 
@@ -511,27 +509,22 @@ func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
 	if !setup.Hidden {
 		t.Error("`auth setup` is an alias for muscle memory, so it stays out of the help")
 	}
-	rootSetup := childCommand(root, "setup")
-	if rootSetup == nil {
-		t.Fatal("no root setup command")
-	}
-	if setup.Short != rootSetup.Short {
-		t.Errorf("`auth setup` is %q, not `orq setup` (%q)", setup.Short, rootSetup.Short)
-	}
-	// Same command, not merely the same summary: bartolo's had `--type` and a
-	// local `--profile`, so a flag set that drifts from `orq setup`'s is the
-	// old wizard coming back under the alias.
-	for _, name := range []string{"api-key", "capability", "interactive", "yes"} {
-		if setup.Flags().Lookup(name) == nil {
-			t.Errorf("`auth setup` is missing `orq setup`'s --%s", name)
-		}
-	}
-	if setup.Flags().Lookup("type") != nil {
-		t.Error("`auth setup` carries bartolo's --type, so the generated wizard is still attached")
-	}
+	// Which command it is belongs to the execution test below; this file's
+	// share is the metadata running it cannot show.
 	if login := childCommand(authParent, "login"); login == nil || !strings.Contains(login.Short, "OAuth") {
 		t.Error("`auth login` must resolve to the OAuth login command")
 	}
+}
+
+// pinServer empties the persisted-server keys for one test. mirrorServerToViper
+// writes `server` on every run and bartolo persists `orq server set` under
+// `server-default`, so without this a run reaches for whatever host the real
+// ~/.orq or an earlier test left on those keys.
+func pinServer(t *testing.T) {
+	t.Helper()
+	viper.Set("server-default", "")
+	viper.Set("server", "")
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
 }
 
 // Matching metadata is not the claim — running the wizard is. Both spellings
@@ -552,19 +545,17 @@ func TestAuthSetupRunsTheSetupWizardAndHonorsNoInput(t *testing.T) {
 			for _, key := range []string{"ORQ_API_KEY", "ORQ_SERVER", "ORQ_API_BASE_URL"} {
 				t.Setenv(key, "")
 			}
-			// viper.Set, not the flag: it outranks a bound flag, so a test that
-			// has already set this key leaves --no-input inert for the rest of
-			// the binary. applyGlobalFlags reads viper either way.
-			prevNoInput := viper.Get("no-input")
-			viper.Set("no-input", true)
-			t.Cleanup(func() { viper.Set("no-input", prevNoInput) })
+			// The flag, never viper.Set: an override outranks a bound flag and
+			// viper cannot unset one, so a test that reaches for the key
+			// leaves --no-input inert for every later test in the binary.
+			pinServer(t)
 			var stderr bytes.Buffer
 			prevErr := bartolocli.Stderr
 			bartolocli.Stderr = &stderr
 			t.Cleanup(func() { bartolocli.Stderr = prevErr })
 
 			root := buildRoot(t)
-			root.SetArgs(args)
+			root.SetArgs(append([]string{"--no-input"}, args...))
 			root.SetOut(io.Discard)
 			root.SetErr(io.Discard)
 

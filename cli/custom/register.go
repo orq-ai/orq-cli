@@ -70,10 +70,9 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name: `auth profile add` is bartolo's, while orq
-// owns a `profile` command of its own elsewhere in the tree, and orq's commands
-// honor --no-input themselves rather than needing this map. Matching on the
-// bare name refuses the wrong one.
+// Keyed by command PATH, not name, matching commandPath(cmd) below: an entry
+// then names one bartolo command rather than every command sharing a leaf
+// name. orq's own commands honor --no-input themselves and never belong here.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -867,9 +866,7 @@ func attachAuthSubcommands(root *cobra.Command) {
 	// leaves you on none by default — and ships a `login` alias that shadows
 	// our OAuth one. `orq setup` under the same path keeps the spelling
 	// working for whoever types it.
-	if setup := childCommand(authParent, "setup"); setup != nil {
-		authParent.RemoveCommand(setup)
-	}
+	authParent.RemoveCommand(childCommand(authParent, "setup")) // nil-safe
 	addHiddenAliases(authParent, commands.NewSetupCommand)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
