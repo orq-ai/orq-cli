@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -654,6 +656,7 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
+	widenServerUse(root)
 	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
@@ -815,6 +818,65 @@ func renamePreviewModelsList(root *cobra.Command) {
 		models.RemoveCommand(c)
 		models.AddCommand(c)
 		return
+	}
+}
+
+// widenServerUse lets `orq server use my.orq.ai` mean what it reads like.
+// Bartolo's `use` only matches the generated server list — one entry, the
+// hosted default — so every self-hosted host, which is the only reason anyone
+// changes servers, died on "could not match server". On a miss the argument is
+// handed to the sibling `set`, which persists it. A numeric argument is left
+// alone: that is an index, and a bad index must stay an index error rather
+// than become the URL "https://9".
+//
+// The host is normalized here rather than downstream so bartolo's
+// scheme-was-guessed WARN never fires, and for a person the machine-shaped
+// "persisted: true" record is replaced by one sentence. `-o json` and the
+// other serializations keep bartolo's output: that is the script contract.
+func widenServerUse(root *cobra.Command) {
+	server := childCommand(root, "server")
+	if server == nil {
+		return
+	}
+	use, set := childCommand(server, "use"), childCommand(server, "set")
+	if use == nil || set == nil || use.RunE == nil || set.RunE == nil {
+		return
+	}
+	use.Use = "use <index|url|description|host>"
+	use.Short = "Select a generated server, or persist any host as the default"
+	matchGenerated := use.RunE
+	use.RunE = func(cmd *cobra.Command, args []string) error {
+		target := args[0]
+		_, isIndex := strconv.Atoi(target)
+		if isIndex != nil {
+			if normalized, _, err := bartolocli.NormalizeServerURL(target); err == nil {
+				target = normalized
+			}
+		}
+		args = []string{target}
+
+		persist := func() error {
+			if err := matchGenerated(cmd, args); err == nil || isIndex == nil {
+				return err
+			}
+			return set.RunE(cmd, args)
+		}
+
+		if commands.MachineFormatRequested(cmd) {
+			return persist()
+		}
+		// bartolo's own record of the write goes nowhere: what a person needs
+		// is the host they are now pointed at, which ResolveServer reads back
+		// from the config the write just updated.
+		restore := bartolocli.Stdout
+		bartolocli.Stdout = io.Discard
+		err := persist()
+		bartolocli.Stdout = restore
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(bartolocli.Stdout, "Now talking to %s.\n", bartolocli.ResolveServer())
+		return nil
 	}
 }
 

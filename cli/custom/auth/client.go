@@ -382,7 +382,7 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 		AccessToken string `json:"access_token"`
 	}
 	if err := c.jsonRequest(http.MethodPost, c.URLs.AuthBaseURL+"/access-token", "", body, &resp); err != nil {
-		return StoredAccessToken{}, err
+		return StoredAccessToken{}, withRefreshTokenRemedy(err, c.URLs.APIBaseURL)
 	}
 	exp, err := decodeJWTExpiry(resp.AccessToken)
 	if err != nil {
@@ -392,6 +392,33 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 		Token:     resp.AccessToken,
 		ExpiresAt: formatISO(exp),
 	}, nil
+}
+
+// withRefreshTokenRemedy appends the one fix for a refresh token the server
+// refuses. The API answers a session that expired, was revoked by a logout
+// elsewhere, or belongs to another host with a bare "Invalid refresh token!",
+// which names no next step — and every command that resolves a workspace token
+// hits it, so the remedy belongs here rather than at each call site. The
+// server is named because "belongs to another host" is the case the user
+// cannot otherwise see: --server, ORQ_SERVER and `orq server use` all move the
+// call away from the host the session was minted on. The APIError is preserved
+// so Unauthorized() still reads the status.
+func withRefreshTokenRemedy(err error, server string) error {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	if apiErr.Status != http.StatusUnauthorized && !strings.Contains(strings.ToLower(apiErr.Msg), "refresh token") {
+		return err
+	}
+	where := strings.TrimSpace(server)
+	if where == "" {
+		where = "this server"
+	}
+	return &APIError{
+		Status: apiErr.Status,
+		Msg:    apiErr.Msg + fmt.Sprintf("\n  Your login for %s has expired or was revoked — run 'orq auth login'.", where),
+	}
 }
 
 func (c *Client) Logout(refreshToken string) error {
