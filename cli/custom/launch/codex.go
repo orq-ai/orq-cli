@@ -21,8 +21,11 @@ func codexAgent() AgentDef {
 		FetchesModels: true,
 		AllowModels:   false,
 		Prompt: &PromptMapping{
-			Flags:  []string{"-p", "--prompt"},
-			ToArgs: func(v string) []string { return []string{"exec", "--full-auto", v} },
+			Flags: []string{"-p", "--prompt"},
+			// Only the subcommand, no approval or sandbox flag: those are
+			// codex's own policy knobs and the user's to set. Pass them after
+			// -- if you want them.
+			ToArgs: func(v string) []string { return []string{"exec", v} },
 		},
 		Resolve: resolveCodex,
 	}

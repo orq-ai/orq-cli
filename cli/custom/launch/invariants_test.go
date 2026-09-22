@@ -305,3 +305,25 @@ func TestEveryAgentInheritsTheResolvedServer(t *testing.T) {
 		})
 	}
 }
+
+// TestPromptMappingsCarryNoPolicyFlags enforces the rule that launch only
+// configures model, gateway and MCP: no agent's prompt mapping may smuggle in
+// an approval, sandbox or permission flag that changes how the agent behaves.
+func TestPromptMappingsCarryNoPolicyFlags(t *testing.T) {
+	banned := []string{"auto", "sandbox", "approval", "permission", "dangerous", "yolo", "trust"}
+	for _, def := range Agents() {
+		if def.Prompt == nil {
+			continue
+		}
+		for _, arg := range def.Prompt.ToArgs("PROMPT") {
+			if !strings.HasPrefix(arg, "-") {
+				continue
+			}
+			for _, word := range banned {
+				if strings.Contains(strings.ToLower(arg), word) {
+					t.Fatalf("%s prompt mapping passes policy flag %q", def.Name, arg)
+				}
+			}
+		}
+	}
+}
