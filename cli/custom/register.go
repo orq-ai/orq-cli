@@ -860,14 +860,10 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
-	// Bartolo's generic `auth setup` — choose an auth type, name a profile,
-	// paste a key — is not how this CLI is set up: `orq setup` is the wizard
-	// and `orq auth login` is the credential, and bartolo's version also ships
-	// a `login` alias that shadows ours. Since bartolo dropped the implicit
-	// `default` profile it opens by demanding a profile name, pushing people
-	// onto a profile they deliberately do not have. Replace it with a hidden
-	// alias of `orq setup`, so typing the old path lands on the real wizard
-	// rather than on an unknown-command error.
+	// Bartolo's generic `auth setup` prompts for a profile name — this CLI
+	// leaves you on none by default — and ships a `login` alias that shadows
+	// our OAuth one. `orq setup` under the same path keeps the spelling
+	// working for whoever types it.
 	if setup := childCommand(authParent, "setup"); setup != nil {
 		authParent.RemoveCommand(setup)
 	}

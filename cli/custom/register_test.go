@@ -518,7 +518,17 @@ func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
 	if setup.Short != rootSetup.Short {
 		t.Errorf("`auth setup` is %q, not `orq setup` (%q)", setup.Short, rootSetup.Short)
 	}
-	// Bartolo's version owned a `login` alias that shadowed our OAuth command.
+	// Same command, not merely the same summary: bartolo's had `--type` and a
+	// local `--profile`, so a flag set that drifts from `orq setup`'s is the
+	// old wizard coming back under the alias.
+	for _, name := range []string{"api-key", "capability", "interactive", "yes"} {
+		if setup.Flags().Lookup(name) == nil {
+			t.Errorf("`auth setup` is missing `orq setup`'s --%s", name)
+		}
+	}
+	if setup.Flags().Lookup("type") != nil {
+		t.Error("`auth setup` carries bartolo's --type, so the generated wizard is still attached")
+	}
 	for _, alias := range setup.Aliases {
 		if alias == "login" {
 			t.Error("`auth setup` must not alias `login`: `orq auth login` is the OAuth command")

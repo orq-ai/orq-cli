@@ -147,10 +147,10 @@ controls on surface changes, whichever side they originate from.
 
 - **Changed: `orq auth sessions` says how to use another login.** The table
   lists logins from other hosts without ever saying that the host is what
-  selects one, so a second entry now comes with a line pointing at `orq server
-  set https://<host>` and `--server`. The command's help says the same at
-  length: logins are per host, and `orq switch` moves workspace and project
-  inside one rather than between them.
+  selects one, so a usable login elsewhere now comes with a line naming it:
+  `orq server set <that server>`, or `--server` for one call. The command's
+  help says the same at length: logins are per host, and `orq switch` moves
+  workspace and project inside one rather than between them.
 
 - **Changed: `orq auth setup` now runs the `orq setup` wizard.** It used to be
   bartolo's generic credentials wizard — choose an auth type, name a profile,

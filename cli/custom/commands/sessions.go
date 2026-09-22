@@ -19,9 +19,9 @@ func NewSessionsCommand() *cobra.Command {
 the host decides which login authenticates a call — not the workspace, which is
 selected inside a login by ` + "`orq switch`" + `.
 
-The active host comes from ` + "`--server`" + `, ` + "`ORQ_SERVER`" + `, a profile in force, or the
-default persisted by ` + "`orq server set <url>`" + `. So switching login means switching
-server; a host with no login yet needs one ` + "`orq auth login`" + ` under that server.`),
+The active host comes from ` + "`--server`" + `, then a profile in force, then ` + "`ORQ_SERVER`" + `,
+then the default persisted by ` + "`orq server set <url>`" + `. So switching login means
+switching server; a host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
@@ -33,7 +33,7 @@ server; a host with no login yet needs one ` + "`orq auth login`" + ` under that
 					Notice("No logins. Use `%s auth login` to create one.", cmd.Root().Name())
 					return nil
 				}
-				printSessionList(sessions, cmd.Root().Name())
+				printSessionList(sessions, cmd)
 				warnIfActiveSessionShadowed(sessions)
 				return nil
 			}
@@ -44,7 +44,7 @@ server; a host with no login yet needs one ` + "`orq auth login`" + ` under that
 }
 
 // printSessionList renders the logins and marks the resolved host.
-func printSessionList(rows []auth.SessionListEntry, binary string) {
+func printSessionList(rows []auth.SessionListEntry, cmd *cobra.Command) {
 	out := bartolocli.Stdout
 	heading("Logins")
 	anyActive := false
@@ -63,12 +63,25 @@ func printSessionList(rows []auth.SessionListEntry, binary string) {
 	if anyActive {
 		fmt.Fprintln(out, paint(ansiDim, "\n● active"))
 	}
-	// The table shows hosts you cannot reach from here without saying so: the
-	// login is selected by server, and nothing else on screen says that.
-	if len(rows) > 1 {
+	// Nothing else on screen says the server is what selects a login.
+	if target := switchTarget(rows); target != "" {
 		fmt.Fprintln(out, paint(ansiDim, fmt.Sprintf(
-			"Use another login with `%s server set https://<host>`, or one call at a time with `--server`.", binary)))
+			"Use another login with `%s server set %s`, or one call at a time with `--server`.",
+			cmd.Root().Name(), target)))
 	}
+}
+
+// switchTarget is the server URL the hint names: a login on another host that
+// is usable as it stands. It is the row's stored server rather than its HOST
+// cell, which is a file name — a port lands there as `_8080`, which `server
+// set` would reject.
+func switchTarget(rows []auth.SessionListEntry) string {
+	for _, r := range rows {
+		if !r.Active && r.Server != "" && usableSessionStatus(r.Status) {
+			return r.Server
+		}
+	}
+	return ""
 }
 
 // paintStatus highlights session states that require user action.
