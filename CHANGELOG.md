@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
+
 - **Changed: `orq server use` accepts any host, not only a generated one.**
   `orq server use my.orq.ai` used to fail with `could not match server
   "my.orq.ai"` because `use` matched only the servers listed in the OpenAPI
