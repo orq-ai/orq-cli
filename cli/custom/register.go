@@ -70,9 +70,10 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name, so a bartolo command and an orq command of
-// the same name are told apart: orq's own commands honor --no-input themselves
-// and are meant to run headless in CI.
+// Keyed by command PATH, not name: `auth profile add` is bartolo's, while orq
+// owns a `profile` command of its own elsewhere in the tree, and orq's commands
+// honor --no-input themselves rather than needing this map. Matching on the
+// bare name refuses the wrong one.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -645,7 +646,9 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
-	addHiddenAuthAliases(root)
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
+	addHiddenAliases(root, commands.NewLoginCommand, commands.NewLogoutCommand)
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
@@ -867,25 +870,21 @@ func attachAuthSubcommands(root *cobra.Command) {
 	if setup := childCommand(authParent, "setup"); setup != nil {
 		authParent.RemoveCommand(setup)
 	}
-	setupAlias := commands.NewSetupCommand()
-	setupAlias.Hidden = true
-	authParent.AddCommand(setupAlias)
+	addHiddenAliases(authParent, commands.NewSetupCommand)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 
-func addHiddenAuthAliases(root *cobra.Command) {
-	// whoami is deliberately absent: `orq status` carries it as an alias, and a
-	// second root command of the same name would shadow it.
-	for _, factory := range []func() *cobra.Command{
-		commands.NewLoginCommand,
-		commands.NewLogoutCommand,
-	} {
+// addHiddenAliases mounts a second copy of each command on parent, out of the
+// help. A copy rather than the command itself: cobra gives a command one
+// parent, so sharing the instance would move it out of its own tree.
+func addHiddenAliases(parent *cobra.Command, factories ...func() *cobra.Command) {
+	for _, factory := range factories {
 		alias := factory()
 		alias.Hidden = true
-		root.AddCommand(alias)
+		parent.AddCommand(alias)
 	}
 }
 

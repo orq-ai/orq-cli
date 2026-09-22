@@ -529,13 +529,50 @@ func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
 	if setup.Flags().Lookup("type") != nil {
 		t.Error("`auth setup` carries bartolo's --type, so the generated wizard is still attached")
 	}
-	for _, alias := range setup.Aliases {
-		if alias == "login" {
-			t.Error("`auth setup` must not alias `login`: `orq auth login` is the OAuth command")
-		}
-	}
 	if login := childCommand(authParent, "login"); login == nil || !strings.Contains(login.Short, "OAuth") {
 		t.Error("`auth login` must resolve to the OAuth login command")
+	}
+}
+
+// Matching metadata is not the claim — running the wizard is. Both spellings
+// are executed with no credential in reach, where runSetup is the only thing
+// in the binary that produces this refusal, so an alias that merely looked
+// like `orq setup` would fail here. It is also the guard the `auth setup`
+// entry in interactiveWizardCommands used to provide: --no-input reaching the
+// alias is what makes it refuse rather than wait on a device login.
+func TestAuthSetupRunsTheSetupWizardAndHonorsNoInput(t *testing.T) {
+	const refusal = "--no-input given and no credential is available"
+	for _, args := range [][]string{{"setup"}, {"auth", "setup"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			profileHarness(t, `{"profiles":{}}`)
+			// The environment decides the credential and the host this reaches
+			// for, and a `go test ./...` run carries whatever an earlier test
+			// exported: without these the wizard finds a key, or dials a dead
+			// httptest server from another file, instead of refusing.
+			for _, key := range []string{"ORQ_API_KEY", "ORQ_SERVER", "ORQ_API_BASE_URL"} {
+				t.Setenv(key, "")
+			}
+			// viper.Set, not the flag: it outranks a bound flag, so a test that
+			// has already set this key leaves --no-input inert for the rest of
+			// the binary. applyGlobalFlags reads viper either way.
+			prevNoInput := viper.Get("no-input")
+			viper.Set("no-input", true)
+			t.Cleanup(func() { viper.Set("no-input", prevNoInput) })
+			var stderr bytes.Buffer
+			prevErr := bartolocli.Stderr
+			bartolocli.Stderr = &stderr
+			t.Cleanup(func() { bartolocli.Stderr = prevErr })
+
+			root := buildRoot(t)
+			root.SetArgs(args)
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), refusal) {
+				t.Fatalf("%v = %v, want the wizard's %q", args, err, refusal)
+			}
+		})
 	}
 }
 

@@ -19,9 +19,9 @@ func NewSessionsCommand() *cobra.Command {
 the host decides which login authenticates a call — not the workspace, which is
 selected inside a login by ` + "`orq switch`" + `.
 
-The active host comes from ` + "`--server`" + `, then a profile in force, then ` + "`ORQ_SERVER`" + `,
-then the default persisted by ` + "`orq server set <url>`" + `. So switching login means
-switching server; a host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
+So switching login means switching server: ` + "`orq server set <url>`" + ` for a new
+default, ` + "`--server`" + ` for one call, and ` + "`orq doctor`" + ` reports which one won and
+why. A host with no login yet needs one ` + "`orq auth login`" + ` under it.`),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
