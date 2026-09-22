@@ -198,6 +198,7 @@ require_cmd uname
 require_cmd mktemp
 require_cmd chmod
 require_cmd mv
+require_cmd tr
 
 # --- Presentation ----------------------------------------------------------
 
@@ -219,6 +220,25 @@ else
   G_BULLET='*'
   G_OK='ok:'
   G_RULE='----------------------------------------------------------------'
+fi
+
+# Paint the success check with the orqi CLI's brand "OK" hue (Glowing Turquoise,
+# ui.go `ansiOK`), so the installer's success mark reads green like `success()`
+# in the CLI rather than the terminal's default foreground. Same COLORTERM/TERM
+# tiers as the CLI's brandPalette; honours NO_COLOR and only paints on a TTY.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  esc="$(printf '\033')"
+  colorterm="$(printf '%s' "${COLORTERM:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$colorterm" in
+    *truecolor*|*24bit*) ok_color="${esc}[38;2;0;255;221m" ;;
+    *)
+      case "${TERM:-}" in
+        *256color*) ok_color="${esc}[38;5;50m" ;;
+        *)          ok_color="${esc}[36m" ;;
+      esac
+      ;;
+  esac
+  G_OK="${ok_color}${G_OK}${esc}[0m"
 fi
 
 banner() {
