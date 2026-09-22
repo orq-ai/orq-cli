@@ -70,9 +70,9 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name: orq's own `setup` is a different command
-// from bartolo's `auth setup`, honors --no-input itself, and is meant to run
-// headless in CI. Matching on the bare name refused it.
+// Keyed by command PATH, not name, so a bartolo command and an orq command of
+// the same name are told apart: orq's own commands honor --no-input themselves
+// and are meant to run headless in CI.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -82,10 +82,6 @@ var profileExemptCommands = map[string]bool{
 // delete the map, `wizard` and the guard in installSessionPreRun together.
 // RES-1571.
 var interactiveWizardCommands = map[string]wizard{
-	// No predicate: bartolo's auth setup is a wizard from its first line.
-	"auth setup": {
-		hint: "use `orq auth login` or set ORQ_API_KEY instead",
-	},
 	// Prompts only for a key it was not given, so the CI form (a key argument
 	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
 	"auth profile add": {
@@ -864,26 +860,24 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
-	// Bartolo's `auth setup` command ships with a `login` alias for the
-	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
-	// one cobra resolves.
+	// Bartolo's generic `auth setup` — choose an auth type, name a profile,
+	// paste a key — is not how this CLI is set up: `orq setup` is the wizard
+	// and `orq auth login` is the credential, and bartolo's version also ships
+	// a `login` alias that shadows ours. Since bartolo dropped the implicit
+	// `default` profile it opens by demanding a profile name, pushing people
+	// onto a profile they deliberately do not have. Replace it with a hidden
+	// alias of `orq setup`, so typing the old path lands on the real wizard
+	// rather than on an unknown-command error.
 	if setup := childCommand(authParent, "setup"); setup != nil {
-		setup.Aliases = removeString(setup.Aliases, "login")
+		authParent.RemoveCommand(setup)
 	}
+	setupAlias := commands.NewSetupCommand()
+	setupAlias.Hidden = true
+	authParent.AddCommand(setupAlias)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
-}
-
-func removeString(slice []string, target string) []string {
-	out := slice[:0]
-	for _, s := range slice {
-		if s != target {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func addHiddenAuthAliases(root *cobra.Command) {

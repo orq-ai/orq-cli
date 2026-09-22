@@ -468,7 +468,6 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		args    []string
 		refused string // substring of the refusal, or "" to expect no refusal
 	}{
-		{"setup is a wizard throughout", []string{"auth", "setup"}, "`auth setup` would prompt"},
 		{"profile add with no key prompts", []string{"auth", "profile", "add", "ci"}, "--api-key-file <path>"},
 		{"profile add with a positional key", []string{"auth", "profile", "add", "ci", "sk-positional"}, ""},
 		{"profile add with --api-key-file", []string{"auth", "profile", "add", "ci", "--api-key-file", keyFile}, ""},
@@ -493,6 +492,40 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 				t.Fatalf("%v: want a refusal naming %q, got %v", tc.args, tc.refused, err)
 			}
 		})
+	}
+}
+
+// Bartolo's profile wizard is gone from the surface: `orq auth setup` is a
+// hidden alias of `orq setup`, so the old path reaches the real wizard instead
+// of opening with a prompt for a profile name nobody has by default.
+func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
+	root := buildRoot(t)
+	authParent := childCommand(root, "auth")
+	if authParent == nil {
+		t.Fatal("no auth command")
+	}
+	setup := childCommand(authParent, "setup")
+	if setup == nil {
+		t.Fatal("`auth setup` must still resolve, as an alias of `orq setup`")
+	}
+	if !setup.Hidden {
+		t.Error("`auth setup` is an alias for muscle memory, so it stays out of the help")
+	}
+	rootSetup := childCommand(root, "setup")
+	if rootSetup == nil {
+		t.Fatal("no root setup command")
+	}
+	if setup.Short != rootSetup.Short {
+		t.Errorf("`auth setup` is %q, not `orq setup` (%q)", setup.Short, rootSetup.Short)
+	}
+	// Bartolo's version owned a `login` alias that shadowed our OAuth command.
+	for _, alias := range setup.Aliases {
+		if alias == "login" {
+			t.Error("`auth setup` must not alias `login`: `orq auth login` is the OAuth command")
+		}
+	}
+	if login := childCommand(authParent, "login"); login == nil || !strings.Contains(login.Short, "OAuth") {
+		t.Error("`auth login` must resolve to the OAuth login command")
 	}
 }
 

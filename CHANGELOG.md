@@ -145,6 +145,18 @@ controls on surface changes, whichever side they originate from.
   previously accepted `--columns` value changes meaning, and `-o json` is
   unaffected.
 
+- **Changed: `orq auth setup` now runs the `orq setup` wizard.** It used to be
+  bartolo's generic credentials wizard — choose an auth type, name a profile,
+  paste a key — which since the profile rework opened by demanding a profile
+  name, even though this CLI puts nobody on a profile by default. The path
+  still resolves, hidden, so muscle memory lands on the real wizard, and it now
+  takes `orq setup`'s flags on top of the global ones. `--profile` still
+  selects the profile the key is written to (it is the global flag now; the
+  local one only shadowed it), and `--type` is gone — it chose a bartolo auth
+  handler, and this CLI has only ever registered one. To write a key to a named
+  profile without the wizard, use `orq auth profile add <name>`; to sign in,
+  use `orq auth login`.
+
 ## [10.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.0.0) — 2026-09-21
 
 - **Changed (breaking): `orq traces conversation` is `orq traces thread`
