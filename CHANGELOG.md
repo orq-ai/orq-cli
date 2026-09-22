@@ -117,6 +117,26 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: `orq server use` accepts any host, not only a generated one.**
+  `orq server use my.orq.ai` used to fail with `could not match server
+  "my.orq.ai"` because `use` matched only the servers listed in the OpenAPI
+  document, and a self-hosted deployment is never in that list. An argument
+  that matches nothing there is now persisted as the default server, with a
+  missing scheme filled in as `https://` and no warning about having done so. A
+  numeric argument is still an index into the generated list, so `orq server
+  use 9` still reports an out-of-range index. For a person the command now
+  answers `Now talking to https://my.orq.ai.` instead of a `persisted: true`
+  record; `-o json` and the other serializations are unchanged.
+
+- **Changed: a rejected login session says what to do and where it happened.**
+  Commands that resolve a workspace token (`orq launch`, `orq auth whoami`,
+  `orq workspace use`, and the rest) answered a dead session with the API's
+  bare `Invalid refresh token!`. They now add one unindented line naming the
+  server and the remedy: `Your login for https://my.orq.ai has expired or was
+  revoked — run 'orq auth login'.` The server is named because a session minted against a
+  different host — after `--server`, `ORQ_SERVER` or `orq server use` — is the
+  case that is otherwise invisible.
+
 ## [10.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.1.0) — 2026-09-22
 
 - **Added: `orq auth profile remove <name>`** (aliases `rm`, `delete`) deletes a

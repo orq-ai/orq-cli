@@ -7795,7 +7795,7 @@
     },
     {
       "path": "orq server use",
-      "use": "use \u003cindex|url|description\u003e"
+      "use": "use \u003cindex|url|description|host\u003e"
     },
     {
       "path": "orq setup",
