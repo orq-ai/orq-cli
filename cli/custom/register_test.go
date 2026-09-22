@@ -468,7 +468,6 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		args    []string
 		refused string // substring of the refusal, or "" to expect no refusal
 	}{
-		{"setup is a wizard throughout", []string{"auth", "setup"}, "`auth setup` would prompt"},
 		{"profile add with no key prompts", []string{"auth", "profile", "add", "ci"}, "--api-key-file <path>"},
 		{"profile add with a positional key", []string{"auth", "profile", "add", "ci", "sk-positional"}, ""},
 		{"profile add with --api-key-file", []string{"auth", "profile", "add", "ci", "--api-key-file", keyFile}, ""},
@@ -476,9 +475,7 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			profileHarness(t, `{"profiles":{}}`)
 			root := buildRoot(t)
-			viper.Set("no-input", true)
-			t.Cleanup(func() { viper.Set("no-input", false) })
-			root.SetArgs(tc.args)
+			root.SetArgs(append([]string{"--no-input"}, tc.args...))
 			root.SetOut(io.Discard)
 			root.SetErr(io.Discard)
 
@@ -491,6 +488,80 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.refused) {
 				t.Fatalf("%v: want a refusal naming %q, got %v", tc.args, tc.refused, err)
+			}
+		})
+	}
+}
+
+// Bartolo's profile wizard is gone from the surface: `orq auth setup` is a
+// hidden alias of `orq setup`, so the old path reaches the real wizard instead
+// of opening with a prompt for a profile name nobody has by default.
+func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
+	root := buildRoot(t)
+	authParent := childCommand(root, "auth")
+	if authParent == nil {
+		t.Fatal("no auth command")
+	}
+	setup := childCommand(authParent, "setup")
+	if setup == nil {
+		t.Fatal("`auth setup` must still resolve, as an alias of `orq setup`")
+	}
+	if !setup.Hidden {
+		t.Error("`auth setup` is an alias for muscle memory, so it stays out of the help")
+	}
+	// Which command it is belongs to the execution test below; this file's
+	// share is the metadata running it cannot show.
+	if login := childCommand(authParent, "login"); login == nil || !strings.Contains(login.Short, "OAuth") {
+		t.Error("`auth login` must resolve to the OAuth login command")
+	}
+}
+
+// pinServer empties the persisted-server keys for one test. mirrorServerToViper
+// writes `server` on every run and bartolo persists `orq server set` under
+// `server-default`, so without this a run reaches for whatever host the real
+// ~/.orq or an earlier test left on those keys.
+func pinServer(t *testing.T) {
+	t.Helper()
+	viper.Set("server-default", "")
+	viper.Set("server", "")
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
+}
+
+// Matching metadata is not the claim — running the wizard is. Both spellings
+// are executed with no credential in reach, where runSetup is the only thing
+// in the binary that produces this refusal, so an alias that merely looked
+// like `orq setup` would fail here. It is also the guard the `auth setup`
+// entry in interactiveWizardCommands used to provide: --no-input reaching the
+// alias is what makes it refuse rather than wait on a device login.
+func TestAuthSetupRunsTheSetupWizardAndHonorsNoInput(t *testing.T) {
+	const refusal = "--no-input given and no credential is available"
+	for _, args := range [][]string{{"setup"}, {"auth", "setup"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			profileHarness(t, `{"profiles":{}}`)
+			// The environment decides the credential and the host this reaches
+			// for, and a `go test ./...` run carries whatever an earlier test
+			// exported: without these the wizard finds a key, or dials a dead
+			// httptest server from another file, instead of refusing.
+			for _, key := range []string{"ORQ_API_KEY", "ORQ_SERVER", "ORQ_API_BASE_URL"} {
+				t.Setenv(key, "")
+			}
+			// The flag, never viper.Set: an override outranks a bound flag and
+			// viper cannot unset one, so a test that reaches for the key
+			// leaves --no-input inert for every later test in the binary.
+			pinServer(t)
+			var stderr bytes.Buffer
+			prevErr := bartolocli.Stderr
+			bartolocli.Stderr = &stderr
+			t.Cleanup(func() { bartolocli.Stderr = prevErr })
+
+			root := buildRoot(t)
+			root.SetArgs(append([]string{"--no-input"}, args...))
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), refusal) {
+				t.Fatalf("%v = %v, want the wizard's %q", args, err, refusal)
 			}
 		})
 	}

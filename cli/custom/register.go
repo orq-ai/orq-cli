@@ -70,9 +70,9 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name: orq's own `setup` is a different command
-// from bartolo's `auth setup`, honors --no-input itself, and is meant to run
-// headless in CI. Matching on the bare name refused it.
+// Keyed by command PATH, not name, matching commandPath(cmd) below: an entry
+// then names one bartolo command rather than every command sharing a leaf
+// name. orq's own commands honor --no-input themselves and never belong here.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -82,10 +82,6 @@ var profileExemptCommands = map[string]bool{
 // delete the map, `wizard` and the guard in installSessionPreRun together.
 // RES-1571.
 var interactiveWizardCommands = map[string]wizard{
-	// No predicate: bartolo's auth setup is a wizard from its first line.
-	"auth setup": {
-		hint: "use `orq auth login` or set ORQ_API_KEY instead",
-	},
 	// Prompts only for a key it was not given, so the CI form (a key argument
 	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
 	"auth profile add": {
@@ -649,7 +645,9 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
-	addHiddenAuthAliases(root)
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
+	addHiddenAliases(root, commands.NewLoginCommand, commands.NewLogoutCommand)
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
@@ -864,38 +862,26 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
-	// Bartolo's `auth setup` command ships with a `login` alias for the
-	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
-	// one cobra resolves.
-	if setup := childCommand(authParent, "setup"); setup != nil {
-		setup.Aliases = removeString(setup.Aliases, "login")
-	}
+	// Bartolo's generic `auth setup` prompts for a profile name — this CLI
+	// leaves you on none by default — and ships a `login` alias that shadows
+	// our OAuth one. `orq setup` under the same path keeps the spelling
+	// working for whoever types it.
+	authParent.RemoveCommand(childCommand(authParent, "setup")) // nil-safe
+	addHiddenAliases(authParent, commands.NewSetupCommand)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 
-func removeString(slice []string, target string) []string {
-	out := slice[:0]
-	for _, s := range slice {
-		if s != target {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func addHiddenAuthAliases(root *cobra.Command) {
-	// whoami is deliberately absent: `orq status` carries it as an alias, and a
-	// second root command of the same name would shadow it.
-	for _, factory := range []func() *cobra.Command{
-		commands.NewLoginCommand,
-		commands.NewLogoutCommand,
-	} {
+// addHiddenAliases mounts a second copy of each command on parent, out of the
+// help. A copy rather than the command itself: cobra gives a command one
+// parent, so sharing the instance would move it out of its own tree.
+func addHiddenAliases(parent *cobra.Command, factories ...func() *cobra.Command) {
+	for _, factory := range factories {
 		alias := factory()
 		alias.Hidden = true
-		root.AddCommand(alias)
+		parent.AddCommand(alias)
 	}
 }
 

@@ -1314,14 +1314,37 @@
     {
       "path": "orq auth setup",
       "use": "setup",
+      "hidden": true,
       "flags": [
         {
-          "name": "profile",
+          "name": "api-key",
           "type": "string"
         },
         {
-          "name": "type",
-          "type": "string"
+          "name": "capability",
+          "type": "stringSlice"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "interactive",
+          "shorthand": "i",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
         }
       ]
     },
