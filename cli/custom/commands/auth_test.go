@@ -57,8 +57,95 @@ func TestAPIKeyLoginIsAllowedWithAProfileInForce(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("API-key login with profile: %v", err)
 	}
-	if got := bartolocli.Creds.GetString("profiles.work.api_key"); got != "sk-orq-profile" {
-		t.Errorf("profiles.work.api_key = %q, want the supplied key", got)
+	// An api-key login is a login, not a profile: it is stored host-keyed, never
+	// written into the selected profile. Writing it under the profile
+	// is exactly the bug — the key would ride on a name the user did not intend
+	// it to, and a profile clear would silently drop the login.
+	if got := bartolocli.Creds.GetString("profiles.work.api_key"); got != "" {
+		t.Errorf("profiles.work.api_key = %q, want the api-key login NOT written into the profile", got)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil {
+		t.Fatalf("ReadAPIKeyLogin: %v", err)
+	}
+	if login == nil || login.APIKey != "sk-orq-profile" {
+		t.Errorf("api-key login = %+v, want the supplied key stored host-keyed", login)
+	}
+}
+
+// After an api-key login with no browser session, `orq status` must report the
+// login, not claim the user is logged out.
+func TestWhoAmIReportsAPIKeyLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	// credsHarness writes a browser session; remove it so this is the api-key-only path.
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{
+		APIBaseURL: auth.ResolveURLs("").APIBaseURL,
+		APIKey:     "sk-orq-LOGIN",
+		Workspaces: []map[string]any{{"key": "acme"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	origStdout := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = origStdout })
+
+	cmd := NewWhoAmICommand()
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("whoami with an api-key login: %v", err)
+	}
+	var payload struct {
+		Method    string `json:"method"`
+		Workspace string `json:"workspace"`
+		APIKey    string `json:"api_key"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Method != "api_key" || payload.Workspace != "acme" || payload.APIKey != maskToken("sk-orq-LOGIN") {
+		t.Errorf("whoami payload = %+v", payload)
+	}
+}
+
+// Logout clears an api-key login even with no browser session, so the next
+// command is not silently re-authenticated after a "signed out".
+func TestLogoutClearsAPIKeyLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	viper.Set("profile", "")
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-LOGIN"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewLogoutCommand()
+	cmd.SetArgs([]string{"--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("logout with an api-key login: %v", err)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil {
+		t.Fatalf("ReadAPIKeyLogin after logout: %v", err)
+	}
+	if login != nil {
+		t.Error("api-key login survived logout")
 	}
 }
 

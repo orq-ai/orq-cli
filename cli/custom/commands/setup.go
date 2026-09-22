@@ -441,10 +441,16 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	// did not ask to replace, and blanks its recorded workspace, which disables
 	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if opts.persistKey {
+		// Only write a profile when the user selected one. With no profile in
+		// force the key is made durable by the shell env file setup writes later
+		// in this flow, not by a `default` profile nothing would resolve
+		//; writing one there left the key unreachable.
+		if opts.persistKey && profileInForce() {
 			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
+			rep.ok("using the key you passed")
+		} else if opts.persistKey {
 			rep.ok("using the key you passed")
 		} else {
 			rep.ok("api key from --api-key (not saved)")
@@ -785,9 +791,13 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 
 // saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
 // handler type and the resolved server, nothing of ours. bartolo resolves it
-// from here on.
+// from here on. Only ever writes a named, selected profile — an unselected one
+// is unreachable, so a caller with no profile in force must not reach here.
 func saveAPIKeyProfile(key string) error {
 	name := bartoloProfileName()
+	if name == "" {
+		return errors.New("cannot save an API-key profile without a selected profile (--profile / ORQ_PROFILE / `orq auth profile use`)")
+	}
 	bartolocli.Creds.Set("profiles."+name+".api_key", key)
 	bartolocli.Creds.Set("profiles."+name+".type", BartoloAuthType())
 	if server := auth.Server(); server != "" {
@@ -991,26 +1001,21 @@ func rootProfileFlag() *pflag.Flag {
 	return bartolocli.Root.PersistentFlags().Lookup("profile")
 }
 
-// bartoloProfileName is the profile an API-key write lands in: the one in
-// force, else `default`.
+// bartoloProfileName is the profile an API-key write lands in: the one the user
+// selected explicitly (--profile, ORQ_PROFILE, `orq auth profile use`), or ""
+// when none is. There is no `default` fallback: a browser or api-key login is
+// not a profile, and writing one under a name nothing selects left the key
+// unreachable — bartolo does not resolve an unselected profile.
 func bartoloProfileName() string {
-	if name := bartolocli.ActiveProfileName(); name != "" {
-		return name
-	}
-	return "default"
+	return bartolocli.ActiveProfileName()
 }
 
-// setupResultProfile names a bartolo profile only when one is genuinely part
-// of this run. An explicit key persisted without a profile writes `default`;
-// session and environment credentials have no profile and report "".
+// setupResultProfile names a bartolo profile only when the user selected one.
+// An explicit key persisted without a profile is made durable by the shell env
+// file, not a profile, so it reports "" — as do session and environment
+// credentials, which are not profiles either.
 func setupResultProfile(opts *setupOptions) string {
-	if name := bartolocli.ActiveProfileName(); name != "" {
-		return name
-	}
-	if opts != nil && opts.persistKey && strings.TrimSpace(opts.apiKey) != "" {
-		return "default"
-	}
-	return ""
+	return bartolocli.ActiveProfileName()
 }
 
 // shellEnvFileNames are the shell-integration files `orq setup` writes under
