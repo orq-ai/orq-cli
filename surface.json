@@ -1290,6 +1290,14 @@
       ]
     },
     {
+      "path": "orq auth profile remove",
+      "use": "remove \u003cname\u003e",
+      "aliases": [
+        "rm",
+        "delete"
+      ]
+    },
+    {
       "path": "orq auth profile use",
       "use": "use \u003cname\u003e",
       "aliases": [
