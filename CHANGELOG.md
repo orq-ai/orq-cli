@@ -117,6 +117,34 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added: `orq auth profile remove <name>`** (aliases `rm`, `delete`) deletes a
+  stored profile from `credentials.json`. Until now the only way to drop one was
+  editing that file by hand — the file holding live API keys. It removes the
+  profile and nothing else: no server-side key is revoked, and no browser login
+  is touched, since a login belongs to a server rather than to a profile. An
+  unknown name fails with `unknown profile "<name>"` and changes nothing on
+  disk. `-o json` returns `removed_profile` and `selection_cleared`.
+
+  Removing the profile that `orq auth profile use` selected also clears that
+  selection, so `orq auth profile current` reports no active profile rather than
+  one that no longer exists. A `--profile` flag or an `ORQ_PROFILE` naming the
+  removed profile is left alone: it belongs to the caller and outranks the
+  stored choice anyway.
+
+  Like the other profile-management commands, `remove` keeps working while the
+  selected profile is unknown — deleting the broken profile is one of the ways
+  out of that state.
+
+- **Changed: `--columns` accepts one array projection,** such as
+  `--columns 'settings.tools[].key'`, which renders that field from every
+  element of the array. Exactly one `[]` is allowed per selector and a field
+  must follow it; `--jmespath` remains the way to index or filter. Errors for a
+  column no row carries are more specific: projecting through something that is
+  not an array says so and names the prefix, and a selector containing `[` that
+  does not resolve explains the rule rather than only reporting the miss. No
+  previously accepted `--columns` value changes meaning, and `-o json` is
+  unaffected.
+
 ## [10.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.0.0) — 2026-09-21
 
 - **Changed (breaking): `orq traces conversation` is `orq traces thread`

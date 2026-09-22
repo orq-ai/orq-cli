@@ -56,6 +56,7 @@ var profileExemptCommands = map[string]bool{
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
+	"auth profile remove":  true, // deleting the broken profile is the fix for an unknown one
 	"doctor":               true,
 	"update":               true, // updating must work without a credential; it touches no orq API
 	"orqi":                 true, // installs and launches orqi; touches no orq API
