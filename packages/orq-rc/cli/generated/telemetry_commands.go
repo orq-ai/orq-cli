@@ -14,7 +14,7 @@ func registertelemetryCommands(root *cobra.Command) {
 	telemetryCmd := &cobra.Command{
 		Use:   "telemetry",
 		Short: "Telemetry",
-		Long:  bartolocli.Markdown("Unified query envelope for traces, metrics, and logs (ADR 0004). One request shape, one filter dialect, and one response shape per source, validated by a per-source registry."),
+		Long:  bartolocli.Markdown("Unified query envelope for traces, metrics, and logs. One request shape, one filter dialect, and one response shape per source, validated by a per-source registry."),
 	}
 	root.AddCommand(telemetryCmd)
 

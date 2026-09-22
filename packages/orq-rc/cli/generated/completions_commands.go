@@ -171,7 +171,7 @@ func registercompletionsCommands(root *cobra.Command) {
 							Name:        "user",
 							FlagName:    "user",
 							Type:        "string",
-							Description: "A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.",
+							Description: "A unique identifier representing your end-user, which can help monitor and detect abuse.",
 						},
 					},
 				)
@@ -327,7 +327,7 @@ func registercompletionsCommands(root *cobra.Command) {
 					Name:        "user",
 					FlagName:    "user",
 					Type:        "string",
-					Description: "A unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse.",
+					Description: "A unique identifier representing your end-user, which can help monitor and detect abuse.",
 				},
 			},
 		)
