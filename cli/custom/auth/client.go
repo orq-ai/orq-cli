@@ -417,7 +417,7 @@ func withRefreshTokenRemedy(err error, server string) error {
 	}
 	return &APIError{
 		Status: apiErr.Status,
-		Msg:    apiErr.Msg + fmt.Sprintf("\n  Your login for %s has expired or was revoked — run 'orq auth login'.", where),
+		Msg:    apiErr.Msg + fmt.Sprintf("\nYour login for %s has expired or was revoked — run 'orq auth login'.", where),
 	}
 }
 

@@ -131,9 +131,9 @@ controls on surface changes, whichever side they originate from.
 - **Changed: a rejected login session says what to do and where it happened.**
   Commands that resolve a workspace token (`orq launch`, `orq auth whoami`,
   `orq workspace use`, and the rest) answered a dead session with the API's
-  bare `Invalid refresh token!`. They now add one line naming the server and
-  the remedy: `Your login for https://my.orq.ai has expired or was revoked —
-  run 'orq auth login'.` The server is named because a session minted against a
+  bare `Invalid refresh token!`. They now add one unindented line naming the
+  server and the remedy: `Your login for https://my.orq.ai has expired or was
+  revoked — run 'orq auth login'.` The server is named because a session minted against a
   different host — after `--server`, `ORQ_SERVER` or `orq server use` — is the
   case that is otherwise invisible.
 
