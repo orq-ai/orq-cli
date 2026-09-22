@@ -418,6 +418,19 @@ func applyProfileAPIKey() {
 //   - a user-supplied API key already in the environment (any of the aliases
 //     bartolo honors, and not the exact key we would inject) is an override the
 //     user typed; leave it untouched so it stays authoritative.
+//   - a browser session for this host still wins. The key is injected here, but
+//     it is marked own-exported (ownExportedKey), so explicitKey stays false and
+//     the session step below mints its active workspace/project token into
+//     ORQ_API_KEY, overwriting this injection. A browser login is the richer
+//     credential — it can refresh, revoke and narrow to a workspace — so when
+//     both exist for one host the session is what later commands authenticate as.
+//
+// A corrupt login file is warned about, not swallowed: ReadAPIKeyLogin promises
+// an error rather than "absent" for a file that will not decode, and a user
+// whose login stopped working needs to know why. It is only a warning here —
+// this runs in PreRun before every command, and a broken credential file must
+// not take down `orq doctor` or `orq auth logout`, the commands someone reaches
+// for to fix it. whoami/status and logout surface the same error outright.
 //
 // The stored key is written into the first alias, matching applyProfileAPIKey,
 // so ownExportedKey recognizes it as ours and the env-usage notice stays silent.
@@ -426,7 +439,11 @@ func applyStoredAPIKeyLogin() {
 		return
 	}
 	login, err := auth.ReadAPIKeyLogin()
-	if err != nil || login == nil {
+	if err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "Warning: could not read the stored API-key login: %v\n", err)
+		return
+	}
+	if login == nil {
 		return
 	}
 	key := strings.TrimSpace(login.APIKey)

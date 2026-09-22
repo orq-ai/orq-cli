@@ -441,18 +441,35 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	// did not ask to replace, and blanks its recorded workspace, which disables
 	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		// Only write a profile when the user selected one. With no profile in
-		// force the key is made durable by the shell env file setup writes later
-		// in this flow, not by a `default` profile nothing would resolve
-		//; writing one there left the key unreachable.
-		if opts.persistKey && profileInForce() {
+		// Persist the key the same way `orq auth login --api-key` now does, so it
+		// resolves on the next command instead of vanishing when the process exits.
+		//
+		// A profile SELECTED by name (--profile / ORQ_PROFILE / `orq auth profile
+		// use`) is written as that named profile, whether or not it existed yet:
+		// `orq setup --profile new --api-key` is meant to create it. Keyed on the
+		// name being selected, not on profileInForce() — the latter is false for a
+		// name with no entry, so it never created the profile the user asked for.
+		//
+		// With NO profile selected the key becomes a host-keyed api-key login;
+		// applyStoredAPIKeyLogin injects it on every later command. This replaces
+		// the earlier reliance on the shell env file, which resolveAPIKey skipped
+		// for a supplied key (it returns before writeShellEnvFile), so the key was
+		// persisted nowhere.
+		//
+		// persistKey is false on connect: it must not replace a credential the user
+		// did not ask to replace, so there the key is used for this run only.
+		switch {
+		case opts.persistKey && bartoloProfileName() != "":
 			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
-			rep.ok("using the key you passed")
-		} else if opts.persistKey {
-			rep.ok("using the key you passed")
-		} else {
+			rep.ok("saved the key you passed to profile %s", bartoloProfileName())
+		case opts.persistKey:
+			if err := saveSuppliedAPIKeyLogin(key); err != nil {
+				return nil, err
+			}
+			rep.ok("saved the key you passed")
+		default:
 			rep.ok("api key from --api-key (not saved)")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
@@ -804,6 +821,20 @@ func saveAPIKeyProfile(key string) error {
 		bartolocli.Creds.Set("profiles."+name+".server", server)
 	}
 	return saveCreds()
+}
+
+// saveSuppliedAPIKeyLogin stores a key `orq setup --api-key` was given, with no
+// profile selected, as a host-keyed api-key login — the same store and shape
+// `orq auth login --api-key` writes. applyStoredAPIKeyLogin injects it on every
+// later command, so the key the user passed is durable and actually resolves,
+// rather than living only for this process. The server travels with it so a key
+// set up against one host never authenticates a call to another.
+func saveSuppliedAPIKeyLogin(key string) error {
+	return auth.SaveAPIKeyLogin(&auth.APIKeyLogin{
+		APIBaseURL: auth.ResolveURLs(serverURL()).APIBaseURL,
+		Source:     auth.APIKeyLoginSource,
+		APIKey:     key,
+	})
 }
 
 // saveGatewayKeyProfile records the minted key on the login it was minted

@@ -123,3 +123,44 @@ func TestAPIKeyLoginWritesNoDefaultProfile(t *testing.T) {
 		t.Errorf("api-key login file missing: %v", err)
 	}
 }
+
+// When a browser session and an api-key login both exist for one host, the
+// session wins. applyStoredAPIKeyLogin still injects the login key, but because
+// that key is own-exported the invocation's explicitKey stays false, so the
+// session step is free to mint its workspace token over the top. This pins the
+// own-exported signal that keeps the session authoritative — the actual token
+// mint is a network call and out of scope for a unit test.
+func TestSessionOutranksStoredAPIKeyLogin(t *testing.T) {
+	apiKeyLoginHarness(t)
+
+	// A browser session for this host, carrying a gateway key so ownExportedKeys
+	// has the session side to compare against.
+	session := &auth.Session{
+		Version:        1,
+		APIBaseURL:     auth.ResolveURLs("").APIBaseURL,
+		RefreshToken:   "refresh-abc",
+		BootstrapToken: auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		GatewayKey:     "sk-orq-GATEWAY",
+	}
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatalf("SaveSession: %v", err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{
+		APIBaseURL: auth.ResolveURLs("").APIBaseURL,
+		APIKey:     "sk-orq-LOGIN",
+	}); err != nil {
+		t.Fatalf("SaveAPIKeyLogin: %v", err)
+	}
+
+	applyStoredAPIKeyLogin()
+
+	// The login key is injected (no profile, no user key to defer to)...
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-LOGIN" {
+		t.Fatalf("stored api-key login was not injected: ORQ_API_KEY = %q", got)
+	}
+	// ...but it is own-exported, so explicitKey is false and the session token
+	// mint that follows in PreRun overrides it: the session wins.
+	if !ownExportedKey() {
+		t.Error("with a session present, the injected api-key login must stay own-exported so the session outranks it")
+	}
+}

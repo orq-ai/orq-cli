@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -83,9 +84,12 @@ func SaveAPIKeyLogin(login *APIKeyLogin) error {
 }
 
 // ReadAPIKeyLogin returns the api-key login for the resolved host, or nil when
-// there is none. A file that will not decode, or one carrying no key, is
-// reported as an error rather than silently treated as absent: a corrupt
-// credential is exactly what a user debugging a failed auth needs surfaced.
+// there is none. A file that will not decode, one stamped with a version this
+// build does not support, or one carrying no key, is reported as an error rather
+// than silently treated as absent: a corrupt credential is exactly what a user
+// debugging a failed auth needs surfaced. Callers on the auth-state paths
+// (whoami/status, logout) surface that error; the PreRun injector warns and
+// proceeds so a broken file cannot take down the commands that fix it.
 func ReadAPIKeyLogin() (*APIKeyLogin, error) {
 	data, err := os.ReadFile(APIKeyLoginFilePath())
 	if err != nil {
@@ -97,6 +101,12 @@ func ReadAPIKeyLogin() (*APIKeyLogin, error) {
 	var login APIKeyLogin
 	if err := json.Unmarshal(data, &login); err != nil {
 		return nil, errors.New("api-key login file contains invalid JSON")
+	}
+	// Same version gate validateSession applies: a file stamped with a version
+	// this build does not write is not one it can trust to read, so surface it
+	// rather than authenticate off a shape that may have moved.
+	if login.Version != 1 {
+		return nil, fmt.Errorf("api-key login file has unsupported version %d", login.Version)
 	}
 	if strings.TrimSpace(login.APIKey) == "" {
 		return nil, errors.New("api-key login file is missing its key")

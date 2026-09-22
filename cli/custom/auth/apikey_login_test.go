@@ -89,3 +89,20 @@ func TestReadAPIKeyLoginRejectsKeylessFile(t *testing.T) {
 		t.Fatalf("api-key login file not where expected: %v", err)
 	}
 }
+
+// A file stamped with a version this build does not write is not one it can
+// trust to read: ReadAPIKeyLogin rejects it as an error, matching validateSession's
+// version gate, rather than authenticating off a shape that may have moved.
+func TestReadAPIKeyLoginRejectsUnsupportedVersion(t *testing.T) {
+	isolateHome(t)
+	dir := sessionsDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(APIKeyLoginFilePath(), []byte(`{"version":2,"apiKey":"sk-orq-LOGIN"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadAPIKeyLogin(); err == nil {
+		t.Error("an api-key login with an unsupported version must be an error, not a silent read")
+	}
+}

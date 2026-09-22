@@ -154,14 +154,17 @@ func NewLogoutCommand() *cobra.Command {
 				// credential can still be the login on this host. Clearing it is
 				// the whole point of logout for an api-key user; leaving it would
 				// re-authenticate the next command against a "logged out" host.
-				apiKeyLogin, err := auth.ReadAPIKeyLogin()
-				if err != nil {
-					return err
-				}
+				//
+				// The read only decides the wording ("Signed out" vs "nothing to
+				// clear"); a corrupt file that will not decode must still be
+				// removed, or logout can never clear the very file that is
+				// breaking every command. So on a read error, take it as "a login
+				// was present" and clear it anyway.
+				apiKeyLogin, readErr := auth.ReadAPIKeyLogin()
 				if err := auth.ClearAPIKeyLogin(); err != nil {
 					return err
 				}
-				apiKeyCleared := apiKeyLogin != nil
+				apiKeyCleared := apiKeyLogin != nil || readErr != nil
 				envCleared, err := clearShellEnvFile()
 				if err != nil {
 					return err
@@ -406,8 +409,15 @@ func NewWhoAmICommand() *cobra.Command {
 			if session == nil {
 				// No browser session, but an `orq auth login --api-key`
 				// credential is still a login on this host. Report it rather than
-				// claiming the user is logged out.
-				if login, lerr := auth.ReadAPIKeyLogin(); lerr == nil && login != nil {
+				// claiming the user is logged out. A corrupt credential file is
+				// surfaced, not read as "not logged in": whoami/status is exactly
+				// where a user debugging a broken login looks, so the error has to
+				// reach them instead of a misleading "you are not logged in".
+				login, lerr := auth.ReadAPIKeyLogin()
+				if lerr != nil {
+					return lerr
+				}
+				if login != nil {
 					return reportAPIKeyLogin(cmd, login)
 				}
 				return errors.New("you are not logged in")
