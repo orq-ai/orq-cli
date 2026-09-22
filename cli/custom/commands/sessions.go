@@ -15,7 +15,14 @@ func NewSessionsCommand() *cobra.Command {
 		Use:     "sessions",
 		Aliases: []string{"session"},
 		Short:   "List saved logins, one per host",
-		Args:    cobra.NoArgs,
+		Long: bartolocli.Markdown(`Lists the OAuth logins on this machine. There is one per server host, and
+the host decides which login authenticates a call — not the workspace, which is
+selected inside a login by ` + "`orq switch`" + `.
+
+The active host comes from ` + "`--server`" + `, ` + "`ORQ_SERVER`" + `, a profile in force, or the
+default persisted by ` + "`orq server set <url>`" + `. So switching login means switching
+server; a host with no login yet needs one ` + "`orq auth login`" + ` under that server.`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, err := auth.ListSessions()
 			if err != nil {
@@ -26,7 +33,7 @@ func NewSessionsCommand() *cobra.Command {
 					Notice("No logins. Use `%s auth login` to create one.", cmd.Root().Name())
 					return nil
 				}
-				printSessionList(sessions)
+				printSessionList(sessions, cmd.Root().Name())
 				warnIfActiveSessionShadowed(sessions)
 				return nil
 			}
@@ -37,7 +44,7 @@ func NewSessionsCommand() *cobra.Command {
 }
 
 // printSessionList renders the logins and marks the resolved host.
-func printSessionList(rows []auth.SessionListEntry) {
+func printSessionList(rows []auth.SessionListEntry, binary string) {
 	out := bartolocli.Stdout
 	heading("Logins")
 	anyActive := false
@@ -55,6 +62,12 @@ func printSessionList(rows []auth.SessionListEntry) {
 	printTable(out, []string{"HOST", "USER", "WORKSPACE", "PROJECT", "STATE"}, table)
 	if anyActive {
 		fmt.Fprintln(out, paint(ansiDim, "\n● active"))
+	}
+	// The table shows hosts you cannot reach from here without saying so: the
+	// login is selected by server, and nothing else on screen says that.
+	if len(rows) > 1 {
+		fmt.Fprintln(out, paint(ansiDim, fmt.Sprintf(
+			"Use another login with `%s server set https://<host>`, or one call at a time with `--server`.", binary)))
 	}
 }
 
