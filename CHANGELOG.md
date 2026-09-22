@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [10.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.1.0) — 2026-09-22
+
 - **Added: `orq auth profile remove <name>`** (aliases `rm`, `delete`) deletes a
   stored profile from `credentials.json`. Until now the only way to drop one was
   editing that file by hand — the file holding live API keys. It removes the
