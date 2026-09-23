@@ -149,28 +149,36 @@ controls on surface changes, whichever side they originate from.
 - **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
   call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
   no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
-  The arguments on an assistant's tool call stay as `--max-chars` cuts them.
+  The arguments on an assistant's tool call stay as `--max-chars` cuts them. A
+  tool result is a tool-role message or a user turn carrying a `tool_result`,
+  as the Anthropic Messages API records one; `-i tool` and `-x tool` select
+  the latter as tool too, where they used to count it as user.
 
 - **Added: `orq traces thread --exclude` / `-x`**, the complement of
-  `--include`: `-x tool` renders the conversation with each tool result
-  replaced by `[omitted: N characters]`, where the same result took
-  `-i system,user,assistant,reasoning`. It cannot be combined with `--include`.
+  `--include`. `-x tool` is shorthand for `-i system,user,assistant,reasoning`:
+  each tool result becomes `[omitted: N characters]`. It cannot be combined
+  with `--include`.
 
 - **Changed: `orq traces thread --include` no longer deletes the turns it
   leaves out.** A message whose role was not selected keeps its place, showing
   its role and `[omitted: N characters]` instead of its content, so a reader
-  can still see that a tool returned something. Under `-i reasoning` every
-  message's body becomes that stub. `--reasoning=false` treats a message that
-  held only reasoning the same way instead of rendering it as
-  `[content unavailable]`. In `-o json` these stubs are parts with
-  `"type": "omitted"` and a `count`.
+  can still see that a tool returned something. N is what the uncapped render
+  would have shown. Under `-i reasoning` every message's body becomes that
+  stub. Reasoning left out of a turn that still shows its body is dropped
+  without one. `--reasoning=false` treats a message that held only reasoning
+  as a stub instead of rendering it as `[content unavailable]`. In `-o json`
+  a stub is a part `{"type": "omitted", "truncated_chars": N}`, and a stubbed
+  assistant turn keeps its tool calls' `id` and `name` with `arguments` null,
+  so a result still pairs with its call.
 
 - **Changed: `orq traces thread -o json|yaml|toon` honours an explicit
-  `--max-chars` or `--tool-max-chars`.** It used to ignore both silently. Without
-  either flag the structured thread is still emitted whole. A cut part keeps
-  the `[truncated: N more characters]` marker in its text and reports the count
-  in `truncated_chars`; a JSON value or tool-call arguments that need cutting
-  become their encoded text as a string.
+  `--max-chars` or `--tool-max-chars`.** It used to ignore both silently.
+  Without either flag the structured thread is still emitted whole. A cut part
+  keeps the `[truncated: N more characters]` marker in its text and reports
+  the count in `truncated_chars`. A `json` part that needs cutting becomes a
+  `text` part holding the cut encoding, and cut tool-call arguments move to
+  `arguments_text` with `arguments` null, so a `json` part's `value` and a
+  call's `arguments` are always the recorded value.
 
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 

@@ -1711,21 +1711,25 @@ func TestTracesThreadCapsTheSearchForAWholeSpan(t *testing.T) {
 func toolResultSpan(result string) map[string]any {
 	return map[string]any{"span": map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
 		map[string]any{"role": "user", "content": "look it up"},
-		map[string]any{"role": "assistant", "content": strings.Repeat("a", 30), "tool_calls": []any{map[string]any{
+		map[string]any{"role": "assistant", "content": strings.Repeat("a", defaultThreadMaxChars+30), "reasoning_content": "think first", "tool_calls": []any{map[string]any{
 			"id": "call_1", "type": "function", "function": map[string]any{"name": "search", "arguments": `{"q":"x"}`},
 		}}},
 		map[string]any{"role": "tool", "tool_call_id": "call_1", "content": result},
+		map[string]any{"role": "assistant", "reasoning_content": "only thinking"},
 	}}}}
 }
 
-func TestTracesThreadToolOutput(t *testing.T) {
-	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": toolResultSpan(strings.Repeat("r", 500))}}
+func TestTracesThreadToolResultCapAndStubs(t *testing.T) {
+	// Longer than the default cap, so "uncut" cannot pass by fitting under it.
+	result := strings.Repeat("r", defaultThreadMaxChars+500)
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": toolResultSpan(result)}}
+	stub := fmt.Sprintf("[omitted: %d characters]", len(result))
 	t.Run("exclude tool leaves a stub and the call", func(t *testing.T) {
 		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "tool")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(out, "rrrr") || !strings.Contains(out, "[omitted: 500 characters]") || !strings.Contains(out, `name="search"`) {
+		if strings.Contains(out, "rrrr") || !strings.Contains(out, stub) || !strings.Contains(out, `name="search"`) {
 			t.Fatalf("xml = %q", out)
 		}
 	})
@@ -1734,7 +1738,7 @@ func TestTracesThreadToolOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, `role="tool"`) || !strings.Contains(out, "[omitted: 500 characters]") {
+		if !strings.Contains(out, `role="tool"`) || !strings.Contains(out, stub) {
 			t.Fatalf("xml = %q", out)
 		}
 	})
@@ -1744,12 +1748,24 @@ func TestTracesThreadToolOutput(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+	t.Run("reasoning=false stubs a reasoning-only turn and keeps -x", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--reasoning=false", "-x", "tool")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "think first") || strings.Contains(out, "only thinking") || !strings.Contains(out, "[omitted: 13 characters]") {
+			t.Fatalf("reasoning survived or went unstubbed: %q", out)
+		}
+		if strings.Contains(out, "rrrr") || !strings.Contains(out, stub) {
+			t.Fatalf("-x tool lost next to --reasoning=false: %q", out)
+		}
+	})
 	t.Run("tool-max-chars cuts only the result", func(t *testing.T) {
 		out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen", "--tool-max-chars", "10", "--max-chars", "20")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "[truncated: 490 more characters]") || !strings.Contains(out, "[truncated: 10 more characters]") {
+		if !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", len(result)-10)) || !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", defaultThreadMaxChars+10)) {
 			t.Fatalf("markdown = %q", out)
 		}
 	})
@@ -1758,7 +1774,7 @@ func TestTracesThreadToolOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, "[truncated: 400 more characters]") {
+		if !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", len(result)-100)) {
 			t.Fatalf("xml = %q", out)
 		}
 	})
@@ -1767,14 +1783,25 @@ func TestTracesThreadToolOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(out, "truncated") || !strings.Contains(out, strings.Repeat("r", 500)) {
-			t.Fatalf("json = %q", out)
+		if strings.Contains(out, "truncated") || !strings.Contains(out, result) || !strings.Contains(out, strings.Repeat("a", defaultThreadMaxChars+30)) {
+			t.Fatalf("json was cut without being asked")
 		}
-		out, err = runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--tool-max-chars", "10")
+	})
+	t.Run("json tool-max-chars cuts only the result", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--tool-max-chars", "10")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(out, `"truncated_chars": 490`) || !strings.Contains(out, strings.Repeat("a", 30)) {
+		if !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, len(result)-10)) || !strings.Contains(out, strings.Repeat("a", defaultThreadMaxChars+30)) {
+			t.Fatalf("json = %q", out)
+		}
+	})
+	t.Run("json max-chars cuts both, tool output following it", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--max-chars", "10")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, len(result)-10)) || !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, defaultThreadMaxChars+20)) {
 			t.Fatalf("json = %q", out)
 		}
 	})

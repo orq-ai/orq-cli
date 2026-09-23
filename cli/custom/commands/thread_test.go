@@ -1218,8 +1218,12 @@ func TestFilterThreadStubsWhatItLeavesOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []ThreadPart{omittedThreadPart(4)}; !reflect.DeepEqual(got.Messages[2].Content, want) || got.Messages[2].ToolCalls != nil || len(got.Messages[2].Reasoning) != 1 {
+	if want := []ThreadPart{omittedThreadPart(4)}; !reflect.DeepEqual(got.Messages[2].Content, want) || len(got.Messages[2].Reasoning) != 1 {
 		t.Fatalf("-i reasoning turn = %+v", got.Messages[2])
+	}
+	// The call keeps what pairs it with its result, and nothing else.
+	if calls := got.Messages[2].ToolCalls; len(calls) != 1 || calls[0].Name != "f" || calls[0].Arguments != nil {
+		t.Fatalf("-i reasoning calls = %+v", calls)
 	}
 	var out bytes.Buffer
 	if err := RenderThread(&out, got, 0, 0); err != nil {
@@ -1231,6 +1235,54 @@ func TestFilterThreadStubsWhatItLeavesOut(t *testing.T) {
 }
 
 // --exclude tool stubs what came back and leaves the call that asked for it.
+// A hidden turn's stub counts everything it hid: body, call arguments, and
+// the reasoning that went with it. A part the span never recorded still counts
+// as what the render would have shown, never as zero.
+func TestFilterThreadStubCountsWhatItHid(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{
+		{Index: 0, Role: "assistant", Content: []ThreadPart{{Type: "text", Text: "hello"}}, Reasoning: []ThreadPart{{Type: "text", Text: "why"}}},
+		{Index: 1, Role: "assistant", Content: []ThreadPart{{Type: "unavailable", Count: 3}}},
+	}}
+	got, err := FilterThread(thread, []string{"user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []ThreadPart{omittedThreadPart(8)}; !reflect.DeepEqual(got.Messages[0].Content, want) {
+		t.Fatalf("stub = %+v, want %+v", got.Messages[0].Content, want)
+	}
+	if count := got.Messages[1].Content[0].Truncated; count != len("[content unavailable: 3 items]") {
+		t.Fatalf("unavailable stub counted %d", count)
+	}
+}
+
+// An Anthropic-shaped tool result is a user turn carrying a tool_result; the
+// tool selection and the tool cap reach it like a tool-role message.
+func TestAnthropicToolResultIsATool(t *testing.T) {
+	long := strings.Repeat("r", 50)
+	thread := Thread{Messages: []ThreadMessage{
+		{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "hi"}}},
+		{Index: 1, Role: "user", ToolCallID: "toolu_1", Content: []ThreadPart{{Type: "text", Text: long}}},
+	}}
+	kinds, err := ExcludeThreadKinds([]string{"tool"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := FilterThread(thread, kinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Messages[0].Content[0].Type != "text" || got.Messages[1].Content[0].Type != "omitted" {
+		t.Fatalf("-x tool = %+v", got.Messages)
+	}
+	var out bytes.Buffer
+	if err := RenderThread(&out, thread, 0, 10); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "[truncated: 40 more characters]") {
+		t.Fatalf("tool cap missed the tool_result turn:\n%s", out.String())
+	}
+}
+
 func TestExcludeToolKeepsTheCall(t *testing.T) {
 	call := ThreadToolCall{ID: "c1", Name: "search", Arguments: map[string]any{"q": "x"}}
 	thread := Thread{Messages: []ThreadMessage{
@@ -1289,16 +1341,42 @@ func TestThreadToolCapIsIndependent(t *testing.T) {
 	if text.Truncated != 40 || !strings.HasPrefix(text.Text, "xxxxxxxxxx\n[truncated: 40") {
 		t.Fatalf("text part = %+v", text)
 	}
-	if _, isString := value.Value.(string); !isString || value.Truncated == 0 {
+	// A cut value is no longer the value, so it stops calling itself json.
+	if value.Type != "text" || value.Value != nil || value.Truncated == 0 {
 		t.Fatalf("json part = %+v", value)
 	}
-	if thread.Messages[1].Content[0].Text != long {
+	if thread.Messages[1].Content[0].Text != long || thread.Messages[1].Content[1].Type != "json" {
 		t.Fatal("CapThread mutated its input")
 	}
 
 	capped = CapThread(thread, 10, 0)
-	if capped.Messages[0].Content[0].Truncated != 40 || capped.Messages[0].ToolCalls[0].Truncated == 0 || capped.Messages[1].Content[0].Truncated != 0 {
+	call := capped.Messages[0].ToolCalls[0]
+	if capped.Messages[0].Content[0].Truncated != 40 || capped.Messages[1].Content[0].Truncated != 0 {
 		t.Fatalf("max cap = %+v", capped.Messages)
+	}
+	if call.Arguments != nil || call.Truncated == 0 || !strings.Contains(call.ArgumentsText, "[truncated:") {
+		t.Fatalf("cut arguments = %+v", call)
+	}
+}
+
+// CapThread cuts every part type the renders cut, the same way.
+func TestCapThreadCutsWhatTheRendersCut(t *testing.T) {
+	long := strings.Repeat("y", 30)
+	thread := Thread{Messages: []ThreadMessage{{
+		Role:      "assistant",
+		Content:   []ThreadPart{{Type: "unsupported", UnsupportedType: long, Text: long}},
+		Reasoning: []ThreadPart{{Type: "text", Text: long}},
+		ToolCalls: []ThreadToolCall{{Name: "f", Arguments: long}},
+	}}}
+	capped := CapThread(thread, 10, 0).Messages[0]
+	if part := capped.Content[0]; part.Truncated != 40 || !strings.Contains(part.UnsupportedType, "[truncated: 20") {
+		t.Fatalf("unsupported = %+v", part)
+	}
+	if capped.Reasoning[0].Truncated != 20 {
+		t.Fatalf("reasoning = %+v", capped.Reasoning[0])
+	}
+	if call := capped.ToolCalls[0]; call.Arguments != nil || call.Truncated != 20 {
+		t.Fatalf("string arguments = %+v", call)
 	}
 }
 

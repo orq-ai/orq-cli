@@ -25,15 +25,6 @@ func RenderThread(w io.Writer, thread Thread, maxChars, toolChars int) error {
 	return err
 }
 
-// threadMessageCap is the cap a message's blocks are cut to: --tool-max-chars for
-// a tool result, --max-chars for everything else.
-func threadMessageCap(message ThreadMessage, maxChars, toolChars int) int {
-	if message.Role == "tool" {
-		return toolChars
-	}
-	return maxChars
-}
-
 func renderThreadMessage(message ThreadMessage, maxChars int) string {
 	attributes := []string{"index=" + threadAttribute(strconv.Itoa(message.Index)), "role=" + threadAttribute(message.Role)}
 	if message.Name != "" {
@@ -255,7 +246,7 @@ func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string)
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
 		case "omitted":
-			rendered = fmt.Sprintf("[omitted: %d characters]", part.Count)
+			rendered = fmt.Sprintf("[omitted: %d characters]", part.Truncated)
 		case "unsupported":
 			// Both halves are recorded span text, so both can carry framing —
 			// and both are capped here rather than after the brackets are
