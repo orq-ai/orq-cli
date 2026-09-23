@@ -1433,11 +1433,6 @@ func OpenapiApiKeyGet(paramApiKeyId string, params *viper.Viper) (*gentleman.Res
 
 	req := bartolocli.Client.Get().URL(url)
 
-	paramIncludeBudget := params.GetBool("include-budget")
-	if bartolocli.FlagPassed(params, "include-budget") || paramIncludeBudget != false {
-		req = req.AddQuery("include_budget", fmt.Sprintf("%v", paramIncludeBudget))
-	}
-
 	bartolocli.HandleBefore(handlerPath, params, req)
 
 	resp, err := req.Do()
@@ -1476,48 +1471,20 @@ func OpenapiApiKeyList(params *viper.Viper) (*gentleman.Response, interface{}, e
 
 	req := bartolocli.Client.Get().URL(url)
 
-	paramLimit := params.GetInt64("limit")
-	if bartolocli.FlagPassed(params, "limit") || paramLimit != 0 {
-		req = req.AddQuery("limit", fmt.Sprintf("%v", paramLimit))
-	}
-	paramStartingAfter := params.GetString("starting-after")
-	if bartolocli.FlagPassed(params, "starting-after") || paramStartingAfter != "" {
-		req = req.AddQuery("starting_after", fmt.Sprintf("%v", paramStartingAfter))
-	}
-	paramEndingBefore := params.GetString("ending-before")
-	if bartolocli.FlagPassed(params, "ending-before") || paramEndingBefore != "" {
-		req = req.AddQuery("ending_before", fmt.Sprintf("%v", paramEndingBefore))
-	}
 	paramProjectId := params.GetString("project-id")
 	if bartolocli.FlagPassed(params, "project-id") || paramProjectId != "" {
 		req = req.AddQuery("project_id", fmt.Sprintf("%v", paramProjectId))
 	}
-	paramStatus := params.GetString("status")
-	if bartolocli.FlagPassed(params, "status") || paramStatus != "" {
+	paramSource := params.GetString("source")
+	if bartolocli.FlagPassed(params, "source") || paramSource != "" {
 		{
-			normalized, err := bartolocli.NormalizeParam("--status", paramStatus, "", []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"})
+			normalized, err := bartolocli.NormalizeParam("--source", paramSource, "", []string{"workspace", "router"})
 			if err != nil {
 				return nil, nil, err
 			}
-			paramStatus = normalized
+			paramSource = normalized
 		}
-		req = req.AddQuery("status", fmt.Sprintf("%v", paramStatus))
-	}
-	paramSearch := params.GetString("search")
-	if bartolocli.FlagPassed(params, "search") || paramSearch != "" {
-		req = req.AddQuery("search", fmt.Sprintf("%v", paramSearch))
-	}
-	paramOwnerType := params.GetString("owner-type")
-	if bartolocli.FlagPassed(params, "owner-type") || paramOwnerType != "" {
-		req = req.AddQuery("owner_type", fmt.Sprintf("%v", paramOwnerType))
-	}
-	paramPermissionMode := params.GetString("permission-mode")
-	if bartolocli.FlagPassed(params, "permission-mode") || paramPermissionMode != "" {
-		req = req.AddQuery("permission_mode", fmt.Sprintf("%v", paramPermissionMode))
-	}
-	paramIncludeBudget := params.GetBool("include-budget")
-	if bartolocli.FlagPassed(params, "include-budget") || paramIncludeBudget != false {
-		req = req.AddQuery("include_budget", fmt.Sprintf("%v", paramIncludeBudget))
+		req = req.AddQuery("source", fmt.Sprintf("%v", paramSource))
 	}
 
 	bartolocli.HandleBefore(handlerPath, params, req)
