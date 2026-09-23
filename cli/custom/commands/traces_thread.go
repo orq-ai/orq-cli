@@ -49,7 +49,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the main conversation is read: model calls first, shallowest first so a subagent's calls come after the main loop's, and the later of two siblings; then other spans, deepest first; tool executions last. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
+			"Given a trace id alone, the main conversation is read: model calls first, shallowest first so a subagent's calls come after the main loop's, and the later of two siblings; then other spans, deepest first; tool executions last. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns among the next 25 read does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -303,11 +303,23 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 	tried := make(map[string]bool, len(candidates))
 	var operationalErr error
 	var best *Thread
-	degraded := false
+	degraded, degradedReads := false, 0
 	// The newest span usually holds the whole history, so it returns as soon as
 	// it hydrates; once one is missing content, a sibling that kept it is worth
-	// finding, and it is not always the next span tried.
+	// finding, and it is not always the next span tried. That search reads at
+	// most threadSpanReadLimit spans: a trace with every span degraded would
+	// otherwise cost a request per span.
+	exhausted := func() bool {
+		if !degraded || degradedReads < threadSpanReadLimit {
+			return false
+		}
+		Warn("no span read in full after %d tries; rendering the fullest of them, and --span <id> reads any other", degradedReads)
+		return true
+	}
 	consider := func(spanID string) *Thread {
+		if degraded {
+			degradedReads++
+		}
 		thread, note, err := hydrateNotedThread(api, traceID, spanID, params)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedConversation) {
@@ -342,6 +354,9 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 		if tried[candidate.id] {
 			continue
 		}
+		if exhausted() {
+			return *best, nil
+		}
 		tried[candidate.id] = true
 		if thread := consider(candidate.id); thread != nil {
 			return *thread, nil
@@ -350,6 +365,9 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 	for _, fallbackID := range fallbackIDs {
 		if tried[fallbackID] || excluded[fallbackID] {
 			continue
+		}
+		if exhausted() {
+			return *best, nil
 		}
 		tried[fallbackID] = true
 		if thread := consider(fallbackID); thread != nil {
@@ -393,9 +411,14 @@ func threadIsWhole(thread Thread) bool {
 // threadDropsContent reports a thread the collector recorded without its text,
 // or that holds a part this command could not read.
 func threadDropsContent(thread Thread) bool {
+	return threadHasPart(thread, threadPartDropped)
+}
+
+// threadHasPart reports a thread holding a part the test matches.
+func threadHasPart(thread Thread, test func(ThreadPart) bool) bool {
 	for _, message := range thread.Messages {
 		for _, part := range message.Content {
-			if threadPartDropped(part) {
+			if test(part) {
 				return true
 			}
 		}
@@ -403,23 +426,16 @@ func threadDropsContent(thread Thread) bool {
 	return false
 }
 
-// threadPartDropped reports a part whose content does not reach the reader. An
-// unsupported part is one the normalizer had no rule for, so it counts the same
-// as one the collector dropped; media is left unrendered on purpose and names
-// what it was instead.
+// threadPartDropped reports a part whose content does not reach the reader:
+// the collector dropped it, or it is unreadable.
 func threadPartDropped(part ThreadPart) bool {
-	if part.Type == "unavailable" {
-		return true
-	}
-	if part.Type != "unsupported" {
-		return false
-	}
-	for _, media := range []string{"image", "audio", "video", "file", "document", "blob", "uri"} {
-		if strings.Contains(part.UnsupportedType, media) {
-			return false
-		}
-	}
-	return true
+	return part.Type == "unavailable" || threadPartUnreadable(part)
+}
+
+// threadPartUnreadable reports a part the normalizer had no rule for. Media is
+// left unrendered on purpose and names what it was instead, so it is not one.
+func threadPartUnreadable(part ThreadPart) bool {
+	return part.Type == "unsupported" && !threadMediaKinds[part.UnsupportedType]
 }
 
 // threadHasAnswer reports a thread that holds a reply, not just the prompt.
@@ -499,6 +515,13 @@ func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 	if err == nil && threadIsWhole(thread) {
 		return thread, "", nil
 	}
+	// A span the collector kept whole but that holds a part this command has
+	// no rule for: the stored response would hold the same part, so there is
+	// nothing to fetch, and "dropped by the collector" would blame the wrong
+	// side.
+	if err == nil && !threadHasPart(thread, func(part ThreadPart) bool { return part.Type == "unavailable" }) && threadHasPart(thread, threadPartUnreadable) {
+		return thread, threadNoteUnrecognised, nil
+	}
 	stored, note := hydrateStoredResponse(api, traceID, spanID, span, params)
 	if stored != nil && (err != nil || betterThread(*stored, thread)) {
 		if !threadIsWhole(*stored) {
@@ -518,13 +541,14 @@ func hydrateNotedThread(api TraceAPI, traceID, spanID string, params *viper.Vipe
 }
 
 const (
-	threadNoteDropped     = "content dropped by the collector"
-	threadNoteUnstored    = "content dropped by the collector, and the span names no stored response to read it from"
-	threadNoteProviderID  = "content dropped by the collector, and the response id the span names is the provider's own, which this API cannot read"
-	threadNoteStoredGone  = "the stored response this span names is gone"
-	threadNoteNoAnswer    = "no reply recorded on this span: the runtime holds it outside the trace"
-	threadNoteUnsupported = "no conversation recorded"
-	threadNoteUnreadable  = "could not be read"
+	threadNoteDropped      = "content dropped by the collector"
+	threadNoteUnstored     = "content dropped by the collector, and the span names no stored response to read it from"
+	threadNoteProviderID   = "content dropped by the collector, and the response id the span names is the provider's own, which this API cannot read"
+	threadNoteStoredGone   = "the stored response this span names is gone"
+	threadNoteNoAnswer     = "no reply recorded on this span: the runtime holds it outside the trace"
+	threadNoteUnsupported  = "no conversation recorded"
+	threadNoteUnreadable   = "could not be read"
+	threadNoteUnrecognised = "holds content parts this command does not recognise"
 )
 
 // threadStoredReadNote reports a stored response this command asked for and did
@@ -792,7 +816,7 @@ func threadSpanTier(spanType string) int {
 	switch {
 	case strings.Contains(spanType, "tool"):
 		return threadTierTool
-	case spanType == "span.chat_completion" || spanType == "span.responses":
+	case strings.Contains(spanType, "completion") || spanType == "span.responses":
 		return threadTierModelCall
 	}
 	return threadTierOther

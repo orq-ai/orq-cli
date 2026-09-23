@@ -9,7 +9,7 @@
           "messages": [
             {"role": "user", "parts": [{"type": "text", "content": "Synthetic fixture request: list the docs."}]},
             {"role": "assistant", "parts": [{"type": "reasoning", "content": "I'll look at the docs directory first."}]},
-            {"role": "assistant", "parts": [{"type": "tool_call", "id": "toolu_synthetic_1", "name": "Bash", "arguments": "{\"command\":\"ls docs\"}"}]},
+            {"role": "assistant", "parts": [{"type": "text", "content": "Listing them."}, {"type": "tool_call", "id": "toolu_synthetic_1", "name": "Bash", "arguments": {"command": "ls docs"}}]},
             {"role": "tool", "parts": [{"type": "tool_call_response", "id": "toolu_synthetic_1", "response": "index.md\nusage.md"}]},
             {"role": "assistant", "parts": [{"type": "text", "content": "There are two docs."}]}
           ]

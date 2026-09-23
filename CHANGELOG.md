@@ -127,14 +127,21 @@ controls on surface changes, whichever side they originate from.
   rules read an `agent` or `model` role as the assistant, `human` as the user,
   and a tool message whose body is a bare `output`. A part the command cannot
   read now counts as dropped content, so selection keeps looking for a span
-  that kept it, as it already did for content the collector dropped.
+  that kept it, as it already did for content the collector dropped; `--spans`
+  notes such a span as holding parts the command does not recognise rather than
+  blaming the collector. When no span reads whole, that search stops after 25
+  reads with a warning instead of reading every span in the trace. Anthropic
+  server tools (`server_tool_use`, `web_search_tool_result`) read as tool calls
+  and results.
 
   Tool results render as the tool returned them. A result the gateway recorded
   JSON-encoded a second time, as it does for server tools such as
   `orq:subagent` and `orq:advisor`, rendered as a quoted string of escapes; a
   tool's JSON holding a field named like `truncated` rendered as a truncation
   marker in place of the result; and a returned list of records split into one
-  part per record. Each now renders as one value.
+  part per record. Each now renders as one value. A result is the tool's own
+  data: only a recognised content part, such as MCP's `[{"type":"text"}]`, is
+  read as one, so a record with its own `type` or `text` field renders whole.
 
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 
