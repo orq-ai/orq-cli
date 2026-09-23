@@ -251,12 +251,16 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 	if !ok {
 		return ThreadMessage{}, false
 	}
-	role := threadString(object["role"])
+	role := threadRole(threadString(object["role"]))
 	if role != "system" && role != "developer" && role != "user" && role != "assistant" && role != "tool" {
 		return ThreadMessage{}, false
 	}
 	content := messageContent(object)
-	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: threadParts(content), ToolCallID: threadString(object["tool_call_id"])}
+	parts := threadParts(content)
+	if role == "tool" {
+		parts = toolResultParts(content)
+	}
+	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: parts, ToolCallID: firstThreadString(object["tool_call_id"], object["call_id"])}
 	message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 	if message.ToolCallID == "" {
 		message.ToolCallID = contentToolCallID(content)
@@ -273,6 +277,21 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 		message.Reasoning = contentReasoning(content)
 	}
 	return message, true
+}
+
+// threadRole maps the names other SDKs give the chat roles onto them: A2A and
+// Gemini call the model `agent` and `model`, LangChain `ai` and `human`, and
+// Chat Completions before tools called a tool result `function`.
+func threadRole(role string) string {
+	switch role {
+	case "agent", "model", "ai":
+		return "assistant"
+	case "human":
+		return "user"
+	case "function":
+		return "tool"
+	}
+	return role
 }
 
 func firstUsableChatValue(span map[string]any, primary, fallback string, decode func(any) []any) any {
@@ -360,8 +379,8 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 		if name == "" {
 			name = toolItemName(item)
 		}
-		content := firstThreadPresent(item, "output", "content", "result")
-		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "tool", Name: name, ToolCallID: callID, Content: threadParts(content)})
+		content := firstThreadPresent(item, "output", "content", "result", "response")
+		thread.Messages = append(thread.Messages, ThreadMessage{Index: index, Role: "tool", Name: name, ToolCallID: callID, Content: toolResultParts(content)})
 	case "error", "exception":
 		role := threadString(item["role"])
 		if role != "user" && role != "assistant" && role != "tool" {
@@ -382,17 +401,23 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 	return pending
 }
 
-func isToolCallItem(itemType string) bool { return strings.HasSuffix(itemType, "_call") }
+// isToolCallItem and isToolResultItem classify a Responses item and a content
+// part alike, by the naming every dialect shares: Anthropic's tool_use and
+// tool_result, and otherwise a `_call` with its `_call_output`, `_call_result`
+// or, in OTel GenAI, `_call_response`.
+func isToolCallItem(itemType string) bool {
+	return itemType == "tool_use" || strings.HasSuffix(itemType, "_call")
+}
 
 func isToolResultItem(itemType string) bool {
-	return strings.HasSuffix(itemType, "_call_output") || strings.HasSuffix(itemType, "_call_result")
+	return itemType == "tool_result" || strings.HasSuffix(itemType, "_call_output") || strings.HasSuffix(itemType, "_call_result") || strings.HasSuffix(itemType, "_call_response")
 }
 
 // toolItemName names a built-in tool call, which reports its identity in the
 // item type instead of a name field the way a function call does.
 func toolItemName(item map[string]any) string {
 	itemType := threadString(item["type"])
-	for _, suffix := range []string{"_call_output", "_call_result", "_call"} {
+	for _, suffix := range []string{"_call_output", "_call_result", "_call_response", "_call"} {
 		if trimmed, ok := strings.CutSuffix(itemType, suffix); ok {
 			return trimmed
 		}
@@ -551,9 +576,10 @@ func threadList(value any) []any {
 }
 
 // messageContent reads a message body, which OTel GenAI spells `parts` where the
-// provider SDKs spell it `content`.
+// provider SDKs spell it `content`, and a tool message may carry as the bare
+// `output` a Responses tool result would.
 func messageContent(object map[string]any) any {
-	content := firstThreadPresent(object, "content", "parts")
+	content := firstThreadPresent(object, "content", "parts", "output", "result", "response")
 	if list := threadList(content); list != nil {
 		return list
 	}
@@ -573,10 +599,10 @@ func firstThreadPresent(object map[string]any, keys ...string) any {
 // own — a tool call or its reasoning — rather than in its body.
 func carriedOffBody(kind string) bool {
 	switch kind {
-	case "tool_use", "tool_call", "function_call", "thinking", "redacted_thinking", "reasoning":
+	case "thinking", "redacted_thinking", "reasoning":
 		return true
 	}
-	return false
+	return isToolCallItem(kind)
 }
 
 // contentReasoning lifts thinking expressed as a content part onto the message,
@@ -642,8 +668,7 @@ func contentToolCalls(value any) []ThreadToolCall {
 		if !ok {
 			continue
 		}
-		switch contentPartKind(object) {
-		case "tool_use", "tool_call", "function_call":
+		if isToolCallItem(contentPartKind(object)) {
 			arguments := firstThreadPresent(object, "input", "arguments", "args")
 			if text, ok := arguments.(string); ok {
 				arguments = decodeJSONOrString(text)
@@ -669,8 +694,8 @@ func contentToolCallID(value any) string {
 		if !ok {
 			continue
 		}
-		if kind := contentPartKind(object); kind == "tool_result" || kind == "function_call_output" {
-			if id := firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"]); id != "" {
+		if isToolResultItem(contentPartKind(object)) {
+			if id := firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"], object["id"]); id != "" {
 				return id
 			}
 		}
@@ -767,15 +792,49 @@ func threadParts(value any) []ThreadPart {
 		}
 		switch kind {
 		case "text", "input_text", "output_text", "summary_text", "refusal":
-			return threadParts(typed["text"])
-		case "tool_result", "function_call_output":
-			return threadParts(firstThreadPresent(typed, "result", "content", "output"))
-		default:
-			return []ThreadPart{{Type: "unsupported", UnsupportedType: kind, Text: mediaReference(typed)}}
+			// OTel GenAI puts a text part's text under `content`.
+			return threadParts(firstThreadPresent(typed, "text", "content"))
 		}
+		if isToolResultItem(kind) {
+			return toolResultParts(firstThreadPresent(typed, "result", "content", "output", "response"))
+		}
+		return []ThreadPart{{Type: "unsupported", UnsupportedType: kind, Text: mediaReference(typed)}}
 	default:
 		return []ThreadPart{{Type: "json", Value: typed}}
 	}
+}
+
+// toolResultParts reads what a tool returned. That is the tool's own data, so
+// an object in it is shown as recorded: a `truncated` or `redacted` field in a
+// tool's JSON describes the tool's result, not a part the collector withheld.
+func toolResultParts(value any) []ThreadPart {
+	// The gateway records a server tool's result JSON-encoded a second time.
+	if text, ok := decodeThreadValue(value).(string); ok && strings.HasPrefix(strings.TrimSpace(text), `"`) {
+		var inner string
+		if json.Unmarshal([]byte(text), &inner) == nil {
+			return toolResultParts(inner)
+		}
+	}
+	if object, ok := threadMap(decodeThreadValue(value)); ok && contentPartKind(object) == "" {
+		if text, ok := object["text"]; ok {
+			return threadParts(text)
+		}
+		return []ThreadPart{{Type: "json", Value: object}}
+	}
+	// A list of plain records is one value, not a part per record.
+	if list, ok := decodeThreadValue(value).([]any); ok && len(list) > 0 {
+		plain := true
+		for _, item := range list {
+			if object, ok := threadMap(item); !ok || contentPartKind(object) != "" {
+				plain = false
+				break
+			}
+		}
+		if plain {
+			return []ThreadPart{{Type: "json", Value: list}}
+		}
+	}
+	return threadParts(value)
 }
 
 func threadLookup(span map[string]any, key string) (any, bool) {
@@ -845,6 +904,9 @@ func decodeThreadValue(value any) any {
 		if wrapped, ok := typed["string"]; ok {
 			return decodeThreadValue(wrapped)
 		}
+		if wrapped, ok := goUnionValue(typed); ok {
+			return decodeThreadValue(wrapped)
+		}
 		result := make(map[string]any, len(typed))
 		for key, item := range typed {
 			result[key] = decodeThreadValue(item)
@@ -853,6 +915,20 @@ func decodeThreadValue(value any) any {
 	default:
 		return value
 	}
+}
+
+// goUnionValue unwraps a union from the Go OpenAI SDKs, which serialises as its
+// one set variant: {"OfString": "..."}.
+func goUnionValue(object map[string]any) (any, bool) {
+	if len(object) != 1 {
+		return nil, false
+	}
+	for key, value := range object {
+		if len(key) > 2 && strings.HasPrefix(key, "Of") && key[2] >= 'A' && key[2] <= 'Z' {
+			return value, true
+		}
+	}
+	return nil, false
 }
 
 func decodeJSONOrString(text string) any {

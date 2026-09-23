@@ -1583,3 +1583,46 @@ func TestTracesThreadKeepsLookingPastASpanWithNoReply(t *testing.T) {
 		}
 	}
 }
+
+// A Claude Code trace interleaves tool-execution spans with the model calls,
+// and runs subagents under agent spans. The newest, deepest span is a tool
+// call; the conversation is the main loop's last model call.
+func TestTracesThreadReadsTheMainModelCallNotAToolOrSubagentSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "session"}},
+		spans: map[string]map[string]any{
+			"main":     loadThreadFixture(t, "claude-code.json"),
+			"subchat":  conversationalSpan("the subagent's task"),
+			"subtool":  conversationalSpan("a tool span must not win"),
+			"maintool": conversationalSpan("a tool span must not win"),
+		},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "session", "type": "trace", "has_detail": true, "started_at": "2026-09-22T12:00:00Z"},
+			map[string]any{"span_id": "main", "type": "span.chat_completion", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:05Z"},
+			map[string]any{"span_id": "maintool", "type": "span.agent_tool_execution", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:06Z"},
+			map[string]any{"span_id": "agent", "type": "span.agent", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:07Z"},
+			map[string]any{"span_id": "subchat", "type": "span.chat_completion", "parent_span_id": "agent", "has_detail": true, "started_at": "2026-09-22T12:00:08Z"},
+			map[string]any{"span_id": "subtool", "type": "span.agent_tool_execution", "parent_span_id": "agent", "has_detail": true, "started_at": "2026-09-22T12:00:09Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	order := []string{}
+	for _, span := range payload.Spans {
+		order = append(order, span.SpanID)
+	}
+	if want := []string{"main", "subchat", "agent", "session", "subtool", "maintool"}; fmt.Sprint(order) != fmt.Sprint(want) {
+		t.Fatalf("try order = %v, want %v", order, want)
+	}
+	if !payload.Spans[0].Selected {
+		t.Fatalf("selected = %+v, want the main model call", payload.Spans)
+	}
+}

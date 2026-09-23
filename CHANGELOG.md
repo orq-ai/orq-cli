@@ -117,6 +117,25 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed: `orq traces thread` on Claude Code traces.** Given only a trace id it
+  read the newest tool-execution span, one `Bash` result, instead of the
+  conversation. Selection now tries model-call spans first, the main loop's
+  before a subagent's, and tool executions last. The spans it reads also lost
+  most of their content: OTel GenAI `text` parts, which carry their text under
+  `content`, rendered as nothing, and `tool_call_response` parts rendered as
+  unsupported. Both now render, in the default render and in `-o json`. The same
+  rules read an `agent` or `model` role as the assistant, `human` as the user,
+  and a tool message whose body is a bare `output`. A part the command cannot
+  read now counts as dropped content, so selection keeps looking for a span
+  that kept it, as it already did for content the collector dropped.
+
+  Tool results render as the tool returned them. A result the gateway recorded
+  JSON-encoded a second time, as it does for server tools such as
+  `orq:subagent` and `orq:advisor`, rendered as a quoted string of escapes; a
+  tool's JSON holding a field named like `truncated` rendered as a truncation
+  marker in place of the result; and a returned list of records split into one
+  part per record. Each now renders as one value.
+
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 
 - **Changed: `orq server use` accepts any host, not only a generated one.**

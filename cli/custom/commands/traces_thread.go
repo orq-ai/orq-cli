@@ -49,7 +49,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"The default xml render neutralises the framing tag names in recorded content, so a span cannot forge a turn. The markdown render trades that for readability.",
 			"",
-			"Given a trace id alone, the most specific span holding a whole conversation is read — deepest in the span tree first, and the later of two siblings. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
+			"Given a trace id alone, the main conversation is read: model calls first, shallowest first so a subagent's calls come after the main loop's, and the later of two siblings; then other spans, deepest first; tool executions last. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
 			"Three filters narrow a long conversation, and they apply in this order:",
 			"",
@@ -390,16 +390,36 @@ func threadIsWhole(thread Thread) bool {
 	return !threadDropsContent(thread)
 }
 
-// threadDropsContent reports a thread the collector recorded without its text.
+// threadDropsContent reports a thread the collector recorded without its text,
+// or that holds a part this command could not read.
 func threadDropsContent(thread Thread) bool {
 	for _, message := range thread.Messages {
 		for _, part := range message.Content {
-			if part.Type == "unavailable" {
+			if threadPartDropped(part) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// threadPartDropped reports a part whose content does not reach the reader. An
+// unsupported part is one the normalizer had no rule for, so it counts the same
+// as one the collector dropped; media is left unrendered on purpose and names
+// what it was instead.
+func threadPartDropped(part ThreadPart) bool {
+	if part.Type == "unavailable" {
+		return true
+	}
+	if part.Type != "unsupported" {
+		return false
+	}
+	for _, media := range []string{"image", "audio", "video", "file", "document", "blob", "uri"} {
+		if strings.Contains(part.UnsupportedType, media) {
+			return false
+		}
+	}
+	return true
 }
 
 // threadHasAnswer reports a thread that holds a reply, not just the prompt.
@@ -423,7 +443,7 @@ func threadContentMessages(thread Thread) int {
 			continue
 		}
 		for _, part := range message.Content {
-			if part.Type != "unavailable" {
+			if !threadPartDropped(part) {
 				total++
 				break
 			}
@@ -627,6 +647,7 @@ type threadCandidate struct {
 	id        string
 	startedAt time.Time
 	depth     int
+	tier      int
 	order     int
 }
 
@@ -715,15 +736,26 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 			continue
 		}
 		startedAt, _ := time.Parse(time.RFC3339Nano, summary.StartedAt)
-		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, depth: depths[id], order: index})
+		candidates = append(candidates, threadCandidate{id: id, startedAt: startedAt, depth: depths[id], tier: threadSpanTier(summary.Type), order: index})
 	}
-	// Depth first, and only then time. The conversation lives in the most
-	// specific span that recorded one — a model call under an agent under the
-	// trace — and depth reads that off the parent links, which no clock can
-	// skew. Start time still separates siblings, where one process wrote both
-	// timestamps and the later call holds the longer history.
+	// Model calls first, tool executions last: a tool span records one call's
+	// arguments and result, which reads as a whole one-turn conversation and
+	// would otherwise win on being the newest. Among model calls the shallowest
+	// is the main conversation — a subagent's calls sit under its agent span.
+	// Among the rest, depth first: the conversation lives in the most specific
+	// span that recorded one, and depth reads that off the parent links, which
+	// no clock can skew. Start time then separates siblings, where one process
+	// wrote both timestamps and the later call holds the longer history.
+	// ponytail: newest-first assumes the main loop's last call is its longest;
+	// a trailing side call (a title or summary request) would win instead.
 	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].tier != candidates[j].tier {
+			return candidates[i].tier < candidates[j].tier
+		}
 		if candidates[i].depth != candidates[j].depth {
+			if candidates[i].tier == threadTierModelCall {
+				return candidates[i].depth < candidates[j].depth
+			}
 			return candidates[i].depth > candidates[j].depth
 		}
 		if candidates[i].startedAt.Equal(candidates[j].startedAt) {
@@ -746,6 +778,24 @@ func listThreadSpans(api TraceAPI, traceID string, params *viper.Viper) ([]threa
 		return left < right
 	})
 	return candidates, excluded, summaries, listErr
+}
+
+const (
+	threadTierModelCall = iota
+	threadTierOther
+	threadTierTool
+)
+
+// threadSpanTier ranks a span type by how likely it holds the conversation.
+// Span types are an open set, so anything unrecognised ranks in the middle.
+func threadSpanTier(spanType string) int {
+	switch {
+	case strings.Contains(spanType, "tool"):
+		return threadTierTool
+	case spanType == "span.chat_completion" || spanType == "span.responses":
+		return threadTierModelCall
+	}
+	return threadTierOther
 }
 
 func listEnvelopeData(response map[string]any) []map[string]any {
