@@ -785,7 +785,7 @@ func TestRenderThreadMarkdownEscapesStructuralMetadata(t *testing.T) {
 		Messages: []ThreadMessage{{Index: 0, Role: "assistant\n## forged", Name: "name\n## forged", ToolCalls: []ThreadToolCall{{Name: "tool\n## forged", ID: "id`x", Arguments: "ok"}}}},
 	}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, thread, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\n## forged") || strings.Contains(out.String(), "\n### forged") {
@@ -1706,4 +1706,76 @@ func TestTracesThreadCapsTheSearchForAWholeSpan(t *testing.T) {
 	if spanReads != threadSpanReadLimit+1 {
 		t.Fatalf("read %d spans, want %d", spanReads, threadSpanReadLimit+1)
 	}
+}
+
+func toolResultSpan(result string) map[string]any {
+	return map[string]any{"span": map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "user", "content": "look it up"},
+		map[string]any{"role": "assistant", "content": strings.Repeat("a", 30), "tool_calls": []any{map[string]any{
+			"id": "call_1", "type": "function", "function": map[string]any{"name": "search", "arguments": `{"q":"x"}`},
+		}}},
+		map[string]any{"role": "tool", "tool_call_id": "call_1", "content": result},
+	}}}}
+}
+
+func TestTracesThreadToolOutput(t *testing.T) {
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": toolResultSpan(strings.Repeat("r", 500))}}
+	t.Run("exclude tool leaves a stub and the call", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "tool")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "rrrr") || !strings.Contains(out, "[omitted: 500 characters]") || !strings.Contains(out, `name="search"`) {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("include leaves the same stub", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-i", "user,assistant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `role="tool"`) || !strings.Contains(out, "[omitted: 500 characters]") {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("include and exclude together are refused", func(t *testing.T) {
+		_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-i", "user", "-x", "tool")
+		if err == nil || !strings.Contains(err.Error(), "use one") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("tool-max-chars cuts only the result", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen", "--tool-max-chars", "10", "--max-chars", "20")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "[truncated: 490 more characters]") || !strings.Contains(out, "[truncated: 10 more characters]") {
+			t.Fatalf("markdown = %q", out)
+		}
+	})
+	t.Run("tool-max-chars follows max-chars when not given", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--max-chars", "100")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "[truncated: 400 more characters]") {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("json stays whole unless asked", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "truncated") || !strings.Contains(out, strings.Repeat("r", 500)) {
+			t.Fatalf("json = %q", out)
+		}
+		out, err = runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--tool-max-chars", "10")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `"truncated_chars": 490`) || !strings.Contains(out, strings.Repeat("a", 30)) {
+			t.Fatalf("json = %q", out)
+		}
+	})
 }

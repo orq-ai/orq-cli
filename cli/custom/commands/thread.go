@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // Thread is the canonical, portable representation of a traced conversation.
@@ -51,6 +52,9 @@ type ThreadPart struct {
 	State           string `json:"state,omitempty"`
 	Count           int    `json:"count,omitempty"`
 	UnsupportedType string `json:"unsupported_type,omitempty"`
+	// Truncated is how many characters a cap cut from Text or Value, set only
+	// on a structured render that was asked for one.
+	Truncated int `json:"truncated_chars,omitempty"`
 }
 
 // ThreadToolCall is an assistant request to invoke a tool.
@@ -58,6 +62,8 @@ type ThreadToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments any    `json:"arguments"`
+	// Truncated is how many characters a cap cut from Arguments.
+	Truncated int `json:"truncated_chars,omitempty"`
 }
 
 // SliceThread applies a zero-based Python-style slice to thread messages.
@@ -131,15 +137,18 @@ var ThreadKinds = []string{"system", "user", "assistant", "tool", threadKindReas
 const threadKindReasoning = "reasoning"
 
 // FilterThread keeps only the selected kinds. Role names decide whose messages
-// survive; reasoning decides whether the recorded thinking inside them does. A
+// are shown; reasoning decides whether the recorded thinking inside them is. A
 // selection naming no role keeps every role, so --include reasoning reads as "the
 // thinking, wherever it was recorded" rather than as nothing at all.
 //
-// A message the selection empties is dropped. One that was already empty
-// survives a role selection, because the render says "[content unavailable]"
-// for a turn that happened with nothing recorded and that is a fact about the
-// trace rather than something the filter was asked to hide — but not a
-// reasoning-only selection, which asked about sections and not about turns.
+// Nothing the selection leaves out is deleted: a message whose role was not
+// asked for keeps its place with an omitted stub in place of what it recorded,
+// and so does the body of every message under a reasoning-only selection. A
+// render that dropped the turn outright would show an assistant reacting to a
+// result the reader cannot see, with nothing saying a result was there.
+// Thinking left out of a message that still shows its body goes quietly —
+// that is what --include user,assistant is for — unless it was all the message
+// held.
 func FilterThread(thread Thread, kinds []string) (Thread, error) {
 	selected := map[string]bool{}
 	roles := false
@@ -159,24 +168,92 @@ func FilterThread(thread Thread, kinds []string) (Thread, error) {
 	}
 	kept := make([]ThreadMessage, 0, len(thread.Messages))
 	for _, message := range thread.Messages {
-		if roles && !selected[threadRoleKind(message.Role)] {
-			continue
-		}
-		had := len(message.Content) > 0 || len(message.Reasoning) > 0 || len(message.ToolCalls) > 0
-		if !selected[threadKindReasoning] {
+		roleKept := !roles || selected[threadRoleKind(message.Role)]
+		dropBody := !roleKept || !roles
+		dropReasoning := !roleKept || !selected[threadKindReasoning]
+		hadBody := len(message.Content) > 0 || len(message.ToolCalls) > 0
+		bodyChars := threadPartsChars(message.Content) + threadToolCallsChars(message.ToolCalls)
+		reasoningChars := threadPartsChars(message.Reasoning)
+		hadReasoning := len(message.Reasoning) > 0
+		if dropReasoning {
 			message.Reasoning = nil
 		}
-		if !roles {
-			message.Content, message.ToolCalls = nil, nil
-		}
-		if (had || !roles) && len(message.Content) == 0 && len(message.Reasoning) == 0 && len(message.ToolCalls) == 0 {
-			continue
+		switch {
+		case dropBody && hadBody:
+			if dropReasoning {
+				bodyChars += reasoningChars
+			}
+			message.Content, message.ToolCalls = []ThreadPart{omittedThreadPart(bodyChars)}, nil
+		case dropReasoning && hadReasoning && !hadBody:
+			message.Content = []ThreadPart{omittedThreadPart(reasoningChars)}
 		}
 		kept = append(kept, message)
 	}
 	result := thread
 	result.Messages = kept
 	return result, nil
+}
+
+// ExcludeThreadKinds turns an --exclude list into the --include list it means:
+// every kind it does not name. Excluding every kind would read as no selection
+// at all, which renders everything, so that is refused.
+func ExcludeThreadKinds(kinds []string) ([]string, error) {
+	excluded := map[string]bool{}
+	for _, kind := range kinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind == "" {
+			continue
+		}
+		if !slices.Contains(ThreadKinds, kind) {
+			return nil, fmt.Errorf("unknown message type %q: expected one of %s", kind, strings.Join(ThreadKinds, ", "))
+		}
+		excluded[kind] = true
+	}
+	included := slices.DeleteFunc(slices.Clone(ThreadKinds), func(kind string) bool { return excluded[kind] })
+	if len(included) == 0 {
+		return nil, fmt.Errorf("--exclude names every part of the conversation, leaving nothing to render")
+	}
+	return included, nil
+}
+
+func omittedThreadPart(chars int) ThreadPart {
+	return ThreadPart{Type: "omitted", Count: chars}
+}
+
+// threadPartsChars counts the characters the parts recorded, as a render would
+// show them uncapped: text as written, a value as its encoded JSON.
+func threadPartsChars(parts []ThreadPart) int {
+	total := 0
+	for _, part := range parts {
+		switch part.Type {
+		case "json":
+			total += threadValueChars(part.Value)
+		case "omitted":
+			total += part.Count
+		default:
+			total += utf8.RuneCountInString(part.Text) + utf8.RuneCountInString(part.UnsupportedType)
+		}
+	}
+	return total
+}
+
+func threadToolCallsChars(calls []ThreadToolCall) int {
+	total := 0
+	for _, call := range calls {
+		total += threadValueChars(call.Arguments)
+	}
+	return total
+}
+
+func threadValueChars(value any) int {
+	if value == nil {
+		return 0
+	}
+	if text, ok := value.(string); ok {
+		return utf8.RuneCountInString(text)
+	}
+	encoded, _ := encodeThreadValue(value)
+	return utf8.RuneCountInString(encoded)
 }
 
 func threadRoleKind(role string) string {
@@ -237,4 +314,63 @@ func messageMatches(message ThreadMessage, expression *regexp.Regexp) bool {
 		}
 	}
 	return false
+}
+
+// CapThread cuts the thread's recorded text the way the xml and markdown renders
+// do, for the structured formats that emit the thread itself. A value that
+// needs cutting becomes its encoded text with the cut marked, since half a JSON
+// document is not a value; Truncated says how much went.
+func CapThread(thread Thread, maxChars, toolChars int) Thread {
+	result := thread
+	result.Messages = make([]ThreadMessage, len(thread.Messages))
+	for index, message := range thread.Messages {
+		limit := threadMessageCap(message, maxChars, toolChars)
+		message.Content = capThreadParts(message.Content, limit)
+		message.Reasoning = capThreadParts(message.Reasoning, limit)
+		if len(message.ToolCalls) > 0 {
+			calls := make([]ThreadToolCall, len(message.ToolCalls))
+			for callIndex, call := range message.ToolCalls {
+				call.Arguments, call.Truncated = capThreadValue(call.Arguments, maxChars)
+				calls[callIndex] = call
+			}
+			message.ToolCalls = calls
+		}
+		result.Messages[index] = message
+	}
+	return result
+}
+
+func capThreadParts(parts []ThreadPart, maxChars int) []ThreadPart {
+	if parts == nil {
+		return nil
+	}
+	capped := make([]ThreadPart, len(parts))
+	for index, part := range parts {
+		if part.Type == "json" {
+			part.Value, part.Truncated = capThreadValue(part.Value, maxChars)
+		} else {
+			part.Text, part.Truncated = capThreadText(part.Text, maxChars)
+		}
+		capped[index] = part
+	}
+	return capped
+}
+
+func capThreadValue(value any, maxChars int) (any, int) {
+	if value == nil || maxChars <= 0 || threadValueChars(value) <= maxChars {
+		return value, 0
+	}
+	text, ok := value.(string)
+	if !ok {
+		text, _ = encodeThreadValue(value)
+	}
+	return capThreadText(text, maxChars)
+}
+
+func capThreadText(text string, maxChars int) (string, int) {
+	cut := utf8.RuneCountInString(text) - maxChars
+	if maxChars <= 0 || cut <= 0 {
+		return text, 0
+	}
+	return truncateThreadText(text, maxChars), cut
 }

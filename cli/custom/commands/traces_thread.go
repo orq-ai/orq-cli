@@ -38,7 +38,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var include []string
 	var match string
 	var spans bool
-	maxChars := 4000
+	var exclude []string
+	maxChars, toolChars := 4000, 4000
 	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
@@ -57,9 +58,15 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  --match     keep the messages whose recorded text matches a regular expression, searching what a render shows: message text, reasoning, JSON values, and tool calls by name, id and arguments",
 			"  --include   render only these parts of what is left: system (which covers developer), user, assistant, tool, reasoning",
 			"",
-			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it.",
+			"  --exclude   render everything but these parts; the complement of --include, so `-x tool` is the conversation without what tools returned",
+			"",
+			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it. A turn left out still renders, as its role and an [omitted: N characters] stub, so the reader sees that it happened.",
 			"",
 			"--max-chars cuts each rendered block and says how much it left out; 0 renders everything. It is the last thing applied, so a match is found in the full text even when the render shows a cut of it.",
+			"",
+			"--tool-max-chars is the same cap for what tool calls returned, and only that, following --max-chars when not given. The arguments of a call stay as --max-chars cuts them.",
+			"",
+			"json, yaml and toon emit the thread uncut unless --max-chars or --tool-max-chars is given; a cut there is marked in the text and counted in truncated_chars.",
 		}, "\n"),
 		Example: strings.Join([]string{
 			"  orq traces thread tr_123                           # the newest conversational span",
@@ -74,6 +81,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
 			"  orq traces thread tr_123 -i reasoning              # only the thinking",
 			"  orq traces thread tr_123 --reasoning=false         # same as -i for every role but reasoning",
+			"  orq traces thread tr_123 -x tool                   # the conversation without the tool payloads",
+			"  orq traces thread tr_123 --tool-max-chars 200 -o json   # short tool results, for another agent's context",
 			"",
 			"  orq traces thread tr_123 --match error -i tool --max-chars 0",
 		}, "\n"),
@@ -83,6 +92,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			resolved, err := resolveThreadFormat(cmd)
 			if err != nil {
 				return err
+			}
+			if !cmd.Flags().Changed("tool-max-chars") {
+				toolChars = maxChars
 			}
 			if spans {
 				if optionalArg(args, 1) != "" {
@@ -111,25 +123,46 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if len(include) > 0 {
-				if !reasoning && slices.Contains(include, threadKindReasoning) {
+			if !reasoning {
+				if slices.Contains(include, threadKindReasoning) {
 					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --include reasoning"))
 				}
+				if len(include) == 0 {
+					exclude = append(exclude, threadKindReasoning)
+				}
+			}
+			if len(exclude) > 0 {
+				if len(include) > 0 {
+					return bartolocli.NewValueError(errors.New("--include and --exclude select the same parts two ways; use one"))
+				}
+				include, err = ExcludeThreadKinds(exclude)
+				if err != nil {
+					return bartolocli.NewValueError(err)
+				}
+			}
+			if len(include) > 0 {
 				thread, err = FilterThread(thread, include)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if !reasoning {
-				for index := range thread.Messages {
-					thread.Messages[index].Reasoning = nil
-				}
-			}
 			switch resolved {
 			case threadFormatXML:
-				return RenderThread(bartolocli.Stdout, thread, maxChars)
+				return RenderThread(bartolocli.Stdout, thread, maxChars, toolChars)
 			case threadFormatMarkdown:
-				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars)
+				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars, toolChars)
+			}
+			// The structured formats are the thread itself, for scripts, and stay
+			// whole unless a cap was asked for by name.
+			if cmd.Flags().Changed("max-chars") || cmd.Flags().Changed("tool-max-chars") {
+				structuredMax := 0
+				if cmd.Flags().Changed("max-chars") {
+					structuredMax = maxChars
+				}
+				if !cmd.Flags().Changed("tool-max-chars") {
+					toolChars = structuredMax
+				}
+				thread = CapThread(thread, structuredMax, toolChars)
 			}
 			// The local flag is not the one viper is bound to, so the shared
 			// formatter still holds the global value; point it at what this
@@ -146,6 +179,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering a thread")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
+	cmd.Flags().StringSliceVarP(&exclude, "exclude", "x", nil, fmt.Sprintf("Render everything but these parts of the conversation [%s]; a left-out turn keeps its place as an omitted stub", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this
@@ -158,6 +192,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
 	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and neither %s nor the config file is read)", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
 	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
+	cmd.Flags().IntVar(&toolChars, "tool-max-chars", 4000, "Cut what each tool call returned to this many characters, and nothing else (default: --max-chars; 0 for no cap)")
 	return cmd
 }
 

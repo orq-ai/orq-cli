@@ -15,14 +15,15 @@ import (
 // text contains `## ASSISTANT [1]` produces something that reads like a turn,
 // which is exactly what `escapeThreadTags` stops on the XML side — so
 // `-o xml` stays the render to trust when the recorded text is not.
-// maxChars caps each rendered block, or is zero for no cap.
-func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
+// maxChars caps each rendered block, or is zero for no cap; toolChars is the
+// same cap for what tool calls returned.
+func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars, toolChars int) error {
 	var sections []string
 	if header := threadSourceHeader(thread.Source); header != "" {
 		sections = append(sections, header)
 	}
 	for _, message := range thread.Messages {
-		sections = append(sections, renderMarkdownMessage(message, maxChars))
+		sections = append(sections, renderMarkdownMessage(message, threadMessageCap(message, maxChars, toolChars)))
 	}
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err

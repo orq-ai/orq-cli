@@ -146,6 +146,32 @@ controls on surface changes, whichever side they originate from.
   read as parts, so a record with its own `type` or `text` field renders whole,
   even when its type resembles a content part.
 
+- **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
+  call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
+  no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
+  The arguments on an assistant's tool call stay as `--max-chars` cuts them.
+
+- **Added: `orq traces thread --exclude` / `-x`**, the complement of
+  `--include`: `-x tool` renders the conversation with each tool result
+  replaced by `[omitted: N characters]`, where the same result took
+  `-i system,user,assistant,reasoning`. It cannot be combined with `--include`.
+
+- **Changed: `orq traces thread --include` no longer deletes the turns it
+  leaves out.** A message whose role was not selected keeps its place, showing
+  its role and `[omitted: N characters]` instead of its content, so a reader
+  can still see that a tool returned something. Under `-i reasoning` every
+  message's body becomes that stub. `--reasoning=false` treats a message that
+  held only reasoning the same way instead of rendering it as
+  `[content unavailable]`. In `-o json` these stubs are parts with
+  `"type": "omitted"` and a `count`.
+
+- **Changed: `orq traces thread -o json|yaml|toon` honours an explicit
+  `--max-chars` or `--tool-max-chars`.** It used to ignore both silently. Without
+  either flag the structured thread is still emitted whole. A cut part keeps
+  the `[truncated: N more characters]` marker in its text and reports the count
+  in `truncated_chars`; a JSON value or tool-call arguments that need cutting
+  become their encoded text as a string.
+
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 
 - **Changed: `orq server use` accepts any host, not only a generated one.**

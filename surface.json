@@ -8927,6 +8927,11 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "exclude",
+          "shorthand": "x",
+          "type": "stringSlice"
+        },
+        {
           "name": "include",
           "shorthand": "i",
           "type": "stringSlice"
@@ -8955,6 +8960,10 @@
         {
           "name": "spans",
           "type": "bool"
+        },
+        {
+          "name": "tool-max-chars",
+          "type": "int"
         }
       ]
     },

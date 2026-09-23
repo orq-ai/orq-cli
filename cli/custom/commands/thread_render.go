@@ -14,15 +14,24 @@ import (
 // demarcated with XML tags because a span body is arbitrary recorded text: one
 // that happens to contain this renderer's own framing would otherwise forge
 // turns that were never in the conversation. maxChars caps each rendered block,
-// or is zero for no cap.
-func RenderThread(w io.Writer, thread Thread, maxChars int) error {
+// or is zero for no cap; toolChars is the same cap for what tool calls returned.
+func RenderThread(w io.Writer, thread Thread, maxChars, toolChars int) error {
 	sections := []string{threadOpenTag(thread.Source)}
 	for _, message := range thread.Messages {
-		sections = append(sections, renderThreadMessage(message, maxChars))
+		sections = append(sections, renderThreadMessage(message, threadMessageCap(message, maxChars, toolChars)))
 	}
 	sections = append(sections, "</thread>")
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err
+}
+
+// threadMessageCap is the cap a message's blocks are cut to: --tool-max-chars for
+// a tool result, --max-chars for everything else.
+func threadMessageCap(message ThreadMessage, maxChars, toolChars int) int {
+	if message.Role == "tool" {
+		return toolChars
+	}
+	return maxChars
 }
 
 func renderThreadMessage(message ThreadMessage, maxChars int) string {
@@ -245,6 +254,8 @@ func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string)
 			rendered = "[" + part.State + "]"
 		case "unavailable":
 			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
+		case "omitted":
+			rendered = fmt.Sprintf("[omitted: %d characters]", part.Count)
 		case "unsupported":
 			// Both halves are recorded span text, so both can carry framing —
 			// and both are capped here rather than after the brackets are
