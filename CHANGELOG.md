@@ -140,8 +140,9 @@ controls on surface changes, whichever side they originate from.
   tool's JSON holding a field named like `truncated` rendered as a truncation
   marker in place of the result; and a returned list of records split into one
   part per record. Each now renders as one value. A result is the tool's own
-  data: only a recognised content part, such as MCP's `[{"type":"text"}]`, is
-  read as one, so a record with its own `type` or `text` field renders whole.
+  data: only a recognised content list, such as MCP's `[{"type":"text"}]`, is
+  read as parts, so a record with its own `type` or `text` field renders whole,
+  even when its type resembles a content part.
 
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 

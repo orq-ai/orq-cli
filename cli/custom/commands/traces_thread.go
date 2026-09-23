@@ -313,7 +313,7 @@ func selectThread(api TraceAPI, traceID string, params *viper.Viper, candidates 
 		if !degraded || degradedReads < threadSpanReadLimit {
 			return false
 		}
-		Warn("no span read in full after %d tries; rendering the fullest of them, and --span <id> reads any other", degradedReads)
+		Warn("stopped after %d further span reads; rendering the fullest read, and a span id after the trace id reads any other", degradedReads)
 		return true
 	}
 	consider := func(spanID string) *Thread {
@@ -397,7 +397,7 @@ func betterThread(candidate, best Thread) bool {
 	return threadIsWhole(candidate) && !threadIsWhole(best)
 }
 
-// threadIsWhole reports a thread with no content the collector dropped. A
+// threadIsWhole reports a thread with no dropped or unreadable content. A
 // conversation that never reached an answer is not whole either: the orq agent
 // runtime records the opening turn on the span and holds the reply elsewhere,
 // so a span with input alone would otherwise end the search over its siblings.

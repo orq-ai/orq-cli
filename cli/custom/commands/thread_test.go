@@ -1313,7 +1313,7 @@ func TestThreadRoleMapsOtherSDKSpellings(t *testing.T) {
 		"agent": "assistant", "model": "assistant", "ai": "assistant",
 		"human": "user", "function": "tool",
 		"user": "user", "assistant": "assistant", "system": "system", "developer": "developer", "tool": "tool",
-		"Assistant": "assistant", "critic": "critic",
+		"Assistant": "assistant", "critic": "critic", "Critic": "Critic",
 	} {
 		if got := threadRole(role); got != want {
 			t.Errorf("threadRole(%q) = %q, want %q", role, got, want)
@@ -1338,8 +1338,8 @@ func TestNormalizeThreadUnquotesADoubleEncodedToolResult(t *testing.T) {
 	}
 }
 
-// A tool result is the tool's own data: only a known content part is read as
-// one, so fields that happen to be called `type` or `text` survive.
+// A tool result is the tool's own data: only an MCP content list is read as
+// parts, so fields that happen to be called `type` or `text` survive.
 func TestNormalizeThreadReadsToolResultsAsData(t *testing.T) {
 	result := func(response any) map[string]any {
 		return map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
@@ -1353,6 +1353,9 @@ func TestNormalizeThreadReadsToolResultsAsData(t *testing.T) {
 	}{
 		{"a record with a text field", map[string]any{"text": "a.md", "lines": 3.0}, []ThreadPart{{Type: "json", Value: map[string]any{"text": "a.md", "lines": 3.0}}}},
 		{"a record with its own type", map[string]any{"type": "weather", "temp": 21.0}, []ThreadPart{{Type: "json", Value: map[string]any{"type": "weather", "temp": 21.0}}}},
+		{"a record resembling a text part", map[string]any{"type": "text", "text": "a.md", "request_id": "42"}, []ThreadPart{{Type: "json", Value: map[string]any{"type": "text", "text": "a.md", "request_id": "42"}}}},
+		{"a record resembling a tool call", map[string]any{"type": "tool_call", "id": "x", "arguments": map[string]any{"a": 1.0}}, []ThreadPart{{Type: "json", Value: map[string]any{"type": "tool_call", "id": "x", "arguments": map[string]any{"a": 1.0}}}}},
+		{"a list of records resembling parts", []any{map[string]any{"type": "text", "text": "a.md", "request_id": "42"}}, []ThreadPart{{Type: "json", Value: []any{map[string]any{"type": "text", "text": "a.md", "request_id": "42"}}}}},
 		{"MCP content parts", []any{map[string]any{"type": "text", "text": "a.md"}}, []ThreadPart{{Type: "text", Text: "a.md"}}},
 		{"the collector's count marker", map[string]any{"items": map[string]any{"count": 2.0}}, []ThreadPart{{Type: "unavailable", Count: 2}}},
 		// Quotes the tool printed are its output; only the Responses path
@@ -1392,5 +1395,67 @@ func TestNormalizeThreadReadsAnthropicServerToolBlocks(t *testing.T) {
 	}
 	if got, want := thread.Messages[2].Content, []ThreadPart{{Type: "text", Text: "from result"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("result fallback = %#v", got)
+	}
+}
+
+func TestNormalizeThreadReadsResponsesMessageRolesAndToolData(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"openresponses.input": []any{
+		map[string]any{"type": "message", "role": "AGENT", "content": []any{map[string]any{"type": "text", "text": "answer"}}},
+		map[string]any{"type": "message", "role": "TOOL", "tool_call_id": "call-1", "content": map[string]any{"type": "text", "text": "a.md", "request_id": "42"}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := thread.Messages[0].Role, "assistant"; got != want {
+		t.Fatalf("role = %q, want %q", got, want)
+	}
+	if got, want := thread.Messages[1], (ThreadMessage{Index: 1, Role: "tool", ToolCallID: "call-1", Content: []ThreadPart{{Type: "json", Value: map[string]any{"type": "text", "text": "a.md", "request_id": "42"}}}}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tool message = %#v, want %#v", got, want)
+	}
+}
+
+func TestNormalizeThreadKeepsToolPartsThatAreData(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "tool", "parts": []any{map[string]any{"type": "text", "text": "a.md", "request_id": "42"}}},
+		map[string]any{"role": "tool", "parts": []any{map[string]any{"type": "weather", "temp": 21.0}}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, want := range []any{
+		[]any{map[string]any{"type": "text", "text": "a.md", "request_id": "42"}},
+		[]any{map[string]any{"type": "weather", "temp": 21.0}},
+	} {
+		if got := thread.Messages[index].Content; !reflect.DeepEqual(got, []ThreadPart{{Type: "json", Value: want}}) {
+			t.Errorf("message %d content = %#v, want %#v", index, got, want)
+		}
+	}
+}
+
+func TestNormalizeThreadReadsResponsesToolMessageEnvelope(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"openresponses.input": []any{
+		map[string]any{"type": "message", "role": "tool", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": "c1", "content": "ok"}}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := thread.Messages[0].Content, []ThreadPart{{Type: "text", Text: "ok"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("content = %#v, want %#v", got, want)
+	}
+}
+
+func TestNormalizeThreadReadsLoneReasoningContentBlock(t *testing.T) {
+	span := map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "assistant", "content": map[string]any{"type": "reasoning", "content": "a thought"}},
+	}}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := thread.Messages[0].Reasoning, []ThreadPart{{Type: "text", Text: "a thought"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("reasoning = %#v, want %#v", got, want)
 	}
 }

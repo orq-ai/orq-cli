@@ -256,16 +256,17 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 		return ThreadMessage{}, false
 	}
 	content := messageContent(object)
+	contentCallID := contentToolCallID(content)
 	var parts []ThreadPart
 	if role == "tool" {
-		parts = toolResultParts(content, false)
+		parts = toolMessageParts(content)
 	} else {
 		parts = threadParts(content)
 	}
 	message := ThreadMessage{Index: index, Role: role, Name: threadString(object["name"]), Content: parts, ToolCallID: firstThreadString(object["tool_call_id"], object["call_id"])}
 	message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 	if message.ToolCallID == "" {
-		message.ToolCallID = contentToolCallID(content)
+		message.ToolCallID = contentCallID
 	}
 	if role == "assistant" {
 		message.Reasoning = append(recordedReasoning(object), contentReasoning(content)...)
@@ -286,14 +287,15 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 // Chat Completions before tools called a tool result `function`. A role it does
 // not know is kept as recorded, so the turn still renders.
 func threadRole(role string) string {
-	role = strings.ToLower(role)
-	switch role {
+	switch strings.ToLower(role) {
 	case "agent", "model", "ai":
 		return "assistant"
 	case "human":
 		return "user"
 	case "function":
 		return "tool"
+	case "system", "developer", "user", "assistant", "tool":
+		return strings.ToLower(role)
 	}
 	return role
 }
@@ -352,12 +354,18 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 	case "reasoning":
 		return append(pending, responseReasoning(item)...)
 	case "message":
-		role := threadString(item["role"])
+		role := threadRole(threadString(item["role"]))
 		if role == "" {
 			role = "assistant"
 		}
 		content := messageContent(item)
-		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: threadParts(content), ToolCallID: threadString(item["call_id"])}
+		var parts []ThreadPart
+		if role == "tool" {
+			parts = toolMessageParts(content)
+		} else {
+			parts = threadParts(content)
+		}
+		message := ThreadMessage{Index: index, Role: role, Name: threadString(item["name"]), Content: parts, ToolCallID: firstThreadString(item["call_id"], item["tool_call_id"])}
 		message.ToolCalls = append(message.ToolCalls, contentToolCalls(content)...)
 		if message.ToolCallID == "" {
 			message.ToolCallID = contentToolCallID(content)
@@ -619,7 +627,7 @@ func carriedOffBody(kind string) bool {
 // where the reasoning recorded in a dedicated field already lands.
 func contentReasoning(value any) []ThreadPart {
 	var parts []ThreadPart
-	for _, raw := range threadList(value) {
+	for _, raw := range contentPartList(value) {
 		object, ok := threadMap(decodeThreadValue(raw))
 		if !ok {
 			continue
@@ -790,8 +798,6 @@ func threadParts(value any) []ThreadPart {
 			}
 			return []ThreadPart{{Type: "json", Value: typed}}
 		}
-		switch kind {
-		}
 		if isTextKind(kind) {
 			// OTel GenAI puts a text part's text under `content`.
 			return threadParts(firstThreadPresent(typed, "text", "content"))
@@ -806,7 +812,7 @@ func threadParts(value any) []ThreadPart {
 }
 
 // toolResultParts reads what a tool returned. That is the tool's own data, so
-// only content parts this command knows are read as parts; anything else,
+// only recognised MCP content lists are read as parts; anything else,
 // whatever fields it has (a `type`, a `text`, a `truncated`), renders as
 // recorded. doubleEncoded unquotes a result the gateway recorded JSON-encoded
 // a second time, which it does on the Responses path for server tools.
@@ -831,18 +837,41 @@ func toolResultParts(value any, doubleEncoded bool) []ThreadPart {
 	return []ThreadPart{{Type: "json", Value: decoded}}
 }
 
-// isContentPartValue reports a known content part, or a list of nothing else:
-// the MCP shape of a tool result, `[{"type":"text","text":...}]`.
-func isContentPartValue(value any) bool {
-	if object, ok := threadMap(value); ok {
-		return knownContentPartKind(contentPartKind(object))
+// A tool message can carry protocol result blocks with call ids, or the
+// returned data directly. A bare `parts` field does not distinguish them.
+func toolMessageParts(value any) []ThreadPart {
+	if contentToolCallID(value) != "" {
+		return threadParts(value)
 	}
+	return toolResultParts(value, false)
+}
+
+// isContentPartValue recognises an MCP content list. A single object is a
+// tool's own data even if its type resembles a content part; interpreting it
+// as protocol structure could discard fields or the whole value.
+func isContentPartValue(value any) bool {
 	list, ok := value.([]any)
 	if !ok || len(list) == 0 {
 		return false
 	}
 	for _, item := range list {
-		if !isContentPartValue(item) {
+		object, ok := threadMap(item)
+		if !ok || !isMCPContentPart(object) {
+			return false
+		}
+	}
+	return true
+}
+
+func isMCPContentPart(part map[string]any) bool {
+	kind := contentPartKind(part)
+	if !isTextKind(kind) && !threadMediaKinds[kind] {
+		return false
+	}
+	for key := range part {
+		switch key {
+		case "type", "kind", "text", "content", "data", "mimeType", "annotations", "url":
+		default:
 			return false
 		}
 	}
@@ -864,14 +893,6 @@ var threadMediaKinds = map[string]bool{
 	"audio": true, "input_audio": true, "video": true,
 	"file": true, "input_file": true, "document": true,
 	"blob": true, "uri": true,
-}
-
-func knownContentPartKind(kind string) bool {
-	switch kind {
-	case "thinking", "redacted_thinking", "reasoning":
-		return true
-	}
-	return isTextKind(kind) || threadMediaKinds[kind] || isToolCallItem(kind) || isToolResultItem(kind)
 }
 
 func threadLookup(span map[string]any, key string) (any, bool) {
