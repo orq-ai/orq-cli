@@ -1380,6 +1380,42 @@ func TestCapThreadCutsWhatTheRendersCut(t *testing.T) {
 	}
 }
 
+// CapThread and the renders walk ThreadPart.Type in separate switches. This
+// drives every part type through both, one part per message, so a type one
+// cuts and the other passes through whole fails here rather than reaching a
+// script uncut.
+func TestCapThreadAgreesWithTheRendersOnEveryPartType(t *testing.T) {
+	long := strings.Repeat("z", 40)
+	parts := []ThreadPart{
+		{Type: "text", Text: long},
+		{Type: "summary", Text: long},
+		{Type: "error", Text: long},
+		{Type: "exception", Text: long},
+		{Type: "json", Value: map[string]any{"k": long}},
+		{Type: "state", State: long},
+		{Type: "unsupported", UnsupportedType: long, Text: long},
+		{Type: "unavailable", Count: 2},
+		{Type: "omitted", Truncated: 400},
+	}
+	for _, part := range parts {
+		t.Run(part.Type, func(t *testing.T) {
+			thread := Thread{Messages: []ThreadMessage{{Role: "assistant", Content: []ThreadPart{part}}}}
+			var out bytes.Buffer
+			if err := RenderThread(&out, thread, 10, 10); err != nil {
+				t.Fatal(err)
+			}
+			rendered := strings.Contains(out.String(), "[truncated:")
+			capped := CapThread(thread, 10, 10).Messages[0].Content[0].Truncated > 0
+			if part.Type == "omitted" {
+				capped = false
+			}
+			if rendered != capped {
+				t.Fatalf("render cut = %v, CapThread cut = %v:\n%s", rendered, capped, out.String())
+			}
+		})
+	}
+}
+
 func TestMatchThread(t *testing.T) {
 	thread := Thread{Messages: []ThreadMessage{
 		{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Where are the DOCS?"}}},

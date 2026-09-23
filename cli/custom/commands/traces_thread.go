@@ -39,7 +39,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var match string
 	var spans bool
 	var exclude []string
-	maxChars, toolChars := defaultThreadMaxChars, defaultThreadMaxChars
+	maxChars, toolChars := defaultThreadMaxChars, 0
 	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
@@ -187,9 +187,9 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
 	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and neither %s nor the config file is read)", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
 	cmd.Flags().IntVar(&maxChars, "max-chars", defaultThreadMaxChars, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
-	cmd.Flags().IntVar(&toolChars, "tool-max-chars", defaultThreadMaxChars, "Cut what each tool call returned to this many characters, and nothing else (0 for no cap)")
-	// The registered default is never read: an unset flag follows --max-chars.
-	cmd.Flags().Lookup("tool-max-chars").DefValue = "--max-chars"
+	// Registered as 0 so pflag prints no numeric default: unset, it follows
+	// --max-chars, which RunE resolves through Changed.
+	cmd.Flags().IntVar(&toolChars, "tool-max-chars", 0, "Cut what each tool call returned to this many characters, and nothing else; unset, it follows --max-chars (0 for no cap)")
 	return cmd
 }
 

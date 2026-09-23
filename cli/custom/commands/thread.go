@@ -343,7 +343,7 @@ func CapThread(thread Thread, maxChars, toolChars int) Thread {
 		if len(message.ToolCalls) > 0 {
 			calls := make([]ThreadToolCall, len(message.ToolCalls))
 			for callIndex, call := range message.ToolCalls {
-				if text, cut := capThreadText(threadValueText(call.Arguments, 0), maxChars); cut > 0 {
+				if text, cut := cutThreadText(threadValueText(call.Arguments, 0), maxChars); cut > 0 {
 					call.Arguments, call.ArgumentsText, call.Truncated = nil, text, cut
 				}
 				calls[callIndex] = call
@@ -372,26 +372,20 @@ func capThreadParts(parts []ThreadPart, maxChars int) []ThreadPart {
 	for index, part := range parts {
 		switch part.Type {
 		case "json":
-			if text, cut := capThreadText(threadValueText(part.Value, 0), maxChars); cut > 0 {
+			if text, cut := cutThreadText(threadValueText(part.Value, 0), maxChars); cut > 0 {
 				part = ThreadPart{Type: "text", Text: text, Truncated: cut}
 			}
 		case "unsupported":
 			var typeCut, textCut int
-			part.UnsupportedType, typeCut = capThreadText(part.UnsupportedType, maxChars)
-			part.Text, textCut = capThreadText(part.Text, maxChars)
+			part.UnsupportedType, typeCut = cutThreadText(part.UnsupportedType, maxChars)
+			part.Text, textCut = cutThreadText(part.Text, maxChars)
 			part.Truncated = typeCut + textCut
+		case "state":
+			part.State, part.Truncated = cutThreadText(part.State, maxChars)
 		case "text", "summary", "error", "exception":
-			part.Text, part.Truncated = capThreadText(part.Text, maxChars)
+			part.Text, part.Truncated = cutThreadText(part.Text, maxChars)
 		}
 		capped[index] = part
 	}
 	return capped
-}
-
-func capThreadText(text string, maxChars int) (string, int) {
-	cut := utf8.RuneCountInString(text) - maxChars
-	if maxChars <= 0 || cut <= 0 {
-		return text, 0
-	}
-	return truncateThreadText(text, maxChars), cut
 }

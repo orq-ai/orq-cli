@@ -242,11 +242,15 @@ func renderThreadPartsWith(parts []ThreadPart, maxChars int, escape func(string)
 			}
 			continue
 		case "state":
-			rendered = "[" + part.State + "]"
+			sections = append(sections, "["+escape(truncateThreadText(part.State, maxChars))+"]")
+			continue
 		case "unavailable":
-			rendered = fmt.Sprintf("[content unavailable: %d items]", part.Count)
+			// The renderer's own labels: nothing recorded to cap.
+			sections = append(sections, fmt.Sprintf("[content unavailable: %d items]", part.Count))
+			continue
 		case "omitted":
-			rendered = fmt.Sprintf("[omitted: %d characters]", part.Truncated)
+			sections = append(sections, fmt.Sprintf("[omitted: %d characters]", part.Truncated))
+			continue
 		case "unsupported":
 			// Both halves are recorded span text, so both can carry framing —
 			// and both are capped here rather than after the brackets are
@@ -332,9 +336,16 @@ func escapeThreadTags(text string) string {
 // Markdown fence — so a cut can leave neither a tag, a fence nor an escape
 // half-written, and --max-chars counts the characters that were recorded.
 func truncateThreadText(text string, maxChars int) string {
+	cut, _ := cutThreadText(text, maxChars)
+	return cut
+}
+
+// cutThreadText is truncateThreadText that also says how many characters it
+// cut, for the structured formats that report the count as a field.
+func cutThreadText(text string, maxChars int) (string, int) {
 	if maxChars <= 0 || utf8.RuneCountInString(text) <= maxChars {
-		return text
+		return text, 0
 	}
 	runes := []rune(text)
-	return string(runes[:maxChars]) + fmt.Sprintf("\n[truncated: %d more characters]", len(runes)-maxChars)
+	return string(runes[:maxChars]) + fmt.Sprintf("\n[truncated: %d more characters]", len(runes)-maxChars), len(runes) - maxChars
 }

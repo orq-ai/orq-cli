@@ -1796,6 +1796,17 @@ func TestTracesThreadToolResultCapAndStubs(t *testing.T) {
 			t.Fatalf("json = %q", out)
 		}
 	})
+	t.Run("yaml and toon take the same cut", func(t *testing.T) {
+		for _, format := range []string{"yaml", "toon"} {
+			out, err := runTracesThread(t, traceAPI(fake), "-o", format, "trace-1", "chosen", "--tool-max-chars", "10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, fmt.Sprintf("%d", len(result)-10)) || strings.Contains(out, result) {
+				t.Fatalf("%s = %q", format, out)
+			}
+		}
+	})
 	t.Run("json max-chars cuts both, tool output following it", func(t *testing.T) {
 		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--max-chars", "10")
 		if err != nil {
