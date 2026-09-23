@@ -149,10 +149,15 @@ controls on surface changes, whichever side they originate from.
 - **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
   call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
   no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
-  The arguments on an assistant's tool call stay as `--max-chars` cuts them. A
-  tool result is a tool-role message or a user turn carrying a `tool_result`,
-  as the Anthropic Messages API records one; `-i tool` and `-x tool` select
-  the latter as tool too, where they used to count it as user.
+  The arguments on an assistant's tool call stay as `--max-chars` cuts them.
+
+- **Changed: `orq traces thread` reads each Anthropic `tool_result` as a tool
+  turn.** The Anthropic Messages API records tool results inside a user turn,
+  next to whatever the user typed. Each result now renders as a `tool` turn of
+  its own, answering its call and named after the tool, followed by the user
+  turn with what remains; a user turn that held only results is gone. So
+  `-i tool`, `-x tool` and `--tool-max-chars` reach the results and never the
+  user's words, and `-i user` no longer shows tool output.
 
 - **Added: `orq traces thread --exclude` / `-x`**, the complement of
   `--include`. `-x tool` is shorthand for `-i system,user,assistant,reasoning`:
@@ -162,12 +167,13 @@ controls on surface changes, whichever side they originate from.
 - **Changed: `orq traces thread --include` no longer deletes the turns it
   leaves out.** A message whose role was not selected keeps its place, showing
   its role and `[omitted: N characters]` instead of its content, so a reader
-  can still see that a tool returned something. N is what the uncapped render
-  would have shown. Under `-i reasoning` every message's body becomes that
+  can still see that a tool returned something. N counts the characters the
+  span recorded, not the labels a render adds; a marker for content the span
+  did not record, or redacted, stays in place instead. Under `-i reasoning` every message's body becomes that
   stub. Reasoning left out of a turn that still shows its body is dropped
   without one. `--reasoning=false` treats a message that held only reasoning
   as a stub instead of rendering it as `[content unavailable]`. In `-o json`
-  a stub is a part `{"type": "omitted", "truncated_chars": N}`, and a stubbed
+  a stub is a part `{"type": "omitted", "omitted_chars": N}`, and a stubbed
   assistant turn keeps its tool calls' `id` and `name` with `arguments` null,
   so a result still pairs with its call.
 
@@ -175,10 +181,12 @@ controls on surface changes, whichever side they originate from.
   `--max-chars` or `--tool-max-chars`.** It used to ignore both silently.
   Without either flag the structured thread is still emitted whole. A cut part
   keeps the `[truncated: N more characters]` marker in its text and reports
-  the count in `truncated_chars`. A `json` part that needs cutting becomes a
-  `text` part holding the cut encoding, and cut tool-call arguments move to
-  `arguments_text` with `arguments` null, so a `json` part's `value` and a
-  call's `arguments` are always the recorded value.
+  the count in `truncated_chars`. A `json` part that needs cutting keeps its
+  type with the cut encoding in `text` and `value` null, and cut tool-call
+  arguments move to `arguments_text` with `arguments` null, so a `value` or
+  `arguments` present is always the recorded value; one recorded as a string
+  stays a string, cut. Every format is cut by the same pass, so xml, markdown
+  and the structured formats agree on what went.
 
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 

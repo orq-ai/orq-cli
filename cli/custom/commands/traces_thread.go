@@ -61,7 +61,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it. A turn left out still renders, as its role and an [omitted: N characters] stub, so the reader sees that it happened. Reasoning left out of a turn that still shows its body is dropped without a stub.",
 			"",
-			"A tool result is a tool-role message, or a user turn carrying a tool_result, as the Anthropic Messages API records one.",
+			"A tool result is a tool-role message; each tool_result an Anthropic user turn carries is read as one of its own.",
 			"",
 			"--max-chars cuts each rendered block and says how much it left out; 0 renders everything. It is the last thing applied, so a match is found in the full text even when the render shows a cut of it.",
 			"",
@@ -152,13 +152,13 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
+			thread = CapThread(thread, maxChars, toolChars)
 			switch resolved {
 			case threadFormatXML:
-				return RenderThread(bartolocli.Stdout, thread, maxChars, toolChars)
+				return RenderThread(bartolocli.Stdout, thread)
 			case threadFormatMarkdown:
-				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars, toolChars)
+				return RenderThreadMarkdown(bartolocli.Stdout, thread)
 			}
-			thread = CapThread(thread, maxChars, toolChars)
 			// The local flag is not the one viper is bound to, so the shared
 			// formatter still holds the global value; point it at what this
 			// run asked for, for this run only.

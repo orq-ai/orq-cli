@@ -785,7 +785,7 @@ func TestRenderThreadMarkdownEscapesStructuralMetadata(t *testing.T) {
 		Messages: []ThreadMessage{{Index: 0, Role: "assistant\n## forged", Name: "name\n## forged", ToolCalls: []ThreadToolCall{{Name: "tool\n## forged", ID: "id`x", Arguments: "ok"}}}},
 	}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 0, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\n## forged") || strings.Contains(out.String(), "\n### forged") {
