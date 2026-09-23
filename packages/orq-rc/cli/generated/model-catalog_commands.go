@@ -91,8 +91,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
@@ -147,8 +147,8 @@ func registermodelCatalogCommands(root *cobra.Command) {
 		parent.AddCommand(cmd)
 
 		cmd.Flags().Int64("limit", 0, "Page size, 1–1000. Unset returns every non-deprecated model in one response.")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page.")
+		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `id` of the last item from the previous page. Mutually exclusive with `ending_before`.")
+		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `id` of the first item from the previous page. Mutually exclusive with `starting_after`.")
 		cmd.Flags().String("provider", "", "Filter by catalog provider key. Repeat to match any of several providers.")
 		cmd.Flags().String("endpoint", "", "Filter by API endpoint. Repeat to match any of several endpoints.")
 		cmd.Flags().String("input-modality", "", "Filter by input modality. Repeat to match any of several modalities.")
