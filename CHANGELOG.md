@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [10.3.1](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.1) — 2026-09-23
+
 - **Fixed: `orq traces thread` on Claude Code traces.** Given only a trace id it
   read the newest tool-execution span, one `Bash` result, instead of the
   conversation. Selection now tries model-call spans first, the main loop's
