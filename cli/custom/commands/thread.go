@@ -46,10 +46,12 @@ type ThreadMessage struct {
 
 // ThreadPart is content, a safely-rendered state, or an explicitly unavailable value.
 type ThreadPart struct {
-	Type            string `json:"type"`
-	Text            string `json:"text,omitempty"`
-	Value           any    `json:"value,omitempty"`
-	State           string `json:"state,omitempty"`
+	Type  string `json:"type"`
+	Text  string `json:"text,omitempty"`
+	Value any    `json:"value,omitempty"`
+	State string `json:"state,omitempty"`
+	// Count is how many items an "unavailable" part stands for, or how many
+	// identical "state" parts one collapsed.
 	Count           int    `json:"count,omitempty"`
 	UnsupportedType string `json:"unsupported_type,omitempty"`
 	// Truncated is how many characters a cap cut from the part.

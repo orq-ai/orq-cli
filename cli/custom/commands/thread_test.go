@@ -1460,6 +1460,35 @@ func TestMarkdownFencesACutValue(t *testing.T) {
 	}
 }
 
+// Repeated encrypted reasoning items between two actions render as one
+// counted marker; a different state breaks the run.
+func TestRepeatedReasoningStatesCollapse(t *testing.T) {
+	encrypted := map[string]any{"type": "reasoning", "encrypted_content": "gAAA", "summary": []any{}}
+	span := map[string]any{"openresponses.input": []any{
+		map[string]any{"type": "message", "role": "user", "content": "go"},
+		encrypted, encrypted, encrypted,
+		map[string]any{"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{}"},
+	}}
+	thread, err := NormalizeThread(span, ThreadSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []ThreadPart{{Type: "state", State: "encrypted", Count: 3}}; !reflect.DeepEqual(thread.Messages[1].Reasoning, want) {
+		t.Fatalf("reasoning = %+v, want %+v", thread.Messages[1].Reasoning, want)
+	}
+	var out bytes.Buffer
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out.String(), "[encrypted") != 1 || !strings.Contains(out.String(), "[encrypted: 3 items]") {
+		t.Fatalf("render:\n%s", out.String())
+	}
+	mixed := collapseThreadStates([]ThreadPart{{Type: "state", State: "encrypted"}, {Type: "state", State: "redacted"}, {Type: "state", State: "encrypted"}})
+	if len(mixed) != 3 || mixed[0].Count != 0 {
+		t.Fatalf("mixed = %+v", mixed)
+	}
+}
+
 func TestMatchThread(t *testing.T) {
 	thread := Thread{Messages: []ThreadMessage{
 		{Index: 0, Role: "user", Content: []ThreadPart{{Type: "text", Text: "Where are the DOCS?"}}},

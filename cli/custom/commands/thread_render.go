@@ -243,7 +243,11 @@ func renderThreadPartsWith(parts []ThreadPart, escape func(string) string, value
 			}
 			continue
 		case "state":
-			sections = append(sections, "["+escape(part.State)+"]")
+			state := escape(part.State)
+			if part.Count > 1 {
+				state += fmt.Sprintf(": %d items", part.Count)
+			}
+			sections = append(sections, "["+state+"]")
 			continue
 		case "unavailable":
 			sections = append(sections, fmt.Sprintf("[content unavailable: %d items]", part.Count))

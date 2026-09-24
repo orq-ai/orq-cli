@@ -88,8 +88,24 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	describeThreadSpan(&thread.Source, span)
 	for index := range thread.Messages {
 		thread.Messages[index].Index = index
+		thread.Messages[index].Reasoning = collapseThreadStates(thread.Messages[index].Reasoning)
 	}
 	return thread, nil
+}
+
+// collapseThreadStates folds a run of identical state parts into one that
+// counts them. A model that reasoned several times between two actions records
+// one encrypted item each; a line per item says nothing the count does not.
+func collapseThreadStates(parts []ThreadPart) []ThreadPart {
+	collapsed := parts[:0:0]
+	for _, part := range parts {
+		if last := len(collapsed) - 1; part.Type == "state" && last >= 0 && collapsed[last].Type == "state" && collapsed[last].State == part.State {
+			collapsed[last].Count = max(collapsed[last].Count, 1) + 1
+			continue
+		}
+		collapsed = append(collapsed, part)
+	}
+	return collapsed
 }
 
 func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string, pending []ThreadPart) (int, []ThreadPart) {

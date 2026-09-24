@@ -149,6 +149,12 @@ controls on surface changes, whichever side they originate from.
   `id` and `name` with `arguments` null, so a result still pairs with its
   call.
 
+- **Changed: `orq traces thread` counts repeated reasoning markers.** A model
+  that reasoned several times between two actions, with the reasoning recorded
+  encrypted, rendered one `[encrypted]` line per item. A run of identical
+  markers now renders once, as `[encrypted: 4 items]`; in `-o json` it is one
+  `state` part with a `count`.
+
 - **Removed: `orq traces thread --reasoning`.** `-x reasoning` does what
   `--reasoning=false` did, and `-i`/`-x` now cover every part of the
   conversation with one mechanism. A script passing `--reasoning=false` fails
