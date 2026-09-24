@@ -3,14 +3,13 @@ package launch
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 const (
 	// DefaultClaudeGatewayURL is the anthropic-native gateway path — not the
 	// router URL. Claude Code speaks the Anthropic API directly.
-	DefaultClaudeGatewayURL     = DefaultGatewayAPIBaseURL + "/v3/anthropic"
-	DefaultClaudeModel          = "anthropic/claude-sonnet-5"
-	DefaultClaudeSmallFastModel = "anthropic/claude-haiku-4-5"
+	DefaultClaudeGatewayURL = DefaultGatewayAPIBaseURL + "/v3/anthropic"
 
 	// Claude Code resolves /model opus|sonnet|haiku through these three. Left
 	// unset it sends the bare alias, which the gateway rejects for having no
@@ -28,66 +27,79 @@ func claudeAgent() AgentDef {
 		Label:       "Claude Code",
 		InstallHint: "npm install -g @anthropic-ai/claude-code",
 		AllowModels: false,
+		Traceable:   true,
 		HelpRoute:   helpRoute("Anthropic", DefaultClaudeGatewayURL),
+		HelpModel:   "Model to start with (with --router, a gateway ref: provider/model_id)",
 		Prompt:      nil, // claude's own -p passes through untouched
 		Resolve:     resolveClaude,
 	}
 }
 
-// resolveClaude wires claude through env vars (gateway base URL, auth token,
-// models — no /v2/models fetch) plus a --mcp-config PreArg pointing at a temp
-// file. Skills are linked into ~/.claude/skills for the session rather than
-// fetched as a plugin.
+// resolveClaude leaves claude on the user's own login by default and adds only
+// the orq MCP server and skills. --router moves model traffic onto the gateway
+// (and so onto workspace billing); --trace captures the session. Both are
+// opt-in because either changes what the user is billed for or what leaves
+// their machine. MCP is a --mcp-config PreArg pointing at a temp file; skills
+// are linked into ~/.claude/skills for the session rather than fetched as a
+// plugin, unless ORQ_SKILLS_URL pins a bundle, which is loaded with
+// --plugin-url instead.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
-	getenv := ctx.Getenv
-
-	// Deliberately NOT ORQ_GATEWAY_URL: that is the OpenAI-shaped router URL
-	// shared by the other agents, and claude speaks the Anthropic-native API —
-	// inheriting it would misroute every request. Claude gets its own key.
-	baseURL := firstNonEmpty(
-		ctx.Flags.BaseURL,
-		getenv("ORQ_ANTHROPIC_BASE_URL"),
-		deriveFromAPIBase(ctx.Creds.APIBaseURL, "/v3/anthropic"),
-		DefaultClaudeGatewayURL,
-	)
-	model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), DefaultClaudeModel)
-	smallFast := firstNonEmpty(getenv("ANTHROPIC_SMALL_FAST_MODEL"), DefaultClaudeSmallFastModel)
-	opus := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
-	sonnet := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
-	haiku := firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
-
-	var warnings []string
-	if ShouldWarnMissingProviderPrefix(model, noopNormalize) {
-		warnings = append(warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
-	}
-
 	plan := &LaunchPlan{
 		Env: map[string]string{
-			"ANTHROPIC_BASE_URL":   baseURL,
-			"ANTHROPIC_AUTH_TOKEN": ctx.Creds.APIKey,
-			"ANTHROPIC_API_KEY":    "", // explicitly empty so claude uses the auth token
-			// A nested `orq` invocation from inside the session reads this, so the
-			// launch-follows-session invariant holds even one process down.
-			"ORQ_API_KEY":                ctx.Creds.APIKey,
-			"ORQ_SERVER":                 ctx.Creds.APIBaseURL,
-			"ANTHROPIC_MODEL":            model,
-			"ANTHROPIC_SMALL_FAST_MODEL": smallFast,
-			// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
-			"ANTHROPIC_DEFAULT_OPUS_MODEL":   opus,
-			"ANTHROPIC_DEFAULT_SONNET_MODEL": sonnet,
-			"ANTHROPIC_DEFAULT_HAIKU_MODEL":  haiku,
+			// A nested `orq` invocation from inside the session reads these, so the
+			// launch-follows-session invariant holds even one process down. The
+			// orq-trace plugin resolves its key from ORQ_API_KEY too.
+			"ORQ_API_KEY": ctx.Creds.APIKey,
+			"ORQ_SERVER":  ctx.Creds.APIBaseURL,
 		},
-		Warnings: warnings,
+	}
+
+	fail := func(err error) (*LaunchPlan, error) {
+		if plan.Cleanup != nil {
+			plan.Cleanup()
+		}
+		return nil, err
+	}
+
+	if ctx.Flags.Router {
+		routeThroughGateway(ctx, plan)
+	} else {
+		if ctx.Flags.Model != "" {
+			plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
+			if strings.Contains(ctx.Flags.Model, "/") {
+				plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+					"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5", ctx.Flags.Model))
+			}
+		}
+		if ctx.Flags.BaseURL != "" {
+			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
+		}
+		// Without --router the launcher sets none of these, so whatever the
+		// shell exports reaches claude. Saying "your own login" while an
+		// inherited ANTHROPIC_BASE_URL bills someone else is the surprise this
+		// ticket is about, so name it.
+		if ctx.Getenv("ANTHROPIC_BASE_URL") != "" || ctx.Getenv("ANTHROPIC_AUTH_TOKEN") != "" {
+			plan.Warnings = append(plan.Warnings,
+				"ANTHROPIC_BASE_URL or ANTHROPIC_AUTH_TOKEN is set in your shell, so claude uses it rather than your own login; unset it or pass --router to route through orq deliberately")
+		}
+	}
+	if ctx.Flags.Trace {
+		if err := wireTrace(ctx, plan); err != nil {
+			return fail(fmt.Errorf("--trace: %w", err))
+		}
+		if ctx.Flags.Router {
+			plan.Warnings = append(plan.Warnings,
+				"--router with --trace records each model call twice, once by the AI Router and once in the session trace, so summed costs across both double-count")
+		}
 	}
 
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
 		path, cleanup, err := writeClaudeMCPConfig(url)
 		if err != nil {
-			return nil, err
+			return fail(err)
 		}
-		plan.PreArgs = []string{"--mcp-config", path}
-		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
+		plan.PreArgs = append(plan.PreArgs, "--mcp-config", path)
+		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
 		plan.AddCleanup(cleanup)
 	}
 	if url := skillsPluginURL(ctx); url != "" {
@@ -101,3 +113,44 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 }
 
 func noopNormalize(model string) string { return model }
+
+// routeThroughGateway points claude at the anthropic-native gateway path. Only
+// the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
+// claude's own default and any /model choice alone, and the tier variables
+// below are what turn its default aliases into gateway refs.
+func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
+	getenv := ctx.Getenv
+
+	// Deliberately NOT ORQ_GATEWAY_URL: that is the OpenAI-shaped router URL
+	// shared by the other agents, and claude speaks the Anthropic-native API —
+	// inheriting it would misroute every request. Claude gets its own key.
+	baseURL := firstNonEmpty(
+		ctx.Flags.BaseURL,
+		getenv("ORQ_ANTHROPIC_BASE_URL"),
+		deriveFromAPIBase(ctx.Creds.APIBaseURL, "/v3/anthropic"),
+		DefaultClaudeGatewayURL,
+	)
+	if ctx.Flags.Model != "" {
+		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
+	}
+	// An inherited ANTHROPIC_MODEL is warned about but never re-exported: it
+	// already reaches claude on its own.
+	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL")); model != "" && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
+	}
+
+	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
+	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
+	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
+	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
+	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
+	// Code reads the haiku tier below for its background calls.
+	plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
+	plan.Env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
+	plan.Env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
+
+	billed := firstNonEmpty(ctx.Creds.Workspace, "the workspace this API key belongs to")
+	plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+		"--router sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
+}

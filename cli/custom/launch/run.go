@@ -1,11 +1,13 @@
 package launch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Run resolves and launches an agent, returning the child exit code.
@@ -13,6 +15,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
 		Prompt:      def.Prompt,
 		AllowModels: def.AllowModels,
+		AllowTrace:  def.Traceable,
 	})
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
@@ -65,8 +68,14 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	return RunChild(def.Binary, args, plan.Env)
 }
 
+// probeTimeout bounds a probe so a hung agent binary delays the launch
+// instead of blocking it.
+const probeTimeout = 10 * time.Second
+
 func hostExecProbe(binary string, args ...string) (string, error) {
-	out, err := exec.Command(binary, args...).Output()
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, binary, args...).Output()
 	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) != 0 {
 		// Output() captures stderr on the error; without this the probe's
 		// real failure reason ends up as an opaque "exit status 1".
@@ -78,20 +87,38 @@ func hostExecProbe(binary string, args ...string) (string, error) {
 func printAgentHelp(def *AgentDef) {
 	route := firstNonEmpty(def.HelpRoute, "the orq.ai AI Router")
 	model := firstNonEmpty(def.HelpModel, "Gateway model (provider/model_id)")
-	fmt.Printf(`Launch %s preconfigured to route through %s.
+	headline := fmt.Sprintf("Launch %s preconfigured to route through %s.", def.Label, route)
+	if def.Traceable {
+		headline = fmt.Sprintf("Launch %s on your own login, with the orq MCP server and skills.\nAdd --router to route it through %s instead.", def.Label, route)
+	}
+
+	fmt.Printf(`%s
 
 Usage:
   orq launch %s [flags] [--] [agent args...]
 
 Flags:
   --model <id>          %s
-`, def.Label, route, def.Name, model)
+`, headline, def.Name, model)
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
-	fmt.Println("  --base-url <url>      Override the gateway base URL")
+	if def.Traceable {
+		fmt.Println("  --base-url <url>      Override the gateway base URL (with --router)")
+	} else {
+		fmt.Println("  --base-url <url>      Override the gateway base URL")
+	}
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
+	}
+	if def.Traceable {
+		fmt.Print(`  --trace               Capture the session as an orq trace: loads the orq-trace
+                        plugin for this session only and turns on Claude Code's
+                        metrics and logs export
+  --router              Send model traffic through the orq.ai AI Router instead of
+                        your own Anthropic login. Usage then bills to the orq
+                        workspace, not your subscription
+`)
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
   --no-mcp              Do not make the orq MCP server available for this session
@@ -124,8 +151,8 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	sort.Strings(keys)
 	for _, k := range keys {
 		v := plan.Env[k]
-		if v != "" && v == apiKey {
-			v = "<redacted>"
+		if apiKey != "" {
+			v = strings.ReplaceAll(v, apiKey, "<redacted>")
 		}
 		fmt.Printf("  %s=%s\n", k, v)
 	}
