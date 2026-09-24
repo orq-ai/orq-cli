@@ -42,6 +42,10 @@ func renderThreadMessage(message ThreadMessage) string {
 			// attribute already says whose it is.
 			rendered = append(rendered, block.Content)
 		case threadSectionToolCall:
+			if block.Content == "" {
+				rendered = append(rendered, "<"+threadToolCallTag(block.Call)+"/>")
+				continue
+			}
 			rendered = append(rendered, threadElement(threadToolCallTag(block.Call), block.Content))
 		default:
 			rendered = append(rendered, threadElement(threadElementNames[block.Section], block.Content))
@@ -107,10 +111,10 @@ func threadMessageBlocks(message ThreadMessage, escape func(string) string, valu
 			blocks = append(blocks, block)
 		}
 	}
+	// A call shows even with no arguments to show — none recorded, or left
+	// out by a filter — since its id is what pairs it with its result.
 	for _, call := range message.ToolCalls {
-		if content := value(call.Arguments, call.ArgumentsText); content != "" {
-			blocks = append(blocks, threadBlock{Section: threadSectionToolCall, Call: call, Content: content})
-		}
+		blocks = append(blocks, threadBlock{Section: threadSectionToolCall, Call: call, Content: value(call.Arguments, call.ArgumentsText)})
 	}
 	return blocks
 }

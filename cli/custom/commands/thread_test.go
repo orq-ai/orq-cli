@@ -1341,6 +1341,37 @@ func TestExcludeToolKeepsTheCall(t *testing.T) {
 	}
 }
 
+// A call with no arguments to show still renders its id and name, so its
+// result pairs with it: one recorded without arguments, and one whose turn a
+// filter stubbed.
+func TestRendersKeepACallWithNoArguments(t *testing.T) {
+	thread := Thread{Messages: []ThreadMessage{
+		{Index: 0, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "c0", Name: "now"}}},
+		{Index: 1, Role: "assistant", ToolCalls: []ThreadToolCall{{ID: "c1", Name: "search", Arguments: map[string]any{"q": "x"}}}},
+	}}
+	stubbed, err := FilterThread(thread, []string{"reasoning"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var xml, markdown bytes.Buffer
+	if err := RenderThread(&xml, stubbed); err != nil {
+		t.Fatal(err)
+	}
+	if err := RenderThreadMarkdown(&markdown, stubbed); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`<tool_call id="c0" name="now"/>`, `<tool_call id="c1" name="search"/>`} {
+		if !strings.Contains(xml.String(), want) {
+			t.Fatalf("xml lacks %s:\n%s", want, xml.String())
+		}
+	}
+	for _, want := range []string{"### TOOL CALL — now [c0]", "### TOOL CALL — search [c1]"} {
+		if !strings.Contains(markdown.String(), want) {
+			t.Fatalf("markdown lacks %s:\n%s", want, markdown.String())
+		}
+	}
+}
+
 func TestExcludeThreadKindsRefusesWhatItCannotMean(t *testing.T) {
 	if _, err := ExcludeThreadKinds([]string{"toolcall"}); err == nil || !strings.Contains(err.Error(), "unknown message type") {
 		t.Fatalf("unknown kind: err = %v", err)

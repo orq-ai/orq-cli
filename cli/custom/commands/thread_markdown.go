@@ -125,6 +125,9 @@ func markdownInline(value string) string {
 }
 
 func markdownSection(heading, content string) string {
+	if content == "" {
+		return heading
+	}
 	return heading + "\n\n" + content
 }
 
