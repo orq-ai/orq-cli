@@ -3,6 +3,7 @@ package launch
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -21,8 +22,9 @@ const tracePluginName = "orq-trace"
 
 var lookPath = exec.LookPath
 
-// otlpEndpoint is the base Claude Code appends /v1/metrics and /v1/logs to,
-// and the orq-trace plugin appends /v1/traces to.
+// otlpEndpoint is the base Claude Code's own exporter appends /v1/metrics and
+// /v1/logs to. It does not steer the plugin, which never sees OTEL_* and
+// derives the matching /v2/otel/v1/traces from ORQ_BASE_URL instead.
 func otlpEndpoint(apiBase string) string {
 	return firstNonEmpty(deriveFromAPIBase(apiBase, "/v2/otel"), DefaultGatewayAPIBaseURL+"/v2/otel")
 }
@@ -46,9 +48,10 @@ func traceEnv(ctx *AgentContext) map[string]string {
 		// plugin never sees the endpoint above. It derives its own from this
 		// instead, which keeps a self-hosted install's traces on its own host.
 		"ORQ_BASE_URL": firstNonEmpty(ctx.Creds.APIBaseURL, DefaultGatewayAPIBaseURL),
-		// Either profile var outranks ORQ_API_KEY and ORQ_BASE_URL in the
-		// plugin, so one left in the user's shell would send the trace to a
-		// different workspace than the launch is using.
+		// ORQ_TRACE_PROFILE outranks ORQ_API_KEY and ORQ_BASE_URL in the
+		// plugin. ORQ_PROFILE ranks below both, but it still picks the profile
+		// whose otlp_endpoint the plugin uses, and that one has no env
+		// override. Clearing both is what pins the destination.
 		"ORQ_TRACE_PROFILE": "",
 		"ORQ_PROFILE":       "",
 	}
@@ -66,15 +69,13 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 		plan.Warnings = append(plan.Warnings,
 			"node is not on PATH; the orq-trace hooks run on node, so this session will export metrics and logs but no trace")
 	}
+	if ctx.Creds.Kind == CredentialSessionToken {
+		plan.Warnings = append(plan.Warnings,
+			"this login token expires in about an hour, and the export stops with it, leaving a trace that ends mid-session; run 'orq setup' to mint a 90-day key")
+	}
 	if ctx.Flags.DryRun {
 		plan.Notes = append(plan.Notes,
 			"a real run loads the orq-trace plugin for the session with --plugin-dir, or uses your installed copy if claude has one enabled")
-		return nil
-	}
-	// A second copy of the hooks would write every span twice.
-	if tracePluginInstalled(ctx.ExecProbe) {
-		plan.Warnings = append(plan.Warnings,
-			"using the orq-trace plugin already installed in your claude config instead of loading the one this CLI ships")
 		return nil
 	}
 	dir, err := os.MkdirTemp("", "orq-claude-trace-")
@@ -83,8 +84,29 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	}
 	plan.AddCleanup(func() { _ = os.RemoveAll(dir) })
 	plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
+	// With both profile vars empty the plugin still resolves the profile named
+	// in ~/.orq/config.json, and that profile's otlp_endpoint outranks
+	// ORQ_BASE_URL. Point it at a file inside this session's own temp dir,
+	// which never exists: the plugin ignores ENOENT, so the trace goes where
+	// the launch decided and not where a stale profile points.
+	plan.Env["ORQ_CONFIG_PATH"] = filepath.Join(dir, "no-orq-config.json")
+
+	// A second copy of the hooks would write every span twice.
+	installed, err := tracePluginInstalled(ctx.ExecProbe)
+	if err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"could not read your installed claude plugins (%v); if orq-trace is installed and enabled there, this session writes every span twice", err))
+	}
+	if installed {
+		plan.Warnings = append(plan.Warnings,
+			"using the orq-trace plugin already installed in your claude config instead of loading the one this CLI ships")
+		return nil
+	}
 	pluginDir := filepath.Join(dir, tracePluginName)
-	src, _ := fs.Sub(tracePlugin, "assets/orq-trace")
+	src, err := fs.Sub(tracePlugin, "assets/orq-trace")
+	if err != nil {
+		return err
+	}
 	if err := os.CopyFS(pluginDir, src); err != nil {
 		return err
 	}
@@ -93,27 +115,31 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 }
 
 // tracePluginInstalled reports whether the user has orq-trace installed and
-// enabled through a marketplace. Any failure to tell counts as not installed:
-// the worst case is then a duplicate span, not a session with no trace at all.
-func tracePluginInstalled(run func(string, ...string) (string, error)) bool {
+// enabled through a marketplace. A failure to tell counts as not installed, so
+// the session still gets a trace, and is returned so the caller can say the
+// check did not happen.
+func tracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
 	if run == nil {
-		return false
+		return false, nil
 	}
 	out, err := run("claude", "plugin", "list", "--json")
 	if err != nil {
-		return false
+		return false, err
 	}
 	var plugins []struct {
 		ID      string `json:"id"`
+		Name    string `json:"name"`
 		Enabled bool   `json:"enabled"`
 	}
-	if json.Unmarshal([]byte(out), &plugins) != nil {
-		return false
+	if err := json.Unmarshal([]byte(out), &plugins); err != nil {
+		return false, err
 	}
 	for _, p := range plugins {
-		if p.Enabled && strings.HasPrefix(p.ID, tracePluginName+"@") {
-			return true
+		// Installed ids read orq-trace@<marketplace>; name is the fallback for
+		// a build that reports the plugin without one.
+		if p.Enabled && (p.Name == tracePluginName || strings.HasPrefix(p.ID, tracePluginName+"@")) {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }

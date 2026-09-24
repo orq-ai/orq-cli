@@ -41,7 +41,8 @@ func claudeAgent() AgentDef {
 // opt-in because either changes what the user is billed for or what leaves
 // their machine. MCP is a --mcp-config PreArg pointing at a temp file; skills
 // are linked into ~/.claude/skills for the session rather than fetched as a
-// plugin.
+// plugin, unless ORQ_SKILLS_URL pins a bundle, which is loaded with
+// --plugin-url instead.
 func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	plan := &LaunchPlan{
 		Env: map[string]string{
@@ -72,6 +73,14 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		}
 		if ctx.Flags.BaseURL != "" {
 			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
+		}
+		// Without --router the launcher sets none of these, so whatever the
+		// shell exports reaches claude. Saying "your own login" while an
+		// inherited ANTHROPIC_BASE_URL bills someone else is the surprise this
+		// ticket is about, so name it.
+		if ctx.Getenv("ANTHROPIC_BASE_URL") != "" || ctx.Getenv("ANTHROPIC_AUTH_TOKEN") != "" {
+			plan.Warnings = append(plan.Warnings,
+				"ANTHROPIC_BASE_URL or ANTHROPIC_AUTH_TOKEN is set in your shell, so claude uses it rather than your own login; unset it or pass --router to route through orq deliberately")
 		}
 	}
 	if ctx.Flags.Trace {
@@ -121,20 +130,22 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 		deriveFromAPIBase(ctx.Creds.APIBaseURL, "/v3/anthropic"),
 		DefaultClaudeGatewayURL,
 	)
-	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL")); model != "" {
-		if ctx.Flags.Model != "" {
-			plan.Env["ANTHROPIC_MODEL"] = model
-		}
-		if ShouldWarnMissingProviderPrefix(model, noopNormalize) {
-			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-				"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
-		}
+	if ctx.Flags.Model != "" {
+		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
+	}
+	// An inherited ANTHROPIC_MODEL is warned about but never re-exported: it
+	// already reaches claude on its own.
+	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL")); model != "" && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
 	}
 
 	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
 	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
 	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
 	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
+	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
+	// Code reads the haiku tier below for its background calls.
 	plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
 	plan.Env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
 	plan.Env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)

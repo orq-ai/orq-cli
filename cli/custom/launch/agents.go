@@ -65,7 +65,9 @@ type AgentDef struct {
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
 	// Traceable agents accept --trace (capture the session into orq) and
-	// --router (send model traffic through the orq.ai AI Router).
+	// --router (send model traffic through the orq.ai AI Router). claude is
+	// the only one today, and the help text for both flags is written for it:
+	// a second agent setting this has to move that copy onto AgentDef first.
 	Traceable bool
 	// HelpRoute and HelpModel name the router surface an agent speaks in
 	// `orq launch <agent> --help`, for the two that are not on the shared

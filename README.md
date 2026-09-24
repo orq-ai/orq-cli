@@ -377,7 +377,7 @@ orq's skills are linked into the agent's skills directory under the directory yo
 `orq launch claude` leaves Claude Code on the login it already has and picks no model for it, so a subscription keeps paying for the session and a `/model` choice survives a restart. Two opt-in flags change that:
 
 - `--router` points model calls at `<host>/v3/anthropic`, which moves the session's usage onto workspace billing. The launcher warns and names the workspace that gets the bill. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers are what let `/model opus|sonnet|haiku` resolve to gateway refs.
-- `--trace` turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. Nothing is installed into `~/.claude`, and the plugin's hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one.
+- `--trace` turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one.
 
 Together they record the same call twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts.
 
@@ -416,8 +416,8 @@ Sandboxed execution is not available in this version.
 | Variable | Purpose |
 |---|---|
 | `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
-| `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint) |
-| `ANTHROPIC_MODEL` | claude model selection, honoured under `--router` |
+| `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint), honoured under `--router` |
+| `ANTHROPIC_MODEL` | read under `--router` only, to warn when the value is not a `provider/model_id` gateway ref; otherwise it passes through to claude untouched |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | gateway refs the `/model` tiers resolve to under `--router` |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |

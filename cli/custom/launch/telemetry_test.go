@@ -59,6 +59,14 @@ func TestTraceNeverEnablesTheNativeTraceExporter(t *testing.T) {
 		if plan.Env["OTEL_METRICS_EXPORTER"] != "otlp" || plan.Env["OTEL_LOGS_EXPORTER"] != "otlp" {
 			t.Errorf("%+v: metrics and logs must export: %v", flags, plan.Env)
 		}
+		// The exporters above do nothing without the switch, and nothing
+		// fails loudly when they do nothing.
+		if plan.Env["CLAUDE_CODE_ENABLE_TELEMETRY"] != "1" {
+			t.Errorf("%+v: telemetry is off, so nothing exports: %v", flags, plan.Env)
+		}
+		if plan.Env["OTEL_EXPORTER_OTLP_PROTOCOL"] != "http/json" {
+			t.Errorf("%+v: protocol = %q; ingest takes http/json", flags, plan.Env["OTEL_EXPORTER_OTLP_PROTOCOL"])
+		}
 		if _, set := plan.Env["CLAUDE_CODE_ENHANCED_TELEMETRY_BETA"]; set {
 			t.Errorf("%+v: the beta trace schema must stay off", flags)
 		}
@@ -196,9 +204,10 @@ func TestTraceAndMCPBothReachTheSession(t *testing.T) {
 	assertDeclaredIfPath(t, pluginDirArg(plan), plan.TempDirs)
 }
 
-// Either profile variable outranks ORQ_API_KEY and ORQ_BASE_URL inside the
-// plugin, so one left over in the user's shell would send the session's trace
-// to a workspace the launch has nothing to do with.
+// ORQ_TRACE_PROFILE outranks ORQ_API_KEY and ORQ_BASE_URL inside the plugin,
+// and ORQ_PROFILE picks the profile whose otlp_endpoint it posts to, which no
+// env var overrides. One of either left over in the user's shell would send
+// the session's trace to a workspace the launch has nothing to do with.
 func TestTracePinsTheProfileVariables(t *testing.T) {
 	ctx := claudeCtx(map[string]string{"ORQ_TRACE_PROFILE": "staging", "ORQ_PROFILE": "staging"}, GatewayFlags{Trace: true, DryRun: true})
 	plan := resolveTraced(t, ctx)
@@ -249,6 +258,32 @@ func TestTraceWarnsWithoutNode(t *testing.T) {
 // summing across them doubles the session's cost.
 func TestRouterWithTraceWarnsAboutDoubleCounting(t *testing.T) {
 	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true, Router: true, DryRun: true}, nil))
+	if !warningsContain(plan, "twice") {
+		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+}
+
+// A profile's otlp_endpoint outranks the ORQ_BASE_URL the plan sets, so a
+// stale profile in ~/.orq/config.json would ship this session's spans, and its
+// key, to a host the launch never chose. The plugin reads its config from
+// ORQ_CONFIG_PATH, so pointing that at a file that does not exist is what
+// keeps the destination the launch's own.
+func TestTracePinsThePluginAwayFromTheUserConfig(t *testing.T) {
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, nil))
+	path := plan.Env["ORQ_CONFIG_PATH"]
+	if path == "" {
+		t.Fatalf("ORQ_CONFIG_PATH is unset, so the plugin reads ~/.orq/config.json: %v", plan.Env)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("ORQ_CONFIG_PATH %q exists (%v); it has to be absent for the plugin to ignore it", path, err)
+	}
+}
+
+// A probe that cannot answer leaves the launcher loading its own copy beside
+// an installed one, and both sets of hooks write every span.
+func TestTraceWarnsWhenThePluginProbeFails(t *testing.T) {
+	probe := func(string, ...string) (string, error) { return "", errors.New("claude: not found") }
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, probe))
 	if !warningsContain(plan, "twice") {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}

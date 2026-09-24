@@ -202,3 +202,17 @@ func TestClaudeWarnsGatewayRefWithoutRouter(t *testing.T) {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 }
+
+// Without --router the launcher sets no Anthropic variables, so an inherited
+// ANTHROPIC_BASE_URL silently keeps billing someone other than the user's own
+// login, which is the surprise the flag split exists to remove.
+func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
+	ctx := claudeCtx(map[string]string{"ANTHROPIC_BASE_URL": "https://someone-elses.example/v3/anthropic"}, GatewayFlags{DryRun: true})
+	plan, err := resolveClaude(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !warningsContain(plan, "ANTHROPIC_BASE_URL") {
+		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+}

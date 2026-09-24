@@ -29,7 +29,7 @@ for part in .claude-plugin hooks src package.json; do
 done
 
 resolved="$(git -C "$tmp/src" rev-parse HEAD)"
-version="$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$TRACE_DEST/.claude-plugin/plugin.json")"
+version="$(sed -n 's/.*"version": "\(.*\)".*/\1/p;q' "$TRACE_DEST/.claude-plugin/plugin.json")"
 cat > "$DEST/SOURCE.json" <<JSON
 {"repo": "$REPO", "ref": "$REF", "commit": "$resolved"}
 JSON

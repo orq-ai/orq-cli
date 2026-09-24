@@ -91,6 +91,7 @@ func printAgentHelp(def *AgentDef) {
 	if def.Traceable {
 		headline = fmt.Sprintf("Launch %s on your own login, with the orq MCP server and skills.\nAdd --router to route it through %s instead.", def.Label, route)
 	}
+
 	fmt.Printf(`%s
 
 Usage:
@@ -102,7 +103,11 @@ Flags:
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
-	fmt.Println("  --base-url <url>      Override the gateway base URL")
+	if def.Traceable {
+		fmt.Println("  --base-url <url>      Override the gateway base URL (with --router)")
+	} else {
+		fmt.Println("  --base-url <url>      Override the gateway base URL")
+	}
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
