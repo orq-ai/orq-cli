@@ -22,12 +22,17 @@ const tracePluginName = "orq-trace"
 
 var lookPath = exec.LookPath
 
-// otlpEndpoint is the base Claude Code's own exporter appends /v1/metrics and
-// /v1/logs to. It does not steer the plugin, which never sees OTEL_* and
-// derives the matching /v2/otel/v1/traces from ORQ_BASE_URL instead.
+// otlpEndpoint is where both exporters post: Claude Code's own appends
+// /v1/metrics and /v1/logs, and the plugin, handed it through its session
+// profile, appends /v1/traces.
 func otlpEndpoint(apiBase string) string {
 	return firstNonEmpty(deriveFromAPIBase(apiBase, "/v2/otel"), DefaultGatewayAPIBaseURL+"/v2/otel")
 }
+
+// traceProfile is the only profile in the orq config a traced session's plugin
+// reads. It names the endpoint and no key, so the plugin takes the launch's
+// ORQ_API_KEY.
+const traceProfile = "orq-launch"
 
 // traceEnv returns the telemetry env for one traced session. Metrics and logs
 // come from Claude Code's own exporter; traces come only from the orq-trace
@@ -35,7 +40,7 @@ func otlpEndpoint(apiBase string) string {
 // double-counts every session. No OTEL_LOG_* content flags either: the plugin's
 // hooks already carry content, with local redaction, and shipping prompts
 // through two redaction stories is worse than shipping them once.
-func traceEnv(ctx *AgentContext) map[string]string {
+func traceEnv(ctx *AgentContext, configPath string) map[string]string {
 	return map[string]string{
 		"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
 		"OTEL_METRICS_EXPORTER":        "otlp",
@@ -44,16 +49,12 @@ func traceEnv(ctx *AgentContext) map[string]string {
 		"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
 		"OTEL_EXPORTER_OTLP_ENDPOINT":  otlpEndpoint(ctx.Creds.APIBaseURL),
 		"OTEL_EXPORTER_OTLP_HEADERS":   "Authorization=Bearer " + ctx.Creds.APIKey,
-		// Claude Code strips OTEL_* from the env its hooks run with, so the
-		// plugin never sees the endpoint above. It derives its own from this
-		// instead, which keeps a self-hosted install's traces on its own host.
-		"ORQ_BASE_URL": firstNonEmpty(ctx.Creds.APIBaseURL, DefaultGatewayAPIBaseURL),
-		// ORQ_TRACE_PROFILE outranks ORQ_API_KEY and ORQ_BASE_URL in the
-		// plugin. ORQ_PROFILE ranks below both, but it still picks the profile
-		// whose otlp_endpoint the plugin uses, and that one has no env
-		// override. Clearing both is what pins the destination.
-		"ORQ_TRACE_PROFILE": "",
-		"ORQ_PROFILE":       "",
+		// Claude Code strips OTEL_* from the env its hooks run with, and the
+		// plugin's own derivation from a base URL breaks on non-production
+		// hosts. A session-only config whose profile outranks the user's shell
+		// and ~/.orq/config.json is the one channel that pins the destination.
+		"ORQ_CONFIG_PATH":   configPath,
+		"ORQ_TRACE_PROFILE": traceProfile,
 	}
 }
 
@@ -62,34 +63,32 @@ func traceEnv(ctx *AgentContext) map[string]string {
 // to trace sessions they did not launch with --trace. The plugin resolves its
 // key from the ORQ_API_KEY already in the plan.
 func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
-	for k, v := range traceEnv(ctx) {
+	configPath := filepath.Join("<session tempdir>", "orq-config.json")
+	var dir string
+	if !ctx.Flags.DryRun {
+		var err error
+		if dir, err = os.MkdirTemp("", "orq-claude-trace-"); err != nil {
+			return err
+		}
+		plan.AddCleanup(func() { _ = os.RemoveAll(dir) })
+		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
+		configPath = filepath.Join(dir, "orq-config.json")
+		if err := writeTraceConfig(configPath, otlpEndpoint(ctx.Creds.APIBaseURL)); err != nil {
+			return err
+		}
+	}
+	for k, v := range traceEnv(ctx, configPath) {
 		plan.Env[k] = v
 	}
 	if _, err := lookPath("node"); err != nil {
 		plan.Warnings = append(plan.Warnings,
 			"node is not on PATH; the orq-trace hooks run on node, so this session will export metrics and logs but no trace")
 	}
-	if ctx.Creds.Kind == CredentialSessionToken {
-		plan.Warnings = append(plan.Warnings,
-			"this login token expires in about an hour, and the export stops with it, leaving a trace that ends mid-session; run 'orq setup' to mint a 90-day key")
-	}
 	if ctx.Flags.DryRun {
 		plan.Notes = append(plan.Notes,
 			"a real run loads the orq-trace plugin for the session with --plugin-dir, or uses your installed copy if claude has one enabled")
 		return nil
 	}
-	dir, err := os.MkdirTemp("", "orq-claude-trace-")
-	if err != nil {
-		return err
-	}
-	plan.AddCleanup(func() { _ = os.RemoveAll(dir) })
-	plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
-	// With both profile vars empty the plugin still resolves the profile named
-	// in ~/.orq/config.json, and that profile's otlp_endpoint outranks
-	// ORQ_BASE_URL. Point it at a file inside this session's own temp dir,
-	// which never exists: the plugin ignores ENOENT, so the trace goes where
-	// the launch decided and not where a stale profile points.
-	plan.Env["ORQ_CONFIG_PATH"] = filepath.Join(dir, "no-orq-config.json")
 
 	// A second copy of the hooks would write every span twice.
 	installed, err := tracePluginInstalled(ctx.ExecProbe)
@@ -142,4 +141,14 @@ func tracePluginInstalled(run func(string, ...string) (string, error)) (bool, er
 		}
 	}
 	return false, nil
+}
+
+func writeTraceConfig(path, endpoint string) error {
+	data, err := json.Marshal(map[string]any{
+		"profiles": map[string]any{traceProfile: map[string]string{"otlp_endpoint": endpoint}},
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
 }

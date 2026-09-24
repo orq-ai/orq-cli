@@ -66,10 +66,12 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	} else {
 		if ctx.Flags.Model != "" {
 			plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
-			if strings.Contains(ctx.Flags.Model, "/") {
-				plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-					"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5", ctx.Flags.Model))
-			}
+		}
+		// An inherited ANTHROPIC_MODEL left over from a routed setup is the
+		// same mistake as passing one, so both get the warning.
+		if model := firstNonEmpty(ctx.Flags.Model, ctx.Getenv("ANTHROPIC_MODEL")); model != "" && !ShouldWarnMissingProviderPrefix(model, noopNormalize) {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+				"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5", model))
 		}
 		if ctx.Flags.BaseURL != "" {
 			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
@@ -78,9 +80,15 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		// shell exports reaches claude. Saying "your own login" while an
 		// inherited ANTHROPIC_BASE_URL bills someone else is the surprise this
 		// ticket is about, so name it.
-		if ctx.Getenv("ANTHROPIC_BASE_URL") != "" || ctx.Getenv("ANTHROPIC_AUTH_TOKEN") != "" {
-			plan.Warnings = append(plan.Warnings,
-				"ANTHROPIC_BASE_URL or ANTHROPIC_AUTH_TOKEN is set in your shell, so claude uses it rather than your own login; unset it or pass --router to route through orq deliberately")
+		var inherited []string
+		for _, k := range loginOverrides {
+			if ctx.Getenv(k) != "" {
+				inherited = append(inherited, k)
+			}
+		}
+		if len(inherited) > 0 {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+				"%s set in your shell, so claude uses it rather than your own login; unset it or pass --router to route through orq deliberately", strings.Join(inherited, ", ")))
 		}
 	}
 	if ctx.Flags.Trace {
@@ -111,6 +119,9 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	maybeInstallSessionSkills(ctx, plan, "claude")
 	return plan, nil
 }
+
+// loginOverrides are the variables that take claude off the user's own login.
+var loginOverrides = []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"}
 
 func noopNormalize(model string) string { return model }
 

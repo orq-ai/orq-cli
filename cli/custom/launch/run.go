@@ -37,6 +37,14 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 1, err
 	}
 
+	// Before Resolve, so no resolver probes a binary that is not there and
+	// warns about the probe ahead of the real error.
+	if !flags.DryRun {
+		if _, err := exec.LookPath(def.Binary); err != nil {
+			return 1, fmt.Errorf("%s CLI not found on PATH. Install it: %s", def.Binary, def.InstallHint)
+		}
+	}
+
 	plan, err := def.Resolve(&AgentContext{
 		Creds:     creds,
 		Getenv:    os.Getenv,
@@ -49,7 +57,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	reportCredentialNotices(def, creds)
+	reportCredentialNotices(def, creds, flags.Trace)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -59,10 +67,6 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if flags.DryRun {
 		printDryRun(def, args, plan, creds.APIKey)
 		return 0, nil
-	}
-
-	if _, err := exec.LookPath(def.Binary); err != nil {
-		return 1, fmt.Errorf("%s CLI not found on PATH. Install it: %s", def.Binary, def.InstallHint)
 	}
 
 	return RunChild(def.Binary, args, plan.Env)
@@ -103,11 +107,11 @@ Flags:
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
+	baseURLScope := ""
 	if def.Traceable {
-		fmt.Println("  --base-url <url>      Override the gateway base URL (with --router)")
-	} else {
-		fmt.Println("  --base-url <url>      Override the gateway base URL")
+		baseURLScope = " (with --router)"
 	}
+	fmt.Printf("  --base-url <url>      Override the gateway base URL%s\n", baseURLScope)
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
@@ -165,9 +169,13 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-func reportCredentialNotices(def *AgentDef, creds *Credentials) {
+func reportCredentialNotices(def *AgentDef, creds *Credentials, traced bool) {
 	if creds.Kind == CredentialSessionToken {
-		fmt.Fprintln(os.Stderr, "Note: no durable API key for this workspace; the agent gets a login token that expires in about an hour. Run 'orq setup' to mint a 90-day key.")
+		expiry := "the agent gets a login token that expires in about an hour"
+		if traced {
+			expiry += ", and the trace export stops with it, leaving a trace that ends mid-session"
+		}
+		fmt.Fprintf(os.Stderr, "Note: no durable API key for this workspace; %s. Run 'orq setup' to mint a 90-day key.\n", expiry)
 	}
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")

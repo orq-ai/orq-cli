@@ -3,6 +3,7 @@ package launch
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -103,11 +104,6 @@ func TestTraceEndpoint(t *testing.T) {
 	if got := plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"]; got != "https://orq.acme.internal/v2/otel" {
 		t.Errorf("on-prem endpoint: %q", got)
 	}
-	// The plugin cannot see OTEL_* (claude strips them from hook env), so its
-	// own destination has to arrive through ORQ_BASE_URL.
-	if got := plan.Env["ORQ_BASE_URL"]; got != "https://orq.acme.internal/" {
-		t.Errorf("plugin base URL: %q", got)
-	}
 }
 
 func pluginDirArg(plan *LaunchPlan) string {
@@ -204,21 +200,6 @@ func TestTraceAndMCPBothReachTheSession(t *testing.T) {
 	assertDeclaredIfPath(t, pluginDirArg(plan), plan.TempDirs)
 }
 
-// ORQ_TRACE_PROFILE outranks ORQ_API_KEY and ORQ_BASE_URL inside the plugin,
-// and ORQ_PROFILE picks the profile whose otlp_endpoint it posts to, which no
-// env var overrides. One of either left over in the user's shell would send
-// the session's trace to a workspace the launch has nothing to do with.
-func TestTracePinsTheProfileVariables(t *testing.T) {
-	ctx := claudeCtx(map[string]string{"ORQ_TRACE_PROFILE": "staging", "ORQ_PROFILE": "staging"}, GatewayFlags{Trace: true, DryRun: true})
-	plan := resolveTraced(t, ctx)
-	for _, k := range []string{"ORQ_TRACE_PROFILE", "ORQ_PROFILE"} {
-		v, set := plan.Env[k]
-		if !set || v != "" {
-			t.Errorf("%s = %q (set=%v), want empty", k, v, set)
-		}
-	}
-}
-
 // A dry run resolves and starts nothing, so it may not copy the plugin out or
 // ask claude what is installed.
 func TestTraceDryRunTouchesNothing(t *testing.T) {
@@ -231,6 +212,9 @@ func TestTraceDryRunTouchesNothing(t *testing.T) {
 		if strings.Contains(strings.Join(c, " "), "plugin list") {
 			t.Errorf("dry run probed claude: %v", c)
 		}
+	}
+	if plan.Env["ORQ_CONFIG_PATH"] == "" {
+		t.Errorf("dry run hides ORQ_CONFIG_PATH, which a real run sets: %v", plan.Env)
 	}
 	var noted bool
 	for _, n := range plan.Notes {
@@ -263,19 +247,52 @@ func TestRouterWithTraceWarnsAboutDoubleCounting(t *testing.T) {
 	}
 }
 
-// A profile's otlp_endpoint outranks the ORQ_BASE_URL the plan sets, so a
-// stale profile in ~/.orq/config.json would ship this session's spans, and its
-// key, to a host the launch never chose. The plugin reads its config from
-// ORQ_CONFIG_PATH, so pointing that at a file that does not exist is what
-// keeps the destination the launch's own.
-func TestTracePinsThePluginAwayFromTheUserConfig(t *testing.T) {
-	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, nil))
-	path := plan.Env["ORQ_CONFIG_PATH"]
-	if path == "" {
-		t.Fatalf("ORQ_CONFIG_PATH is unset, so the plugin reads ~/.orq/config.json: %v", plan.Env)
+// The plugin, not this package, decides where spans go, so the pin is checked
+// against the vendored plugin itself: a stale profile in the user's shell and
+// ~/.orq/config.json must lose to the session's own profile, on a host where
+// the plugin's own base-URL derivation would pick the wrong one.
+func TestTracePinsThePluginDestination(t *testing.T) {
+	home := t.TempDir()
+	stale := `{"current":"staging","profiles":{"staging":{"api_key":"stale-key","otlp_endpoint":"https://stale.example/v2/otel"}}}`
+	if err := os.MkdirAll(filepath.Join(home, ".orq"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("ORQ_CONFIG_PATH %q exists (%v); it has to be absent for the plugin to ignore it", path, err)
+	if err := os.WriteFile(filepath.Join(home, ".orq", "config.json"), []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := traceCtx(GatewayFlags{Trace: true}, recordingProbe(new([]probeCall), "[]", ""))
+	ctx.Creds.APIBaseURL = "https://my.staging.orq.ai"
+	plan := resolveTraced(t, ctx)
+	want := plan.Env["OTEL_EXPORTER_OTLP_ENDPOINT"] + "/v1/traces"
+
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH")
+	}
+	script := `const c = await import(process.argv[1] + "/src/config.js");
+const o = await import(process.argv[1] + "/src/otlp.js");
+console.log(o.getEndpoint() + " " + c.getApiKey());`
+	cmd := exec.Command(node, "--input-type=module", "-e", script, pluginDirArg(plan))
+	env := map[string]string{"HOME": home, "ORQ_PROFILE": "staging", "ORQ_TRACE_PROFILE": "staging"}
+	for k, v := range plan.Env {
+		if !strings.HasPrefix(k, "OTEL_") { // claude strips these from hook env
+			env[k] = v
+		}
+	}
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("plugin config: %v\n%s", err, stderr.String())
+	}
+	if got := strings.TrimSpace(string(out)); got != want+" orq-key" {
+		t.Fatalf("plugin resolves %q, want %q", got, want+" orq-key")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("plugin warned on every hook: %s", stderr.String())
 	}
 }
 

@@ -201,6 +201,11 @@ func TestClaudeWarnsGatewayRefWithoutRouter(t *testing.T) {
 	if !warningsContain(plan, "--router") {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
+	// Left over in the shell from a routed setup, it reaches claude the same way.
+	plan, _ = resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_MODEL": "anthropic/claude-opus-5"}, GatewayFlags{}))
+	if !warningsContain(plan, "--router") {
+		t.Fatalf("inherited ref, warnings: %v", plan.Warnings)
+	}
 }
 
 // Without --router the launcher sets no Anthropic variables, so an inherited
@@ -214,5 +219,10 @@ func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
 	}
 	if !warningsContain(plan, "ANTHROPIC_BASE_URL") {
 		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+	// An API key bills the API account, not the subscription.
+	plan, _ = resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_API_KEY": "sk-ant"}, GatewayFlags{DryRun: true}))
+	if !warningsContain(plan, "ANTHROPIC_API_KEY") {
+		t.Fatalf("api key, warnings: %v", plan.Warnings)
 	}
 }

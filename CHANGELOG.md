@@ -117,6 +117,17 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed (breaking): `orq launch claude` keeps Claude Code on your own
+  login and model.** It no longer routes through the orq.ai AI Router, bills
+  the workspace, or forces `anthropic/claude-sonnet-5`. Scripts that relied on
+  the old routing must add `--router`, which restores it and names the
+  workspace that will be billed. `--model` still sets `ANTHROPIC_MODEL`, and
+  nothing else does.
+- **Added: `orq launch claude --trace`** captures the session as an orq trace.
+  It turns on Claude Code's metrics and logs export and loads the bundled
+  `orq-trace` plugin for that session only, without installing anything into
+  your claude config. The hooks need `node` on PATH.
+
 ## [9.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v9.0.0) — 2026-09-20
 
 - **Changed (breaking): `orq traces thread` is now `orq traces
