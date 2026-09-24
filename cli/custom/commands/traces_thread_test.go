@@ -962,7 +962,7 @@ func TestTracesThreadOmitsReasoningOnRequest(t *testing.T) {
 	if !strings.Contains(kept, "step by step") {
 		t.Fatalf("Markdown = %q, want the reasoning by default", kept)
 	}
-	dropped, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--reasoning=false")
+	dropped, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "reasoning")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1748,8 +1748,8 @@ func TestTracesThreadToolResultCapAndStubs(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
-	t.Run("reasoning=false stubs a reasoning-only turn and keeps -x", func(t *testing.T) {
-		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--reasoning=false", "-x", "tool")
+	t.Run("-x reasoning,tool stubs a reasoning-only turn", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "reasoning,tool")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1757,7 +1757,7 @@ func TestTracesThreadToolResultCapAndStubs(t *testing.T) {
 			t.Fatalf("reasoning survived or went unstubbed: %q", out)
 		}
 		if strings.Contains(out, "rrrr") || !strings.Contains(out, stub) {
-			t.Fatalf("-x tool lost next to --reasoning=false: %q", out)
+			t.Fatalf("-x tool lost next to -x reasoning: %q", out)
 		}
 	})
 	t.Run("tool-max-chars cuts only the result", func(t *testing.T) {

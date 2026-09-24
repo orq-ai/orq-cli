@@ -40,7 +40,6 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var spans bool
 	var exclude []string
 	maxChars, toolChars := defaultThreadMaxChars, 0
-	reasoning := true
 	params := viper.New()
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
@@ -81,7 +80,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --match search_docs       # the turns that mention a tool",
 			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
 			"  orq traces thread tr_123 -i reasoning              # the thinking, each turn's body a stub",
-			"  orq traces thread tr_123 --reasoning=false         # same as -i for every role but reasoning",
+			"  orq traces thread tr_123 -x reasoning              # every turn, without the thinking",
 			"  orq traces thread tr_123 -x tool                   # the conversation without the tool payloads",
 			"  orq traces thread tr_123 --tool-max-chars 200 -o json   # short tool results, for another agent's context",
 			"",
@@ -129,14 +128,6 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if !reasoning {
-				if slices.Contains(include, threadKindReasoning) {
-					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --include reasoning"))
-				}
-				if len(include) == 0 {
-					exclude = append(exclude, threadKindReasoning)
-				}
-			}
 			if len(exclude) > 0 {
 				if len(include) > 0 {
 					return bartolocli.NewValueError(errors.New("--include and --exclude select the same parts two ways; use one"))
@@ -175,7 +166,6 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
 	cmd.Flags().StringSliceVarP(&exclude, "exclude", "x", nil, fmt.Sprintf("Render everything but these parts of the conversation [%s]; a left-out turn keeps its place as an omitted stub, and left-out reasoning goes quietly from a turn that still shows its body", strings.Join(ThreadKinds, ", ")))
-	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this
 	// one answers here and the global keeps every other command. It stays out

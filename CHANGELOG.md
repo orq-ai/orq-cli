@@ -169,13 +169,19 @@ controls on surface changes, whichever side they originate from.
   its role and `[omitted: N characters]` instead of its content, so a reader
   can still see that a tool returned something. N counts the characters the
   span recorded, not the labels a render adds; a marker for content the span
-  did not record, or redacted, stays in place instead. Under `-i reasoning` every message's body becomes that
-  stub. Reasoning left out of a turn that still shows its body is dropped
-  without one. `--reasoning=false` treats a message that held only reasoning
-  as a stub instead of rendering it as `[content unavailable]`. In `-o json`
-  a stub is a part `{"type": "omitted", "omitted_chars": N}`, and a stubbed
-  assistant turn keeps its tool calls' `id` and `name` with `arguments` null,
-  so a result still pairs with its call.
+  did not record, or redacted, stays in place instead. Under `-i reasoning`
+  every message's body becomes that stub. Reasoning left out of a turn that
+  still shows its body is dropped without one. A message that held only
+  reasoning, with reasoning left out, is a stub instead of `[content
+  unavailable]`. In `-o json` a stub is a part `{"type": "omitted",
+  "omitted_chars": N}`, and a stubbed assistant turn keeps its tool calls'
+  `id` and `name` with `arguments` null, so a result still pairs with its
+  call.
+
+- **Removed: `orq traces thread --reasoning`.** `-x reasoning` does what
+  `--reasoning=false` did, and `-i`/`-x` now cover every part of the
+  conversation with one mechanism. A script passing `--reasoning=false` fails
+  with an unknown-flag error; replace it with `-x reasoning`.
 
 - **Changed: `orq traces thread -o json|yaml|toon` honours an explicit
   `--max-chars` or `--tool-max-chars`.** It used to ignore both silently.

@@ -8950,10 +8950,6 @@
           "type": "string"
         },
         {
-          "name": "reasoning",
-          "type": "bool"
-        },
-        {
           "name": "slice",
           "type": "string"
         },
