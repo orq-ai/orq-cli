@@ -29,9 +29,13 @@ for part in .claude-plugin hooks src package.json; do
 done
 
 resolved="$(git -C "$tmp/src" rev-parse HEAD)"
+version="$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$TRACE_DEST/.claude-plugin/plugin.json")"
 cat > "$DEST/SOURCE.json" <<JSON
 {"repo": "$REPO", "ref": "$REF", "commit": "$resolved"}
 JSON
+cat > "$TRACE_DEST/SOURCE.json" <<JSON
+{"repo": "$REPO", "ref": "$REF", "commit": "$resolved", "path": "plugins/trace-hooks", "version": "$version"}
+JSON
 
-echo "vendored the orq-trace plugin $(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$TRACE_DEST/.claude-plugin/plugin.json")"
+echo "vendored the orq-trace plugin $version"
 echo "vendored $(find "$DEST" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills from $resolved"

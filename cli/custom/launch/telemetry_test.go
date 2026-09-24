@@ -115,10 +115,7 @@ func pluginDirArg(plan *LaunchPlan) string {
 // command the launcher may run is the read-only list.
 func TestTraceLoadsThePluginForTheSessionOnly(t *testing.T) {
 	var calls []probeCall
-	plan, err := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "[]", "")))
-	if err != nil {
-		t.Fatal(err)
-	}
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "[]", "")))
 	dir := pluginDirArg(plan)
 	if dir == "" {
 		t.Fatalf("no --plugin-dir: %v", plan.PreArgs)
@@ -159,10 +156,7 @@ func TestTraceDefersToAnInstalledPlugin(t *testing.T) {
 func TestTraceIgnoresADisabledInstall(t *testing.T) {
 	var calls []probeCall
 	listed := `[{"id": "orq-trace@orq-claude-plugin", "enabled": false}]`
-	plan, _ := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, listed, "")))
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, listed, "")))
 	if pluginDirArg(plan) == "" {
 		t.Fatal("disabled install must not suppress the session plugin")
 	}
@@ -170,14 +164,92 @@ func TestTraceIgnoresADisabledInstall(t *testing.T) {
 
 func TestTraceListFailureStillLoadsThePlugin(t *testing.T) {
 	var calls []probeCall
-	plan, err := resolveClaude(traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "", "plugin list")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Cleanup != nil {
-		defer plan.Cleanup()
-	}
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, recordingProbe(&calls, "", "plugin list")))
 	if pluginDirArg(plan) == "" {
 		t.Fatal("no plugin loaded")
+	}
+}
+
+// The MCP server is on by default, so a plain `orq launch claude --trace` runs
+// both writers. An earlier revision assigned PreArgs in the MCP block and
+// dropped the --plugin-dir the trace had just added: the default traced launch
+// then started with no plugin and wrote no spans at all.
+func TestTraceAndMCPBothReachTheSession(t *testing.T) {
+	var calls []probeCall
+	ctx := traceCtx(GatewayFlags{Trace: true, MCP: true}, recordingProbe(&calls, "[]", ""))
+	plan := resolveTraced(t, ctx)
+	if pluginDirArg(plan) == "" {
+		t.Errorf("MCP dropped the trace plugin: %v", plan.PreArgs)
+	}
+	var mcpConfig string
+	for i, a := range plan.PreArgs {
+		if a == "--mcp-config" && i+1 < len(plan.PreArgs) {
+			mcpConfig = plan.PreArgs[i+1]
+		}
+	}
+	if mcpConfig == "" {
+		t.Fatalf("no --mcp-config: %v", plan.PreArgs)
+	}
+	// Both writers' directories have to survive the earlier append, or the
+	// sandbox mount list loses one of them.
+	assertDeclaredIfPath(t, mcpConfig, plan.TempDirs)
+	assertDeclaredIfPath(t, pluginDirArg(plan), plan.TempDirs)
+}
+
+// Either profile variable outranks ORQ_API_KEY and ORQ_BASE_URL inside the
+// plugin, so one left over in the user's shell would send the session's trace
+// to a workspace the launch has nothing to do with.
+func TestTracePinsTheProfileVariables(t *testing.T) {
+	ctx := claudeCtx(map[string]string{"ORQ_TRACE_PROFILE": "staging", "ORQ_PROFILE": "staging"}, GatewayFlags{Trace: true, DryRun: true})
+	plan := resolveTraced(t, ctx)
+	for _, k := range []string{"ORQ_TRACE_PROFILE", "ORQ_PROFILE"} {
+		v, set := plan.Env[k]
+		if !set || v != "" {
+			t.Errorf("%s = %q (set=%v), want empty", k, v, set)
+		}
+	}
+}
+
+// A dry run resolves and starts nothing, so it may not copy the plugin out or
+// ask claude what is installed.
+func TestTraceDryRunTouchesNothing(t *testing.T) {
+	var calls []probeCall
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true, DryRun: true}, recordingProbe(&calls, "[]", "")))
+	if dir := pluginDirArg(plan); dir != "" {
+		t.Errorf("dry run copied the plugin to %s", dir)
+	}
+	for _, c := range calls {
+		if strings.Contains(strings.Join(c, " "), "plugin list") {
+			t.Errorf("dry run probed claude: %v", c)
+		}
+	}
+	var noted bool
+	for _, n := range plan.Notes {
+		noted = noted || strings.Contains(n, "orq-trace")
+	}
+	if !noted {
+		t.Fatalf("dry run must say what a real run loads: %v", plan.Notes)
+	}
+}
+
+// The hooks are a node script. Without node the session still exports metrics
+// and logs, so nothing fails loudly and the missing trace looks like an
+// ingestion bug.
+func TestTraceWarnsWithoutNode(t *testing.T) {
+	original := lookPath
+	lookPath = func(string) (string, error) { return "", errors.New("not found") }
+	t.Cleanup(func() { lookPath = original })
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true, DryRun: true}, nil))
+	if !warningsContain(plan, "node") {
+		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+}
+
+// Both writers price the same call, with different trace ids, so a dashboard
+// summing across them doubles the session's cost.
+func TestRouterWithTraceWarnsAboutDoubleCounting(t *testing.T) {
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true, Router: true, DryRun: true}, nil))
+	if !warningsContain(plan, "twice") {
+		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 }

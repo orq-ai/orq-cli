@@ -90,7 +90,7 @@ An interactive `orq setup` ends by offering to connect the agents it detects, so
 
 Between signing in and creating the key, setup asks which project to work in. It skips itself automatically at zero or one project — there is nothing to choose — and never offers to create one. `--project <id|key|name>` pre-answers it for a non-interactive run; `--no-project` skips it and leaves the session unscoped. An `--api-key` run skips it entirely, since there is no session for a project choice to narrow.
 
-Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude` is the way to route its model calls. It does receive `skills` and `mcp`.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered the gateway: it has no provider config and routes purely through environment variables, so `orq launch claude --router` is the way to route its model calls. It does receive `skills` and `mcp`.
 
 Connect handles four capabilities: `gateway`, `tracing`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `--global` (the default) writes machine-wide, `--local` writes to this project: `mcp` goes into the agent's project config file (`.mcp.json`, `.codex/config.toml`, `opencode.json`, `kilo.json`, `.kimi-code/mcp.json`), and `skills` into `./.claude/skills` for Claude Code and `./.agents/skills` for every other agent — the two directories `npx skills` uses, anchored at the directory you run from. Add the directories it writes to `.gitignore`; connect names them, and the links point into `~/.orq`. `gateway` and `tracing` are machine-wide whatever the flag says. `--local` is refused from your home directory, where the config it would produce would follow you into every session started from home. A bare `orq disconnect` removes both scopes; a local install made from another directory is counted and left for a `--local` run from there. Codex loads its project config only for a repository marked trusted in `~/.codex/config.toml`; connect prints the line to add.
 
@@ -109,7 +109,7 @@ skills check, and `orq doctor -o json` returns the full value at
 | `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
 | `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
 | `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
-| `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
+| `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude --router` |
 | `copilot` | nothing — copilot's BYOK provider is env-only, one model per session | `orq launch copilot` |
 | `gemini` | nothing — gemini reads a config home, not a provider registry | `orq launch gemini` |
 
@@ -347,10 +347,12 @@ orq datasets delete <id> --force   # required in CI
 
 ## Launch
 
-`orq launch <agent>` starts a coding-agent CLI preconfigured to route every model call through the orq.ai AI Router — one command, no manual env or config wiring. Authenticate first with `orq auth login` (or export `ORQ_API_KEY`).
+`orq launch <agent>` starts a coding-agent CLI preconfigured to route every model call through the orq.ai AI Router — one command, no manual env or config wiring. Authenticate first with `orq auth login` (or export `ORQ_API_KEY`). Claude Code is the exception: it keeps its own login unless you pass `--router`, because a Claude subscription already pays for those calls.
 
 ```sh
-orq launch claude                 # Claude Code
+orq launch claude                 # Claude Code, on its own login
+orq launch claude --router        # ...with model calls through the orq AI Router
+orq launch claude --trace         # ...with the session captured in your workspace
 orq launch codex                  # OpenAI Codex CLI
 orq launch opencode               # OpenCode
 orq launch kilo                   # Kilo CLI (OpenCode fork)
@@ -370,6 +372,15 @@ The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session,
 
 orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
+### Claude Code: `--router` and `--trace`
+
+`orq launch claude` leaves Claude Code on the login it already has and picks no model for it, so a subscription keeps paying for the session and a `/model` choice survives a restart. Two opt-in flags change that:
+
+- `--router` points model calls at `<host>/v3/anthropic`, which moves the session's usage onto workspace billing. The launcher warns and names the workspace that gets the bill. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers are what let `/model opus|sonnet|haiku` resolve to gateway refs.
+- `--trace` turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. Nothing is installed into `~/.claude`, and the plugin's hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one.
+
+Together they record the same call twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts.
+
 ### Shared flags
 
 | Flag | Description |
@@ -381,6 +392,8 @@ orq's skills are linked into the agent's skills directory under the directory yo
 | `--mcp` | Wire the orq MCP server (workspace tools) into the agent — the default |
 | `--no-mcp` | Do not wire the orq MCP server for this session |
 | `--no-skills` | Do not link orq's skills into the agent for this session |
+| `--router` | claude only: route model calls through the orq AI Router, onto workspace billing |
+| `--trace` | claude only: capture the session as a trace in your workspace |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
@@ -404,7 +417,8 @@ Sandboxed execution is not available in this version.
 |---|---|
 | `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
 | `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint) |
-| `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` | claude model selection |
+| `ANTHROPIC_MODEL` | claude model selection, honoured under `--router` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | gateway refs the `/model` tiers resolve to under `--router` |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |

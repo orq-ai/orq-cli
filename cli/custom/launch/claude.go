@@ -3,6 +3,7 @@ package launch
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -52,27 +53,44 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		},
 	}
 
+	fail := func(err error) (*LaunchPlan, error) {
+		if plan.Cleanup != nil {
+			plan.Cleanup()
+		}
+		return nil, err
+	}
+
 	if ctx.Flags.Router {
 		routeThroughGateway(ctx, plan)
-	} else if ctx.Flags.Model != "" {
-		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
+	} else {
+		if ctx.Flags.Model != "" {
+			plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
+			if strings.Contains(ctx.Flags.Model, "/") {
+				plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+					"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5", ctx.Flags.Model))
+			}
+		}
+		if ctx.Flags.BaseURL != "" {
+			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
+		}
 	}
 	if ctx.Flags.Trace {
 		if err := wireTrace(ctx, plan); err != nil {
-			if plan.Cleanup != nil {
-				plan.Cleanup()
-			}
-			return nil, fmt.Errorf("--trace: %w", err)
+			return fail(fmt.Errorf("--trace: %w", err))
+		}
+		if ctx.Flags.Router {
+			plan.Warnings = append(plan.Warnings,
+				"--router with --trace records each model call twice, once by the AI Router and once in the session trace, so summed costs across both double-count")
 		}
 	}
 
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
 		path, cleanup, err := writeClaudeMCPConfig(url)
 		if err != nil {
-			return nil, err
+			return fail(err)
 		}
-		plan.PreArgs = []string{"--mcp-config", path}
-		plan.TempDirs = []TempDir{{HostPath: filepath.Dir(path)}}
+		plan.PreArgs = append(plan.PreArgs, "--mcp-config", path)
+		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: filepath.Dir(path)})
 		plan.AddCleanup(cleanup)
 	}
 	if url := skillsPluginURL(ctx); url != "" {

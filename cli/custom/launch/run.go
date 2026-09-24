@@ -1,11 +1,13 @@
 package launch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Run resolves and launches an agent, returning the child exit code.
@@ -66,8 +68,14 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	return RunChild(def.Binary, args, plan.Env)
 }
 
+// probeTimeout bounds a probe so a hung agent binary delays the launch
+// instead of blocking it.
+const probeTimeout = 10 * time.Second
+
 func hostExecProbe(binary string, args ...string) (string, error) {
-	out, err := exec.Command(binary, args...).Output()
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, binary, args...).Output()
 	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) != 0 {
 		// Output() captures stderr on the error; without this the probe's
 		// real failure reason ends up as an opaque "exit status 1".

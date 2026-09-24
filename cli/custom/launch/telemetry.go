@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -17,6 +18,8 @@ import (
 var tracePlugin embed.FS
 
 const tracePluginName = "orq-trace"
+
+var lookPath = exec.LookPath
 
 // otlpEndpoint is the base Claude Code appends /v1/metrics and /v1/logs to,
 // and the orq-trace plugin appends /v1/traces to.
@@ -43,6 +46,11 @@ func traceEnv(ctx *AgentContext) map[string]string {
 		// plugin never sees the endpoint above. It derives its own from this
 		// instead, which keeps a self-hosted install's traces on its own host.
 		"ORQ_BASE_URL": firstNonEmpty(ctx.Creds.APIBaseURL, DefaultGatewayAPIBaseURL),
+		// Either profile var outranks ORQ_API_KEY and ORQ_BASE_URL in the
+		// plugin, so one left in the user's shell would send the trace to a
+		// different workspace than the launch is using.
+		"ORQ_TRACE_PROFILE": "",
+		"ORQ_PROFILE":       "",
 	}
 }
 
@@ -53,6 +61,15 @@ func traceEnv(ctx *AgentContext) map[string]string {
 func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	for k, v := range traceEnv(ctx) {
 		plan.Env[k] = v
+	}
+	if _, err := lookPath("node"); err != nil {
+		plan.Warnings = append(plan.Warnings,
+			"node is not on PATH; the orq-trace hooks run on node, so this session will export metrics and logs but no trace")
+	}
+	if ctx.Flags.DryRun {
+		plan.Notes = append(plan.Notes,
+			"a real run loads the orq-trace plugin for the session with --plugin-dir, or uses your installed copy if claude has one enabled")
+		return nil
 	}
 	// A second copy of the hooks would write every span twice.
 	if tracePluginInstalled(ctx.ExecProbe) {

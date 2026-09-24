@@ -178,3 +178,27 @@ func TestClaudeTiersHonourTheEnvironment(t *testing.T) {
 		t.Errorf("env override ignored: got %q", got)
 	}
 }
+
+// --base-url only has a target when claude is pointed at the gateway. Applying
+// it silently to a direct session would be worse, so it is reported.
+func TestClaudeWarnsBaseURLWithoutRouter(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{BaseURL: "https://flag.example/v3/anthropic"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := plan.Env["ANTHROPIC_BASE_URL"]; set {
+		t.Fatal("--base-url must not route a session on the user's own login")
+	}
+	if !warningsContain(plan, "--base-url") {
+		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+}
+
+// A gateway ref reaching Anthropic directly is rejected by Anthropic, and the
+// error it returns says nothing about --router.
+func TestClaudeWarnsGatewayRefWithoutRouter(t *testing.T) {
+	plan, _ := resolveClaude(claudeCtx(nil, GatewayFlags{Model: "anthropic/claude-opus-5"}))
+	if !warningsContain(plan, "--router") {
+		t.Fatalf("warnings: %v", plan.Warnings)
+	}
+}
