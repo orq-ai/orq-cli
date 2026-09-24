@@ -117,35 +117,6 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-## [10.3.1](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.1) — 2026-09-23
-
-- **Fixed: `orq traces thread` on Claude Code traces.** Given only a trace id it
-  read the newest tool-execution span, one `Bash` result, instead of the
-  conversation. Selection now tries model-call spans first, the main loop's
-  before a subagent's, and tool executions last. The spans it reads also lost
-  most of their content: OTel GenAI `text` parts, which carry their text under
-  `content`, rendered as nothing, and `tool_call_response` parts rendered as
-  unsupported. Both now render, in the default render and in `-o json`. The same
-  rules read an `agent` or `model` role as the assistant, `human` as the user,
-  and a tool message whose body is a bare `output`. A part the command cannot
-  read now counts as dropped content, so selection keeps looking for a span
-  that kept it, as it already did for content the collector dropped; `--spans`
-  notes such a span as holding parts the command does not recognise rather than
-  blaming the collector. When no span reads whole, that search stops after 25
-  reads with a warning instead of reading every span in the trace. Anthropic
-  server tools (`server_tool_use`, `web_search_tool_result`) read as tool calls
-  and results.
-
-  Tool results render as the tool returned them. A result the gateway recorded
-  JSON-encoded a second time, as it does for server tools such as
-  `orq:subagent` and `orq:advisor`, rendered as a quoted string of escapes; a
-  tool's JSON holding a field named like `truncated` rendered as a truncation
-  marker in place of the result; and a returned list of records split into one
-  part per record. Each now renders as one value. A result is the tool's own
-  data: only a recognised content list, such as MCP's `[{"type":"text"}]`, is
-  read as parts, so a record with its own `type` or `text` field renders whole,
-  even when its type resembles a content part.
-
 - **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
   call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
   no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
@@ -193,6 +164,35 @@ controls on surface changes, whichever side they originate from.
   `arguments` present is always the recorded value; one recorded as a string
   stays a string, cut. Every format is cut by the same pass, so xml, markdown
   and the structured formats agree on what went.
+
+## [10.3.1](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.1) — 2026-09-23
+
+- **Fixed: `orq traces thread` on Claude Code traces.** Given only a trace id it
+  read the newest tool-execution span, one `Bash` result, instead of the
+  conversation. Selection now tries model-call spans first, the main loop's
+  before a subagent's, and tool executions last. The spans it reads also lost
+  most of their content: OTel GenAI `text` parts, which carry their text under
+  `content`, rendered as nothing, and `tool_call_response` parts rendered as
+  unsupported. Both now render, in the default render and in `-o json`. The same
+  rules read an `agent` or `model` role as the assistant, `human` as the user,
+  and a tool message whose body is a bare `output`. A part the command cannot
+  read now counts as dropped content, so selection keeps looking for a span
+  that kept it, as it already did for content the collector dropped; `--spans`
+  notes such a span as holding parts the command does not recognise rather than
+  blaming the collector. When no span reads whole, that search stops after 25
+  reads with a warning instead of reading every span in the trace. Anthropic
+  server tools (`server_tool_use`, `web_search_tool_result`) read as tool calls
+  and results.
+
+  Tool results render as the tool returned them. A result the gateway recorded
+  JSON-encoded a second time, as it does for server tools such as
+  `orq:subagent` and `orq:advisor`, rendered as a quoted string of escapes; a
+  tool's JSON holding a field named like `truncated` rendered as a truncation
+  marker in place of the result; and a returned list of records split into one
+  part per record. Each now renders as one value. A result is the tool's own
+  data: only a recognised content list, such as MCP's `[{"type":"text"}]`, is
+  read as parts, so a record with its own `type` or `text` field renders whole,
+  even when its type resembles a content part.
 
 ## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
 
