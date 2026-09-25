@@ -83,8 +83,11 @@ func NewLoginCommand() *cobra.Command {
 }
 
 // apiKeyLogin verifies a pasted or flag-supplied key with one real API call,
-// then persists it to the credentials profile — the same store `orq setup
-// --api-key` writes, so every command resolves it afterwards.
+// then stores it as a host-keyed api-key login in the session store. PreRun
+// (installSessionPreRun → applyStoredAPIKeyLogin) injects it into ORQ_API_KEY on
+// every later command, so the login actually takes effect. It is not written as
+// a bartolo profile: a profile is a credential the user named and selected, and
+// nothing selects one here, so the key would have been unreachable.
 func apiKeyLogin(cmd *cobra.Command, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -103,19 +106,29 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 	if err != nil {
 		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
 	}
-	// A user-supplied key carries no workspace provenance — saved as unknown,
-	// so setup's reuse check treats it as such rather than as a mismatch.
-	if err := saveAPIKeyProfile(key); err != nil {
+
+	login := &auth.APIKeyLogin{
+		APIBaseURL: client.URLs.APIBaseURL,
+		Source:     auth.APIKeyLoginSource,
+		APIKey:     key,
+	}
+	// Best-effort workspace provenance from the same key: it lets `orq status`
+	// name the workspace and setup's reuse check compare against it. A failure
+	// here is not a login failure — the key is already verified — so record what
+	// we can and move on.
+	if ws, err := client.KeyWorkspace(key); err == nil && ws != "" {
+		login.Workspaces = []map[string]any{{"key": ws}}
+	}
+	if err := auth.SaveAPIKeyLogin(login); err != nil {
 		return err
 	}
 
 	if wantsHumanView(cmd) {
-		success("Signed in with an API key (profile: %s, %d projects visible)", bartoloProfileName(), len(projects))
+		success("Signed in with an API key (%d projects visible)", len(projects))
 		return nil
 	}
 	return emit(map[string]any{
 		"method":   "api_key",
-		"profile":  bartoloProfileName(),
 		"verified": true,
 	})
 }
@@ -137,6 +150,21 @@ func NewLogoutCommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
+				// No browser session, but an `orq auth login --api-key`
+				// credential can still be the login on this host. Clearing it is
+				// the whole point of logout for an api-key user; leaving it would
+				// re-authenticate the next command against a "logged out" host.
+				//
+				// The read only decides the wording ("Signed out" vs "nothing to
+				// clear"); a corrupt file that will not decode must still be
+				// removed, or logout can never clear the very file that is
+				// breaking every command. So on a read error, take it as "a login
+				// was present" and clear it anyway.
+				apiKeyLogin, readErr := auth.ReadAPIKeyLogin()
+				if err := auth.ClearAPIKeyLogin(); err != nil {
+					return err
+				}
+				apiKeyCleared := apiKeyLogin != nil || readErr != nil
 				envCleared, err := clearShellEnvFile()
 				if err != nil {
 					return err
@@ -144,14 +172,18 @@ func NewLogoutCommand() *cobra.Command {
 				removed, removeFailed := disconnectOnLogout(&setupOptions{noInput: !hasInteractiveTTY(), yes: yes || force}, disconnect)
 				warnLingeringAPIKeys()
 				if wantsHumanView(cmd) {
-					info("Not logged in - nothing to clear.")
+					if apiKeyCleared {
+						success("Signed out of the API-key login")
+					} else {
+						info("Not logged in - nothing to clear.")
+					}
 					reportClearedEnvFiles(envCleared)
 					reportSurvivingGatewayKey("")
 					return removalError(removeFailed)
 				}
 				if err := emit(map[string]any{
 					"authenticated":               false,
-					"cleared":                     false,
+					"cleared":                     apiKeyCleared,
 					"env_files_cleared":           envCleared,
 					"coding_agents_removed":       removed,
 					"coding_agents_remove_failed": removeFailed,
@@ -216,6 +248,12 @@ func NewLogoutCommand() *cobra.Command {
 			}
 			if err := client.ClearLocalSession(); err != nil {
 				return err
+			}
+			// Clear any api-key login on the same host too: logout signs out of
+			// this server, and leaving a stored api-key credential would keep the
+			// next command authenticated after a logout that reported success.
+			if err := auth.ClearAPIKeyLogin(); err != nil {
+				return postLogoutError(gatewayKeyID, err)
 			}
 			envCleared, err := clearShellEnvFile()
 			if err != nil {
@@ -291,6 +329,41 @@ func reportSurvivingGatewayKey(id string) {
 	}
 }
 
+// reportAPIKeyLogin renders `orq status` for a host authenticated by an
+// `orq auth login --api-key` credential: the masked key, the server, and the
+// workspace the key resolved to when it was stored, if any. The key is never
+// printed in full, matching the profile path above.
+func reportAPIKeyLogin(cmd *cobra.Command, login *auth.APIKeyLogin) error {
+	server := strings.TrimSpace(login.APIBaseURL)
+	if server == "" {
+		server = auth.ResolveURLs(serverURL()).APIBaseURL
+	}
+	workspace := ""
+	for _, w := range login.Workspaces {
+		if k, ok := w["key"].(string); ok && strings.TrimSpace(k) != "" {
+			workspace = strings.TrimSpace(k)
+			break
+		}
+	}
+	if wantsHumanView(cmd) {
+		success("Signed in with an API key")
+		kv(9, "server", "%s", server)
+		if workspace != "" {
+			kv(9, "workspace", "%s", workspace)
+		}
+		kv(9, "api_key", "%s", maskToken(login.APIKey))
+		return nil
+	}
+	return emit(map[string]any{
+		"method":       "api_key",
+		"server":       server,
+		"workspace":    workspace,
+		"api_key":      maskToken(login.APIKey),
+		"session_file": auth.SessionFilePath(),
+		"identity":     nil,
+	})
+}
+
 // NewStatusCommand is whoami under the name people reach for first, and the
 // one the help lists. Same report: who you are, where you are, and which
 // credential the next command will use.
@@ -334,6 +407,19 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
+				// No browser session, but an `orq auth login --api-key`
+				// credential is still a login on this host. Report it rather than
+				// claiming the user is logged out. A corrupt credential file is
+				// surfaced, not read as "not logged in": whoami/status is exactly
+				// where a user debugging a broken login looks, so the error has to
+				// reach them instead of a misleading "you are not logged in".
+				login, lerr := auth.ReadAPIKeyLogin()
+				if lerr != nil {
+					return lerr
+				}
+				if login != nil {
+					return reportAPIKeyLogin(cmd, login)
+				}
 				return errors.New("you are not logged in")
 			}
 			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())

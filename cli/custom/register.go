@@ -225,6 +225,16 @@ func installSessionPreRun() {
 			return err
 		}
 		applyProfileAPIKey()
+		// An `orq auth login --api-key` credential is injected here, before the
+		// precedence below reads the environment, so a stored api-key login is
+		// the credential every later command authenticates with — the login the
+		// user performed actually taking effect. It defers to anything more
+		// explicit: a user-supplied env key or a selected profile is already in
+		// the environment / creds and applyStoredAPIKeyLogin leaves it alone, so
+		// those stay authoritative. Marked own-exported (see ownExportedKey) so
+		// the "Using ORQ_API_KEY from environment" notice does not announce a key
+		// the CLI injected itself.
+		applyStoredAPIKeyLogin()
 		// A profile in force is a complete credential on its own, so the
 		// session is never consulted for it — including when its key is
 		// missing, which bartolo refuses to reach past rather than falling
@@ -394,6 +404,61 @@ func applyProfileAPIKey() {
 	os.Setenv(apiKeyEnvVars[0], key)
 }
 
+// applyStoredAPIKeyLogin exports the key from an `orq auth login --api-key`
+// credential as ORQ_API_KEY, so every later command in this invocation — and
+// any program this CLI starts — authenticates as that login. Without it the key
+// sits on disk unreachable and the user is not actually logged in.
+//
+// It defers to anything more explicit, so it never overrides a deliberate
+// choice:
+//   - a selected profile is a complete credential bartolo resolves itself, and
+//     applyProfileAPIKey already exported its key; injecting under it would fight
+//     that, so a profile in force short-circuits here.
+//   - a user-supplied API key already in the environment (any of the aliases
+//     bartolo honors, and not the exact key we would inject) is an override the
+//     user typed; leave it untouched so it stays authoritative.
+//   - a browser session for this host still wins. The key is injected here, but
+//     it is marked own-exported (ownExportedKey), so explicitKey stays false and
+//     the session step below mints its active workspace/project token into
+//     ORQ_API_KEY, overwriting this injection. A browser login is the richer
+//     credential — it can refresh, revoke and narrow to a workspace — so when
+//     both exist for one host the session is what later commands authenticate as.
+//
+// A corrupt login file is warned about, not swallowed: ReadAPIKeyLogin promises
+// an error rather than "absent" for a file that will not decode, and a user
+// whose login stopped working needs to know why. It is only a warning here —
+// this runs in PreRun before every command, and a broken credential file must
+// not take down `orq doctor` or `orq auth logout`, the commands someone reaches
+// for to fix it. whoami/status and logout surface the same error outright.
+//
+// The stored key is written into the first alias, matching applyProfileAPIKey,
+// so ownExportedKey recognizes it as ours and the env-usage notice stays silent.
+func applyStoredAPIKeyLogin() {
+	if profileInForce() {
+		return
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil {
+		fmt.Fprintf(bartolocli.Stderr, "Warning: could not read the stored API-key login: %v\n", err)
+		return
+	}
+	if login == nil {
+		return
+	}
+	key := strings.TrimSpace(login.APIKey)
+	if key == "" {
+		return
+	}
+	for _, envVar := range apiKeyEnvVars {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key {
+			// A key the user put in the environment themselves outranks the
+			// stored login; do not displace it.
+			return
+		}
+	}
+	os.Setenv(apiKeyEnvVars[0], key)
+}
+
 // rejectUnknownProfile errors when a profile is selected but credentials.json
 // has no such entry. It runs after MigrateLayout, which is itself a way to
 // reach this state: a keyless profile this CLI wrote is deleted there, and an
@@ -510,20 +575,40 @@ func ownExportedKey() bool {
 	if strings.TrimSpace(profile["api_key"]) != "" {
 		return false
 	}
-	session, err := auth.ReadSession()
-	if err != nil || session == nil {
-		return false
-	}
-	saved := strings.TrimSpace(session.GatewayKey)
-	if saved == "" {
+	// The two keys this CLI injects itself: the gateway key `orq setup` minted
+	// onto the login session, and the `orq auth login --api-key` credential
+	// applyStoredAPIKeyLogin exports. Either one in the environment is ours, not
+	// a user override, so it defers to the session and the env-usage notice stays
+	// silent. Any other key, and any credentials profile, still wins.
+	saved := ownExportedKeys()
+	if len(saved) == 0 {
 		return false
 	}
 	for _, envVar := range apiKeyEnvVars {
-		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != saved {
+		v := strings.TrimSpace(os.Getenv(envVar))
+		if v != "" && !slices.Contains(saved, v) {
 			return false
 		}
 	}
 	return true
+}
+
+// ownExportedKeys collects the keys this CLI mints and injects itself: the
+// login session's gateway key and any stored api-key login for this host. Used
+// by ownExportedKey to tell a key we exported from one the user set.
+func ownExportedKeys() []string {
+	var keys []string
+	if session, err := auth.ReadSession(); err == nil && session != nil {
+		if k := strings.TrimSpace(session.GatewayKey); k != "" {
+			keys = append(keys, k)
+		}
+	}
+	if login, err := auth.ReadAPIKeyLogin(); err == nil && login != nil {
+		if k := strings.TrimSpace(login.APIKey); k != "" {
+			keys = append(keys, k)
+		}
+	}
+	return keys
 }
 
 func activeWorkspaceToken(ctx context.Context, projectID string) string {

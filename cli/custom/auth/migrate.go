@@ -80,6 +80,14 @@ func migrateSessionFiles() (map[string]string, error) {
 		if e.IsDir() || !strings.HasSuffix(n, ".json") || strings.HasPrefix(n, ".") {
 			continue
 		}
+		// An `orq auth login --api-key` credential (<host>.apikey.json) also ends
+		// in .json and shares the apiBaseUrl tag, so it decodes as a Session that
+		// passes the empty-check and would be renamed to <host>.json — clobbering
+		// the browser session's name and hiding the key from ReadAPIKeyLogin. It
+		// is a separate credential with its own accessor; leave it untouched.
+		if strings.HasSuffix(n, apiKeyLoginSuffix) {
+			continue
+		}
 		names = append(names, n)
 	}
 	sort.Strings(names)

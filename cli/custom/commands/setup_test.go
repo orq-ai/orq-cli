@@ -343,12 +343,15 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 			}
 			dir := t.TempDir()
 			viper.Set("config-directory", dir)
-			t.Cleanup(func() { viper.Set("config-directory", "") })
+			// saveAPIKeyProfile only writes a named, selected profile now
+			//: there is no `default` fallback, so select one.
+			viper.Set("profile", "named")
+			t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 
 			if err := saveAPIKeyProfile("a-key"); err != nil {
 				t.Fatalf("saveAPIKeyProfile: %v", err)
 			}
-			written := bartolocli.Creds.GetString("profiles.default.type")
+			written := bartolocli.Creds.GetString("profiles.named.type")
 			if _, ok := bartolocli.AuthHandlers[written]; !ok {
 				t.Errorf("wrote type %q, which resolves to no handler", written)
 			}
