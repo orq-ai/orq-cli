@@ -38,8 +38,8 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	var include []string
 	var match string
 	var spans bool
-	maxChars := 4000
-	reasoning := true
+	var exclude []string
+	maxChars, toolChars := defaultThreadMaxChars, 0
 	params := viper.New()
 	cmd := &cobra.Command{
 		Use:   "thread trace-id [span-id]",
@@ -51,15 +51,22 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"",
 			"Given a trace id alone, the main conversation is read: model calls first, shallowest first so a subagent's calls come after the main loop's, and the later of two siblings; then other spans, deepest first; tool executions last. --spans shows that selection and marks the span it lands on with *. TURNS is how many messages each span holds, which is what says whether the right one was picked; filling it reads the spans listed, up to 25. TRY is the order the spans are read in, not a ranking: the first that hydrates with nothing dropped wins, and when none does, the one that kept the most turns among the next 25 read does — so the mark is not always on 1. NOTE says why a span is passed over, or why one that looks unreadable is read anyway.",
 			"",
-			"Three filters narrow a long conversation, and they apply in this order:",
+			"These filters narrow a long conversation, and they apply in this order:",
 			"",
 			"  --slice     a position range over the messages as recorded, Python-style: 2, 2:, :-1, -3:",
 			"  --match     keep the messages whose recorded text matches a regular expression, searching what a render shows: message text, reasoning, JSON values, and tool calls by name, id and arguments",
 			"  --include   render only these parts of what is left: system (which covers developer), user, assistant, tool, reasoning",
+			"  --exclude   or render everything but these parts, so `-x tool` is the conversation without what tools returned",
 			"",
-			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it.",
+			"--include naming no role keeps every role, so `-i reasoning` is the recorded thinking from all of them, and `-i user,assistant` is the turns without it. A turn left out still renders, as its role and an [omitted: N characters] stub, so the reader sees that it happened. Reasoning left out of a turn that still shows its body is dropped without a stub.",
+			"",
+			"A tool result is a tool-role message; each tool_result an Anthropic user turn carries is read as one of its own.",
 			"",
 			"--max-chars cuts each rendered block and says how much it left out; 0 renders everything. It is the last thing applied, so a match is found in the full text even when the render shows a cut of it.",
+			"",
+			"--tool-max-chars is the same cap for what tool calls returned, and only that, following --max-chars when not given. The arguments of a call stay as --max-chars cuts them.",
+			"",
+			"json, yaml and toon emit the thread uncut unless --max-chars or --tool-max-chars is given; a cut there is marked in the text and counted in truncated_chars.",
 		}, "\n"),
 		Example: strings.Join([]string{
 			"  orq traces thread tr_123                           # the newest conversational span",
@@ -72,8 +79,10 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			"  orq traces thread tr_123 --slice -4:               # the last four messages",
 			"  orq traces thread tr_123 --match search_docs       # the turns that mention a tool",
 			"  orq traces thread tr_123 -i user,assistant         # the conversation without the thinking",
-			"  orq traces thread tr_123 -i reasoning              # only the thinking",
-			"  orq traces thread tr_123 --reasoning=false         # same as -i for every role but reasoning",
+			"  orq traces thread tr_123 -i reasoning              # the thinking, each turn's body a stub",
+			"  orq traces thread tr_123 -x reasoning              # every turn, without the thinking",
+			"  orq traces thread tr_123 -x tool                   # the conversation without the tool payloads",
+			"  orq traces thread tr_123 --tool-max-chars 200 -o json   # short tool results, for another agent's context",
 			"",
 			"  orq traces thread tr_123 --match error -i tool --max-chars 0",
 		}, "\n"),
@@ -83,6 +92,14 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 			resolved, err := resolveThreadFormat(cmd)
 			if err != nil {
 				return err
+			}
+			// The structured formats are the thread itself, for scripts, and stay
+			// whole unless a cap was asked for by name.
+			if resolved != threadFormatXML && resolved != threadFormatMarkdown && !cmd.Flags().Changed("max-chars") {
+				maxChars = 0
+			}
+			if !cmd.Flags().Changed("tool-max-chars") {
+				toolChars = maxChars
 			}
 			if spans {
 				if optionalArg(args, 1) != "" {
@@ -111,25 +128,27 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if len(include) > 0 {
-				if !reasoning && slices.Contains(include, threadKindReasoning) {
-					return bartolocli.NewValueError(errors.New("--reasoning=false contradicts --include reasoning"))
+			if len(exclude) > 0 {
+				if len(include) > 0 {
+					return bartolocli.NewValueError(errors.New("--include and --exclude select the same parts two ways; use one"))
 				}
+				include, err = ExcludeThreadKinds(exclude)
+				if err != nil {
+					return bartolocli.NewValueError(err)
+				}
+			}
+			if len(include) > 0 {
 				thread, err = FilterThread(thread, include)
 				if err != nil {
 					return bartolocli.NewValueError(err)
 				}
 			}
-			if !reasoning {
-				for index := range thread.Messages {
-					thread.Messages[index].Reasoning = nil
-				}
-			}
+			thread = CapThread(thread, maxChars, toolChars)
 			switch resolved {
 			case threadFormatXML:
-				return RenderThread(bartolocli.Stdout, thread, maxChars)
+				return RenderThread(bartolocli.Stdout, thread)
 			case threadFormatMarkdown:
-				return RenderThreadMarkdown(bartolocli.Stdout, thread, maxChars)
+				return RenderThreadMarkdown(bartolocli.Stdout, thread)
 			}
 			// The local flag is not the one viper is bound to, so the shared
 			// formatter still holds the global value; point it at what this
@@ -146,7 +165,7 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	cmd.Flags().BoolVar(&spans, "spans", false, "List the trace's spans in the order this command reads them, marking the one it selects, instead of rendering a thread")
 	cmd.Flags().StringVar(&match, "match", "", "Keep only messages whose recorded text matches this `regexp`, tool calls included (case-insensitive; use the inline (?-i) flag to respect case)")
 	cmd.Flags().StringSliceVarP(&include, "include", "i", nil, fmt.Sprintf("Render only these parts of the conversation [%s]; naming no role keeps every role, so --include reasoning is the thinking from all of them", strings.Join(ThreadKinds, ", ")))
-	cmd.Flags().BoolVar(&reasoning, "reasoning", true, "Include recorded reasoning and thinking (--reasoning=false to omit)")
+	cmd.Flags().StringSliceVarP(&exclude, "exclude", "x", nil, fmt.Sprintf("Render everything but these parts of the conversation [%s]; a left-out turn keeps its place as an omitted stub, and left-out reasoning goes quietly from a turn that still shows its body", strings.Join(ThreadKinds, ", ")))
 	// A local -o shadowing the global one: same flag, two extra values. Cobra
 	// merges a parent's persistent flags only where the name is free, so this
 	// one answers here and the global keeps every other command. It stays out
@@ -157,9 +176,16 @@ func NewTracesThreadCommand(api TraceAPI) *cobra.Command {
 	// is what ui.go classifies by.
 	cmd.Annotations = map[string]string{threadFormatAnnotation: "true"}
 	cmd.Flags().StringP("output-format", "o", "", fmt.Sprintf("Output format [%s] (default %s; table is refused here, and neither %s nor the config file is read)", strings.Join(threadFormats, ", "), threadFormatXML, outputFormatEnvVar))
-	cmd.Flags().IntVar(&maxChars, "max-chars", 4000, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
+	cmd.Flags().IntVar(&maxChars, "max-chars", defaultThreadMaxChars, "Cut each rendered block to this many characters, noting how much was left out (0 for no cap)")
+	// Registered as 0 so pflag prints no numeric default: unset, it follows
+	// --max-chars, which RunE resolves through Changed.
+	cmd.Flags().IntVar(&toolChars, "tool-max-chars", 0, "Cut what each tool call returned to this many characters, and nothing else; unset, it follows --max-chars (0 for no cap)")
 	return cmd
 }
+
+// defaultThreadMaxChars is the cap the xml and markdown renders cut each block
+// to when --max-chars is not given.
+const defaultThreadMaxChars = 4000
 
 const (
 	threadFormatXML      = "xml"

@@ -15,20 +15,19 @@ import (
 // text contains `## ASSISTANT [1]` produces something that reads like a turn,
 // which is exactly what `escapeThreadTags` stops on the XML side — so
 // `-o xml` stays the render to trust when the recorded text is not.
-// maxChars caps each rendered block, or is zero for no cap.
-func RenderThreadMarkdown(w io.Writer, thread Thread, maxChars int) error {
+func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	var sections []string
 	if header := threadSourceHeader(thread.Source); header != "" {
 		sections = append(sections, header)
 	}
 	for _, message := range thread.Messages {
-		sections = append(sections, renderMarkdownMessage(message, maxChars))
+		sections = append(sections, renderMarkdownMessage(message))
 	}
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err
 }
 
-func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
+func renderMarkdownMessage(message ThreadMessage) string {
 	heading := fmt.Sprintf("## %s [%d]", markdownInline(strings.ToUpper(message.Role)), message.Index)
 	if message.Name != "" {
 		heading += " — " + markdownInline(message.Name)
@@ -40,7 +39,7 @@ func renderMarkdownMessage(message ThreadMessage, maxChars int) string {
 		heading += " [" + markdownInline(message.ToolCallID) + "]"
 	}
 
-	blocks := threadMessageBlocks(message, maxChars, markdownText, renderMarkdownValue)
+	blocks := threadMessageBlocks(message, markdownText, renderMarkdownValue)
 	rendered := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		switch block.Section {
@@ -126,6 +125,9 @@ func markdownInline(value string) string {
 }
 
 func markdownSection(heading, content string) string {
+	if content == "" {
+		return heading
+	}
 	return heading + "\n\n" + content
 }
 
@@ -135,20 +137,21 @@ func markdownText(text string) string { return text }
 
 // renderMarkdownValue fences an encoded value; a value that was recorded as a
 // string is written as prose instead, since fencing it would claim a structure
-// it does not have. The cap applies to the encoded text rather than to the
-// fenced block, so a truncated value cannot swallow its own closing fence and
-// turn the rest of the thread into code. A value that would not encode keeps
-// the fence but is labelled, so its Go rendering cannot be mistaken for
+// it does not have. A value CapThread cut arrives as its cut encoding and is
+// fenced the same, the marker inside the fence. A value that would not encode
+// keeps the fence but is labelled, so its Go rendering cannot be mistaken for
 // recorded text.
-func renderMarkdownValue(value any, maxChars int) string {
-	if value == nil {
-		return ""
+func renderMarkdownValue(value any, cut string) string {
+	body, ok := cut, true
+	if cut == "" {
+		if value == nil {
+			return ""
+		}
+		if text, isText := value.(string); isText {
+			return text
+		}
+		body, ok = encodeThreadValue(value)
 	}
-	if text, ok := value.(string); ok {
-		return truncateThreadText(text, maxChars)
-	}
-	encoded, ok := encodeThreadValue(value)
-	body := truncateThreadText(encoded, maxChars)
 	if !ok {
 		body = unencodableThreadValue + "\n" + body
 		fence := markdownFence(body)

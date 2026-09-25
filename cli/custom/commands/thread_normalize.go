@@ -88,8 +88,24 @@ func NormalizeThread(span map[string]any, source ThreadSource) (Thread, error) {
 	describeThreadSpan(&thread.Source, span)
 	for index := range thread.Messages {
 		thread.Messages[index].Index = index
+		thread.Messages[index].Reasoning = collapseThreadStates(thread.Messages[index].Reasoning)
 	}
 	return thread, nil
+}
+
+// collapseThreadStates folds a run of identical state parts into one that
+// counts them. A model that reasoned several times between two actions records
+// one encrypted item each; a line per item says nothing the count does not.
+func collapseThreadStates(parts []ThreadPart) []ThreadPart {
+	collapsed := parts[:0:0]
+	for _, part := range parts {
+		if last := len(collapsed) - 1; part.Type == "state" && last >= 0 && collapsed[last].Type == "state" && collapsed[last].State == part.State {
+			collapsed[last].Count = max(collapsed[last].Count, 1) + 1
+			continue
+		}
+		collapsed = append(collapsed, part)
+	}
+	return collapsed
 }
 
 func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames map[string]string, pending []ThreadPart) (int, []ThreadPart) {
@@ -99,23 +115,22 @@ func appendChatInput(thread *Thread, input any, keepInstructions bool, toolNames
 			pending = thread.appendResponseItem(raw, index, pending, toolNames)
 			continue
 		}
-		message, ok := normalizeChatMessage(raw, index)
-		if !ok {
-			continue
-		}
-		if isInstructionRole(message.Role) {
-			if keepInstructions {
-				thread.Messages = append(thread.Messages, message)
+		messages := normalizeChatMessage(raw, index)
+		for _, message := range messages {
+			if isInstructionRole(message.Role) {
+				if keepInstructions {
+					thread.Messages = append(thread.Messages, message)
+				}
+				continue
 			}
-			continue
+			resolveChatToolName(&message, toolNames)
+			rememberChatToolNames(message, toolNames)
+			if message.Role == "assistant" && len(pending) > 0 {
+				message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+				pending = nil
+			}
+			thread.Messages = append(thread.Messages, message)
 		}
-		resolveChatToolName(&message, toolNames)
-		rememberChatToolNames(message, toolNames)
-		if message.Role == "assistant" && len(pending) > 0 {
-			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
-			pending = nil
-		}
-		thread.Messages = append(thread.Messages, message)
 	}
 	return len(inputMessages), pending
 }
@@ -129,20 +144,22 @@ func appendChatOutput(thread *Thread, output any, inputCount int, toolNames map[
 			pending = thread.appendResponseItem(raw, inputCount+offset, pending, toolNames)
 			continue
 		}
-		message, ok := normalizeChatMessage(raw, inputCount+offset)
-		if !ok || isInstructionRole(message.Role) {
-			continue
+		messages := normalizeChatMessage(raw, inputCount+offset)
+		for _, message := range messages {
+			if isInstructionRole(message.Role) {
+				continue
+			}
+			resolveChatToolName(&message, toolNames)
+			rememberChatToolNames(message, toolNames)
+			if offset == 0 && len(thread.Messages) > 0 && thread.Messages[len(thread.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
+				continue
+			}
+			if message.Role == "assistant" && len(pending) > 0 {
+				message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
+				pending = nil
+			}
+			thread.Messages = append(thread.Messages, message)
 		}
-		resolveChatToolName(&message, toolNames)
-		rememberChatToolNames(message, toolNames)
-		if offset == 0 && len(thread.Messages) > 0 && thread.Messages[len(thread.Messages)-1].Role == "assistant" && message.Role == "assistant" && reflect.DeepEqual(withoutIndex(thread.Messages[len(thread.Messages)-1]), withoutIndex(message)) {
-			continue
-		}
-		if message.Role == "assistant" && len(pending) > 0 {
-			message.Reasoning = append(append([]ThreadPart(nil), pending...), message.Reasoning...)
-			pending = nil
-		}
-		thread.Messages = append(thread.Messages, message)
 	}
 	return pending
 }
@@ -246,14 +263,14 @@ func responseItemType(raw any) string {
 	return itemType
 }
 
-func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
+func normalizeChatMessage(raw any, index int) []ThreadMessage {
 	object, ok := threadMap(decodeThreadValue(raw))
 	if !ok {
-		return ThreadMessage{}, false
+		return nil
 	}
 	role := threadRole(threadString(object["role"]))
 	if role == "" {
-		return ThreadMessage{}, false
+		return nil
 	}
 	content := messageContent(object)
 	contentCallID := contentToolCallID(content)
@@ -279,7 +296,33 @@ func normalizeChatMessage(raw any, index int) (ThreadMessage, bool) {
 	} else {
 		message.Reasoning = contentReasoning(content)
 	}
-	return message, true
+	return splitToolResults(message, content)
+}
+
+// splitToolResults lifts each tool_result part out of a user turn — the
+// Anthropic Messages shape — into a tool turn of its own, so what a tool
+// returned is selected and capped as tool output and the user's own words are
+// not. The results come first, as Anthropic requires them to; the user turn
+// keeps the rest and is left out when the results were all it held.
+func splitToolResults(message ThreadMessage, content any) []ThreadMessage {
+	if message.Role != "user" || contentToolCallID(content) == "" {
+		return []ThreadMessage{message}
+	}
+	var rest []any
+	var turns []ThreadMessage
+	for _, raw := range contentPartList(content) {
+		object, ok := threadMap(decodeThreadValue(raw))
+		if !ok || !isToolResultItem(contentPartKind(object)) {
+			rest = append(rest, raw)
+			continue
+		}
+		turns = append(turns, ThreadMessage{Index: message.Index, Role: "tool", ToolCallID: toolResultCallID(object), Content: threadParts(object)})
+	}
+	message.Content, message.ToolCallID = threadParts(rest), ""
+	if len(message.Content) > 0 || len(message.Reasoning) > 0 || len(message.ToolCalls) > 0 {
+		turns = append(turns, message)
+	}
+	return turns
 }
 
 // threadRole maps the names other SDKs give the chat roles onto them: A2A and
@@ -374,7 +417,10 @@ func (thread *Thread) appendResponseItem(raw any, index int, pending []ThreadPar
 			message.Reasoning = pending
 			pending = nil
 		}
-		thread.Messages = append(thread.Messages, message)
+		for _, message := range splitToolResults(message, content) {
+			resolveChatToolName(&message, toolNames)
+			thread.Messages = append(thread.Messages, message)
+		}
 	case "tool_call":
 		call := responseToolCall(item)
 		if toolNames != nil {
@@ -693,11 +739,15 @@ func contentToolCallID(value any) string {
 		if !ok || !isToolResultItem(contentPartKind(object)) {
 			continue
 		}
-		if id := firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"], object["id"]); id != "" {
+		if id := toolResultCallID(object); id != "" {
 			return id
 		}
 	}
 	return ""
+}
+
+func toolResultCallID(object map[string]any) string {
+	return firstThreadString(object["tool_use_id"], object["tool_call_id"], object["call_id"], object["id"])
 }
 
 // contentPartList reads a body as its parts, a lone part included, so a part

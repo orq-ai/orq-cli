@@ -16,7 +16,7 @@ func TestRenderThreadMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
 		t.Fatal(err)
 	}
 	want := "> trace `trace-chat` · span `span-chat` · chat_completions\n\n" +
@@ -38,7 +38,7 @@ func TestRenderThreadMarkdownCutsInsideTheFence(t *testing.T) {
 		{Index: 1, Role: "user", Content: []ThreadPart{{Type: "text", Text: "after"}}},
 	}}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 20); err != nil {
+	if err := RenderThreadMarkdown(&out, CapThread(thread, 20, 20)); err != nil {
 		t.Fatal(err)
 	}
 	rendered := out.String()
@@ -71,7 +71,7 @@ func TestRenderThreadMarkdownRendersEveryPartType(t *testing.T) {
 		}},
 	}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -94,7 +94,7 @@ func TestRenderThreadMarkdownRendersEveryPartType(t *testing.T) {
 // skips it reads as a shorter conversation than the one that was recorded.
 func TestRenderThreadMarkdownKeepsAnEmptyMessage(t *testing.T) {
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, Thread{Messages: []ThreadMessage{{Index: 0, Role: "assistant"}}}, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, Thread{Messages: []ThreadMessage{{Index: 0, Role: "assistant"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "## ASSISTANT [0]\n\n[content unavailable]") {
@@ -114,7 +114,7 @@ func TestRenderThreadMarkdownRendersRealFixtures(t *testing.T) {
 				t.Fatal(err)
 			}
 			var out bytes.Buffer
-			if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+			if err := RenderThreadMarkdown(&out, thread); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.HasSuffix(out.String(), tt.want) {
@@ -135,7 +135,7 @@ func TestRenderThreadMarkdownCapsRecordedCharacters(t *testing.T) {
 		{Index: 1, Role: "tool", Content: []ThreadPart{{Type: "text", Text: "https://example.test/q?a=1&b=2 " + strings.Repeat("x", 100)}}},
 	}}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 4000); err != nil {
+	if err := RenderThreadMarkdown(&out, CapThread(thread, 4000, 4000)); err != nil {
 		t.Fatal(err)
 	}
 	rendered := out.String()
@@ -170,7 +170,7 @@ func TestRenderThreadMarkdownEscapesEverySourceField(t *testing.T) {
 			source := reflect.New(sourceType).Elem()
 			source.Field(index).SetString(forge)
 			var out bytes.Buffer
-			if err := RenderThreadMarkdown(&out, Thread{Source: source.Interface().(ThreadSource)}, 0); err != nil {
+			if err := RenderThreadMarkdown(&out, Thread{Source: source.Interface().(ThreadSource)}); err != nil {
 				t.Fatal(err)
 			}
 			rendered := out.String()
@@ -206,10 +206,10 @@ func TestThreadSourceFieldsListEverySourceField(t *testing.T) {
 	// recorded fact reaches both views, so a new field cannot join ThreadSource
 	// and be shown by neither.
 	var xml, markdown bytes.Buffer
-	if err := RenderThread(&xml, Thread{Source: source}, 0); err != nil {
+	if err := RenderThread(&xml, Thread{Source: source}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenderThreadMarkdown(&markdown, Thread{Source: source}, 0); err != nil {
+	if err := RenderThreadMarkdown(&markdown, Thread{Source: source}); err != nil {
 		t.Fatal(err)
 	}
 	for index := range sourceValue.NumField() {
@@ -242,10 +242,10 @@ func TestRenderThreadMarksAnUnencodableValue(t *testing.T) {
 		ToolCalls: []ThreadToolCall{{Name: "lookup", Arguments: unencodableValue{}}},
 	}}}
 	var markdown, xml bytes.Buffer
-	if err := RenderThreadMarkdown(&markdown, thread, 0); err != nil {
+	if err := RenderThreadMarkdown(&markdown, thread); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenderThread(&xml, thread, 0); err != nil {
+	if err := RenderThread(&xml, thread); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(markdown.String(), "```\n[unencodable value]\ngo-rendering\n```") {
@@ -260,7 +260,7 @@ func TestRenderThreadMarksAnUnencodableValue(t *testing.T) {
 // known; a header built only from the other facts would drop the failure.
 func TestRenderThreadMarkdownReportsAnErrorOnlySource(t *testing.T) {
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, Thread{Source: ThreadSource{Error: "upstream timed out"}}, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, Thread{Source: ThreadSource{Error: "upstream timed out"}}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "> **Error:** upstream timed out") {
@@ -287,7 +287,7 @@ func TestRenderThreadMarkdownFencesOutrunRecordedBackticks(t *testing.T) {
 				ToolCalls: []ThreadToolCall{{Name: "lookup", Arguments: tt.arguments}},
 			}}}
 			var out bytes.Buffer
-			if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+			if err := RenderThreadMarkdown(&out, thread); err != nil {
 				t.Fatal(err)
 			}
 			rendered := out.String()
