@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.0) — 2026-09-25
+
 - **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
   call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
   no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
