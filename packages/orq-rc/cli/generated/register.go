@@ -19,6 +19,7 @@ func Register(root *cobra.Command) {
 	root.Long = bartolocli.Markdown("orq.ai API documentation")
 
 	registerRootCommands(root)
+	registerresponsesCommands(root)
 	registeragentsCommands(root)
 	registeragentsResponsesCommands(root)
 	registeralertsCommands(root)
@@ -73,6 +74,5 @@ func Register(root *cobra.Command) {
 	registerschedulesCommands(root)
 	registerlogsCommands(root)
 	registerclassifyCommands(root)
-	registerresponsesCommands(root)
 	registertelemetryCommands(root)
 }
