@@ -2,6 +2,7 @@ package custom
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,14 +15,87 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"orq/cli/custom/auth"
 	"orq/cli/custom/skills"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+// Run the shipped generated command, including Register's gentleman hook and
+// the root pre-run that selects the cached workspace token.
+func TestGeneratedProjectsListRetriesStaleSessionToken(t *testing.T) {
+	bin := buildOrqBinary(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	freshClaims, _ := json.Marshal(map[string]int64{"exp": time.Now().Add(time.Hour).Unix()})
+	fresh := "header." + base64.RawURLEncoding.EncodeToString(freshClaims) + ".signature"
+	var exchanges, calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case auth.ProfileRPCPath:
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","workspaces":[{"key":"ws"}]}}`)
+		case "/v2/auth/access-token":
+			exchanges.Add(1)
+			fmt.Fprintf(w, `{"access_token":%q}`, fresh)
+		case "/v2/projects":
+			calls.Add(1)
+			if r.Header.Get("Authorization") != "Bearer "+fresh {
+				w.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprint(w, `{"code":"authz_stale","message":"Authorization token is invalid."}`)
+				return
+			}
+			fmt.Fprint(w, `{"data":[],"has_more":false}`)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	oldServer, oldSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(oldServer, oldSource) })
+	ws := "ws"
+	if err := auth.SaveSession(&auth.Session{
+		Version: 1, APIBaseURL: srv.URL, V1BaseURL: srv.URL,
+		AuthBaseURL: srv.URL + "/v2/auth", ProfileBaseURL: srv.URL,
+		RefreshToken: "refresh", ActiveWorkspaceKey: &ws,
+		BootstrapToken: auth.StoredAccessToken{Token: "bootstrap", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{
+			ws: {Token: "stale", ExpiresAt: "2099-01-01T00:00:00Z"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin, "-o", "json", "projects", "list")
+	cmd.Env = append(os.Environ(), "HOME="+home, "ORQ_SERVER="+srv.URL,
+		"ORQ_API_KEY=", "ORQ_TOKEN=", "ORQ_AUTHORIZATION=", "ORQ_PROFILE=")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("projects list: %v\n%s", err, out)
+	}
+	if exchanges.Load() != 1 || calls.Load() != 2 {
+		t.Errorf("exchanges=%d calls=%d, want 1 and 2; output=%s", exchanges.Load(), calls.Load(), out)
+	}
+	// An agent launched with the old token keeps that environment value. Its
+	// next orq invocation should substitute the cached replacement up front.
+	cmd = exec.Command(bin, "-o", "json", "projects", "list")
+	cmd.Env = append(os.Environ(), "HOME="+home, "ORQ_SERVER="+srv.URL,
+		"ORQ_API_KEY=stale", "ORQ_TOKEN=", "ORQ_AUTHORIZATION=", "ORQ_PROFILE=")
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("projects list with inherited stale token: %v\n%s", err, out)
+	}
+	if exchanges.Load() != 1 || calls.Load() != 3 {
+		t.Errorf("second invocation: exchanges=%d calls=%d, want 1 and 3; output=%s", exchanges.Load(), calls.Load(), out)
+	}
+}
 
 // A machine that never ran `orq connect` has no manifest. The sweep half of
 // the hook runs on every command, including this one, and must still leave

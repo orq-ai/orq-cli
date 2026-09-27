@@ -54,8 +54,8 @@ func (c *Client) ListProjects(bearer string) ([]Project, error) {
 	return all, nil
 }
 
-// ProbeToken checks bearer against the API with the cheapest workspace-scoped
-// read there is.
+// ProbeToken checks bearer with a one-row workspace-scoped read, which passes
+// through the server's authz snapshot check that the profile endpoint skips.
 func (c *Client) ProbeToken(bearer string) error {
 	return c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/projects?limit=1", bearer, nil, nil)
 }

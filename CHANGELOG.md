@@ -118,18 +118,20 @@ controls on surface changes, whichever side they originate from.
 ## Unreleased
 
 - **Fixed: a login session no longer gets stuck on `401 authz_stale`.** The
-  platform invalidates every workspace token as soon as anyone in the
-  workspace creates, updates or deletes a project or changes a team, well
-  before the token expires. The CLI kept sending the cached token until it
-  expired, so every command after `orq projects create` failed for up to 30
+  platform invalidates workspace tokens when the workspace's project, team or
+  membership setup changes, well before the token expires. The CLI kept
+  sending the cached token until it expired, so every command after
+  `orq projects create` failed for up to 30
   minutes. A request that gets `authz_stale` now fetches a fresh token and is
   retried once. An explicit API key (`ORQ_API_KEY` you set yourself, or a
   credentials profile) is never retried.
 
-- **Changed: `orq status` / `orq auth whoami` check the workspace token with
+- **Changed: `orq status` / `orq auth whoami` check the credential in force with
   the server.** A rejected token turns `authenticated` false and adds
-  `auth_error` to `-o json` output. The terminal view prints a warning.
-  Previously `authenticated` was always `true` when a session file existed.
+  `auth_error` to `-o json` output. A failed check that cannot establish the
+  credential's validity adds `auth_check_error` instead. The terminal view
+  prints a warning. Previously `authenticated` was always `true` when a
+  session file existed.
 
 ## [11.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.0) — 2026-09-25
 

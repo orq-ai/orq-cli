@@ -222,6 +222,15 @@ func installSessionPreRun() {
 		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
+		// An agent `orq launch` started with a session token keeps that token
+		// in ORQ_API_KEY after the session replaced it as stale; send the
+		// replacement instead of paying a 401 on every invocation.
+		if key := os.Getenv("ORQ_API_KEY"); key != "" {
+			if current := auth.CurrentToken(key); current != key {
+				os.Setenv("ORQ_API_KEY", current)
+				commands.SetUserEnvAPIKey(current)
+			}
+		}
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
@@ -231,7 +240,7 @@ func installSessionPreRun() {
 		// missing, which bartolo refuses to reach past rather than falling
 		// back. Otherwise: a sourced gateway key written by this CLI defers to
 		// its session; every user-supplied env key remains authoritative.
-		explicitKey := profileInForce() || (apiKeyConfigured() && !ownExportedKey())
+		explicitKey := profileInForce() || (apiKeyConfigured() && !ownExportedKey() && !auth.IsSessionMinted(configuredAPIKey()))
 		commands.SetExplicitAPIKey(explicitKey)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
@@ -481,17 +490,18 @@ func configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool) {
 	pendingAPIKeyUsageNotice = newAPIKeyUsageNotice(key, source)
 }
 
-// installStaleTokenRetry lets generated commands survive a 401 authz_stale:
-// the session token they carry goes stale the moment anyone in the workspace
-// creates a project or changes a team, long before it expires (RES-1636).
-// Each request gets a fresh context whose transport is wrapped, not replaced.
+// installStaleTokenRetry gives generated commands the auth.StaleRetryTransport
+// retry on 401 authz_stale (RES-1636). gentleman builds a fresh http.Client per
+// request, so the transport is wrapped once per request, never stacked.
 func installStaleTokenRetry() {
 	if bartolocli.Client != nil {
-		bartolocli.Client.UseRequest(func(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
-			ctx.Client.Transport = auth.NewStaleRetryTransport(ctx.Client.Transport)
-			h.Next(ctx)
-		})
+		bartolocli.Client.UseRequest(staleTokenRetryMiddleware)
 	}
+}
+
+func staleTokenRetryMiddleware(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+	ctx.Client.Transport = &auth.StaleRetryTransport{Base: ctx.Client.Transport}
+	h.Next(ctx)
 }
 
 func installAPIKeyUsageNotice() {
