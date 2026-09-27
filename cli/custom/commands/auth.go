@@ -334,7 +334,25 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
-				return auth.ErrNotLoggedIn
+				// No session, but an env key still authenticates every request:
+				// name it, since this is where API errors send people to look.
+				key, source := ConfiguredCredential()
+				if key == "" {
+					return auth.ErrNotLoggedIn
+				}
+				server := auth.ResolveURLs(serverURL()).APIBaseURL
+				if wantsHumanView(cmd) {
+					success("Using the API key from %s (not logged in)", source)
+					kv(9, "server", "%s", server)
+					kv(9, "api_key", "%s", maskToken(key))
+					return nil
+				}
+				return emit(map[string]any{
+					"source":   source,
+					"server":   server,
+					"api_key":  maskToken(key),
+					"identity": nil,
+				})
 			}
 			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()

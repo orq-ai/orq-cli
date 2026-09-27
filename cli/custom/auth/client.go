@@ -927,7 +927,7 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 400 {
-		return &APIError{Status: res.StatusCode, Msg: describeAPIError(res.StatusCode, raw)}
+		return &APIError{Status: res.StatusCode, Msg: DescribeAPIError(res.StatusCode, raw)}
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -937,10 +937,12 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	return nil
 }
 
-// describeAPIError turns an error response into something actionable. A bare
+// DescribeAPIError turns an error response into something actionable. A bare
 // "Request body failed validation." tells the user nothing, so any per-field
-// detail the API returned is appended.
-func describeAPIError(status int, raw []byte) string {
+// detail the API returned is appended, then the doc link and the request id
+// support needs to find the failure. commands.ExplainAPIError uses it for
+// bartolo's generated commands, so both clients read the body the same way.
+func DescribeAPIError(status int, raw []byte) string {
 	// The API returns per-field problems under details.issues; older/other
 	// endpoints use a flat issues/errors array. Handle all three.
 	type issue struct {
@@ -953,6 +955,7 @@ func describeAPIError(status int, raw []byte) string {
 		Error     string  `json:"error"`
 		Detail    string  `json:"detail"`
 		RequestID string  `json:"request_id"`
+		DocURL    string  `json:"doc_url"`
 		Issues    []issue `json:"issues"`
 		Errors    []issue `json:"errors"`
 		Details   struct {
@@ -975,7 +978,10 @@ func describeAPIError(status int, raw []byte) string {
 		}
 		details = append(details, line)
 	}
-	if len(details) > 0 && body.RequestID != "" {
+	if body.DocURL != "" {
+		details = append(details, "docs: "+body.DocURL)
+	}
+	if body.RequestID != "" {
 		details = append(details, "request_id: "+body.RequestID)
 	}
 	if len(details) > 0 {

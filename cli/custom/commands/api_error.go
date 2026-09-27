@@ -7,15 +7,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"orq/cli/custom/auth"
 )
 
-// bartolo renders a failed response as "HTTP <status>:\n<body>", prefixed by
-// "error calling operation: " for a generated command.
-var apiErrorPattern = regexp.MustCompile(`(?s)^(?:error calling operation: )?HTTP (\d{3}):\n(.*)$`)
+// bartolo renders a failed response as "HTTP <status>:\n<body>". A generated
+// command prefixes it with "error calling operation: "; a custom command may
+// wrap it in its own context, which is kept.
+var apiErrorPattern = regexp.MustCompile(`(?s)HTTP (\d{3}):\n(.*)$`)
+
+const operationPrefix = "error calling operation: "
 
 // staleAuthRemedy is the missing-key remedy bartolo's apikey handler prints. It
-// names `auth setup`, which this CLI removed.
-const staleAuthRemedy = "configure a profile with `auth setup`"
+// names `auth setup`, which this CLI removed; the `--profile` variants too.
+var staleAuthRemedy = regexp.MustCompile("configure a profile with `auth setup[^`]*`")
 
 // apiError keeps the original error for errors.As / exit-code mapping and
 // replaces only what a person reads.
@@ -36,68 +41,38 @@ func ExplainAPIError(err error) error {
 		return nil
 	}
 	text := err.Error()
-	if strings.Contains(text, staleAuthRemedy) {
-		return &apiError{text: strings.Replace(text, staleAuthRemedy, "run `orq auth login`", 1), err: err}
+	if staleAuthRemedy.MatchString(text) {
+		return &apiError{text: staleAuthRemedy.ReplaceAllString(text, "run `orq auth login`"), err: err}
 	}
-	m := apiErrorPattern.FindStringSubmatch(text)
-	if m == nil {
+	loc := apiErrorPattern.FindStringSubmatchIndex(text)
+	if loc == nil {
 		return err
 	}
-	status, _ := strconv.Atoi(m[1])
-	out := fmt.Sprintf("HTTP %d %s: %s", status, http.StatusText(status), apiErrorMessage(strings.TrimSpace(m[2])))
-	if fix := apiErrorFix(status, text); fix != "" {
+	status, _ := strconv.Atoi(text[loc[2]:loc[3]])
+	body := strings.TrimSpace(text[loc[4]:loc[5]])
+	prefix := strings.TrimPrefix(text[:loc[0]], operationPrefix)
+	// A non-JSON body (a proxy's error page) is its own best message.
+	msg := body
+	if json.Valid([]byte(body)) {
+		msg = auth.DescribeAPIError(status, []byte(body))
+	}
+	out := fmt.Sprintf("%sHTTP %d %s", prefix, status, http.StatusText(status))
+	if msg != "" {
+		out += ": " + msg
+	}
+	if fix := apiErrorFix(status, body); fix != "" {
 		out += "\n" + fix
 	}
 	return &apiError{text: out, err: err}
 }
 
-// apiErrorMessage is the body's own message when it is JSON that carries one,
-// followed by its doc link if it has one. A body with details (validation
-// errors) is kept whole: those details say what to change.
-func apiErrorMessage(body string) string {
-	var fields map[string]any
-	if json.Unmarshal([]byte(body), &fields) != nil {
-		return body
-	}
-	message, _ := fields["message"].(string)
-	if message == "" {
-		message, _ = fields["error"].(string)
-	}
-	if message == "" {
-		return body
-	}
-	for _, key := range []string{"details", "errors"} {
-		if !emptyJSON(fields[key]) {
-			return message + "\n" + body
-		}
-	}
-	if doc, _ := fields["doc_url"].(string); doc != "" {
-		message += "\nDocs: " + doc
-	}
-	return message
-}
-
-func emptyJSON(v any) bool {
-	switch v := v.(type) {
-	case nil:
-		return true
-	case string:
-		return v == ""
-	case []any:
-		return len(v) == 0
-	case map[string]any:
-		return len(v) == 0
-	}
-	return false
-}
-
 // apiErrorFix is the one next step for a status. 404 is left to
 // NotFoundScopeHint, which knows the project the read was scoped to.
-func apiErrorFix(status int, text string) string {
+func apiErrorFix(status int, body string) string {
 	switch {
 	case status == http.StatusUnauthorized:
-		return "The credential was rejected. Check which one is in use with `orq status`, then `orq auth login` or replace the key."
-	case status == http.StatusForbidden && strings.Contains(strings.ToLower(text), "out of scope"):
+		return "The credential was rejected. `orq status` shows which one is in use; run `orq auth login` or replace the key."
+	case status == http.StatusForbidden && explicitAPIKey && strings.Contains(strings.ToLower(body), "out of scope"):
 		return "The API key is limited to other projects. Use a key that covers this one; `orq status` shows the key in use."
 	case status == http.StatusForbidden:
 		return "The credential in use has no access to this. `orq status` shows which one it is."

@@ -146,7 +146,8 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	appendHelpFooter(root)
 	installUpdateNoticeHelp(root)
 	improveArgErrors(root)
-	explainNotFoundScope(root)
+	rejectUnknownSubcommands(root)
+	explainAPIErrors(root)
 }
 
 func registerGlobalFlags() {
@@ -389,11 +390,7 @@ func applyProfileAPIKey(announce bool) {
 		// Say it once, and say which key won: silently swapping credentials is
 		// the failure this whole ordering exists to prevent.
 		name, source, drop := commands.ProfileSelection()
-		verb := "is"
-		if len(shadowed) > 1 {
-			verb = "are"
-		}
-		commands.Warn("using the API key from profile %q (selected by %s); %s %s set but ignored. To use it instead, %s", name, source, strings.Join(shadowed, " and "), verb, drop)
+		commands.Warn("using the API key from profile %q (selected by %s), ignoring %s. To use the environment key instead, %s", name, source, strings.Join(shadowed, " and "), drop)
 	}
 	os.Setenv(apiKeyEnvVars[0], key)
 }
@@ -403,7 +400,8 @@ func applyProfileAPIKey(announce bool) {
 // `orq version`. status, whoami and doctor are left out: they are where a
 // person goes to find out which credential is in use.
 var quietCredentialCommands = []string{
-	"version", "help-config", "help-input", "default-format", "completion",
+	"version", "help", "help-config", "help-input", "default-format", "completion",
+	"__complete", "__completeNoDesc", "man-pages",
 	"auth profile", "auth sessions", "server", "update",
 }
 
@@ -1055,41 +1053,48 @@ func improveArgErrors(cmd *cobra.Command) {
 	}
 }
 
-// unknownSubcommand is cobra's root-level "unknown command ... Did you mean"
-// for a command group. Cobra only checks the root: `orq agents get x` finds
-// `agents`, which has no Run of its own, and prints the whole help page without
-// saying what was wrong. A group's retrieve also answers to "get", the verb
-// people reach for first.
-func unknownSubcommand(root *cobra.Command, args []string) error {
-	cmd, rest, err := root.Find(args)
-	if err != nil || cmd == root || cmd.Runnable() || !cmd.HasAvailableSubCommands() {
-		return nil
-	}
-	if len(rest) == 0 || strings.HasPrefix(rest[0], "-") {
-		return nil
-	}
+// rejectUnknownSubcommands gives every command group cobra's root-level
+// "unknown command ... Did you mean" for its own children. Cobra checks only at
+// the root, and a group with no handler is short-circuited to its help page
+// before any argument is looked at, so `orq agents lst` printed the whole
+// `agents` help and exited 0. A handler puts the arguments, flags already
+// parsed out of them, back within reach. Each retrieve also answers to "get",
+// the verb people reach for first.
+func rejectUnknownSubcommands(cmd *cobra.Command) {
 	for _, sub := range cmd.Commands() {
 		if sub.Name() == "retrieve" && !slices.Contains(sub.SuggestFor, "get") {
 			sub.SuggestFor = append(sub.SuggestFor, "get")
 		}
+		rejectUnknownSubcommands(sub)
+	}
+	// HasAvailableSubCommands: a handler makes a group runnable, and so
+	// visible, even when every child is hidden.
+	if !cmd.HasParent() || !cmd.HasAvailableSubCommands() || cmd.Runnable() {
+		return
 	}
 	if cmd.SuggestionsMinimumDistance <= 0 {
-		cmd.SuggestionsMinimumDistance = 2 // cobra sets this default on the root only
+		// SuggestionsFor does not default this; cobra's findSuggestions does,
+		// and only for the root.
+		cmd.SuggestionsMinimumDistance = 2
 	}
-	msg := fmt.Sprintf("unknown command %q for %q", rest[0], cmd.CommandPath())
-	if suggestions := cmd.SuggestionsFor(rest[0]); len(suggestions) > 0 {
-		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		if len(args) == 0 || args[0] == "help" {
+			return c.Help()
+		}
+		msg := fmt.Sprintf("unknown command %q for %q", args[0], c.CommandPath())
+		if suggestions := c.SuggestionsFor(args[0]); len(suggestions) > 0 {
+			msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+		}
+		return bartolocli.NewUsageError(fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, c.CommandPath()))
 	}
-	return fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, cmd.CommandPath())
 }
 
-// explainNotFoundScope rewrites API errors for a person (ExplainAPIError) and
-// appends the active project to every "not found" a
-// command returns. A read by id answers within one project, so an id recorded
-// in a sibling project comes back as a bare 404 that reads as "this does not
-// exist" — the one thing it does not mean. Applied to the whole tree, so the
-// generated operations carry it too.
-func explainNotFoundScope(cmd *cobra.Command) {
+// explainAPIErrors rewrites every API error for a person (ExplainAPIError) and
+// appends the active project to a "not found". A read by id answers within one
+// project, so an id from a sibling project comes back as a bare 404 that reads
+// as "this does not exist", which is the one thing it does not mean. Applied to
+// the whole tree, so the generated operations carry it too.
+func explainAPIErrors(cmd *cobra.Command) {
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			err := commands.ExplainAPIError(run(c, args))
@@ -1103,7 +1108,7 @@ func explainNotFoundScope(cmd *cobra.Command) {
 		}
 	}
 	for _, sub := range cmd.Commands() {
-		explainNotFoundScope(sub)
+		explainAPIErrors(sub)
 	}
 }
 

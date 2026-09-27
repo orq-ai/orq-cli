@@ -60,11 +60,6 @@ func Run(version, apiVersion string, traceAPI commands.TraceAPI, registerGenerat
 		bartolocli.Root.SetArgs(rest)
 	}
 
-	if err := unknownSubcommand(bartolocli.Root, rest); err != nil {
-		fmt.Fprintf(bartolocli.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
 	// ExecuteContextC, not ExecuteContext, for the command that actually ran:
 	// the check's suppression rules are per-command, and root cannot answer
 	// which one this was.

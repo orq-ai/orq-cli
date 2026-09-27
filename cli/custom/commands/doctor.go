@@ -514,9 +514,8 @@ func mcpCheck() (doctorCheck, bool) {
 	if len(missing) > 0 {
 		check.Status = "warn"
 		// One line and one command for all of them: a message per agent
-		// wrapped the checklist row across the screen. The agents are named
-		// because a bare `orq connect mcp` would also try the ones that have
-		// no MCP support.
+		// wrapped the checklist row across the screen. The command names only
+		// the missing agents, so running it leaves the wired ones alone.
 		messages = append(messages, fmt.Sprintf("no MCP entry for %s — run 'orq connect %s mcp'", strings.Join(missing, ", "), strings.Join(missing, " ")))
 	} else {
 		check.Status = "pass"

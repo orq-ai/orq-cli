@@ -187,6 +187,17 @@ func TestAnInForceProfileClearsAndAnnouncesAShadowedEnvironmentKey(t *testing.T)
 	if !strings.Contains(out.String(), "ORQ_API_KEY") || !strings.Contains(out.String(), "acme") {
 		t.Errorf("no warning naming the shadowed variable and the winner: %q", out.String())
 	}
+
+	// A command that sends no request still swaps the key, silently.
+	out.Reset()
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+	applyProfileAPIKey(false)
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
+		t.Errorf("quiet: ORQ_API_KEY = %q, want the profile's key", got)
+	}
+	if out.Len() != 0 {
+		t.Errorf("quiet: want no warning, got %q", out.String())
+	}
 }
 
 // A keyless profile exports nothing — and must not clear what the user has set

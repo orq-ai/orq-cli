@@ -370,6 +370,7 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	if len(caps) == 0 && capsWereAllUnavailable(args) {
 		return nil
 	}
+	namedCaps := caps
 	if len(caps) == 0 {
 		caps = availableCapabilities()
 	}
@@ -438,10 +439,14 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		if len(wired) > 0 {
 			rep.blank()
 		}
-		// No agent named on the command means every detected agent.
+		// No agent named on the command means every detected agent. The
+		// capabilities asked about carry over, so the fix wires only those.
 		target := ""
 		if named || len(unwired) < len(agents) {
 			target = " " + strings.Join(unwired, " ")
+		}
+		if len(namedCaps) > 0 {
+			target += " " + strings.Join(namedCaps, " ")
 		}
 		rep.info("detected but not wired: %s. Run `orq connect%s` to wire them", strings.Join(unwired, ", "), target)
 	}
