@@ -224,7 +224,7 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
-		applyProfileAPIKey()
+		applyProfileAPIKey(!sendsNoRequest(cmd))
 		// A profile in force is a complete credential on its own, so the
 		// session is never consulted for it — including when its key is
 		// missing, which bartolo refuses to reach past rather than falling
@@ -367,7 +367,7 @@ func profileInForce() bool {
 // The other key variables are cleared, not left beside it: bartolo ranks them
 // itself, and leaving a losing key in the environment lets a child pick a
 // credential the parent already decided against.
-func applyProfileAPIKey() {
+func applyProfileAPIKey(announce bool) {
 	if !profileInForce() {
 		return
 	}
@@ -385,13 +385,36 @@ func applyProfileAPIKey() {
 		}
 		os.Unsetenv(envVar)
 	}
-	if len(shadowed) > 0 {
+	if len(shadowed) > 0 && announce {
 		// Say it once, and say which key won: silently swapping credentials is
 		// the failure this whole ordering exists to prevent.
-		name, source, _ := commands.ProfileSelection()
-		commands.Warn("using the API key from profile %q (selected by %s); %s set but the profile takes precedence", name, source, strings.Join(shadowed, " and "))
+		name, source, drop := commands.ProfileSelection()
+		verb := "is"
+		if len(shadowed) > 1 {
+			verb = "are"
+		}
+		commands.Warn("using the API key from profile %q (selected by %s); %s %s set but ignored. To use it instead, %s", name, source, strings.Join(shadowed, " and "), verb, drop)
 	}
 	os.Setenv(apiKeyEnvVars[0], key)
+}
+
+// quietCredentialCommands send no API request, so which key would win says
+// nothing about what they do. Printing it there made the note appear on every
+// `orq version`. status, whoami and doctor are left out: they are where a
+// person goes to find out which credential is in use.
+var quietCredentialCommands = []string{
+	"version", "help-config", "help-input", "default-format", "completion",
+	"auth profile", "auth sessions", "server", "update",
+}
+
+func sendsNoRequest(cmd *cobra.Command) bool {
+	path := commandPath(cmd)
+	for _, quiet := range quietCredentialCommands {
+		if path == quiet || strings.HasPrefix(path, quiet+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // rejectUnknownProfile errors when a profile is selected but credentials.json
@@ -1032,7 +1055,36 @@ func improveArgErrors(cmd *cobra.Command) {
 	}
 }
 
-// explainNotFoundScope appends the active project to every "not found" a
+// unknownSubcommand is cobra's root-level "unknown command ... Did you mean"
+// for a command group. Cobra only checks the root: `orq agents get x` finds
+// `agents`, which has no Run of its own, and prints the whole help page without
+// saying what was wrong. A group's retrieve also answers to "get", the verb
+// people reach for first.
+func unknownSubcommand(root *cobra.Command, args []string) error {
+	cmd, rest, err := root.Find(args)
+	if err != nil || cmd == root || cmd.Runnable() || !cmd.HasAvailableSubCommands() {
+		return nil
+	}
+	if len(rest) == 0 || strings.HasPrefix(rest[0], "-") {
+		return nil
+	}
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "retrieve" && !slices.Contains(sub.SuggestFor, "get") {
+			sub.SuggestFor = append(sub.SuggestFor, "get")
+		}
+	}
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2 // cobra sets this default on the root only
+	}
+	msg := fmt.Sprintf("unknown command %q for %q", rest[0], cmd.CommandPath())
+	if suggestions := cmd.SuggestionsFor(rest[0]); len(suggestions) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+	return fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, cmd.CommandPath())
+}
+
+// explainNotFoundScope rewrites API errors for a person (ExplainAPIError) and
+// appends the active project to every "not found" a
 // command returns. A read by id answers within one project, so an id recorded
 // in a sibling project comes back as a bare 404 that reads as "this does not
 // exist" — the one thing it does not mean. Applied to the whole tree, so the
@@ -1040,7 +1092,7 @@ func improveArgErrors(cmd *cobra.Command) {
 func explainNotFoundScope(cmd *cobra.Command) {
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
-			err := run(c, args)
+			err := commands.ExplainAPIError(run(c, args))
 			hint := commands.NotFoundScopeHint(err)
 			// A command that already named the scope itself — `traces thread`
 			// names the project holding the trace — needs no second copy.

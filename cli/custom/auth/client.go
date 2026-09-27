@@ -16,6 +16,10 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 )
 
+// ErrNotLoggedIn is returned by every command that needs a browser login and
+// finds none. The text names the fix, since it is the whole error a person sees.
+var ErrNotLoggedIn = errors.New("you are not logged in; run `orq auth login`")
+
 type Client struct {
 	URLs       URLs
 	HTTPClient *http.Client
@@ -765,7 +769,7 @@ func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	session, err = c.RefreshProfile(session)
 	if err != nil {
@@ -800,7 +804,7 @@ func (c *Client) WhoAmI() (*Session, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	return c.RefreshProfile(session)
 }
@@ -817,7 +821,7 @@ func (c *Client) GetActiveWorkspaceAccessToken() (*ActiveAccessToken, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	session, err = c.RefreshProfile(session)
 	if err != nil {

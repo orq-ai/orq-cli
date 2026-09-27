@@ -158,7 +158,7 @@ func TestAnInForceProfileIsExportedForChildProcesses(t *testing.T) {
 	viper.Set("profile", "acme")
 	t.Setenv("ORQ_API_KEY", "")
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
 		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
@@ -179,7 +179,7 @@ func TestAnInForceProfileClearsAndAnnouncesAShadowedEnvironmentKey(t *testing.T)
 	bartolocli.Stderr = &out
 	t.Cleanup(func() { bartolocli.Stderr = prev })
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
 		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
@@ -198,7 +198,7 @@ func TestAKeylessProfileExportsNothingAndClearsNothing(t *testing.T) {
 	viper.Set("profile", "acme")
 	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-environment" {
 		t.Errorf("ORQ_API_KEY = %q, want the user's own key untouched", got)

@@ -435,8 +435,15 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		}
 	}
 	if len(unwired) > 0 {
-		rep.blank()
-		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
+		if len(wired) > 0 {
+			rep.blank()
+		}
+		// No agent named on the command means every detected agent.
+		target := ""
+		if named || len(unwired) < len(agents) {
+			target = " " + strings.Join(unwired, " ")
+		}
+		rep.info("detected but not wired: %s. Run `orq connect%s` to wire them", strings.Join(unwired, ", "), target)
 	}
 	return nil
 }
