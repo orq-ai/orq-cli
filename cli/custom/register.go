@@ -139,6 +139,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	installAPIKeyUsageNotice()
+	installStaleTokenRetry()
 	registerCommands(root, traceAPI)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)
@@ -478,6 +479,19 @@ func configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool) {
 		return
 	}
 	pendingAPIKeyUsageNotice = newAPIKeyUsageNotice(key, source)
+}
+
+// installStaleTokenRetry lets generated commands survive a 401 authz_stale:
+// the session token they carry goes stale the moment anyone in the workspace
+// creates a project or changes a team, long before it expires (RES-1636).
+// Each request gets a fresh context whose transport is wrapped, not replaced.
+func installStaleTokenRetry() {
+	if bartolocli.Client != nil {
+		bartolocli.Client.UseRequest(func(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+			ctx.Client.Transport = auth.NewStaleRetryTransport(ctx.Client.Transport)
+			h.Next(ctx)
+		})
+	}
 }
 
 func installAPIKeyUsageNotice() {

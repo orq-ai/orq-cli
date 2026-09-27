@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -211,5 +212,44 @@ func TestWhoAmIStructuredOutputForAPIKeyProfile(t *testing.T) {
 	// force does not make the session file stop existing.
 	if payload.SessionFile == "" {
 		t.Errorf("whoami payload has no session_file: %+v", payload)
+	}
+}
+
+// A profile that loads fine says nothing about the workspace token, so a
+// server that rejects that token has to turn `authenticated` false (RES-1636).
+func TestWhoAmIReportsRejectedWorkspaceToken(t *testing.T) {
+	switchTestEnv(t)
+	ensureFormatter(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "ProfileService") {
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","workspaces":[{"key":"ws"}]}}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"message":"token revoked"}`)
+	}))
+	t.Cleanup(srv.Close)
+	switchSession(t, srv.URL, "ws", []string{"ws"}, "", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	var out bytes.Buffer
+	origStdout := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = origStdout })
+
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Authenticated bool   `json:"authenticated"`
+		AuthError     string `json:"auth_error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Authenticated || !strings.Contains(payload.AuthError, "token revoked") {
+		t.Errorf("payload = %+v, want authenticated false with the server's message", payload)
 	}
 }

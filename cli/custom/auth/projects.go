@@ -54,6 +54,12 @@ func (c *Client) ListProjects(bearer string) ([]Project, error) {
 	return all, nil
 }
 
+// ProbeToken checks bearer against the API with the cheapest workspace-scoped
+// read there is.
+func (c *Client) ProbeToken(bearer string) error {
+	return c.jsonRequest(http.MethodGet, c.URLs.APIBaseURL+"/v2/projects?limit=1", bearer, nil, nil)
+}
+
 func (c *Client) CreateProject(bearer, name, description string) (*Project, error) {
 	body := map[string]any{"name": name}
 	if description != "" {

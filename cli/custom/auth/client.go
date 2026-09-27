@@ -35,7 +35,7 @@ type Client struct {
 func NewClient(apiBase string) *Client {
 	return &Client{
 		URLs:       ResolveURLs(apiBase),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: 30 * time.Second, Transport: NewStaleRetryTransport(nil)},
 	}
 }
 

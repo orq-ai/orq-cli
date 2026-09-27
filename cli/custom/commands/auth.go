@@ -342,8 +342,17 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			report := BuildIdentityReport(session, &client.URLs)
+			if !credentialOutranksSession(report) {
+				if err := verifySessionToken(cmd, session); err != nil {
+					report.Authenticated = false
+					report.AuthError = err.Error()
+				}
+			}
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
+				if !report.Authenticated {
+					Warn("the server rejected this session's workspace token: %s", report.AuthError)
+				}
 				noteOtherLogins(cmd)
 				return nil
 			}
@@ -352,6 +361,23 @@ func NewWhoAmICommand() *cobra.Command {
 	}
 	DeprecatedAPIBaseFlag(cmd)
 	return cmd
+}
+
+// verifySessionToken makes one workspace-scoped call with the token commands
+// will send. The profile fetch WhoAmI already did uses the bootstrap token,
+// which says nothing about the workspace token: that one can be rejected
+// (revoked, or stale in a way a refresh does not fix) while the profile loads
+// fine, and `authenticated: true` read from the local file was the only answer.
+func verifySessionToken(cmd *cobra.Command, session *auth.Session) error {
+	if session.ActiveWorkspaceKey == nil || *session.ActiveWorkspaceKey == "" {
+		return nil
+	}
+	client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context()).WithProject(session.ActiveProjectID)
+	bearer, err := client.WorkspaceToken(session, *session.ActiveWorkspaceKey)
+	if err != nil {
+		return err
+	}
+	return client.ProbeToken(bearer)
 }
 
 // printIdentity renders the friendly "who am I" block: a green headline plus an
