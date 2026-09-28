@@ -49,6 +49,8 @@ const (
 
 type IdentityReport struct {
 	Authenticated      bool                `json:"authenticated"`
+	AuthError          string              `json:"auth_error,omitempty"`
+	AuthCheckError     string              `json:"auth_check_error,omitempty"`
 	SessionFile        string              `json:"session_file"`
 	User               *IdentityUser       `json:"user"`
 	ActiveWorkspaceKey *string             `json:"active_workspace_key"`

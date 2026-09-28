@@ -5032,7 +5032,7 @@ func OpenapiUpdateIdentity(paramId string, params *viper.Viper, body string) (*g
 	return resp, decoded, nil
 }
 
-// OpenapiCreateKnowledge Create a knowledge
+// OpenapiCreateKnowledge Create a knowledge base
 func OpenapiCreateKnowledge(params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases create"
 	server := bartolocli.ResolveServer()
@@ -5164,7 +5164,7 @@ func OpenapiCreateDatasource(paramKnowledgeId string, params *viper.Viper, body 
 	return resp, decoded, nil
 }
 
-// OpenapiDeleteKnowledge Deletes a knowledge
+// OpenapiDeleteKnowledge Delete a knowledge base
 func OpenapiDeleteKnowledge(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases delete knowledge-id"
 	server := bartolocli.ResolveServer()
@@ -5301,7 +5301,7 @@ func OpenapiDeleteChunks(paramKnowledgeId string, paramDatasourceId string, para
 	return resp, decoded, nil
 }
 
-// OpenapiDeleteDatasource Deletes a datasource
+// OpenapiDeleteDatasource Delete a datasource
 func OpenapiDeleteDatasource(paramKnowledgeId string, paramDatasourceId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases delete-datasource knowledge-id datasource-id"
 	server := bartolocli.ResolveServer()
@@ -5699,7 +5699,7 @@ func OpenapiPreviewDatasourceChunks(paramKnowledgeId string, params *viper.Viper
 	return resp, decoded, nil
 }
 
-// OpenapiGetOneKnowledge Retrieves a knowledge base
+// OpenapiGetOneKnowledge Retrieve a knowledge base
 func OpenapiGetOneKnowledge(paramKnowledgeId string, params *viper.Viper) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases retrieve knowledge-id"
 	server := bartolocli.ResolveServer()
@@ -6034,7 +6034,7 @@ func OpenapiUpdateChunkEnabled(paramKnowledgeId string, paramDatasourceId string
 	return resp, decoded, nil
 }
 
-// OpenapiUpdateKnowledge Updates a knowledge
+// OpenapiUpdateKnowledge Update a knowledge base
 func OpenapiUpdateKnowledge(paramKnowledgeId string, params *viper.Viper, body string) (*gentleman.Response, interface{}, error) {
 	handlerPath := "knowledge-bases update knowledge-id"
 	server := bartolocli.ResolveServer()
