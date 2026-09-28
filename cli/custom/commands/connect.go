@@ -16,16 +16,20 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 const (
 	capGateway = "gateway"
-	capTracing = "tracing"
-	capSkills  = "skills"
-	capMCP     = "mcp"
+	// capOtel is named after the flag that declines it on `orq launch`
+	// (--no-otel), not after the word "tracing" an earlier revision parsed: two
+	// spellings for one capability is the drift this constant exists to avoid.
+	capOtel   = "otel"
+	capSkills = "skills"
+	capMCP    = "mcp"
 )
 
-var connectCapabilities = []string{capGateway, capTracing, capSkills, capMCP}
+var connectCapabilities = []string{capGateway, capOtel, capSkills, capMCP}
 
 // partitionConnectArgs splits positional args into agent IDs and capability
 // names. The registry owns the agent namespace, so the two sets cannot collide.
@@ -65,12 +69,9 @@ func partitionConnectArgs(args []string) (agents, caps []string, err error) {
 // machine carrying installed skills, and a bare `disconnect` that removes only
 // the gateway cannot undo what a bare `connect` wrote.
 //
-// Tracing is excluded for the same reason defaultCapabilities excludes it:
-// dropUnavailableCaps would strip it and print "not available yet" on every
-// bare invocation.
-func availableCapabilities() []string { return []string{capGateway, capSkills, capMCP} }
-
-func capAvailable(c string) bool { return slices.Contains(availableCapabilities(), c) }
+// Every capability the commands parse is built, so this is the parse
+// vocabulary itself, copied because callers narrow the slice they get.
+func availableCapabilities() []string { return slices.Clone(connectCapabilities) }
 
 // detectedAgents lists the agents on this machine that connect can act on for
 // the gateway. claude is installed on plenty of machines and has no gateway
@@ -98,7 +99,8 @@ func detectedAgents() []string {
 func agentReceives(spec agentSpec, caps []string) bool {
 	return (hasCap(caps, capGateway) && spec.writeProvider != nil) ||
 		(hasCap(caps, capSkills) && skills.Receives(spec.ID)) ||
-		(hasCap(caps, capMCP) && spec.writeMCP != nil)
+		(hasCap(caps, capMCP) && spec.writeMCP != nil) ||
+		(hasCap(caps, capOtel) && spec.installOtel != nil)
 }
 
 // agentsToConnect is the agent set a bare command writes to.
@@ -187,7 +189,10 @@ func credentialFreeCaps(caps []string) []string {
 	return out
 }
 
-func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP }
+// capOtel joins them: the install is two `claude plugin` commands and the
+// plugin resolves ORQ_API_KEY from the environment at trace time, so nothing
+// this command writes for it needs a key either.
+func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP || c == capOtel }
 
 // capsNeedCredential reports whether any requested capability talks to orq.
 // Skills are embedded in this binary and unpack onto the local filesystem, so
@@ -195,7 +200,9 @@ func credentialFreeCap(c string) bool { return c == capSkills || c == capMCP }
 // front of an operation that is pure file I/O — and makes the offline install
 // the spec promises impossible. An MCP entry is credential-free for a different
 // reason: it is a URL and nothing else, and the agent logs in to that server
-// itself over OAuth, so nothing this command writes needs a key either.
+// itself over OAuth, so nothing this command writes needs a key either. Tracing
+// installs a plugin and writes no key at all: the plugin reads ORQ_API_KEY from
+// the environment at session time, which is the file `orq setup` already wrote.
 func capsNeedCredential(caps []string) bool {
 	for _, c := range caps {
 		if !credentialFreeCap(c) {
@@ -253,7 +260,8 @@ func nothingWired(named bool, agents []string) string {
 func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
 	wantGateway := hasCap(caps, capGateway)
 	wantMCP := hasCap(caps, capMCP)
-	if !wantGateway && !wantMCP {
+	wantOtel := hasCap(caps, capOtel)
+	if !wantGateway && !wantMCP && !wantOtel {
 		return agents
 	}
 	var out []string
@@ -270,6 +278,10 @@ func reportUnwirableAgents(rep *reporter, agents, caps []string) []string {
 		}
 		if wantMCP && spec.writeMCP == nil {
 			rep.info("%-8s no MCP support in this agent — nothing to configure", id)
+			unreachable++
+		}
+		if wantOtel && spec.installOtel == nil {
+			rep.info("%-8s no plugin mechanism in this agent to trace sessions with — nothing to configure", id)
 			unreachable++
 		}
 		// Each count above implies its capability was requested, so an
@@ -305,7 +317,10 @@ Capabilities:
             session can reach your workspace's tools. The entry is a URL and
             nothing else: the agent logs in to the server itself, over OAuth, so
             this needs no credential either.
-  tracing   Parses, but is not available yet.
+  otel      Installs the orq tracing plugin, so every session the agent runs is
+            captured as a trace in your workspace, not only the ones started
+            through orq launch. Claude Code only for now. The plugin posts with
+            the ORQ_API_KEY your shell exports, so nothing writes a key here.
 
 ` + "`mcp`" + ` is written machine-wide by default. ` + "`--local`" + ` writes it into this project
 instead, for the agents that read a project config (Claude Code, Codex, Kimi Code, OpenCode and Kilo).
@@ -361,14 +376,6 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
 		return err
-	}
-	// Both filters connect and disconnect apply. Without the first,
-	// `--status tracing` left caps as ["tracing"] and reported "nothing wired"
-	// on a machine that plainly was; without the second, a named claude was
-	// reported unwired when no wire can exist for it.
-	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereAllUnavailable(args) {
-		return nil
 	}
 	if len(caps) == 0 {
 		caps = availableCapabilities()
@@ -500,10 +507,6 @@ func runConnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun bo
 	if err != nil {
 		return err
 	}
-	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereAllUnavailable(args) {
-		return nil
-	}
 	if len(caps) == 0 {
 		caps = availableCapabilities()
 	}
@@ -601,6 +604,11 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 	if hasCap(caps, capMCP) {
 		mcpResults, mcpFailed = connectMCP(rep, opts, agents)
 	}
+	var otelResults []otelResult
+	otelFailed := false
+	if hasCap(caps, capOtel) {
+		otelResults, otelFailed = connectOtel(rep, opts, agents)
+	}
 	if !wantsHumanView(cmd) {
 		payload := map[string]any{"coding_agents": agentResults}
 		// The skills leg reports itself through rep.ok, which quiet mode (and
@@ -616,6 +624,9 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 		if hasCap(caps, capMCP) {
 			payload[capMCP] = mcpResults
 		}
+		if hasCap(caps, capOtel) {
+			payload[capOtel] = otelResults
+		}
 		if err := emit(payload); err != nil {
 			return err
 		}
@@ -625,7 +636,7 @@ func connectSelected(cmd *cobra.Command, rep *reporter, opts *setupOptions, agen
 			return errAgentFailed
 		}
 	}
-	if mcpFailed {
+	if mcpFailed || otelFailed {
 		return errAgentFailed
 	}
 	return nil
@@ -701,6 +712,87 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 			}
 			results = append(results, mcpResult{Agent: id, Path: path, Scope: scopeLabel(global || !scopeAware)})
 		}
+	}
+	return results, failed
+}
+
+// envFileExports reports whether a new shell will carry ORQ_API_KEY: the env
+// file has to exist and the profile has to source it, since either one alone
+// exports nothing.
+func envFileExports(sh shellSetup) bool {
+	if _, err := os.Stat(sh.EnvFile); err != nil {
+		return false
+	}
+	return profileSourcesEnvFile(sh)
+}
+
+// otelResult is one agent's tracing outcome for `-o json`. Path is the file the
+// agent records the install in, so a script can read the same place `--status`
+// reads rather than shelling out to the agent itself.
+type otelResult struct {
+	Agent string `json:"agent"`
+	Path  string `json:"path,omitempty"`
+	Error string `json:"error,omitempty"`
+	// Skipped is the entry that was never attempted, as opposed to Error's
+	// entry that was attempted and failed.
+	Skipped string `json:"skipped,omitempty"`
+}
+
+// connectOtel installs the agent's tracing plugin so sessions the user starts
+// on their own, not only the ones `orq launch` starts, land in the workspace.
+// Nothing here writes a credential: the plugin resolves ORQ_API_KEY from the
+// environment, which is why an install with no key in the shell says so instead
+// of looking finished.
+func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []otelResult, failed bool) {
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if !ok {
+			continue
+		}
+		if spec.installOtel == nil || spec.otelConfig == nil {
+			rep.info("%-8s %-9s no plugin mechanism in this agent to trace sessions with, nothing to configure", id, capOtel)
+			results = append(results, otelResult{Agent: id, Skipped: "no plugin mechanism in this agent to trace sessions with"})
+			continue
+		}
+		// Global only: a plugin installs per user, and the agent keeps no
+		// project-level equivalent of its enabled-plugin list.
+		path, err := spec.otelConfig(true)
+		switch {
+		case err != nil:
+			rep.fail("%-8s %-9s %v", id, capOtel, err)
+			results = append(results, otelResult{Agent: id, Error: err.Error()})
+			failed = true
+			continue
+		case path == "":
+			rep.fail("%-8s %-9s no config path for this agent", id, capOtel)
+			results = append(results, otelResult{Agent: id, Error: "otel config path resolved empty"})
+			failed = true
+			continue
+		}
+		already := spec.otelPresent != nil && spec.otelPresent(path)
+		if !already {
+			if ierr := spec.installOtel(); ierr != nil {
+				rep.fail("%-8s %-9s %v", id, capOtel, ierr)
+				results = append(results, otelResult{Agent: id, Error: ierr.Error()})
+				failed = true
+				continue
+			}
+		}
+		if !opts.finalScreen {
+			if already {
+				rep.ok("%-8s %-9s %s  (already installed)", id, capOtel, tilde(path))
+			} else {
+				rep.ok("%-8s %-9s %s", id, capOtel, tilde(path))
+			}
+		}
+		// Installed but inert: the plugin posts with the ORQ_API_KEY the user's
+		// shell exports, which is a different question from the key this process
+		// resolved from the saved login, and silence here reads as a finished
+		// wire. The shell is asked the same way `orq setup` and doctor ask it.
+		if sh := detectShell(viper.GetString("config-directory")); !envFileExports(sh) {
+			rep.info("%-8s %-9s the plugin posts with ORQ_API_KEY from your shell, which does not export one yet: run 'orq setup' to write %s and source it from %s", id, capOtel, tilde(sh.EnvFile), tilde(sh.Profile))
+		}
+		results = append(results, otelResult{Agent: id, Path: path})
 	}
 	return results, failed
 }
@@ -784,35 +876,6 @@ func hasCap(caps []string, c string) bool {
 	return false
 }
 
-// dropUnavailableCaps strips capabilities that parse but are not built yet, so
-// the surface stays stable while they land.
-func dropUnavailableCaps(rep *reporter, caps []string) []string {
-	out := caps[:0]
-	for _, c := range caps {
-		if !capAvailable(c) {
-			rep.info("%s is not available yet", c)
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-func capsWereAllUnavailable(args []string) bool {
-	saw := false
-	for _, a := range args {
-		c := strings.ToLower(strings.TrimSpace(a))
-		if !slices.Contains(connectCapabilities, c) {
-			continue
-		}
-		if capAvailable(c) {
-			return false
-		}
-		saw = true
-	}
-	return saw
-}
-
 // dryRunConnect prints the files each selected capability would touch. Paths
 // only, not content: the writers resolve content against the live catalogue.
 func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) error {
@@ -839,6 +902,16 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 			default:
 				if path, err := spec.mcpConfig(mcpWriteScope(opts)); err == nil && path != "" {
 					rep.info("%-8s mcp       %s", id, tilde(path))
+				}
+			}
+		}
+		if hasCap(caps, capOtel) {
+			switch {
+			case spec.installOtel == nil || spec.otelConfig == nil:
+				rep.info("%-8s otel      no plugin mechanism in this agent to trace sessions with", id)
+			default:
+				if path, err := spec.otelConfig(true); err == nil && path != "" {
+					rep.info("%-8s otel      %s  (installs %s)", id, tilde(path), launch.TracePluginRef)
 				}
 			}
 		}
@@ -927,7 +1000,8 @@ func NewDisconnectCommand() *cobra.Command {
 		Long: bartolocli.Markdown(`Removes what ` + "`orq connect`" + ` (or ` + "`orq setup`" + `) ` +
 			`wrote, and nothing else: the ` + "`gateway`" + ` provider entries in your agents' own ` +
 			`config files, the ` + "`skills`" + ` this CLI installed into your agents' skills ` +
-			`directories, and the ` + "`mcp`" + ` server entry named ` + "`" + launch.MCPServerName + "`" + `. ` +
+			`directories, the ` + "`mcp`" + ` server entry named ` + "`" + launch.MCPServerName + "`" + `, ` +
+			`and the ` + "`otel`" + ` tracing plugin. ` +
 			`Only paths this CLI recorded are ever touched — a skill you installed ` +
 			`yourself, or one of ours you have since replaced, is reported and left alone.
 
@@ -962,13 +1036,6 @@ func runDisconnect(cmd *cobra.Command, opts *setupOptions, args []string, dryRun
 	agents, caps, err := partitionConnectArgs(args)
 	if err != nil {
 		return err
-	}
-	// Same filter connect applies: without it `orq disconnect tracing` left caps
-	// as ["tracing"], found no gateway target, and reported "nothing wired" on a
-	// machine that plainly was.
-	caps = dropUnavailableCaps(rep, caps)
-	if len(caps) == 0 && capsWereAllUnavailable(args) {
-		return nil
 	}
 	if len(caps) == 0 {
 		caps = availableCapabilities()
@@ -1104,6 +1171,11 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		}
 		if hasCap(caps, capMCP) {
 			out = append(out, wiredMCPTargets(id, spec, opts)...)
+		}
+		if hasCap(caps, capOtel) {
+			if path, ok := wiredPath(spec.otelConfig, spec.otelPresent); ok {
+				out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "pass"})
+			}
 		}
 	}
 	if hasCap(caps, capSkills) {
@@ -1331,6 +1403,14 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 		}
 		if hasCap(caps, capMCP) {
 			remove(capMCP, spec.mcpConfig, spec.removeMCP)
+		}
+		if hasCap(caps, capOtel) {
+			remove(capOtel, spec.otelConfig, spec.removeOtel)
+			if slices.Contains(removedFrom, capOtel) {
+				// The marketplace stays: the other orq plugins are installed
+				// from it, so removing it here would uninstall them too.
+				rep.info("%-8s %-9s the %s marketplace is left in place for the other orq plugins", id, capOtel, launch.TraceMarketplace)
+			}
 		}
 		r.Removed = removedFrom
 		rows = append(rows, r)

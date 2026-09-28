@@ -18,7 +18,18 @@ import (
 //go:embed all:assets/orq-trace
 var tracePlugin embed.FS
 
-const tracePluginName = "orq-trace"
+// The plugin's published identity, shared with `orq connect otel`: one name
+// for the launcher's session copy, the marketplace install and the probe that
+// reads it back, so a persistent install and a session can never disagree
+// about which plugin they mean.
+const (
+	TracePluginName = "orq-trace"
+	// TraceMarketplace is the marketplace declared in orq-ai/assistant-plugins,
+	// which is what `claude plugin install` resolves TracePluginRef against.
+	TraceMarketplace     = "orq-claude-plugin"
+	TraceMarketplaceRepo = "orq-ai/assistant-plugins"
+	TracePluginRef       = TracePluginName + "@" + TraceMarketplace
+)
 
 var lookPath = exec.LookPath
 
@@ -95,7 +106,7 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	}
 
 	// A second copy of the hooks would write every span twice.
-	installed, err := tracePluginInstalled(ctx.ExecProbe)
+	installed, err := TracePluginInstalled(ctx.ExecProbe)
 	if err != nil {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"could not read your installed claude plugins (%v); if orq-trace is installed and enabled there, this session writes every span twice", err))
@@ -105,7 +116,7 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 			"using the orq-trace plugin already installed in your claude config instead of loading the one this CLI ships")
 		return nil
 	}
-	pluginDir := filepath.Join(dir, tracePluginName)
+	pluginDir := filepath.Join(dir, TracePluginName)
 	src, err := fs.Sub(tracePlugin, "assets/orq-trace")
 	if err != nil {
 		return err
@@ -117,11 +128,15 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	return nil
 }
 
-// tracePluginInstalled reports whether the user has orq-trace installed and
+// TracePluginInstalled reports whether the user has orq-trace installed and
 // enabled through a marketplace. A failure to tell counts as not installed, so
 // the session still gets a trace, and is returned so the caller can say the
 // check did not happen.
-func tracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
+//
+// Exported because `orq connect otel` answers the same question about the same
+// install; two readers of `claude plugin list` would drift the moment the id
+// format changes.
+func TracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
 	if run == nil {
 		return false, nil
 	}
@@ -140,7 +155,7 @@ func tracePluginInstalled(run func(string, ...string) (string, error)) (bool, er
 	for _, p := range plugins {
 		// Installed ids read orq-trace@<marketplace>; name is the fallback for
 		// a build that reports the plugin without one.
-		if p.Enabled && (p.Name == tracePluginName || strings.HasPrefix(p.ID, tracePluginName+"@")) {
+		if p.Enabled && (p.Name == TracePluginName || strings.HasPrefix(p.ID, TracePluginName+"@")) {
 			return true, nil
 		}
 	}

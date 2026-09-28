@@ -29,15 +29,15 @@ func TestPartitionConnectArgs(t *testing.T) {
 		caps    []string
 		wantErr bool
 	}{
-		"empty":          {args: nil},
-		"agents only":    {args: []string{"claude", "kimi"}, agents: []string{"claude", "kimi"}},
-		"caps only":      {args: []string{"gateway", "tracing"}, caps: []string{"gateway", "tracing"}},
-		"mixed":          {args: []string{"claude", "gateway"}, agents: []string{"claude"}, caps: []string{"gateway"}},
-		"tracing parses": {args: []string{"tracing"}, caps: []string{"tracing"}},
-		"case folded":    {args: []string{"Claude", "GATEWAY"}, agents: []string{"claude"}, caps: []string{"gateway"}},
-		"dedup":          {args: []string{"claude", "claude"}, agents: []string{"claude"}},
-		"garbage":        {args: []string{"clod"}, wantErr: true},
-		"flag-like":      {args: []string{"--gateway"}, wantErr: true},
+		"empty":        {args: nil},
+		"agents only":  {args: []string{"claude", "kimi"}, agents: []string{"claude", "kimi"}},
+		"caps only":    {args: []string{"gateway", "otel"}, caps: []string{"gateway", "otel"}},
+		"mixed":        {args: []string{"claude", "gateway"}, agents: []string{"claude"}, caps: []string{"gateway"}},
+		"tracing gone": {args: []string{"tracing"}, wantErr: true},
+		"case folded":  {args: []string{"Claude", "GATEWAY"}, agents: []string{"claude"}, caps: []string{"gateway"}},
+		"dedup":        {args: []string{"claude", "claude"}, agents: []string{"claude"}},
+		"garbage":      {args: []string{"clod"}, wantErr: true},
+		"flag-like":    {args: []string{"--gateway"}, wantErr: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			agents, caps, err := partitionConnectArgs(tc.args)
@@ -400,33 +400,6 @@ func TestConnectStatusOmitsWorkspaceColumnWithNoRecords(t *testing.T) {
 	})
 	if strings.Contains(out, "WORKSPACE") {
 		t.Errorf("WORKSPACE column rendered with no agent carrying a record:\n%s", out)
-	}
-}
-
-// tracing is vocabulary, not behaviour: it parses, says so, and alone it does
-// nothing at exit 0.
-func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Chdir(t.TempDir())
-	resetSetupMemos(t)
-
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	caps := dropUnavailableCaps(rep, []string{"tracing", "gateway"})
-	if len(caps) != 1 || caps[0] != "gateway" {
-		t.Errorf("caps = %v, want [gateway]", caps)
-	}
-	if !strings.Contains(out.String(), "tracing is not available yet") {
-		t.Errorf("tracing was dropped without saying so:\n%s", out.String())
-	}
-	if !capsWereAllUnavailable([]string{"claude", "tracing"}) {
-		t.Error("unavailable-only detection missed the only-unavailable case")
-	}
-	if capsWereAllUnavailable([]string{"claude", "skills"}) {
-		t.Error("skills is built and must count as a real capability")
-	}
-	if capsWereAllUnavailable([]string{"claude", "tracing", "gateway"}) {
-		t.Error("unavailable-only detection swallowed a real capability")
 	}
 }
 
@@ -964,8 +937,11 @@ func TestConnectStatusAppliesTheSameFiltersAsConnect(t *testing.T) {
 		return out.String()
 	}
 
-	if got := run("tracing"); strings.Contains(got, "nothing wired") {
-		t.Errorf("--status tracing reported nothing wired on a wired machine:\n%s", got)
+	// Scoped to one capability, the answer is about that capability: the kimi
+	// gateway on this machine is not an otel wire and must not be reported as
+	// one.
+	if got := run("otel"); !strings.Contains(got, "nothing wired") {
+		t.Errorf("--status otel counted another capability's wire:\n%s", got)
 	}
 	if got := run("claude", "gateway"); strings.Contains(got, "not wired") {
 		t.Errorf("claude reported unwired for the gateway, promising a wire that cannot exist:\n%s", got)
@@ -1940,21 +1916,16 @@ func TestSetupRejectsAnUnknownCapabilityBeforeDoingAnything(t *testing.T) {
 	}
 }
 
-// `--capability tracing` parses but is not implemented. Accepting it silently
-// left setup reporting success having connected nothing at all.
-func TestSetupSaysTracingIsNotAvailable(t *testing.T) {
-	got := captureOutput(t, func() {
-		rep := newReporter(true)
-		caps, err := validateCapabilities([]string{"tracing"})
-		if err != nil {
-			t.Fatalf("tracing rejected outright: %v", err)
-		}
-		if left := dropUnavailableCaps(rep, caps); len(left) != 0 {
-			t.Errorf("tracing survived the availability filter: %v", left)
-		}
-	})
-	if !strings.Contains(got, "not available yet") {
-		t.Errorf("tracing was dropped silently:\n%s", got)
+// The capability is spelled after the flag that declines it (--no-otel), and
+// "tracing", which an earlier revision parsed and then refused, is gone. A
+// stale spelling that still parsed would connect nothing and say nothing.
+func TestSetupRejectsTheOldTracingSpelling(t *testing.T) {
+	if _, err := validateCapabilities([]string{"tracing"}); err == nil {
+		t.Error("tracing still parses as a capability")
+	}
+	caps, err := validateCapabilities([]string{"otel"})
+	if err != nil || len(caps) != 1 || caps[0] != capOtel {
+		t.Errorf("validateCapabilities(otel) = %v, %v", caps, err)
 	}
 }
 
@@ -2792,5 +2763,122 @@ func TestStatusCountsSharedSkillsAsWiredForEveryReader(t *testing.T) {
 	})
 	if strings.Contains(out, "not wired") {
 		t.Errorf("codex reads the shared directory and is wired:\n%s", out)
+	}
+}
+
+// otelMachine is an mcpMachine with the agent's plugin install stubbed: no test
+// may invoke claude, and CLAUDE_CONFIG_DIR keeps every read and write inside
+// the temp home even for a machine that has a real ~/.claude.
+func otelMachine(t *testing.T) (settings string, calls *[]string) {
+	t.Helper()
+	home, _ := mcpMachine(t, ".claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("ORQ_API_KEY", "sk-live")
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return filepath.Join("/usr/local/bin", name), nil
+	})
+	recorded := []string{}
+	orig := runAgentCommand
+	t.Cleanup(func() { runAgentCommand = orig })
+	runAgentCommand = func(name string, args ...string) error {
+		recorded = append(recorded, strings.Join(append([]string{name}, args...), " "))
+		return nil
+	}
+	return filepath.Join(home, ".claude", "settings.json"), &recorded
+}
+
+// The install goes through the agent's own plugin manager, and the marketplace
+// is added first: `claude plugin install orq-trace@orq-claude-plugin` cannot
+// resolve a marketplace the agent has never heard of.
+func TestConnectOtelInstallsThePublishedPlugin(t *testing.T) {
+	settings, calls := otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if len(*calls) != 2 ||
+		!strings.Contains((*calls)[0], "plugin marketplace add "+launch.TraceMarketplaceRepo) ||
+		!strings.Contains((*calls)[1], "plugin install "+launch.TracePluginRef) {
+		t.Fatalf("install did not add the marketplace then install the plugin: %v", *calls)
+	}
+	if !strings.Contains(out, tilde(settings)) {
+		t.Errorf("the reported path is not the file the agent records the install in:\n%s", out)
+	}
+}
+
+// An install that is already there is reported, not repeated: `claude plugin
+// install` on an installed plugin is a no-op, but the run must not read as
+// having changed something.
+func TestConnectOtelIsIdempotent(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an installed plugin was installed again: %v", *calls)
+	}
+	if !strings.Contains(out, "already installed") {
+		t.Errorf("the existing install went unsaid:\n%s", out)
+	}
+}
+
+// The plugin posts with the ORQ_API_KEY the user's shell exports, so an install
+// into a shell that exports none is inert. Silence there reads as a finished
+// wire. The temp home of this test has no env file and no profile sourcing one,
+// which is exactly the machine the line is for.
+func TestConnectOtelSaysTheKeyIsMissing(t *testing.T) {
+	otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "ORQ_API_KEY") {
+		t.Errorf("an install with no key in the shell did not say so:\n%s", out)
+	}
+}
+
+// Uninstall runs only when the plugin is there: the agent exits non-zero when
+// asked to remove a plugin it does not have, which would report a failure for a
+// machine with nothing to remove.
+func TestDisconnectOtelRemovesOnlyWhatIsInstalled(t *testing.T) {
+	settings, calls := otelMachine(t)
+
+	c := NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("disconnect with nothing installed: %v", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("uninstall ran with no plugin installed: %v", *calls)
+	}
+
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c = NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if len(*calls) != 1 || !strings.Contains((*calls)[0], "plugin uninstall "+launch.TracePluginRef) {
+		t.Fatalf("uninstall did not run for the installed plugin: %v", *calls)
 	}
 }

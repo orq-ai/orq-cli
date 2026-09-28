@@ -1725,10 +1725,8 @@ func promptForAgents(rep *reporter, caps []string) ([]string, error) {
 }
 
 // defaultCapabilities is what a bare `orq setup` connects: everything that is
-// built. Tracing is excluded while dropUnavailableCaps still strips it —
-// offering it in the picker would be offering something that then prints "not
-// available yet" — which is exactly what availableCapabilities means, so the
-// two are one list rather than two that can drift.
+// built, which is exactly what availableCapabilities means, so the two are one
+// list rather than two that can drift.
 func defaultCapabilities() []string {
 	return availableCapabilities()
 }
@@ -1738,11 +1736,9 @@ func defaultCapabilities() []string {
 // interactive one asks.
 func resolveCapabilities(rep *reporter, opts *setupOptions) ([]string, error) {
 	if len(opts.caps) > 0 {
-		// Validated at the entry point (runSetup); this is the availability
-		// filter every other path already applies, so `--capability tracing`
-		// says "not available yet" here exactly as `orq connect tracing` does
-		// instead of completing a setup that connected nothing.
-		return dropUnavailableCaps(rep, opts.caps), nil
+		// Validated at the entry point (runSetup), against the same grammar
+		// `orq connect` enforces.
+		return opts.caps, nil
 	}
 	if opts.noInput || opts.yes {
 		return defaultCapabilities(), nil
@@ -1753,9 +1749,6 @@ func resolveCapabilities(rep *reporter, opts *setupOptions) ([]string, error) {
 // promptForCapabilities is the multi-select, modeled on promptForAgents so the
 // two questions in one wizard behave the same way.
 func promptForCapabilities(rep *reporter) ([]string, error) {
-	// Only what is built. The picker used to list tracing, which
-	// dropUnavailableCaps then stripped with "not available yet" — offering a
-	// choice and refusing it one keystroke later.
 	options := availableCapabilities()
 	labels := capabilityLabels()
 	byOption := map[string]string{}
@@ -1782,7 +1775,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 	for _, label := range chosen {
 		caps = append(caps, byOption[label])
 	}
-	return dropUnavailableCaps(rep, caps), nil
+	return caps, nil
 }
 
 // capabilityLabels is the one-line description the picker shows per capability.
@@ -1795,7 +1788,7 @@ func promptForCapabilities(rep *reporter) ([]string, error) {
 func capabilityLabels() map[string]string {
 	return map[string]string{
 		capGateway: fmt.Sprintf("%-9s route the agent's model calls through orq", capGateway),
-		capTracing: fmt.Sprintf("%-9s send traces to orq", capTracing),
+		capOtel:    fmt.Sprintf("%-9s trace the agent's sessions into orq", capOtel),
 		capSkills:  fmt.Sprintf("%-9s install the orq skills so the agent knows how to use orq", capSkills),
 		capMCP:     fmt.Sprintf("%-9s give the agent orq's MCP tools (the agent logs in itself)", capMCP),
 	}

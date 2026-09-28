@@ -129,6 +129,21 @@ controls on surface changes, whichever side they originate from.
   plugin for that session only, without installing anything into your claude
   config. The hooks need `node` on PATH. `--no-otel` leaves the session
   uncaptured, and `--otel` names the default explicitly.
+- **Added: `otel`, a fourth `orq connect` capability**, so the sessions you
+  start yourself are traced too, not only the ones `orq launch` starts.
+  `orq connect claude otel` installs the `orq-trace` plugin through Claude
+  Code's own plugin manager, from the public `orq-claude-plugin` marketplace,
+  and `orq disconnect claude otel` uninstalls it and leaves the marketplace for
+  the other orq plugins. It writes no key: the plugin posts with the
+  `ORQ_API_KEY` your shell exports, and the command says so when your shell
+  exports none. Tracing is part of a bare `orq connect`, `orq setup` and
+  `--status` like the other three, and `-o json` carries it under `otel`.
+  Claude Code is the only agent with a plugin mechanism for it; the others
+  report that rather than a wire.
+- **Changed (breaking): the capability is spelled `otel`, not `tracing`.** The
+  earlier spelling parsed and then refused itself with "not available yet", so
+  `orq connect tracing` and `orq setup --capability tracing` are now errors that
+  name the capability list. Nothing was ever wired under the old name.
 
 ## [11.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.0) — 2026-09-25
 

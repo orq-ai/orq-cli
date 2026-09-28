@@ -119,7 +119,8 @@ Flags:
 		fmt.Print(`  --otel                Capture the session as an orq trace: loads the orq-trace
                         plugin for this session only and turns on Claude Code's
                         metrics and logs export (default)
-  --no-otel             Do not capture this session
+  --no-otel             Do not capture this session. To capture the sessions you
+                        start yourself, outside orq launch, run 'orq connect otel'
   --router              Send model traffic through the orq.ai AI Router instead of
                         your own Anthropic login. Usage then bills to the orq
                         workspace, not your subscription

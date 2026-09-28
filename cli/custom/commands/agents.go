@@ -1,18 +1,22 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"orq/cli/custom/auth"
 	"orq/cli/custom/launch"
 	"orq/cli/custom/skills"
 
+	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 )
@@ -63,6 +67,16 @@ type agentSpec struct {
 	mcpPresent func(path string) bool
 	// removeMCP is writeMCP's inverse; required whenever writeMCP is set.
 	removeMCP func(path string) (bool, error)
+	// otelConfig returns the file recording which plugins the agent has enabled; nil when the agent cannot be instrumented.
+	otelConfig func(global bool) (string, error)
+	// installOtel installs and enables the orq-trace plugin through the agent's own CLI. No credential
+	// argument, for the same reason writeMCP has none: the plugin resolves ORQ_API_KEY from the
+	// environment ~/.orq/env exports, so no key reaches the agent's config.
+	installOtel func() error
+	// otelPresent is installOtel's read-side pair; required whenever the installer is set.
+	otelPresent func(path string) bool
+	// removeOtel is installOtel's inverse; required whenever the installer is set.
+	removeOtel func(path string) (bool, error)
 }
 
 // preferredCodingModels are matched as prefixes against the live catalogue, in order.
@@ -83,6 +97,13 @@ func agentRegistry() []agentSpec {
 			writeMCP:   writeMCPJSON("mcpServers", claudeMCPEntry),
 			mcpPresent: jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:  func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
+			// claude is the only agent with a plugin mechanism to install the
+			// trace hooks into, the same reason it is the only Traceable agent
+			// in the launcher.
+			otelConfig:  claudeSettingsPath(),
+			installOtel: installClaudeTracePlugin,
+			otelPresent: claudeTracePluginEnabled,
+			removeOtel:  removeClaudeTracePlugin,
 		},
 		{
 			ID:    "codex",
@@ -208,6 +229,95 @@ func projectOrGlobalPath(projectRel, globalRel string) func(bool) (string, error
 		}
 		return filepath.Join(home, globalRel), nil
 	}
+}
+
+// claudeSettingsPath is where claude records the plugins it has enabled: under
+// $CLAUDE_CONFIG_DIR when set, ~/.claude otherwise, the same order claude
+// resolves it. Global only, both because a plugin installs per user and
+// because claude keeps no project equivalent of enabledPlugins.
+func claudeSettingsPath() func(bool) (string, error) {
+	return func(bool) (string, error) {
+		if dir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); dir != "" {
+			return filepath.Join(dir, "settings.json"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".claude", "settings.json"), nil
+	}
+}
+
+// agentCommandTimeout bounds the install: the marketplace step clones a
+// repository, which claude itself bounds at 120s, so a shorter limit here would
+// cut off a clone that was going to succeed.
+const agentCommandTimeout = 3 * time.Minute
+
+// runAgentCommand is the seam tests replace so no test invokes a coding agent,
+// in the shape runOrqiCommand already established. Child output goes to stderr:
+// it is the agent CLI's own progress, while stdout carries orq's own output.
+var runAgentCommand = realRunAgentCommand
+
+func realRunAgentCommand(name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), agentCommandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
+	return cmd.Run()
+}
+
+// installClaudeTracePlugin installs the published orq-trace plugin rather than
+// unpacking the copy this binary embeds: an installed plugin updates with
+// `claude plugin update`, and a directory orq wrote into ~/.claude would be a
+// second, silently stale copy of something claude already knows how to manage.
+//
+// Both steps are idempotent and exit 0 when the marketplace or the plugin is
+// already there, so a rerun repairs a half-finished install instead of
+// refusing one.
+func installClaudeTracePlugin() error {
+	if _, err := lookPath("claude"); err != nil {
+		return fmt.Errorf("claude is not on PATH, so its plugin cannot be installed: %w", err)
+	}
+	if err := runAgentCommand("claude", "plugin", "marketplace", "add", launch.TraceMarketplaceRepo); err != nil {
+		return fmt.Errorf("adding the %s marketplace: %w", launch.TraceMarketplace, err)
+	}
+	if err := runAgentCommand("claude", "plugin", "install", launch.TracePluginRef); err != nil {
+		return fmt.Errorf("installing %s: %w", launch.TracePluginRef, err)
+	}
+	return nil
+}
+
+// claudeTracePluginEnabled reads the install back from settings.json. The value
+// has to be true, not merely present: claude leaves the key behind set to false
+// when the plugin is disabled, and a disabled plugin traces nothing.
+func claudeTracePluginEnabled(path string) bool {
+	cfg, err := readJSONConfig(path)
+	if err != nil {
+		return false
+	}
+	enabled, _ := cfg["enabledPlugins"].(map[string]any)
+	on, _ := enabled[launch.TracePluginRef].(bool)
+	return on
+}
+
+// removeClaudeTracePlugin uninstalls the plugin and leaves the marketplace
+// entry alone: it is shared with the other orq plugins, and removing it would
+// uninstall them by a side effect nobody asked for.
+//
+// The presence check comes first because `claude plugin uninstall` exits 1 when
+// the plugin is not installed, which would report a failure for a machine that
+// simply has nothing to remove.
+func removeClaudeTracePlugin(path string) (bool, error) {
+	if !claudeTracePluginEnabled(path) {
+		return false, nil
+	}
+	if _, err := lookPath("claude"); err != nil {
+		return false, fmt.Errorf("claude is not on PATH, so its plugin cannot be uninstalled: %w", err)
+	}
+	if err := runAgentCommand("claude", "plugin", "uninstall", launch.TracePluginRef); err != nil {
+		return false, fmt.Errorf("uninstalling %s: %w", launch.TracePluginRef, err)
+	}
+	return true, nil
 }
 
 // piPath resolves inside pi's agent directory: $PI_CODING_AGENT_DIR when set,
