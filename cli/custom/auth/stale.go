@@ -253,8 +253,15 @@ func sessionServes(session *Session, u *url.URL) bool {
 }
 
 // recordRefresh stores tok in the slot and remembers which slot the old token
-// held, merged onto the on-disk session so concurrent writers survive.
+// held. The session update lock spans the read and save, so concurrent refreshes
+// merge onto the latest on-disk session instead of dropping one another's slots.
 func recordRefresh(key, old string, tok StoredAccessToken) error {
+	unlock, err := lockSessionUpdates()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	current, err := ReadSession()
 	if err != nil || current == nil {
 		return err

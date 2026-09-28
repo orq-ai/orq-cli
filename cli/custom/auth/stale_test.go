@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,7 @@ type staleFixture struct {
 	exchangeFail string // 401 body for /access-token
 	exchanges    atomic.Int32
 	calls        atomic.Int32
+	projectID    string
 }
 
 const staleBody = `{"code":"authz_stale","message":"Authorization token is invalid."}`
@@ -33,6 +35,12 @@ func newStaleFixture(t *testing.T) *staleFixture {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/access-token") {
 			f.exchanges.Add(1)
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["project_id"] != f.projectID {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintf(w, `{"message":"project_id = %q, want %q"}`, body["project_id"], f.projectID)
+				return
+			}
 			if f.exchangeFail != "" {
 				w.WriteHeader(http.StatusUnauthorized)
 				fmt.Fprint(w, f.exchangeFail)
@@ -62,6 +70,7 @@ func newStaleFixture(t *testing.T) *staleFixture {
 // login writes a session against the fixture with stale cached for ws/project.
 func (f *staleFixture) login(t *testing.T, ws, project, stale string) *Session {
 	t.Helper()
+	f.projectID = project
 	isolateHome(t)
 	loginAgainst(t, f.srv)
 	s := validSession(ws)
@@ -72,6 +81,51 @@ func (f *staleFixture) login(t *testing.T, ws, project, stale string) *Session {
 		t.Fatal(err)
 	}
 	return s
+}
+
+func TestRecordRefreshPreservesConcurrentSlots(t *testing.T) {
+	f := newStaleFixture(t)
+	s := f.login(t, "orq-research", "proj-1", "stale-one")
+	s.WorkspaceTokens[TokenCacheKey("orq-research", "proj-2")] = StoredAccessToken{
+		Token: "stale-two", ExpiresAt: "2099-01-01T00:00:00Z",
+	}
+	if err := SaveSession(s); err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	for _, refresh := range []struct{ key, old, token string }{
+		{TokenCacheKey("orq-research", "proj-1"), "stale-one", "fresh-one"},
+		{TokenCacheKey("orq-research", "proj-2"), "stale-two", "fresh-two"},
+	} {
+		refresh := refresh
+		go func() {
+			<-start
+			errs <- recordRefresh(refresh.key, refresh.old, StoredAccessToken{
+				Token: refresh.token, ExpiresAt: "2099-01-01T00:00:00Z",
+			})
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := ReadSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		TokenCacheKey("orq-research", "proj-1"): "fresh-one",
+		TokenCacheKey("orq-research", "proj-2"): "fresh-two",
+	} {
+		if actual := got.WorkspaceTokens[key].Token; actual != want {
+			t.Errorf("WorkspaceTokens[%q] = %q, want %q", key, actual, want)
+		}
+	}
 }
 
 func (f *staleFixture) counts(t *testing.T, exchanges, calls int32) {

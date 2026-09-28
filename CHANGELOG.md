@@ -123,8 +123,9 @@ controls on surface changes, whichever side they originate from.
   sending the cached token until it expired, so every command after
   `orq projects create` failed for up to 30
   minutes. A request that gets `authz_stale` now fetches a fresh token and is
-  retried once. An explicit API key (`ORQ_API_KEY` you set yourself, or a
-  credentials profile) is never retried.
+  retried once. Concurrent refreshes for different workspace/project slots
+  preserve both replacements. An explicit API key (`ORQ_API_KEY` you set
+  yourself, or a credentials profile) is never retried.
 
 - **Changed: `orq status` / `orq auth whoami` check the credential in force with
   the server.** A rejected token turns `authenticated` false and adds
