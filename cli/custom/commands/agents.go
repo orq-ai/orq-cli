@@ -266,6 +266,14 @@ func realRunAgentCommand(name string, args ...string) error {
 	return cmd.Run()
 }
 
+// errAgentNotInstalled marks the one failure that is not this machine's problem
+// to report: the agent's own binary is absent, so its plugin manager cannot be
+// reached. An agent is detected from the config directory it left behind, which
+// outlives an uninstall, so a bare `orq connect` meets this on any machine that
+// once had the agent. The caller reports it as a capability the agent cannot
+// receive, not as a failed wire.
+var errAgentNotInstalled = errors.New("the agent's own binary is not installed")
+
 // installClaudeTracePlugin installs the published orq-trace plugin rather than
 // unpacking the copy this binary embeds: an installed plugin updates with
 // `claude plugin update`, and a directory orq wrote into ~/.claude would be a
@@ -276,7 +284,7 @@ func realRunAgentCommand(name string, args ...string) error {
 // refusing one.
 func installClaudeTracePlugin() error {
 	if _, err := lookPath("claude"); err != nil {
-		return fmt.Errorf("claude is not on PATH, so its plugin cannot be installed: %w", err)
+		return fmt.Errorf("claude is not on PATH, so its plugin cannot be installed: %w", errAgentNotInstalled)
 	}
 	if err := runAgentCommand("claude", "plugin", "marketplace", "add", launch.TraceMarketplaceRepo); err != nil {
 		return fmt.Errorf("adding the %s marketplace: %w", launch.TraceMarketplace, err)

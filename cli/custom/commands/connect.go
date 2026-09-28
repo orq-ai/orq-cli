@@ -771,7 +771,17 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 		}
 		already := spec.otelPresent != nil && spec.otelPresent(path)
 		if !already {
-			if ierr := spec.installOtel(); ierr != nil {
+			ierr := spec.installOtel()
+			switch {
+			case errors.Is(ierr, errAgentNotInstalled):
+				// Same shape as an agent that has no plugin mechanism at all:
+				// there is nothing to configure, and failing the run would mean
+				// a bare `orq connect` could not finish on a machine that
+				// merely has a leftover config directory.
+				rep.info("%-8s %-9s %v, nothing to configure", id, capOtel, ierr)
+				results = append(results, otelResult{Agent: id, Skipped: ierr.Error()})
+				continue
+			case ierr != nil:
 				rep.fail("%-8s %-9s %v", id, capOtel, ierr)
 				results = append(results, otelResult{Agent: id, Error: ierr.Error()})
 				failed = true

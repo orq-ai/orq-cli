@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -2880,5 +2881,31 @@ func TestDisconnectOtelRemovesOnlyWhatIsInstalled(t *testing.T) {
 	}
 	if len(*calls) != 1 || !strings.Contains((*calls)[0], "plugin uninstall "+launch.TracePluginRef) {
 		t.Fatalf("uninstall did not run for the installed plugin: %v", *calls)
+	}
+}
+
+// An agent is detected from the config directory it left behind, which outlives
+// an uninstall, so a bare connect meets agents whose binary is gone. Reported as
+// a failure, that made `orq connect` exit non-zero on any machine with a
+// leftover ~/.claude and no claude, taking the skills and MCP legs down with it.
+// Caught by CI, whose runners have no coding agent installed.
+func TestConnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
+	_, calls := otelMachine(t)
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return "", exec.ErrNotFound
+	})
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("a missing agent binary failed the run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an absent agent was invoked anyway: %v", *calls)
+	}
+	if !strings.Contains(out, "not on PATH") {
+		t.Errorf("the skip went unexplained:\n%s", out)
 	}
 }
