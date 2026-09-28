@@ -2909,3 +2909,125 @@ func TestConnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
 		t.Errorf("the skip went unexplained:\n%s", out)
 	}
 }
+
+// The same reading as the install side, on the way out: a machine whose claude
+// is gone still has the enabledPlugins entry in its settings, and disconnect
+// has no plugin manager to remove it with. Reported as a failure, that made
+// `orq disconnect` exit non-zero with nothing it could have done differently.
+func TestDisconnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return "", exec.ErrNotFound
+	})
+
+	out := captureOutput(t, func() {
+		c := NewDisconnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--yes"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("a missing agent binary failed the run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an absent agent was invoked anyway: %v", *calls)
+	}
+	if !strings.Contains(out, "nothing to remove") {
+		t.Errorf("the skip went unexplained:\n%s", out)
+	}
+}
+
+// A settings file that cannot be parsed is not a machine with nothing
+// installed: the plugin may well be enabled in there and keep tracing. Saying
+// so is the difference between a disconnect that failed and one that found
+// nothing.
+func TestDisconnectOtelReportsAnUnreadableConfig(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err == nil {
+		t.Fatal("an unreadable settings file disconnected successfully")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("uninstall ran against a config that could not be read: %v", *calls)
+	}
+}
+
+// `orq auth logout` clears the env file but leaves it on disk, holding only a
+// comment. A check that asks whether the file exists reads that as a key the
+// shell exports, and the install then says nothing about the one thing that
+// stops it working.
+func TestConnectOtelSaysTheKeyIsMissingAfterLogout(t *testing.T) {
+	otelMachine(t)
+	sh := detectShell(viper.GetString("config-directory"))
+	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.EnvFile, []byte("# Cleared by 'orq auth logout'.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "ORQ_API_KEY") {
+		t.Errorf("a cleared env file was read as a key the shell exports:\n%s", out)
+	}
+}
+
+// Status is the reader people check an install with, so the capability has to
+// show up there as wired, not only in the output of the run that installed it.
+func TestConnectStatusReportsTheInstalledPlugin(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--status"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "nothing wired") {
+		t.Fatalf("an installed plugin is reported as nothing wired:\n%s", out)
+	}
+	if !strings.Contains(out, "otel") {
+		t.Errorf("status does not name the capability:\n%s", out)
+	}
+}
+
+// A dry run names the plugin it would install and runs the agent's plugin
+// manager not at all, like every other writer in this command.
+func TestConnectOtelDryRunInstallsNothing(t *testing.T) {
+	_, calls := otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--dry-run"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("dry run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("a dry run invoked the agent: %v", *calls)
+	}
+	if !strings.Contains(out, launch.TracePluginRef) {
+		t.Errorf("the dry run does not say what it would install:\n%s", out)
+	}
+}

@@ -133,9 +133,10 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 // the session still gets a trace, and is returned so the caller can say the
 // check did not happen.
 //
-// Exported because `orq connect otel` answers the same question about the same
-// install; two readers of `claude plugin list` would drift the moment the id
-// format changes.
+// Exported because `orq connect otel` installs what this reads, and both name
+// the plugin through TracePluginRef. It answers the question from settings.json
+// rather than from here: a launch cannot assume the user's claude is on PATH,
+// and connect has already run it.
 func TracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
 	if run == nil {
 		return false, nil

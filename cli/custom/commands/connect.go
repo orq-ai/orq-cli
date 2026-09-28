@@ -716,11 +716,14 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 	return results, failed
 }
 
-// envFileExports reports whether a new shell will carry ORQ_API_KEY: the env
-// file has to exist and the profile has to source it, since either one alone
-// exports nothing.
+// envFileExports reports whether a new shell will carry ORQ_API_KEY: the
+// profile has to source the env file and the file has to still hold the key,
+// since either one alone exports nothing. The content check is the load-bearing
+// half after `orq auth logout`, which leaves the file in place holding only a
+// comment.
 func envFileExports(sh shellSetup) bool {
-	if _, err := os.Stat(sh.EnvFile); err != nil {
+	data, err := os.ReadFile(sh.EnvFile)
+	if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
 		return false
 	}
 	return profileSourcesEnvFile(sh)
@@ -769,7 +772,13 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 			failed = true
 			continue
 		}
-		already := spec.otelPresent != nil && spec.otelPresent(path)
+		// An unreadable config counts as not installed here: the install is
+		// idempotent, so attempting it is the safe half of the guess, and
+		// "already installed" would be a claim the read did not support.
+		already := false
+		if spec.otelPresent != nil {
+			already, _ = spec.otelPresent(path)
+		}
 		if !already {
 			ierr := spec.installOtel()
 			switch {
@@ -1182,9 +1191,18 @@ func wiredTargets(agents, caps []string, opts *setupOptions) []wiredTarget {
 		if hasCap(caps, capMCP) {
 			out = append(out, wiredMCPTargets(id, spec, opts)...)
 		}
-		if hasCap(caps, capOtel) {
-			if path, ok := wiredPath(spec.otelConfig, spec.otelPresent); ok {
-				out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "pass"})
+		if hasCap(caps, capOtel) && spec.otelConfig != nil && spec.otelPresent != nil {
+			path, err := spec.otelConfig(true)
+			if err == nil && path != "" {
+				switch on, err := spec.otelPresent(path); {
+				case err != nil:
+					// Listed, so a disconnect reaches the read and reports it.
+					// Left out, an unreadable config exits the run clean over a
+					// plugin that may well still be enabled and tracing.
+					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "warn"})
+				case on:
+					out = append(out, wiredTarget{agent: id, capability: capOtel, path: path, status: "pass"})
+				}
 			}
 		}
 	}
@@ -1359,6 +1377,9 @@ type disconnectRow struct {
 	Agent   string   `json:"agent"`
 	Removed []string `json:"removed,omitempty"`
 	Error   string   `json:"error,omitempty"`
+	// Skipped is the removal that was never attempted, as opposed to Error's
+	// removal that was attempted and failed.
+	Skipped string `json:"skipped,omitempty"`
 }
 
 // removeWiring is the removal itself, with no prompting, reporting of the
@@ -1383,6 +1404,12 @@ func removeWiring(rep *reporter, agents, caps []string, opts *setupOptions, path
 			for _, path := range scopedPaths(cap, resolve, opts) {
 				removed, err := remover(path)
 				switch {
+				case errors.Is(err, errAgentNotInstalled):
+					// Same reading as the install side: the agent is gone, so
+					// there is no plugin manager to remove anything with, and
+					// that is not a failed disconnect.
+					rep.info("%-8s %-9s %v, nothing to remove", id, cap, err)
+					r.Skipped = err.Error()
 				case err != nil:
 					rep.fail("%-8s %-9s %v", id, cap, err)
 					r.Error = err.Error()

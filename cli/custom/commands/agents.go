@@ -73,8 +73,10 @@ type agentSpec struct {
 	// argument, for the same reason writeMCP has none: the plugin resolves ORQ_API_KEY from the
 	// environment ~/.orq/env exports, so no key reaches the agent's config.
 	installOtel func() error
-	// otelPresent is installOtel's read-side pair; required whenever the installer is set.
-	otelPresent func(path string) bool
+	// otelPresent is installOtel's read-side pair; required whenever the installer is set. It
+	// returns an error rather than false when the config cannot be read, because "nothing is
+	// installed" and "I could not look" are different answers to a disconnect.
+	otelPresent func(path string) (bool, error)
 	// removeOtel is installOtel's inverse; required whenever the installer is set.
 	removeOtel func(path string) (bool, error)
 }
@@ -102,7 +104,7 @@ func agentRegistry() []agentSpec {
 			// in the launcher.
 			otelConfig:  claudeSettingsPath(),
 			installOtel: installClaudeTracePlugin,
-			otelPresent: claudeTracePluginEnabled,
+			otelPresent: claudeTracePluginState,
 			removeOtel:  removeClaudeTracePlugin,
 		},
 		{
@@ -262,6 +264,10 @@ func realRunAgentCommand(name string, args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), agentCommandTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	// The CLI puts the saved login in its own environment (installSessionPreRun),
+	// and a plugin manager has no use for it, so the child runs without it, as
+	// runOrqiCommand already does.
+	cmd.Env = withoutOrqCredentials(os.Environ())
 	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
 	return cmd.Run()
 }
@@ -295,17 +301,21 @@ func installClaudeTracePlugin() error {
 	return nil
 }
 
-// claudeTracePluginEnabled reads the install back from settings.json. The value
+// claudeTracePluginState reads the install back from settings.json. The value
 // has to be true, not merely present: claude leaves the key behind set to false
-// when the plugin is disabled, and a disabled plugin traces nothing.
-func claudeTracePluginEnabled(path string) bool {
+// when the plugin is disabled, and a disabled plugin traces nothing. A missing
+// file reads as not installed; a file that cannot be read or parsed is returned
+// as the error it is, because "nothing to remove" and "I could not look" are
+// different answers to `orq disconnect`.
+func claudeTracePluginState(path string) (bool, error) {
 	cfg, err := readJSONConfig(path)
 	if err != nil {
-		return false
+		// readJSONConfig already names the file it could not read.
+		return false, err
 	}
 	enabled, _ := cfg["enabledPlugins"].(map[string]any)
 	on, _ := enabled[launch.TracePluginRef].(bool)
-	return on
+	return on, nil
 }
 
 // removeClaudeTracePlugin uninstalls the plugin and leaves the marketplace
@@ -316,11 +326,15 @@ func claudeTracePluginEnabled(path string) bool {
 // the plugin is not installed, which would report a failure for a machine that
 // simply has nothing to remove.
 func removeClaudeTracePlugin(path string) (bool, error) {
-	if !claudeTracePluginEnabled(path) {
+	on, err := claudeTracePluginState(path)
+	if err != nil {
+		return false, err
+	}
+	if !on {
 		return false, nil
 	}
 	if _, err := lookPath("claude"); err != nil {
-		return false, fmt.Errorf("claude is not on PATH, so its plugin cannot be uninstalled: %w", err)
+		return false, fmt.Errorf("claude is not on PATH, so its plugin cannot be uninstalled: %w", errAgentNotInstalled)
 	}
 	if err := runAgentCommand("claude", "plugin", "uninstall", launch.TracePluginRef); err != nil {
 		return false, fmt.Errorf("uninstalling %s: %w", launch.TracePluginRef, err)
