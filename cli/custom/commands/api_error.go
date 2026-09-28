@@ -33,9 +33,9 @@ func (e *apiError) Error() string { return e.text }
 func (e *apiError) Unwrap() error { return e.err }
 
 // ExplainAPIError turns bartolo's raw "HTTP 403:\n{json}" into the API's own
-// message plus the next step for that status. Errors of any other shape pass
-// through untouched. The status stays in the text as "HTTP <code>" so callers
-// that match on it (NotFoundScopeHint) keep working.
+// message plus the next step for that status. It also replaces bartolo's stale
+// missing-key remedy; other errors pass through untouched. The status stays in
+// the text as "HTTP <code>" so NotFoundScopeHint keeps working.
 func ExplainAPIError(err error) error {
 	if err == nil {
 		return nil
@@ -49,21 +49,45 @@ func ExplainAPIError(err error) error {
 		return err
 	}
 	status, _ := strconv.Atoi(text[loc[2]:loc[3]])
-	body := strings.TrimSpace(text[loc[4]:loc[5]])
+	body, suffix := splitAPIErrorBody(text[loc[4]:loc[5]])
 	prefix := strings.TrimPrefix(text[:loc[0]], operationPrefix)
-	// A non-JSON body (a proxy's error page) is its own best message.
-	msg := body
-	if json.Valid([]byte(body)) {
-		msg = auth.DescribeAPIError(status, []byte(body))
+	msg := auth.DescribeAPIError(status, []byte(body))
+	statusLabel := fmt.Sprintf("HTTP %d", status)
+	if reason := http.StatusText(status); reason != "" {
+		statusLabel += " " + reason
 	}
-	out := fmt.Sprintf("%sHTTP %d %s", prefix, status, http.StatusText(status))
+	out := prefix + statusLabel
 	if msg != "" {
 		out += ": " + msg
 	}
+	out += suffix
 	if fix := apiErrorFix(status, body); fix != "" {
-		out += "\n" + fix
+		if !strings.HasSuffix(out, "\n") {
+			out += "\n"
+		}
+		out += fix
 	}
 	return &apiError{text: out, err: err}
+}
+
+// splitAPIErrorBody separates a JSON response from context a custom command
+// appended after it (for example traces thread's active-project hint). A JSON
+// decoder exposes the byte offset of the first complete value; plaintext stays
+// whole and is bounded by DescribeAPIError.
+func splitAPIErrorBody(raw string) (body, suffix string) {
+	trimmed := strings.TrimSpace(raw)
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	var value json.RawMessage
+	if err := decoder.Decode(&value); err != nil {
+		return trimmed, ""
+	}
+	offset := decoder.InputOffset()
+	body = strings.TrimSpace(trimmed[:offset])
+	suffix = trimmed[offset:]
+	if strings.TrimSpace(suffix) == "" {
+		suffix = ""
+	}
+	return body, suffix
 }
 
 // apiErrorFix is the one next step for a status. 404 is left to
@@ -71,11 +95,11 @@ func ExplainAPIError(err error) error {
 func apiErrorFix(status int, body string) string {
 	switch {
 	case status == http.StatusUnauthorized:
-		return "The credential was rejected. `orq status` shows which one is in use; run `orq auth login` or replace the key."
+		return "The credential was rejected. `orq doctor` shows which one is in use; run `orq auth login` or replace the key."
 	case status == http.StatusForbidden && explicitAPIKey && strings.Contains(strings.ToLower(body), "out of scope"):
-		return "The API key is limited to other projects. Use a key that covers this one; `orq status` shows the key in use."
+		return "The API key is limited to other projects. Use a key that covers this one; `orq doctor` shows the key in use."
 	case status == http.StatusForbidden:
-		return "The credential in use has no access to this. `orq status` shows which one it is."
+		return "The credential in use has no access to this. `orq doctor` shows which one it is."
 	case status == http.StatusTooManyRequests:
 		return "Rate limited. Wait a moment and retry."
 	case status >= 500:

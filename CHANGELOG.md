@@ -120,19 +120,19 @@ controls on surface changes, whichever side they originate from.
 - **Changed: API errors name the fix.** A failed request used to print
   `error calling operation: HTTP 403:` and the raw response body. It now prints
   the status, the API's own message, any per-field validation problems, its
-  doc link and request id, followed by one line on what to do for 401, 403,
-  429 and 5xx. Only stderr text changed; exit codes are the same.
+  doc link (or the API reference when none was returned) and request id,
+  followed by one line on what to do for 401, 403, 429 and 5xx. Long proxy
+  responses are truncated. Only stderr text changed; exit codes are the same.
 
 - **Changed: "you are not logged in" and the missing-key error say to run
   `orq auth login`.** The missing-key error used to point at `auth setup`,
-  which no longer exists. `orq status` with no login but an exported
-  `ORQ_API_KEY` now shows that key instead of "you are not logged in".
+  which no longer exists.
 
 - **Changed: the profile-precedence warning** ("using the API key from profile
   ..., ignoring ORQ_API_KEY") says how to use the environment key instead, and
   is no longer printed by commands that send no request (`version`,
   `auth profile`, `auth sessions`, `server`, `default-format`, `update`,
-  `completion` and the help commands).
+  `completion`, `disconnect`, `connect --status` and the help commands).
 
 - **Added: "did you mean" inside a command group.** `orq agents get x` used to
   print the whole `agents` help page and exit 0. It now fails (exit 1) with the

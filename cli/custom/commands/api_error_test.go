@@ -7,6 +7,7 @@ import (
 )
 
 func TestExplainAPIError(t *testing.T) {
+	longBody := strings.Repeat("proxy failure ", 80)
 	cases := []struct {
 		name, in string
 		want     []string
@@ -23,7 +24,8 @@ func TestExplainAPIError(t *testing.T) {
 			name:   "project scope 403 says the key is the limit",
 			apiKey: true,
 			in:     "error calling operation: HTTP 403:\n" + `{"code":7,"message":"Project out of scope for this API key.","details":[]}`,
-			want:   []string{"HTTP 403 Forbidden: Project out of scope", "limited to other projects"},
+			want:   []string{"HTTP 403 Forbidden: Project out of scope", "docs: https://docs.orq.ai/reference", "limited to other projects", "orq doctor"},
+			absent: []string{"orq status"},
 		},
 		{
 			name:   "the same 403 under a session does not blame an API key",
@@ -39,7 +41,13 @@ func TestExplainAPIError(t *testing.T) {
 		{
 			name: "a non-JSON body passes through",
 			in:   "error calling operation: HTTP 502:\nbad gateway",
-			want: []string{"HTTP 502 Bad Gateway: bad gateway", "failed on its side"},
+			want: []string{"HTTP 502 Bad Gateway: request failed with status 502", "bad gateway", "docs: https://docs.orq.ai/reference", "failed on its side"},
+		},
+		{
+			name:   "a long non-JSON body is bounded",
+			in:     "error calling operation: HTTP 502:\n" + longBody,
+			want:   []string{"HTTP 502 Bad Gateway: request failed with status 502", "…", "docs: https://docs.orq.ai/reference"},
+			absent: []string{longBody},
 		},
 		{
 			name: "404 keeps the status NotFoundScopeHint matches on",
@@ -50,6 +58,28 @@ func TestExplainAPIError(t *testing.T) {
 			name: "context a command wrapped around the status is kept",
 			in:   "fetch trace t1: HTTP 404:\n" + `{"message":"trace not found"}`,
 			want: []string{"fetch trace t1: HTTP 404 Not Found: trace not found"},
+		},
+		{
+			name:   "context appended after a JSON body is kept outside the body",
+			in:     "get trace t1: HTTP 404:\n" + `{"message":"trace not found"}` + "\n\nThe active project is p1; switch with `orq projects use <project>`.\n",
+			want:   []string{"get trace t1: HTTP 404 Not Found: trace not found", "docs: https://docs.orq.ai/reference", "The active project is p1"},
+			absent: []string{`{"message"`},
+		},
+		{
+			name: "flat issues are shown",
+			in:   "error calling operation: HTTP 400:\n" + `{"message":"Invalid body","issues":[{"path":["name"],"message":"Required"}]}`,
+			want: []string{"name: Required"},
+		},
+		{
+			name: "flat errors are shown",
+			in:   "error calling operation: HTTP 400:\n" + `{"message":"Invalid body","errors":[{"path":["model"],"message":"Unknown"}]}`,
+			want: []string{"model: Unknown"},
+		},
+		{
+			name:   "unknown HTTP status has no empty reason-phrase space",
+			in:     "error calling operation: HTTP 520:\n" + `{"message":"Proxy failed"}`,
+			want:   []string{"HTTP 520: Proxy failed"},
+			absent: []string{"HTTP 520 :"},
 		},
 		{
 			name:   "the --profile variant of the stale remedy is replaced too",

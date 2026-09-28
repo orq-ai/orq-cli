@@ -146,7 +146,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	appendHelpFooter(root)
 	installUpdateNoticeHelp(root)
 	improveArgErrors(root)
-	rejectUnknownSubcommands(root)
+	configureSubcommandSuggestions(root)
 	explainAPIErrors(root)
 }
 
@@ -225,7 +225,7 @@ func installSessionPreRun() {
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
-		applyProfileAPIKey(!sendsNoRequest(cmd))
+		applyProfileAPIKey(!credentialIrrelevant(cmd))
 		// A profile in force is a complete credential on its own, so the
 		// session is never consulted for it — including when its key is
 		// missing, which bartolo refuses to reach past rather than falling
@@ -395,18 +395,26 @@ func applyProfileAPIKey(announce bool) {
 	os.Setenv(apiKeyEnvVars[0], key)
 }
 
-// quietCredentialCommands send no API request, so which key would win says
-// nothing about what they do. Printing it there made the note appear on every
-// `orq version`. status, whoami and doctor are left out: they are where a
-// person goes to find out which credential is in use.
+// quietCredentialCommands never use the selected orq credential, so which key
+// would win says nothing about what they do. Printing it there made the note
+// appear on every `orq version`. status, whoami and doctor are left out: they
+// are where a person goes to find out which credential is in use.
 var quietCredentialCommands = []string{
 	"version", "help", "help-config", "help-input", "default-format", "completion",
 	"__complete", "__completeNoDesc", "man-pages",
-	"auth profile", "auth sessions", "server", "update",
+	"auth profile", "auth sessions", "server", "update", "disconnect",
 }
 
-func sendsNoRequest(cmd *cobra.Command) bool {
+func credentialIrrelevant(cmd *cobra.Command) bool {
 	path := commandPath(cmd)
+	if path == "connect" {
+		// Status reads only the agents' local config. Flags are parsed before
+		// PreRun, so this mode can be classified without re-parsing argv.
+		status, _ := cmd.Flags().GetBool("status")
+		if status {
+			return true
+		}
+	}
 	for _, quiet := range quietCredentialCommands {
 		if path == quiet || strings.HasPrefix(path, quiet+" ") {
 			return true
@@ -1053,40 +1061,47 @@ func improveArgErrors(cmd *cobra.Command) {
 	}
 }
 
-// rejectUnknownSubcommands gives every command group cobra's root-level
-// "unknown command ... Did you mean" for its own children. Cobra checks only at
-// the root, and a group with no handler is short-circuited to its help page
-// before any argument is looked at, so `orq agents lst` printed the whole
-// `agents` help and exited 0. A handler puts the arguments, flags already
-// parsed out of them, back within reach. Each retrieve also answers to "get",
-// the verb people reach for first.
-func rejectUnknownSubcommands(cmd *cobra.Command) {
+// configureSubcommandSuggestions adds the spelling people reach for first and
+// gives nested groups the same edit-distance default cobra applies at the root.
+// Groups deliberately remain non-runnable: bare group help then stays ahead of
+// PersistentPreRunE and gains no extra runnable form in its usage text.
+func configureSubcommandSuggestions(cmd *cobra.Command) {
 	for _, sub := range cmd.Commands() {
 		if sub.Name() == "retrieve" && !slices.Contains(sub.SuggestFor, "get") {
 			sub.SuggestFor = append(sub.SuggestFor, "get")
 		}
-		rejectUnknownSubcommands(sub)
+		configureSubcommandSuggestions(sub)
 	}
-	// HasAvailableSubCommands: a handler makes a group runnable, and so
-	// visible, even when every child is hidden.
-	if !cmd.HasParent() || !cmd.HasAvailableSubCommands() || cmd.Runnable() {
-		return
-	}
-	if cmd.SuggestionsMinimumDistance <= 0 {
+	if cmd.HasParent() && cmd.HasAvailableSubCommands() && cmd.SuggestionsMinimumDistance <= 0 {
 		// SuggestionsFor does not default this; cobra's findSuggestions does,
 		// and only for the root.
 		cmd.SuggestionsMinimumDistance = 2
 	}
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		if len(args) == 0 || args[0] == "help" {
-			return c.Help()
-		}
-		msg := fmt.Sprintf("unknown command %q for %q", args[0], c.CommandPath())
-		if suggestions := c.SuggestionsFor(args[0]); len(suggestions) > 0 {
-			msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
-		}
-		return bartolocli.NewUsageError(fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, c.CommandPath()))
+}
+
+// unknownSubcommand validates a group invocation before cobra runs persistent
+// pre-runs. Cobra checks unknown commands only at the root; a nested,
+// non-runnable group otherwise prints help and exits 0 for any trailing word.
+// ParseFlags removes flags wherever they appear, leaving the first positional
+// as the word to validate. Execute parses the same flags again afterwards.
+func unknownSubcommand(root *cobra.Command, args []string) error {
+	cmd, rest, err := root.Find(args)
+	if err != nil || cmd == root || cmd.Runnable() || !cmd.HasAvailableSubCommands() {
+		return nil
 	}
+	if err := cmd.ParseFlags(rest); err != nil {
+		return nil // let cobra render its canonical flag error
+	}
+	positionals := cmd.Flags().Args()
+	if len(positionals) == 0 || positionals[0] == "help" {
+		return nil
+	}
+	word := positionals[0]
+	msg := fmt.Sprintf("unknown command %q for %q", word, cmd.CommandPath())
+	if suggestions := cmd.SuggestionsFor(word); len(suggestions) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+	return bartolocli.NewUsageError(fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, cmd.CommandPath()))
 }
 
 // explainAPIErrors rewrites every API error for a person (ExplainAPIError) and

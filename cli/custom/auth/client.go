@@ -962,7 +962,7 @@ func DescribeAPIError(status int, raw []byte) string {
 			Issues []issue `json:"issues"`
 		} `json:"details"`
 	}
-	_ = json.Unmarshal(raw, &body)
+	parsed := json.Unmarshal(raw, &body) == nil
 
 	summary := firstNonEmpty(body.Message, body.Error, body.Detail)
 	if summary == "" {
@@ -978,26 +978,24 @@ func DescribeAPIError(status int, raw []byte) string {
 		}
 		details = append(details, line)
 	}
-	if body.DocURL != "" {
-		details = append(details, "docs: "+body.DocURL)
-	}
-	if body.RequestID != "" {
-		details = append(details, "request_id: "+body.RequestID)
-	}
-	if len(details) > 0 {
-		return summary + "\n  " + strings.Join(details, "\n  ")
-	}
-
-	// Nothing structured to show: fall back to the raw payload, which at least
-	// lets the user report what happened.
+	// A proxy or older endpoint may not return structured fields at all. Keep
+	// a bounded copy of its response rather than flooding the terminal.
 	trimmed := strings.TrimSpace(string(raw))
-	if trimmed != "" && trimmed != "{}" && summary == fmt.Sprintf("request failed with status %d", status) {
+	if !parsed && trimmed != "" {
 		if len(trimmed) > 400 {
 			trimmed = trimmed[:400] + "…"
 		}
-		return summary + "\n  " + trimmed
+		details = append(details, trimmed)
 	}
-	return summary
+	docURL := body.DocURL
+	if docURL == "" {
+		docURL = "https://docs.orq.ai/reference"
+	}
+	details = append(details, "docs: "+docURL)
+	if body.RequestID != "" {
+		details = append(details, "request_id: "+body.RequestID)
+	}
+	return summary + "\n  " + strings.Join(details, "\n  ")
 }
 
 func joinPathMessage(path []any, message string) string {

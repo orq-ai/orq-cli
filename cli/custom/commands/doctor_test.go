@@ -181,8 +181,8 @@ func TestMCPCheckWarnsUnwiredAgentAndOmitsPi(t *testing.T) {
 	}
 }
 
-// A mixed machine gets one row: the wired agent's login line, and a fix that
-// names only the missing agent.
+// A mixed machine gets one short row with one fix naming only the missing
+// agent. The structured details retain which agents were already present.
 func TestMCPCheckMixedNamesOnlyTheMissingAgent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -198,13 +198,20 @@ func TestMCPCheckMixedNamesOnlyTheMissingAgent(t *testing.T) {
 	if !ok || check.Status != "warn" {
 		t.Fatalf("got ok=%v status=%q, want a warning", ok, check.Status)
 	}
-	for _, want := range []string{"claude MCP entry present", "orq connect codex mcp"} {
+	for _, want := range []string{"orq connect codex mcp"} {
 		if !strings.Contains(check.Message, want) {
 			t.Errorf("missing %q in %q", want, check.Message)
 		}
 	}
 	if strings.Contains(check.Message, "connect claude") {
 		t.Errorf("fix re-wires the agent that is already wired: %q", check.Message)
+	}
+	if strings.Contains(check.Message, "claude MCP entry present") {
+		t.Errorf("warning includes the wired agent's separate login command: %q", check.Message)
+	}
+	present, ok := check.Details["present_agents"].([]string)
+	if !ok || len(present) != 1 || present[0] != "claude" {
+		t.Errorf("details.present_agents = %#v, want [claude]", check.Details["present_agents"])
 	}
 }
 

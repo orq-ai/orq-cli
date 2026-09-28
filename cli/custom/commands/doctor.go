@@ -508,9 +508,6 @@ func mcpCheck() (doctorCheck, bool) {
 		},
 	}
 	var messages []string
-	for _, id := range present {
-		messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
-	}
 	if len(missing) > 0 {
 		check.Status = "warn"
 		// One line and one command for all of them: a message per agent
@@ -519,6 +516,9 @@ func mcpCheck() (doctorCheck, bool) {
 		messages = append(messages, fmt.Sprintf("no MCP entry for %s — run 'orq connect %s mcp'", strings.Join(missing, ", "), strings.Join(missing, " ")))
 	} else {
 		check.Status = "pass"
+		for _, id := range present {
+			messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
+		}
 	}
 	check.Message = strings.Join(messages, "; ")
 	return check, true

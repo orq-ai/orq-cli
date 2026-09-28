@@ -215,3 +215,21 @@ func TestAKeylessProfileExportsNothingAndClearsNothing(t *testing.T) {
 		t.Errorf("ORQ_API_KEY = %q, want the user's own key untouched", got)
 	}
 }
+
+func TestConnectStatusDoesNotWarnAboutCredentialPrecedence(t *testing.T) {
+	profileHarness(t, `{"profiles":{"acme":{"api_key":"sk-orq-profile","type":"apikey"}}}`)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+	viper.Set("profile", "acme")
+	root := buildRoot(t)
+	root.SetArgs([]string{"connect", "--status"})
+
+	var runErr error
+	_, stderr := captureOutput(t, func() { runErr = root.Execute() })
+	if runErr != nil {
+		t.Fatalf("connect --status: %v", runErr)
+	}
+	if strings.Contains(stderr, "ignoring ORQ_API_KEY") {
+		t.Errorf("connect --status printed a credential warning: %q", stderr)
+	}
+}
