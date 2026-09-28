@@ -35,7 +35,7 @@ type Client struct {
 func NewClient(apiBase string) *Client {
 	return &Client{
 		URLs:       ResolveURLs(apiBase),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: NewHTTPClient(30 * time.Second),
 	}
 }
 
@@ -87,8 +87,15 @@ func TokenCacheKey(workspaceKey, projectID string) string {
 // TokenCacheKeyWorkspace returns the workspace a cache key belongs to,
 // whichever project it is scoped to.
 func TokenCacheKeyWorkspace(cacheKey string) string {
-	key, _, _ := strings.Cut(cacheKey, "#")
+	key, _ := ParseTokenCacheKey(cacheKey)
 	return key
+}
+
+// ParseTokenCacheKey splits a WorkspaceTokens cache key back into the
+// workspace/project pair TokenCacheKey built it from.
+func ParseTokenCacheKey(cacheKey string) (workspaceKey, projectID string) {
+	workspaceKey, projectID, _ = strings.Cut(cacheKey, "#")
+	return workspaceKey, projectID
 }
 
 func (c *Client) tokenKey(workspaceKey string) string {

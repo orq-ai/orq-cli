@@ -261,7 +261,7 @@ type ModelFetcher func(apiKey, apiBaseURL string) ([]ModelInfo, error)
 // FetchEnabledModels calls GET <apiBase>/v2/models and returns enabled chat
 // models sorted by id.
 func FetchEnabledModels(apiKey, apiBaseURL string) ([]ModelInfo, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := auth.NewHTTPClient(10 * time.Second)
 	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(apiBaseURL, "/")+"/v2/models", nil)
 	if err != nil {
 		return nil, err
@@ -423,6 +423,9 @@ func ResolveGatewayConfig(input ResolveInput) (*ResolvedModels, error) {
 			fetcher = FetchEnabledModels
 		}
 		fetchedInfos, err := fetcher(input.AuthToken, input.APIBaseURL)
+		// The fetch may have refreshed a stale session token; hand the agent
+		// the replacement, not the token the server just rejected.
+		input.AuthToken = auth.CurrentToken(input.AuthToken)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf(
 				"Could not fetch enabled models from %s/v2/models. Falling back to explicit/default models. %v",
