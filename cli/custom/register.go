@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -56,6 +58,7 @@ var profileExemptCommands = map[string]bool{
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
+	"auth profile remove":  true, // deleting the broken profile is the fix for an unknown one
 	"doctor":               true,
 	"update":               true, // updating must work without a credential; it touches no orq API
 	"orqi":                 true, // installs and launches orqi; touches no orq API
@@ -69,9 +72,9 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name: orq's own `setup` is a different command
-// from bartolo's `auth setup`, honors --no-input itself, and is meant to run
-// headless in CI. Matching on the bare name refused it.
+// Keyed by command PATH, not name, matching commandPath(cmd) below: an entry
+// then names one bartolo command rather than every command sharing a leaf
+// name. orq's own commands honor --no-input themselves and never belong here.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -81,10 +84,6 @@ var profileExemptCommands = map[string]bool{
 // delete the map, `wizard` and the guard in installSessionPreRun together.
 // RES-1571.
 var interactiveWizardCommands = map[string]wizard{
-	// No predicate: bartolo's auth setup is a wizard from its first line.
-	"auth setup": {
-		hint: "use `orq auth login` or set ORQ_API_KEY instead",
-	},
 	// Prompts only for a key it was not given, so the CI form (a key argument
 	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
 	"auth profile add": {
@@ -648,12 +647,15 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
-	addHiddenAuthAliases(root)
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
+	addHiddenAliases(root, commands.NewLoginCommand, commands.NewLogoutCommand)
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
-	attachTracesConversation(root, traceAPI)
+	widenServerUse(root)
+	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
 	root.AddCommand(commands.NewLaunchCommand())
@@ -817,6 +819,65 @@ func renamePreviewModelsList(root *cobra.Command) {
 	}
 }
 
+// widenServerUse lets `orq server use my.orq.ai` mean what it reads like.
+// Bartolo's `use` only matches the generated server list — one entry, the
+// hosted default — so every self-hosted host, which is the only reason anyone
+// changes servers, died on "could not match server". On a miss the argument is
+// handed to the sibling `set`, which persists it. A numeric argument is left
+// alone: that is an index, and a bad index must stay an index error rather
+// than become the URL "https://9".
+//
+// The host is normalized here rather than downstream so bartolo's
+// scheme-was-guessed WARN never fires, and for a person the machine-shaped
+// "persisted: true" record is replaced by one sentence. `-o json` and the
+// other serializations keep bartolo's output: that is the script contract.
+func widenServerUse(root *cobra.Command) {
+	server := childCommand(root, "server")
+	if server == nil {
+		return
+	}
+	use, set := childCommand(server, "use"), childCommand(server, "set")
+	if use == nil || set == nil || use.RunE == nil || set.RunE == nil {
+		return
+	}
+	use.Use = "use <index|url|description|host>"
+	use.Short = "Select a generated server, or persist any host as the default"
+	matchGenerated := use.RunE
+	use.RunE = func(cmd *cobra.Command, args []string) error {
+		target := args[0]
+		_, isIndex := strconv.Atoi(target)
+		if isIndex != nil {
+			if normalized, _, err := bartolocli.NormalizeServerURL(target); err == nil {
+				target = normalized
+			}
+		}
+		args = []string{target}
+
+		persist := func() error {
+			if err := matchGenerated(cmd, args); err == nil || isIndex == nil {
+				return err
+			}
+			return set.RunE(cmd, args)
+		}
+
+		if commands.MachineFormatRequested(cmd) {
+			return persist()
+		}
+		// bartolo's own record of the write goes nowhere: what a person needs
+		// is the host they are now pointed at, which ResolveServer reads back
+		// from the config the write just updated.
+		restore := bartolocli.Stdout
+		bartolocli.Stdout = io.Discard
+		err := persist()
+		bartolocli.Stdout = restore
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(bartolocli.Stdout, "Now talking to %s.\n", bartolocli.ResolveServer())
+		return nil
+	}
+}
+
 func childCommand(parent *cobra.Command, name string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
@@ -841,14 +902,14 @@ func attachProjectsUse(root *cobra.Command) {
 	}
 }
 
-// attachTracesConversation extends the generated parent rather than creating a
+// attachTracesThread extends the generated parent rather than creating a
 // parallel top-level command. Register accepts a zero TraceAPI in unit tests,
 // so help and command-surface checks always see the command even without an
 // executable generated client behind it.
-func attachTracesConversation(root *cobra.Command, api commands.TraceAPI) {
+func attachTracesThread(root *cobra.Command, api commands.TraceAPI) {
 	for _, c := range root.Commands() {
 		if c.Name() == "traces" {
-			c.AddCommand(commands.NewTracesConversationCommand(api))
+			c.AddCommand(commands.NewTracesThreadCommand(api))
 			return
 		}
 	}
@@ -863,38 +924,26 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
-	// Bartolo's `auth setup` command ships with a `login` alias for the
-	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
-	// one cobra resolves.
-	if setup := childCommand(authParent, "setup"); setup != nil {
-		setup.Aliases = removeString(setup.Aliases, "login")
-	}
+	// Bartolo's generic `auth setup` prompts for a profile name — this CLI
+	// leaves you on none by default — and ships a `login` alias that shadows
+	// our OAuth one. `orq setup` under the same path keeps the spelling
+	// working for whoever types it.
+	authParent.RemoveCommand(childCommand(authParent, "setup")) // nil-safe
+	addHiddenAliases(authParent, commands.NewSetupCommand)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 
-func removeString(slice []string, target string) []string {
-	out := slice[:0]
-	for _, s := range slice {
-		if s != target {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func addHiddenAuthAliases(root *cobra.Command) {
-	// whoami is deliberately absent: `orq status` carries it as an alias, and a
-	// second root command of the same name would shadow it.
-	for _, factory := range []func() *cobra.Command{
-		commands.NewLoginCommand,
-		commands.NewLogoutCommand,
-	} {
+// addHiddenAliases mounts a second copy of each command on parent, out of the
+// help. A copy rather than the command itself: cobra gives a command one
+// parent, so sharing the instance would move it out of its own tree.
+func addHiddenAliases(parent *cobra.Command, factories ...func() *cobra.Command) {
+	for _, factory := range factories {
 		alias := factory()
 		alias.Hidden = true
-		root.AddCommand(alias)
+		parent.AddCommand(alias)
 	}
 }
 
@@ -993,7 +1042,7 @@ func explainNotFoundScope(cmd *cobra.Command) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			err := run(c, args)
 			hint := commands.NotFoundScopeHint(err)
-			// A command that already named the scope itself — `traces conversation`
+			// A command that already named the scope itself — `traces thread`
 			// names the project holding the trace — needs no second copy.
 			if hint == "" || strings.Contains(err.Error(), "orq projects use") {
 				return err

@@ -6,29 +6,28 @@ import (
 	"strings"
 )
 
-// RenderConversationMarkdown writes a plain Markdown view of a conversation, for a reader
+// RenderThreadMarkdown writes a plain Markdown view of a thread, for a reader
 // or a pipeline that wants headings rather than the XML render's tags.
 // Structural metadata — roles, names, ids, the source header — is escaped, so a
 // trace value cannot inject a heading. Recorded body content deliberately is
 // not: escaping every `##` and code fence in it would defeat the readable view
 // that is this render's whole purpose. The consequence is that a span whose own
 // text contains `## ASSISTANT [1]` produces something that reads like a turn,
-// which is exactly what `escapeConversationTags` stops on the XML side — so
+// which is exactly what `escapeThreadTags` stops on the XML side — so
 // `-o xml` stays the render to trust when the recorded text is not.
-// maxChars caps each rendered block, or is zero for no cap.
-func RenderConversationMarkdown(w io.Writer, conversation Conversation, maxChars int) error {
+func RenderThreadMarkdown(w io.Writer, thread Thread) error {
 	var sections []string
-	if header := conversationSourceHeader(conversation.Source); header != "" {
+	if header := threadSourceHeader(thread.Source); header != "" {
 		sections = append(sections, header)
 	}
-	for _, message := range conversation.Messages {
-		sections = append(sections, renderMarkdownMessage(message, maxChars))
+	for _, message := range thread.Messages {
+		sections = append(sections, renderMarkdownMessage(message))
 	}
 	_, err := io.WriteString(w, strings.Join(sections, "\n\n")+"\n")
 	return err
 }
 
-func renderMarkdownMessage(message ConversationMessage, maxChars int) string {
+func renderMarkdownMessage(message ThreadMessage) string {
 	heading := fmt.Sprintf("## %s [%d]", markdownInline(strings.ToUpper(message.Role)), message.Index)
 	if message.Name != "" {
 		heading += " — " + markdownInline(message.Name)
@@ -40,13 +39,13 @@ func renderMarkdownMessage(message ConversationMessage, maxChars int) string {
 		heading += " [" + markdownInline(message.ToolCallID) + "]"
 	}
 
-	blocks := conversationMessageBlocks(message, maxChars, markdownText, renderMarkdownValue)
+	blocks := threadMessageBlocks(message, markdownText, renderMarkdownValue)
 	rendered := make([]string, 0, len(blocks))
 	for _, block := range blocks {
 		switch block.Section {
-		case conversationSectionBody:
+		case threadSectionBody:
 			rendered = append(rendered, block.Content)
-		case conversationSectionToolCall:
+		case threadSectionToolCall:
 			rendered = append(rendered, markdownSection(markdownToolCallHeading(block.Call), block.Content))
 		default:
 			rendered = append(rendered, markdownSection(markdownHeadings[block.Section], block.Content))
@@ -63,15 +62,15 @@ func renderMarkdownMessage(message ConversationMessage, maxChars int) string {
 // result gets a heading here and none there: the XML message carries role as an
 // attribute a reader can see, while these headings are all the structure the
 // Markdown render has.
-var markdownHeadings = map[conversationSection]string{
-	conversationSectionToolResult:       "### TOOL RESULT",
-	conversationSectionError:            "### ERROR",
-	conversationSectionException:        "### EXCEPTION",
-	conversationSectionReasoning:        "### REASONING",
-	conversationSectionReasoningSummary: "### REASONING SUMMARY",
+var markdownHeadings = map[threadSection]string{
+	threadSectionToolResult:       "### TOOL RESULT",
+	threadSectionError:            "### ERROR",
+	threadSectionException:        "### EXCEPTION",
+	threadSectionReasoning:        "### REASONING",
+	threadSectionReasoningSummary: "### REASONING SUMMARY",
 }
 
-func markdownToolCallHeading(call ConversationToolCall) string {
+func markdownToolCallHeading(call ThreadToolCall) string {
 	heading := "### TOOL CALL"
 	if call.Name != "" {
 		heading += " — " + markdownInline(call.Name)
@@ -82,11 +81,11 @@ func markdownToolCallHeading(call ConversationToolCall) string {
 	return heading
 }
 
-// conversationSourceHeader is conversationOpenTag's Markdown counterpart; see there for why
+// threadSourceHeader is threadOpenTag's Markdown counterpart; see there for why
 // the span facts are shown at all.
-func conversationSourceHeader(source ConversationSource) string {
+func threadSourceHeader(source ThreadSource) string {
 	var fields []string
-	for _, field := range conversationSourceFields(source) {
+	for _, field := range threadSourceFields(source) {
 		fields = append(fields, markdownSourceField(field))
 	}
 	var header string
@@ -107,7 +106,7 @@ func conversationSourceHeader(source ConversationSource) string {
 // markdownSourceField renders one span fact for the header. Every field goes
 // through markdownInline here — a recorded value carrying a newline would
 // otherwise end the blockquote and let the rest of it be read as a turn.
-func markdownSourceField(field conversationSourceField) string {
+func markdownSourceField(field threadSourceField) string {
 	rendered := markdownInline(field.Value)
 	if field.Code {
 		rendered = "`" + rendered + "`"
@@ -126,6 +125,9 @@ func markdownInline(value string) string {
 }
 
 func markdownSection(heading, content string) string {
+	if content == "" {
+		return heading
+	}
 	return heading + "\n\n" + content
 }
 
@@ -135,22 +137,23 @@ func markdownText(text string) string { return text }
 
 // renderMarkdownValue fences an encoded value; a value that was recorded as a
 // string is written as prose instead, since fencing it would claim a structure
-// it does not have. The cap applies to the encoded text rather than to the
-// fenced block, so a truncated value cannot swallow its own closing fence and
-// turn the rest of the conversation into code. A value that would not encode keeps
-// the fence but is labelled, so its Go rendering cannot be mistaken for
+// it does not have. A value CapThread cut arrives as its cut encoding and is
+// fenced the same, the marker inside the fence. A value that would not encode
+// keeps the fence but is labelled, so its Go rendering cannot be mistaken for
 // recorded text.
-func renderMarkdownValue(value any, maxChars int) string {
-	if value == nil {
-		return ""
+func renderMarkdownValue(value any, cut string) string {
+	body, ok := cut, true
+	if cut == "" {
+		if value == nil {
+			return ""
+		}
+		if text, isText := value.(string); isText {
+			return text
+		}
+		body, ok = encodeThreadValue(value)
 	}
-	if text, ok := value.(string); ok {
-		return truncateConversationText(text, maxChars)
-	}
-	encoded, ok := encodeConversationValue(value)
-	body := truncateConversationText(encoded, maxChars)
 	if !ok {
-		body = unencodableConversationValue + "\n" + body
+		body = unencodableThreadValue + "\n" + body
 		fence := markdownFence(body)
 		return fence + "\n" + body + "\n" + fence
 	}
@@ -161,7 +164,7 @@ func renderMarkdownValue(value any, maxChars int) string {
 // markdownFence sizes a fence to outrun its content. A recorded value can
 // contain a run of backticks of its own — a JSON string holding a fenced code
 // block, say — and a fence no longer than that run ends the block early, which
-// spills the rest of the value, and the rest of the conversation, back into prose.
+// spills the rest of the value, and the rest of the thread, back into prose.
 func markdownFence(content string) string {
 	longest, run := 0, 0
 	for _, character := range content {

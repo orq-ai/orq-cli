@@ -228,7 +228,7 @@ func registeridentitiesCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `_id` of the first item from the previous page.")
 		cmd.Flags().String("search", "", "Case-insensitive search text matched against identity profile fields.")
-		cmd.Flags().String("filter-by-tags", "", "Return only identities that have at least one of these tags.")
+		cmd.Flags().String("filter-by-tags", "", "Return only identities that have all of these tags.")
 		cmd.Flags().Bool("include-metrics", false, "Include aggregate usage metrics on each returned identity.")
 		cmd.Flags().String("sort-by", "", "Field used to order the list. (one of: IDENTITY_SORT_FIELD_UNSPECIFIED, IDENTITY_SORT_FIELD_DISPLAY_NAME, IDENTITY_SORT_FIELD_UPDATED)")
 		_ = cmd.RegisterFlagCompletionFunc("sort-by", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {

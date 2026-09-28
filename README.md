@@ -261,7 +261,7 @@ Persist a new default:
 orq default-format json
 ```
 
-`orq traces conversation` is the one command where `-o` takes a different set of
+`orq traces thread` is the one command where `-o` takes a different set of
 formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
 and `toon`. It refuses `-o table` — a conversation is nested (messages holding
 content parts, tool calls, reasoning) and has no columns to lay out.
@@ -417,7 +417,7 @@ Sandboxed execution is not available in this version.
 |---|---|
 | `ORQ_GATEWAY_URL` | Gateway base URL for all agents except claude and gemini (OpenAI-shaped router) |
 | `ORQ_ANTHROPIC_BASE_URL` | claude gateway base URL (Anthropic-native endpoint), honoured under `--router` |
-| `ANTHROPIC_MODEL` | read under `--router` only, to warn when the value is not a `provider/model_id` gateway ref; otherwise it passes through to claude untouched |
+| `ANTHROPIC_MODEL` | never re-exported, only read to warn: without `--router` when the value is a `provider/model_id` gateway ref that Anthropic will reject, and with `--router` when it has no `provider/` prefix. It passes through to claude either way |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` / `_HAIKU_` | gateway refs the `/model` tiers resolve to under `--router` |
 | `ORQ_CODEX_BASE_URL` / `CODEX_MODEL` | codex overrides |
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |

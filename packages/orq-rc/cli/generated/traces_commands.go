@@ -553,6 +553,48 @@ func registertracesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
+			Use:     "list-filters",
+			Short:   "List trace filters",
+			Long:    bartolocli.Markdown("List the evaluators, human reviews and metadata keys a trace filter can address."),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(0),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiTracesListFilters(params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().Bool("include-all", false, "Every evaluator and human review in the workspace, not only recent ones.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := tracesCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
 			Use:     "list-spans trace-id",
 			Short:   "List trace spans",
 			Long:    bartolocli.Markdown("List canonical span summaries for a trace.\n\n## Arguments\n\n- `trace-id`"),

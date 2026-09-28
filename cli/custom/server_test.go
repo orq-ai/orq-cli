@@ -451,3 +451,46 @@ func TestAPIKeyUsageNoticeRidesTheRealClient(t *testing.T) {
 		})
 	}
 }
+
+// Bartolo's `server use` matches only the generated server list, so the one
+// host anyone actually wants to select — their own deployment — was refused.
+func TestServerUseAcceptsAHostOutsideTheGeneratedList(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := buildRoot(t)
+	viper.Set("config-directory", home)
+	t.Cleanup(func() {
+		viper.Set("server-default", "")
+		viper.Set("server", "")
+	})
+
+	server := childCommand(root, "server")
+	if server == nil {
+		t.Fatal("no `server` command")
+	}
+	use := childCommand(server, "use")
+	if use == nil {
+		t.Fatal("no `server use` command")
+	}
+
+	out := &bytes.Buffer{}
+	restore := bartolocli.Stdout
+	bartolocli.Stdout = out
+	t.Cleanup(func() { bartolocli.Stdout = restore })
+
+	if err := use.RunE(use, []string{"self-hosted.example.com"}); err != nil {
+		t.Fatalf("server use <host>: %v", err)
+	}
+	if got := viper.GetString("server-default"); got != "https://self-hosted.example.com" {
+		t.Errorf("persisted server = %q, want the host normalized to https", got)
+	}
+	// One sentence naming the host, not bartolo's "persisted: true" record.
+	if got := out.String(); got != "Now talking to https://self-hosted.example.com.\n" {
+		t.Errorf("output = %q, want the plain sentence", got)
+	}
+
+	// An index stays an index: falling through would persist "https://9".
+	if err := use.RunE(use, []string{"9"}); err == nil {
+		t.Error("server use 9 succeeded, want the out-of-range index error")
+	}
+}

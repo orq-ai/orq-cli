@@ -305,3 +305,16 @@ func TestTraceWarnsWhenThePluginProbeFails(t *testing.T) {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 }
+
+// Output that does not parse is not an installed plugin. Reading it as one
+// skips the --plugin-dir the session's only span writer arrives on, so the
+// session records nothing and says nothing.
+func TestTracePluginProbeTreatsBadJSONAsNotInstalled(t *testing.T) {
+	for _, out := range []string{"", "not json", `{"plugins":[{"id":"orq-trace@orq","enabled":true}]}`} {
+		probe := func(string, ...string) (string, error) { return out, nil }
+		plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: true}, probe))
+		if pluginDirArg(plan) == "" {
+			t.Errorf("probe output %q: no --plugin-dir, so the session writes no spans: %v", out, plan.PreArgs)
+		}
+	}
+}

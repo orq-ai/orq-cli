@@ -30,13 +30,13 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new opaque API key (`sk-orq-<key_id>-<secret>`) in the workspace. The raw secret is returned ONCE in the response and is never retrievable afterwards. The stored record retains only `token_prefix` and a SHA-256 `token_hash`.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `expires_at` (string)\n- `labels` (object)\n- `mcp_access` (allOf)\n- `name` (string, required)\n- `owner` (allOf)\n- `permission_mode` (string, required)\n- `project_scope` (allOf)\n\nRequired fields: `name`, `permission_mode`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Mints a new API key in the workspace, bound to the single project in `projects` or to every project when omitted. The raw token is returned once in the `token` field and is never retrievable afterwards. Unknown body fields are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `constraints` (object)\n- `expiration` (string)\n- `name` (string, required)\n- `owner` (object)\n- `permission_mode` (string)\n- `project_scope` (object)\n- `projects` (array | null)\n- ... and 1 more fields\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"PERMISSION_MODE_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"all\",\n  \"source\": \"workspace\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -45,55 +45,64 @@ func registerapiKeysCommands(root *cobra.Command) {
 							Name:        "access",
 							FlagName:    "access",
 							Type:        "string-map",
-							Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
+							Description: "Per-domain access level (none, read or write) for restricted keys; domain ids come from the capability catalog.",
 						},
 						{
-							Name:        "expires_at",
-							FlagName:    "expires-at",
-							Type:        "datetime",
-							Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
-						},
-						{
-							Name:        "labels",
-							FlagName:    "labels",
-							Type:        "string-map",
-							Description: "Optional attribution labels (at most 10; keys `^[a-z0-9_.-]{1,32}$`,\n values up to 64 characters). See ApiKey.labels.",
-						},
-						{
-							Name:        "mcp_access",
-							FlagName:    "mcp-access",
+							Name:        "constraints",
+							FlagName:    "constraints",
 							Type:        "json",
-							Description: "Optional MCP-gateway access restriction. Unset means no\n restriction. See McpAccess for the deny_all / allow-list semantics.",
+							Description: "Expiry and other limits applied to the key.",
+						},
+						{
+							Name:        "expiration",
+							FlagName:    "expiration",
+							Type:        "datetime",
+							Description: "Legacy expiry as an RFC 3339 timestamp; prefer constraints.expires_at.",
 						},
 						{
 							Name:        "name",
 							FlagName:    "name",
 							Type:        "string",
-							Description: "Human-readable name. Required.",
+							Description: "Display name of the key.",
 						},
 						{
 							Name:        "owner",
 							FlagName:    "owner",
 							Type:        "json",
-							Description: "Owner attribution. Defaults to service_account when omitted.",
+							Description: "Lifecycle binding: a user-owned key is revoked with the user, a service-account key outlives any user.",
 						},
 						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
 							Type:        "enum-string",
-							Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
+							Description: "Permission preset; restricted keys hold only the domains granted in access.",
 							Enum: []string{
-								"PERMISSION_MODE_UNSPECIFIED",
-								"PERMISSION_MODE_ALL",
-								"PERMISSION_MODE_RESTRICTED",
-								"PERMISSION_MODE_READ_ONLY",
+								"all",
+								"restricted",
+								"read_only",
 							},
 						},
 						{
 							Name:        "project_scope",
 							FlagName:    "project-scope",
 							Type:        "json",
-							Description: "Project authorization scope. Defaults to all-projects when omitted.",
+							Description: "Projects the key may reach: every project of the workspace or a single one.",
+						},
+						{
+							Name:        "projects",
+							FlagName:    "projects",
+							Type:        "string-slice",
+							Description: "Legacy single-project binding; prefer project_scope.",
+						},
+						{
+							Name:        "source",
+							FlagName:    "source",
+							Type:        "enum-string",
+							Description: "Origin of the key; router keys are minted for the AI router.",
+							Enum: []string{
+								"workspace",
+								"router",
+							},
 						},
 					},
 				)
@@ -123,55 +132,64 @@ func registerapiKeysCommands(root *cobra.Command) {
 					Name:        "access",
 					FlagName:    "access",
 					Type:        "string-map",
-					Description: "Per-domain access map. Required when `permission_mode` =\n `PERMISSION_MODE_RESTRICTED`. See `ApiKey.access` for the full\n catalog of valid keys (Domain.id) and AccessLevel string values,\n or fetch the live catalog via the capability catalog endpoint.",
+					Description: "Per-domain access level (none, read or write) for restricted keys; domain ids come from the capability catalog.",
 				},
 				{
-					Name:        "expires_at",
-					FlagName:    "expires-at",
-					Type:        "datetime",
-					Description: "Optional expiration. When set, the authenticate hot-path rejects\n the key once `expires_at` is in the past. Unset means the key\n never expires.",
-				},
-				{
-					Name:        "labels",
-					FlagName:    "labels",
-					Type:        "string-map",
-					Description: "Optional attribution labels (at most 10; keys `^[a-z0-9_.-]{1,32}$`,\n values up to 64 characters). See ApiKey.labels.",
-				},
-				{
-					Name:        "mcp_access",
-					FlagName:    "mcp-access",
+					Name:        "constraints",
+					FlagName:    "constraints",
 					Type:        "json",
-					Description: "Optional MCP-gateway access restriction. Unset means no\n restriction. See McpAccess for the deny_all / allow-list semantics.",
+					Description: "Expiry and other limits applied to the key.",
+				},
+				{
+					Name:        "expiration",
+					FlagName:    "expiration",
+					Type:        "datetime",
+					Description: "Legacy expiry as an RFC 3339 timestamp; prefer constraints.expires_at.",
 				},
 				{
 					Name:        "name",
 					FlagName:    "name",
 					Type:        "string",
-					Description: "Human-readable name. Required.",
+					Description: "Display name of the key.",
 				},
 				{
 					Name:        "owner",
 					FlagName:    "owner",
 					Type:        "json",
-					Description: "Owner attribution. Defaults to service_account when omitted.",
+					Description: "Lifecycle binding: a user-owned key is revoked with the user, a service-account key outlives any user.",
 				},
 				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
 					Type:        "enum-string",
-					Description: "Permission preset. Required; an omitted or unspecified value is\n rejected with INVALID_ARGUMENT rather than defaulted to full access.",
+					Description: "Permission preset; restricted keys hold only the domains granted in access.",
 					Enum: []string{
-						"PERMISSION_MODE_UNSPECIFIED",
-						"PERMISSION_MODE_ALL",
-						"PERMISSION_MODE_RESTRICTED",
-						"PERMISSION_MODE_READ_ONLY",
+						"all",
+						"restricted",
+						"read_only",
 					},
 				},
 				{
 					Name:        "project_scope",
 					FlagName:    "project-scope",
 					Type:        "json",
-					Description: "Project authorization scope. Defaults to all-projects when omitted.",
+					Description: "Projects the key may reach: every project of the workspace or a single one.",
+				},
+				{
+					Name:        "projects",
+					FlagName:    "projects",
+					Type:        "string-slice",
+					Description: "Legacy single-project binding; prefer project_scope.",
+				},
+				{
+					Name:        "source",
+					FlagName:    "source",
+					Type:        "enum-string",
+					Description: "Origin of the key; router keys are minted for the AI router.",
+					Enum: []string{
+						"workspace",
+						"router",
+					},
 				},
 			},
 		)
@@ -194,7 +212,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "delete api-key-id",
 			Short:   "Delete an API key",
-			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success.\n\n## Arguments\n\n- `api-key-id` — API key id to delete."),
+			Long:    bartolocli.Markdown("Permanently deletes an API key. The key is revoked immediately; in-flight requests using it will fail. The response body is empty on success.\n\n## Arguments\n\n- `api-key-id` — Unique identifier of the API key."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,7 +256,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get api-key-id",
 			Short:   "Retrieve an API key",
-			Long:    bartolocli.Markdown("Retrieves the metadata for an existing API key by its unique identifier. The raw secret is never returned — only `token_prefix`, `permission_mode`, `project_scope`, and lifecycle fields.\n\n## Arguments\n\n- `api-key-id` — API key id to retrieve (e.g. `01H...`)."),
+			Long:    bartolocli.Markdown("Retrieves the metadata for an existing API key by its unique identifier. The raw secret is never returned; `token` carries a masked display value.\n\n## Arguments\n\n- `api-key-id` — Unique identifier of the API key."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -260,8 +278,6 @@ func registerapiKeysCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Bool("include-budget", false, "When true, embed the api-key-scoped budget (config and limits only, no live usage) on the returned record.")
-
 		bartolocli.SetCustomFlags(cmd)
 
 		if cmd.Flags().HasFlags() {
@@ -280,7 +296,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list",
 			Short:   "List API keys",
-			Long:    bartolocli.Markdown("Returns API keys visible to the current workspace as a JSON array. Raw tokens are never included; the `token` field contains a masked display value."),
+			Long:    bartolocli.Markdown("Returns API keys visible to the current workspace as a JSON array sorted by name. Raw tokens are never included; the `token` field contains a masked display value."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -302,18 +318,11 @@ func registerapiKeysCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25).")
-		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `api_key_id` of the last item from the previous page.")
-		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `api_key_id` of the first item from the previous page.")
-		cmd.Flags().String("project-id", "", "Optional filter: only return keys belonging to this project. When omitted, returns workspace-scoped and any single-project keys.")
-		cmd.Flags().String("status", "", "Optional filter: only return keys with this status. (one of: API_KEY_STATUS_UNSPECIFIED, API_KEY_STATUS_ACTIVE, API_KEY_STATUS_DISABLED, API_KEY_STATUS_REVOKED)")
-		_ = cmd.RegisterFlagCompletionFunc("status", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-			return []string{"API_KEY_STATUS_UNSPECIFIED", "API_KEY_STATUS_ACTIVE", "API_KEY_STATUS_DISABLED", "API_KEY_STATUS_REVOKED"}, cobra.ShellCompDirectiveNoFileComp
+		cmd.Flags().String("project-id", "", "Only return keys bound to this project. When omitted, every key visible to the caller is returned.")
+		cmd.Flags().String("source", "", "Only return keys of this source. (one of: workspace, router)")
+		_ = cmd.RegisterFlagCompletionFunc("source", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+			return []string{"workspace", "router"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		cmd.Flags().String("search", "", "Optional case-insensitive substring match against the api-key name. Empty means no name filter.")
-		cmd.Flags().String("owner-type", "", "Optional filter: only return keys whose `owner.kind` matches one of the requested types. Combines the user / service-account oneof cases into a single repeated enum so the wire stays flat and multi-select filters travel as a single field. Empty means no owner-type filter.")
-		cmd.Flags().String("permission-mode", "", "Optional filter: only return keys whose permission mode is one of the listed presets. Empty means no permission-mode filter.")
-		cmd.Flags().Bool("include-budget", false, "When true, embed each key's api-key-scoped budget (config and limits only, no live usage) on the returned records. Adds one budget lookup for the page; omit to skip it.")
 
 		bartolocli.SetCustomFlags(cmd)
 
@@ -333,7 +342,7 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "list-capabilities",
 			Short:   "List capability catalog",
-			Long:    bartolocli.Markdown("Returns the capability catalog: the set of permission domains that can be granted to an API key. Each entry includes the domain id, display name, group, allowed project scopes, and the read / write verb sets resolved at authorize() time. Drives the permissions UI in the dashboard."),
+			Long:    bartolocli.Markdown("Returns the capability catalog: the set of permission domains that can be granted to an API key. Each entry includes the domain id, display name, group, allowed project scopes and whether it can be granted read or write access. No credentials are required."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -375,13 +384,13 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update api-key-id",
 			Short:   "Update an API key",
-			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope, and constraints (budget / rate limit / expiry). Omitted fields keep their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `clear_expires_at` (boolean)\n- `expires_at` (string)\n- `mcp_access` (allOf)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (allOf)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`.\n\n## Arguments\n\n- `api-key-id` — API key id to update."),
+			Long:    bartolocli.Markdown("Updates mutable fields of an API key: display name, status (active / disabled / revoked), permission mode and access map, project scope and constraints. Omitted fields keep their current values. Unknown body fields are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `active` (boolean)\n- `constraints` (object)\n- `name` (string)\n- `permission_mode` (string)\n- `project_scope` (object)\n- `status` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `api-key-id` — Unique identifier of the API key."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"PERMISSION_MODE_UNSPECIFIED\",\n  \"status\": \"API_KEY_STATUS_UNSPECIFIED\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"permission_mode\": \"all\",\n  \"status\": \"active\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
@@ -390,60 +399,52 @@ func registerapiKeysCommands(root *cobra.Command) {
 							Name:        "access",
 							FlagName:    "access",
 							Type:        "string-map",
-							Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
+							Description: "Per-domain access level (none, read or write) for restricted keys.",
 						},
 						{
-							Name:        "clear_expires_at",
-							FlagName:    "clear-expires-at",
+							Name:        "active",
+							FlagName:    "active",
 							Type:        "bool",
-							Description: "Force-clear the expiration. Mutually exclusive with `expires_at`.",
+							Description: "Legacy toggle mirrored onto status: false disables, true re-enables.",
 						},
 						{
-							Name:        "expires_at",
-							FlagName:    "expires-at",
-							Type:        "datetime",
-							Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
-						},
-						{
-							Name:        "mcp_access",
-							FlagName:    "mcp-access",
+							Name:        "constraints",
+							FlagName:    "constraints",
 							Type:        "json",
-							Description: "Replacement MCP-gateway access restriction. Absent leaves the\n current value intact; an explicitly-set McpAccess replaces it —\n including an empty one (deny_all=false + empty list), which clears\n any existing restriction. See McpAccess.",
+							Description: "Expiry and other limits; null clears them.",
 						},
 						{
 							Name:        "name",
 							FlagName:    "name",
 							Type:        "string",
-							Description: "New name. Omit to keep current.",
+							Description: "New display name.",
 						},
 						{
 							Name:        "permission_mode",
 							FlagName:    "permission-mode",
 							Type:        "enum-string",
-							Description: "New permission preset. Omit to keep current.",
+							Description: "Permission preset; a restricted key must keep at least one granted domain.",
 							Enum: []string{
-								"PERMISSION_MODE_UNSPECIFIED",
-								"PERMISSION_MODE_ALL",
-								"PERMISSION_MODE_RESTRICTED",
-								"PERMISSION_MODE_READ_ONLY",
+								"all",
+								"restricted",
+								"read_only",
 							},
 						},
 						{
 							Name:        "project_scope",
 							FlagName:    "project-scope",
 							Type:        "json",
-							Description: "New project scope. Omit to keep current.",
+							Description: "Projects the key may reach.",
 						},
 						{
 							Name:        "status",
 							FlagName:    "status",
 							Type:        "enum-string",
-							Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
+							Description: "Lifecycle status; revoked is terminal.",
 							Enum: []string{
-								"API_KEY_STATUS_UNSPECIFIED",
-								"API_KEY_STATUS_ACTIVE",
-								"API_KEY_STATUS_DISABLED",
-								"API_KEY_STATUS_REVOKED",
+								"active",
+								"disabled",
+								"revoked",
 							},
 						},
 					},
@@ -474,60 +475,52 @@ func registerapiKeysCommands(root *cobra.Command) {
 					Name:        "access",
 					FlagName:    "access",
 					Type:        "string-map",
-					Description: "Replacement access map. Required when changing to\n `PERMISSION_MODE_RESTRICTED`; ignored otherwise. Provide an empty\n map to clear. See `ApiKey.access` for the full catalog of valid\n keys (Domain.id) and AccessLevel string values, or fetch the\n live catalog via the capability catalog endpoint.",
+					Description: "Per-domain access level (none, read or write) for restricted keys.",
 				},
 				{
-					Name:        "clear_expires_at",
-					FlagName:    "clear-expires-at",
+					Name:        "active",
+					FlagName:    "active",
 					Type:        "bool",
-					Description: "Force-clear the expiration. Mutually exclusive with `expires_at`.",
+					Description: "Legacy toggle mirrored onto status: false disables, true re-enables.",
 				},
 				{
-					Name:        "expires_at",
-					FlagName:    "expires-at",
-					Type:        "datetime",
-					Description: "New expiration. Omit to keep current. Set `clear_expires_at = true`\n to remove an existing expiration (a zero Timestamp here would still\n mean \"no change\" because of optional semantics).",
-				},
-				{
-					Name:        "mcp_access",
-					FlagName:    "mcp-access",
+					Name:        "constraints",
+					FlagName:    "constraints",
 					Type:        "json",
-					Description: "Replacement MCP-gateway access restriction. Absent leaves the\n current value intact; an explicitly-set McpAccess replaces it —\n including an empty one (deny_all=false + empty list), which clears\n any existing restriction. See McpAccess.",
+					Description: "Expiry and other limits; null clears them.",
 				},
 				{
 					Name:        "name",
 					FlagName:    "name",
 					Type:        "string",
-					Description: "New name. Omit to keep current.",
+					Description: "New display name.",
 				},
 				{
 					Name:        "permission_mode",
 					FlagName:    "permission-mode",
 					Type:        "enum-string",
-					Description: "New permission preset. Omit to keep current.",
+					Description: "Permission preset; a restricted key must keep at least one granted domain.",
 					Enum: []string{
-						"PERMISSION_MODE_UNSPECIFIED",
-						"PERMISSION_MODE_ALL",
-						"PERMISSION_MODE_RESTRICTED",
-						"PERMISSION_MODE_READ_ONLY",
+						"all",
+						"restricted",
+						"read_only",
 					},
 				},
 				{
 					Name:        "project_scope",
 					FlagName:    "project-scope",
 					Type:        "json",
-					Description: "New project scope. Omit to keep current.",
+					Description: "Projects the key may reach.",
 				},
 				{
 					Name:        "status",
 					FlagName:    "status",
 					Type:        "enum-string",
-					Description: "New lifecycle status. Omit to keep current. A revoked key cannot\n change status; the call fails with FAILED_PRECONDITION.",
+					Description: "Lifecycle status; revoked is terminal.",
 					Enum: []string{
-						"API_KEY_STATUS_UNSPECIFIED",
-						"API_KEY_STATUS_ACTIVE",
-						"API_KEY_STATUS_DISABLED",
-						"API_KEY_STATUS_REVOKED",
+						"active",
+						"disabled",
+						"revoked",
 					},
 				},
 			},

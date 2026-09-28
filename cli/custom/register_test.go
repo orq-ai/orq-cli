@@ -468,7 +468,6 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		args    []string
 		refused string // substring of the refusal, or "" to expect no refusal
 	}{
-		{"setup is a wizard throughout", []string{"auth", "setup"}, "`auth setup` would prompt"},
 		{"profile add with no key prompts", []string{"auth", "profile", "add", "ci"}, "--api-key-file <path>"},
 		{"profile add with a positional key", []string{"auth", "profile", "add", "ci", "sk-positional"}, ""},
 		{"profile add with --api-key-file", []string{"auth", "profile", "add", "ci", "--api-key-file", keyFile}, ""},
@@ -476,9 +475,7 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			profileHarness(t, `{"profiles":{}}`)
 			root := buildRoot(t)
-			viper.Set("no-input", true)
-			t.Cleanup(func() { viper.Set("no-input", false) })
-			root.SetArgs(tc.args)
+			root.SetArgs(append([]string{"--no-input"}, tc.args...))
 			root.SetOut(io.Discard)
 			root.SetErr(io.Discard)
 
@@ -491,6 +488,80 @@ func TestNoInputGuardRefusesOnlyThePromptingForms(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.refused) {
 				t.Fatalf("%v: want a refusal naming %q, got %v", tc.args, tc.refused, err)
+			}
+		})
+	}
+}
+
+// Bartolo's profile wizard is gone from the surface: `orq auth setup` is a
+// hidden alias of `orq setup`, so the old path reaches the real wizard instead
+// of opening with a prompt for a profile name nobody has by default.
+func TestAuthSetupIsHiddenAliasOfSetup(t *testing.T) {
+	root := buildRoot(t)
+	authParent := childCommand(root, "auth")
+	if authParent == nil {
+		t.Fatal("no auth command")
+	}
+	setup := childCommand(authParent, "setup")
+	if setup == nil {
+		t.Fatal("`auth setup` must still resolve, as an alias of `orq setup`")
+	}
+	if !setup.Hidden {
+		t.Error("`auth setup` is an alias for muscle memory, so it stays out of the help")
+	}
+	// Which command it is belongs to the execution test below; this file's
+	// share is the metadata running it cannot show.
+	if login := childCommand(authParent, "login"); login == nil || !strings.Contains(login.Short, "OAuth") {
+		t.Error("`auth login` must resolve to the OAuth login command")
+	}
+}
+
+// pinServer empties the persisted-server keys for one test. mirrorServerToViper
+// writes `server` on every run and bartolo persists `orq server set` under
+// `server-default`, so without this a run reaches for whatever host the real
+// ~/.orq or an earlier test left on those keys.
+func pinServer(t *testing.T) {
+	t.Helper()
+	viper.Set("server-default", "")
+	viper.Set("server", "")
+	t.Cleanup(func() { viper.Set("server-default", ""); viper.Set("server", "") })
+}
+
+// Matching metadata is not the claim — running the wizard is. Both spellings
+// are executed with no credential in reach, where runSetup is the only thing
+// in the binary that produces this refusal, so an alias that merely looked
+// like `orq setup` would fail here. It is also the guard the `auth setup`
+// entry in interactiveWizardCommands used to provide: --no-input reaching the
+// alias is what makes it refuse rather than wait on a device login.
+func TestAuthSetupRunsTheSetupWizardAndHonorsNoInput(t *testing.T) {
+	const refusal = "--no-input given and no credential is available"
+	for _, args := range [][]string{{"setup"}, {"auth", "setup"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			profileHarness(t, `{"profiles":{}}`)
+			// The environment decides the credential and the host this reaches
+			// for, and a `go test ./...` run carries whatever an earlier test
+			// exported: without these the wizard finds a key, or dials a dead
+			// httptest server from another file, instead of refusing.
+			for _, key := range []string{"ORQ_API_KEY", "ORQ_SERVER", "ORQ_API_BASE_URL"} {
+				t.Setenv(key, "")
+			}
+			// The flag, never viper.Set: an override outranks a bound flag and
+			// viper cannot unset one, so a test that reaches for the key
+			// leaves --no-input inert for every later test in the binary.
+			pinServer(t)
+			var stderr bytes.Buffer
+			prevErr := bartolocli.Stderr
+			bartolocli.Stderr = &stderr
+			t.Cleanup(func() { bartolocli.Stderr = prevErr })
+
+			root := buildRoot(t)
+			root.SetArgs(append([]string{"--no-input"}, args...))
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), refusal) {
+				t.Fatalf("%v = %v, want the wizard's %q", args, err, refusal)
 			}
 		})
 	}
@@ -521,9 +592,9 @@ func TestInteractiveWizardGuardCoversCanonicalProfileAdd(t *testing.T) {
 	}
 }
 
-// conversationSpanServer answers the two calls `orq traces conversation tr_x span-1`
+// threadSpanServer answers the two calls `orq traces thread tr_x span-1`
 // makes, so a binary-level run reaches a render instead of the network.
-func conversationSpanServer(t *testing.T) *httptest.Server {
+func threadSpanServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -541,9 +612,9 @@ func conversationSpanServer(t *testing.T) *httptest.Server {
 	return server
 }
 
-// conversationHome is a HOME whose config file names format, or a bare one when it
+// threadHome is a HOME whose config file names format, or a bare one when it
 // is empty.
-func conversationHome(t *testing.T, format string) string {
+func threadHome(t *testing.T, format string) string {
 	t.Helper()
 	home := t.TempDir()
 	if format == "" {
@@ -558,30 +629,30 @@ func conversationHome(t *testing.T, format string) string {
 	return home
 }
 
-// `orq traces conversation` takes its format from -o alone. Both standing sources —
+// `orq traces thread` takes its format from -o alone. Both standing sources —
 // the exported variable and the config file — answer for every command in a
 // shell or a tree, and neither may swap the render a person came to read.
 // Only the real binary has those tiers populated at all.
-func TestConversationIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
+func TestThreadIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
-	server := conversationSpanServer(t)
+	server := threadSpanServer(t)
 	for _, source := range []string{"environment", "config"} {
 		t.Run(source, func(t *testing.T) {
-			home := conversationHome(t, "")
+			home := threadHome(t, "")
 			env := []string{"HOME=" + home, "NO_COLOR=", "ORQ_NO_COLOR=", "ORQ_API_KEY=stub-key", "ORQ_SERVER=" + server.URL, "ORQ_OUTPUT_FORMAT="}
 			if source == "environment" {
 				env[len(env)-1] = "ORQ_OUTPUT_FORMAT=json"
 			} else {
-				env[0] = "HOME=" + conversationHome(t, "json")
+				env[0] = "HOME=" + threadHome(t, "json")
 			}
-			cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1")
+			cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1")
 			cmd.Dir = t.TempDir()
 			cmd.Env = append(os.Environ(), env...)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				t.Fatalf("traces conversation: %v\n%s", err, out)
+				t.Fatalf("traces thread: %v\n%s", err, out)
 			}
-			if !strings.Contains(string(out), "<conversation ") || strings.Contains(string(out), `"messages"`) {
+			if !strings.Contains(string(out), "<thread ") || strings.Contains(string(out), `"messages"`) {
 				t.Fatalf("a standing %s format decided the render: %s", source, out)
 			}
 		})
@@ -592,13 +663,13 @@ func TestConversationIgnoresStandingFormatsInTheRealBinary(t *testing.T) {
 // and it reaches the command without any relaxation of bartolo's check: the
 // local flag shadows the bound global one, so nothing this command is asked
 // ever lands in viper. This is the test that fails if that stops being true.
-func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
+func TestThreadFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	binPath := buildOrqBinary(t)
-	server := conversationSpanServer(t)
-	cmd := exec.Command(binPath, "traces", "conversation", "tr_x", "span-1", "-o", "markdown")
+	server := threadSpanServer(t)
+	cmd := exec.Command(binPath, "traces", "thread", "tr_x", "span-1", "-o", "markdown")
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(),
-		"HOME="+conversationHome(t, ""),
+		"HOME="+threadHome(t, ""),
 		"NO_COLOR=",
 		"ORQ_NO_COLOR=",
 		"ORQ_API_KEY=stub-key",
@@ -606,7 +677,7 @@ func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("traces conversation -o markdown: %v\n%s", err, out)
+		t.Fatalf("traces thread -o markdown: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "## USER") {
 		t.Fatalf("output = %s, want the markdown render", out)
@@ -614,7 +685,7 @@ func TestConversationFlagRendersMarkdownInTheRealBinary(t *testing.T) {
 }
 
 // A standing value bartolo does not know is refused before any command runs.
-// `orq traces conversation` used to be exempted from that check, so a config file
+// `orq traces thread` used to be exempted from that check, so a config file
 // naming `markdown` — a value every other command rejects — worked there and
 // nowhere else. One answer for the whole CLI is the point: the same value
 // fails the same way whichever command it is handed to.
@@ -622,16 +693,16 @@ func TestUnknownStandingFormatFailsEveryCommandAlike(t *testing.T) {
 	binPath := buildOrqBinary(t)
 	// Reachable and credentialed, so a run that gets past the check succeeds
 	// and the exit code alone says the check was skipped.
-	server := conversationSpanServer(t)
+	server := threadSpanServer(t)
 	const want = `--output-format: "markdown" is not one of`
 	for _, source := range []string{"environment", "config"} {
 		t.Run(source, func(t *testing.T) {
-			for _, args := range [][]string{{"version"}, {"traces", "conversation", "tr_x", "span-1"}} {
+			for _, args := range [][]string{{"version"}, {"traces", "thread", "tr_x", "span-1"}} {
 				cmd := exec.Command(binPath, args...)
 				cmd.Dir = t.TempDir()
-				home, format := conversationHome(t, ""), ""
+				home, format := threadHome(t, ""), ""
 				if source == "config" {
-					home = conversationHome(t, "markdown")
+					home = threadHome(t, "markdown")
 				} else {
 					format = "markdown"
 				}

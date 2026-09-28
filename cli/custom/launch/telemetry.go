@@ -70,7 +70,11 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 		if dir, err = os.MkdirTemp("", "orq-claude-trace-"); err != nil {
 			return err
 		}
-		plan.AddCleanup(func() { _ = os.RemoveAll(dir) })
+		plan.AddCleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: the session trace directory is still on disk (%v); it holds a copy of the orq-trace plugin and the session's orq-config.json\n", err)
+			}
+		})
 		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
 		configPath = filepath.Join(dir, "orq-config.json")
 		if err := writeTraceConfig(configPath, otlpEndpoint(ctx.Creds.APIBaseURL)); err != nil {
