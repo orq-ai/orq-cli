@@ -29,7 +29,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create",
-			Short:   "Create a knowledge",
+			Short:   "Create a knowledge base",
 			Long:    bartolocli.Markdown("Creates an internal or external knowledge base. Internal knowledge bases embed and index uploaded content; external knowledge bases query the configured external retrieval API.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `embedding_model` (string)\n- `external_config` (object)\n- `key` (string, required)\n- `path` (string, required)\n- `retrieval_settings` (object)\n- `type` (string)\n\nRequired fields: `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -375,7 +375,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete knowledge-id",
-			Short:   "Deletes a knowledge",
+			Short:   "Delete a knowledge base",
 			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -537,7 +537,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete-datasource knowledge-id datasource-id",
-			Short:   "Deletes a datasource",
+			Short:   "Delete a datasource",
 			Long:    bartolocli.Markdown("Deletes a datasource from a knowledge base. Deleting a datasource will remove it from the knowledge base and all associated chunks. This action is irreversible and cannot be undone.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
@@ -1046,7 +1046,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "retrieve knowledge-id",
-			Short:   "Retrieves a knowledge base",
+			Short:   "Retrieve a knowledge base",
 			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -1270,7 +1270,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "filter_by",
 							FlagName:    "filter-by",
 							Type:        "json",
-							Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+							Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information.",
 						},
 						{
 							Name:        "query",
@@ -1353,7 +1353,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "filter_by",
 					FlagName:    "filter-by",
 					Type:        "json",
-					Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+					Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information.",
 				},
 				{
 					Name:        "query",
@@ -1494,7 +1494,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update knowledge-id",
-			Short:   "Updates a knowledge",
+			Short:   "Update a knowledge base",
 			Long:    bartolocli.Markdown("Updates a knowledge base. Omitted optional fields retain their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `domain_id` (string)\n- `embedding_model` (string)\n- `external_config` (object)\n- `path` (string)\n- `retrieval_settings` (object)\n- `settings` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
