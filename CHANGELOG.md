@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.1) — 2026-09-28
+
 - **Fixed: a login session no longer gets stuck on `401 authz_stale`.** The
   platform invalidates workspace tokens when the workspace's project, team or
   membership setup changes, well before the token expires. The CLI kept
