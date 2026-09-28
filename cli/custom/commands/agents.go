@@ -269,7 +269,15 @@ func realRunAgentCommand(name string, args ...string) error {
 	// runOrqiCommand already does.
 	cmd.Env = withoutOrqCredentials(os.Environ())
 	cmd.Stdout, cmd.Stderr = bartolocli.Stderr, bartolocli.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		// A killed child reports "signal: killed" and says nothing about why,
+		// which reads as the agent crashing rather than as orq's own deadline.
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("%s did not finish within %s", name, agentCommandTimeout)
+		}
+		return err
+	}
+	return nil
 }
 
 // errAgentNotInstalled marks the one failure that is not this machine's problem

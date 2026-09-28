@@ -716,11 +716,17 @@ func connectMCP(rep *reporter, opts *setupOptions, agents []string) (results []m
 	return results, failed
 }
 
-// envFileExports reports whether a new shell will carry ORQ_API_KEY: the
-// profile has to source the env file and the file has to still hold the key,
-// since either one alone exports nothing. The content check is the load-bearing
-// half after `orq auth logout`, which leaves the file in place holding only a
-// comment.
+// envFileExports reports whether the setup orq itself wrote will carry
+// ORQ_API_KEY into a new shell: the profile has to source the env file and the
+// file has to still hold the key, since either one alone exports nothing. The
+// content check is the load-bearing half after `orq auth logout`, which leaves
+// the file in place holding only a comment.
+//
+// False is not proof that the shell exports nothing, only that orq cannot see
+// where it would come from: a key exported from .zshrc, direnv or a secrets
+// manager is invisible here, and `os.Getenv` cannot stand in because the CLI
+// sets ORQ_API_KEY in its own process from the saved login. The caller words
+// the warning to match what this can and cannot tell.
 func envFileExports(sh shellSetup) bool {
 	data, err := os.ReadFile(sh.EnvFile)
 	if err != nil || !strings.Contains(string(data), "ORQ_API_KEY") {
@@ -736,6 +742,13 @@ type otelResult struct {
 	Agent string `json:"agent"`
 	Path  string `json:"path,omitempty"`
 	Error string `json:"error,omitempty"`
+	// Already separates a run that installed from a run that found the plugin
+	// there, which the human view says as "(already installed)".
+	Already bool `json:"already_installed,omitempty"`
+	// ShellExportsKey is false for an install that will not post: the plugin
+	// takes ORQ_API_KEY from the shell, so a script needs the same warning the
+	// human view prints rather than a bare path that reads as finished.
+	ShellExportsKey bool `json:"shell_exports_key"`
 	// Skipped is the entry that was never attempted, as opposed to Error's
 	// entry that was attempted and failed.
 	Skipped string `json:"skipped,omitempty"`
@@ -772,12 +785,20 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 			failed = true
 			continue
 		}
-		// An unreadable config counts as not installed here: the install is
-		// idempotent, so attempting it is the safe half of the guess, and
-		// "already installed" would be a claim the read did not support.
+		// The read has to work before anything is installed: without it the
+		// run can neither skip an existing install nor confirm a new one, and
+		// the same file read three ways by connect, --status and disconnect
+		// would give three verdicts on one machine.
 		already := false
 		if spec.otelPresent != nil {
-			already, _ = spec.otelPresent(path)
+			on, perr := spec.otelPresent(path)
+			if perr != nil {
+				rep.fail("%-8s %-9s %v", id, capOtel, perr)
+				results = append(results, otelResult{Agent: id, Error: perr.Error()})
+				failed = true
+				continue
+			}
+			already = on
 		}
 		if !already {
 			ierr := spec.installOtel()
@@ -797,6 +818,25 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 				continue
 			}
 		}
+		// The installer's exit code is not the install: the agent writes the
+		// entry itself, and a plugin manager that exits 0 having recorded
+		// nothing this code can read leaves `--status` contradicting the ✓ that
+		// the same run just printed. Reading it back is the only evidence.
+		if !already && spec.otelPresent != nil {
+			on, perr := spec.otelPresent(path)
+			switch {
+			case perr != nil:
+				rep.fail("%-8s %-9s installed, but reading it back failed: %v", id, capOtel, perr)
+				results = append(results, otelResult{Agent: id, Error: perr.Error()})
+				failed = true
+				continue
+			case !on:
+				rep.fail("%-8s %-9s the install reported success, but %s does not record %s as enabled", id, capOtel, tilde(path), launch.TracePluginRef)
+				results = append(results, otelResult{Agent: id, Error: "the install left no enabled plugin in " + path})
+				failed = true
+				continue
+			}
+		}
 		if !opts.finalScreen {
 			if already {
 				rep.ok("%-8s %-9s %s  (already installed)", id, capOtel, tilde(path))
@@ -808,10 +848,18 @@ func connectOtel(rep *reporter, opts *setupOptions, agents []string) (results []
 		// shell exports, which is a different question from the key this process
 		// resolved from the saved login, and silence here reads as a finished
 		// wire. The shell is asked the same way `orq setup` and doctor ask it.
-		if sh := detectShell(viper.GetString("config-directory")); !envFileExports(sh) {
-			rep.info("%-8s %-9s the plugin posts with ORQ_API_KEY from your shell, which does not export one yet: run 'orq setup' to write %s and source it from %s", id, capOtel, tilde(sh.EnvFile), tilde(sh.Profile))
+		sh := detectShell(viper.GetString("config-directory"))
+		exports := envFileExports(sh)
+		if !exports {
+			// An unrecognised shell has no profile to name, only a line to run,
+			// which is how `orq setup` words the same remedy.
+			where := "source it from " + tilde(sh.Profile)
+			if sh.Profile == "" {
+				where = "run '" + sh.displayLine() + "' in your shell"
+			}
+			rep.info("%-8s %-9s the plugin posts with the ORQ_API_KEY your shell exports, and orq cannot see where yours would come from: run 'orq setup' to write %s and %s. Ignore this if you export the key yourself", id, capOtel, tilde(sh.EnvFile), where)
 		}
-		results = append(results, otelResult{Agent: id, Path: path})
+		results = append(results, otelResult{Agent: id, Path: path, Already: already, ShellExportsKey: exports})
 	}
 	return results, failed
 }
@@ -930,7 +978,17 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 				rep.info("%-8s otel      no plugin mechanism in this agent to trace sessions with", id)
 			default:
 				if path, err := spec.otelConfig(true); err == nil && path != "" {
-					rep.info("%-8s otel      %s  (installs %s)", id, tilde(path), launch.TracePluginRef)
+					// The preview says what the run would do, and for an
+					// install that is already there the run installs nothing.
+					what := "installs " + launch.TracePluginRef
+					if spec.otelPresent != nil {
+						if on, perr := spec.otelPresent(path); perr != nil {
+							what = "cannot read this file, so the run would report that instead"
+						} else if on {
+							what = launch.TracePluginRef + " is already installed, so nothing would change"
+						}
+					}
+					rep.info("%-8s otel      %s  (%s)", id, tilde(path), what)
 				}
 			}
 		}

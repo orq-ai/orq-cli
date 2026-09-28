@@ -2781,11 +2781,38 @@ func otelMachine(t *testing.T) (settings string, calls *[]string) {
 	recorded := []string{}
 	orig := runAgentCommand
 	t.Cleanup(func() { runAgentCommand = orig })
+	settings = filepath.Join(home, ".claude", "settings.json")
+	// The stub records the install the way the real plugin manager does, so a
+	// test exercises the read-back rather than only the exit code. A stub that
+	// wrote nothing would let a connect that installs nothing still report ok.
 	runAgentCommand = func(name string, args ...string) error {
 		recorded = append(recorded, strings.Join(append([]string{name}, args...), " "))
+		if len(args) > 1 && args[1] == "install" {
+			if err := os.WriteFile(settings,
+				[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
-	return filepath.Join(home, ".claude", "settings.json"), &recorded
+	return settings, &recorded
+}
+
+// exportingShell gives the temp home the setup `orq setup` would have left: an
+// env file holding the key and a profile that sources it.
+func exportingShell(t *testing.T) shellSetup {
+	t.Helper()
+	sh := detectShell(viper.GetString("config-directory"))
+	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.EnvFile, []byte("export ORQ_API_KEY=sk-live\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return sh
 }
 
 // The install goes through the agent's own plugin manager, and the marketplace
@@ -3030,4 +3057,171 @@ func TestConnectOtelDryRunInstallsNothing(t *testing.T) {
 	if !strings.Contains(out, launch.TracePluginRef) {
 		t.Errorf("the dry run does not say what it would install:\n%s", out)
 	}
+}
+
+// The installer's exit code is not the install: the agent records the entry
+// itself. A plugin manager that exits 0 and writes nothing this code can read
+// leaves `--status` contradicting the tick the same run printed, so the run has
+// to read it back and fail.
+func TestConnectOtelFailsWhenTheInstallLeavesNoRecord(t *testing.T) {
+	_, calls := otelMachine(t)
+	orig := runAgentCommand
+	t.Cleanup(func() { runAgentCommand = orig })
+	runAgentCommand = func(name string, args ...string) error {
+		*calls = append(*calls, strings.Join(append([]string{name}, args...), " "))
+		return nil // exits 0, records nothing
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err == nil {
+			t.Fatal("an install that recorded nothing reported success")
+		}
+	})
+	if !strings.Contains(out, "does not record") {
+		t.Errorf("the unverified install went unexplained:\n%s", out)
+	}
+}
+
+// The mirror of the missing-key tests: on the setup `orq setup` leaves behind,
+// the warning must not fire. Without this, always printing the nag passes every
+// other test in this file.
+func TestConnectOtelIsQuietWhenTheShellExportsTheKey(t *testing.T) {
+	otelMachine(t)
+	exportingShell(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if strings.Contains(out, "cannot see where yours would come from") {
+		t.Errorf("a shell that exports the key was told it does not:\n%s", out)
+	}
+}
+
+// An unrecognised shell has no profile to name. The remedy has to be the line
+// to run, not a sentence that trails off into an empty path.
+func TestConnectOtelNamesTheLineWhenThereIsNoProfile(t *testing.T) {
+	otelMachine(t)
+	t.Setenv("SHELL", "/opt/homebrew/bin/nu")
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "in your shell") {
+		t.Errorf("no runnable remedy for a shell with no profile:\n%s", out)
+	}
+	if strings.Contains(out, "source it from \n") || strings.HasSuffix(strings.TrimSpace(out), "source it from") {
+		t.Errorf("the remedy trails off into an empty profile path:\n%s", out)
+	}
+}
+
+// A config that cannot be read is not a machine with nothing installed, and
+// connect has to answer it the way disconnect and --status now do. Three
+// verdicts on one file was the defect.
+func TestConnectOtelFailsOnAnUnreadableConfig(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "otel"})
+	if err := c.Execute(); err == nil {
+		t.Fatal("an unreadable settings file connected successfully")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("the agent ran against a config that could not be read: %v", *calls)
+	}
+}
+
+// `-o json` is the machine contract, so the otel leg has to carry the two facts
+// the human view prints: whether it installed or found the plugin there, and
+// whether the install will post at all.
+func TestConnectOtelJSONCarriesTheInstallFacts(t *testing.T) {
+	otelMachine(t)
+	exportingShell(t)
+
+	out := captureStdout(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	var payload struct {
+		Otel []otelResult `json:"otel"`
+	}
+	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
+		t.Fatalf("otel payload is not JSON: %v\n%s", err, out)
+	}
+	if len(payload.Otel) != 1 {
+		t.Fatalf("expected one otel row, got %d:\n%s", len(payload.Otel), out)
+	}
+	row := payload.Otel[0]
+	if row.Agent != "claude" || row.Path == "" {
+		t.Errorf("otel row names no agent or no path: %+v", row)
+	}
+	if row.Already {
+		t.Errorf("a fresh install is reported as already installed: %+v", row)
+	}
+	if !row.ShellExportsKey {
+		t.Errorf("a shell that exports the key is reported as not: %+v", row)
+	}
+
+	// The second run finds it installed, which the payload has to distinguish.
+	out = captureStdout(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("rerun: %v", err)
+		}
+	})
+	payload.Otel = nil
+	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
+		t.Fatalf("rerun payload is not JSON: %v\n%s", err, out)
+	}
+	if len(payload.Otel) != 1 || !payload.Otel[0].Already {
+		t.Errorf("a rerun over an existing install is not marked already installed:\n%s", out)
+	}
+}
+
+// Every agent whose spec can install the plugin has to be able to read it back
+// and remove it. Without this, a second traceable agent added to the registry
+// fails quietly: --status reports it unwired forever, or disconnect lists it,
+// takes the confirmation and removes nothing.
+func TestOtelRegistrySpecsAreComplete(t *testing.T) {
+	for _, spec := range agentRegistry() {
+		if spec.installOtel == nil {
+			continue
+		}
+		if spec.otelConfig == nil {
+			t.Errorf("%s installs the trace plugin but names no config to record it in", spec.ID)
+		}
+		if spec.otelPresent == nil {
+			t.Errorf("%s installs the trace plugin but cannot read the install back", spec.ID)
+		}
+		if spec.removeOtel == nil {
+			t.Errorf("%s installs the trace plugin but cannot remove it", spec.ID)
+		}
+	}
+}
+
+// jsonPayload slices the `-o json` body out of a captured report, which a
+// non-TTY run prints after the human lines.
+func jsonPayload(t *testing.T, out string) string {
+	t.Helper()
+	i := strings.Index(out, "{\n  \"coding_agents\"")
+	if i < 0 {
+		t.Fatalf("no json payload in the output:\n%s", out)
+	}
+	return out[i:]
 }
