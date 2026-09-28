@@ -79,11 +79,13 @@ func TestTraceNeverEnablesTheNativeTraceExporter(t *testing.T) {
 	}
 }
 
-func TestTraceOffByDefault(t *testing.T) {
+// ParseArgv turns tracing on; the resolver is what --no-otel reaches, and a
+// declined session must carry no telemetry env at all.
+func TestNoOtelLeavesNoTelemetryEnv(t *testing.T) {
 	plan, _ := resolveClaude(traceCtx(GatewayFlags{}, nil))
 	for k := range plan.Env {
 		if strings.HasPrefix(k, "OTEL_") || k == "CLAUDE_CODE_ENABLE_TELEMETRY" {
-			t.Errorf("telemetry env %s set without --trace", k)
+			t.Errorf("telemetry env %s set after --no-otel", k)
 		}
 	}
 }
@@ -174,7 +176,7 @@ func TestTraceListFailureStillLoadsThePlugin(t *testing.T) {
 	}
 }
 
-// The MCP server is on by default, so a plain `orq launch claude --trace` runs
+// The MCP server is on by default too, so a plain `orq launch claude` runs
 // both writers. An earlier revision assigned PreArgs in the MCP block and
 // dropped the --plugin-dir the trace had just added: the default traced launch
 // then started with no plugin and wrote no spans at all.

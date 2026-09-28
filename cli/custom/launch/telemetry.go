@@ -60,7 +60,7 @@ func traceEnv(ctx *AgentContext, configPath string) map[string]string {
 
 // wireTrace turns telemetry on and loads the orq-trace plugin for this session
 // only, through --plugin-dir, so nothing is left in the user's claude config
-// to trace sessions they did not launch with --trace. The plugin resolves its
+// to trace sessions they did not launch through orq. The plugin resolves its
 // key from the ORQ_API_KEY already in the plan.
 func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 	configPath := filepath.Join("<session tempdir>", "orq-config.json")

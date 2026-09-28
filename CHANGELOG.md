@@ -123,10 +123,12 @@ controls on surface changes, whichever side they originate from.
   the old routing must add `--router`, which restores it and names the
   workspace that will be billed. `--model` still sets `ANTHROPIC_MODEL`, and
   nothing else does.
-- **Added: `orq launch claude --trace`** captures the session as an orq trace.
-  It turns on Claude Code's metrics and logs export and loads the bundled
-  `orq-trace` plugin for that session only, without installing anything into
-  your claude config. The hooks need `node` on PATH.
+- **Added: `orq launch claude` captures the session as an orq trace**, in the
+  same way it wires MCP and skills: on unless you decline it. It turns on
+  Claude Code's metrics and logs export and loads the bundled `orq-trace`
+  plugin for that session only, without installing anything into your claude
+  config. The hooks need `node` on PATH. `--no-otel` leaves the session
+  uncaptured, and `--otel` names the default explicitly.
 
 ## [11.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.0) — 2026-09-25
 

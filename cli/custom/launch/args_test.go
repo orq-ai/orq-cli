@@ -164,16 +164,22 @@ func TestMergeEnv(t *testing.T) {
 }
 
 func TestParseArgvTraceFlags(t *testing.T) {
-	flags, rest, err := ParseArgv([]string{"--trace", "--router", "--model", "opus"}, ParseArgvOptions{AllowTrace: true})
+	flags, rest, err := ParseArgv([]string{"--otel", "--router", "--model", "opus"}, ParseArgvOptions{AllowTrace: true})
 	if err != nil || !flags.Trace || !flags.Router || flags.Model != "opus" || len(rest) != 0 {
 		t.Fatalf("%+v %v %v", flags, rest, err)
 	}
-	// Agents that cannot trace leave both flags to the agent.
-	flags, rest, _ = ParseArgv([]string{"--trace"}, ParseArgvOptions{})
-	if flags.Trace || len(rest) != 1 || rest[0] != "--trace" {
+	// Agents that cannot trace leave both flags to the agent, and get no
+	// tracing default they have no wiring for.
+	flags, rest, _ = ParseArgv([]string{"--no-otel"}, ParseArgvOptions{})
+	if flags.Trace || len(rest) != 1 || rest[0] != "--no-otel" {
 		t.Fatalf("%+v %v", flags, rest)
 	}
-	if flags, _, _ := ParseArgv(nil, ParseArgvOptions{AllowTrace: true}); flags.Trace || flags.Router {
-		t.Fatalf("must be off by default: %+v", flags)
+	// Tracing is on unasked for a traceable agent, and --no-otel is the only
+	// way to leave the session uncaptured.
+	if flags, _, _ := ParseArgv(nil, ParseArgvOptions{AllowTrace: true}); !flags.Trace || flags.Router {
+		t.Fatalf("tracing must default on, --router off: %+v", flags)
+	}
+	if flags, _, _ := ParseArgv([]string{"--no-otel"}, ParseArgvOptions{AllowTrace: true}); flags.Trace {
+		t.Fatalf("--no-otel must turn tracing off: %+v", flags)
 	}
 }

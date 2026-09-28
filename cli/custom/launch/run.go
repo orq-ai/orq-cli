@@ -93,7 +93,7 @@ func printAgentHelp(def *AgentDef) {
 	model := firstNonEmpty(def.HelpModel, "Gateway model (provider/model_id)")
 	headline := fmt.Sprintf("Launch %s preconfigured to route through %s.", def.Label, route)
 	if def.Traceable {
-		headline = fmt.Sprintf("Launch %s on your own login, with the orq MCP server and skills.\nAdd --router to route it through %s instead.", def.Label, route)
+		headline = fmt.Sprintf("Launch %s on your own login, with the orq MCP server, skills and session tracing.\nAdd --router to route it through %s instead.", def.Label, route)
 	}
 
 	fmt.Printf(`%s
@@ -116,9 +116,10 @@ Flags:
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
 	}
 	if def.Traceable {
-		fmt.Print(`  --trace               Capture the session as an orq trace: loads the orq-trace
+		fmt.Print(`  --otel                Capture the session as an orq trace: loads the orq-trace
                         plugin for this session only and turns on Claude Code's
-                        metrics and logs export
+                        metrics and logs export (default)
+  --no-otel             Do not capture this session
   --router              Send model traffic through the orq.ai AI Router instead of
                         your own Anthropic login. Usage then bills to the orq
                         workspace, not your subscription

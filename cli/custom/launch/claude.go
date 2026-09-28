@@ -35,11 +35,11 @@ func claudeAgent() AgentDef {
 	}
 }
 
-// resolveClaude leaves claude on the user's own login by default and adds only
-// the orq MCP server and skills. --router moves model traffic onto the gateway
-// (and so onto workspace billing); --trace captures the session. Both are
-// opt-in because either changes what the user is billed for or what leaves
-// their machine. MCP is a --mcp-config PreArg pointing at a temp file; skills
+// resolveClaude leaves claude on the user's own login and adds the orq MCP
+// server, skills and session tracing, each of which --no-mcp, --no-skills and
+// --no-otel turn off. --router is the one capability that is opt-in, because it
+// moves model traffic onto the gateway and so onto workspace billing. MCP is a
+// --mcp-config PreArg pointing at a temp file; skills
 // are linked into ~/.claude/skills for the session rather than fetched as a
 // plugin, unless ORQ_SKILLS_URL pins a bundle, which is loaded with
 // --plugin-url instead.
@@ -93,11 +93,11 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 	if ctx.Flags.Trace {
 		if err := wireTrace(ctx, plan); err != nil {
-			return fail(fmt.Errorf("--trace: %w", err))
+			return fail(fmt.Errorf("session tracing: %w", err))
 		}
 		if ctx.Flags.Router {
 			plan.Warnings = append(plan.Warnings,
-				"--router with --trace records each model call twice, once by the AI Router and once in the session trace, so summed costs across both double-count")
+				"--router records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
 		}
 	}
 

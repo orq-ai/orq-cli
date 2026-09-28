@@ -352,7 +352,7 @@ orq datasets delete <id> --force   # required in CI
 ```sh
 orq launch claude                 # Claude Code, on its own login
 orq launch claude --router        # ...with model calls through the orq AI Router
-orq launch claude --trace         # ...with the session captured in your workspace
+orq launch claude --no-otel       # ...without capturing the session in your workspace
 orq launch codex                  # OpenAI Codex CLI
 orq launch opencode               # OpenCode
 orq launch kilo                   # Kilo CLI (OpenCode fork)
@@ -372,14 +372,14 @@ The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session,
 
 orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
-### Claude Code: `--router` and `--trace`
+### Claude Code: `--router` and `--no-otel`
 
-`orq launch claude` leaves Claude Code on the login it already has and picks no model for it, so a subscription keeps paying for the session and a `/model` choice survives a restart. Two opt-in flags change that:
+`orq launch claude` leaves Claude Code on the login it already has and picks no model for it, so a subscription keeps paying for the session and a `/model` choice survives a restart. Session tracing is on, like MCP and skills; routing is the one thing you opt into:
 
+- Tracing turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one. `--no-otel` leaves the session uncaptured.
 - `--router` points model calls at `<host>/v3/anthropic`, which moves the session's usage onto workspace billing. The launcher warns and names the workspace that gets the bill. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers are what let `/model opus|sonnet|haiku` resolve to gateway refs.
-- `--trace` turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one.
 
-Together they record the same call twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts.
+With `--router` the same call is recorded twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts. `--no-otel` keeps one copy.
 
 ### Shared flags
 
@@ -393,7 +393,8 @@ Together they record the same call twice, once as a router row and once in the s
 | `--no-mcp` | Do not wire the orq MCP server for this session |
 | `--no-skills` | Do not link orq's skills into the agent for this session |
 | `--router` | claude only: route model calls through the orq AI Router, onto workspace billing |
-| `--trace` | claude only: capture the session as a trace in your workspace |
+| `--otel` | claude only: capture the session as a trace in your workspace — the default |
+| `--no-otel` | claude only: do not capture this session |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
 | `--dry-run` | Print the resolved command and env (key redacted) without launching |
 
