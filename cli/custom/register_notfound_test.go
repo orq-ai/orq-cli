@@ -42,7 +42,7 @@ func TestNotFoundNamesTheActiveProject(t *testing.T) {
 	}}
 	fine := &cobra.Command{Use: "fine", RunE: func(*cobra.Command, []string) error { return nil }}
 	root.AddCommand(generated, explains, fine)
-	explainNotFoundScope(root)
+	explainAPIErrors(root)
 
 	err := generated.RunE(generated, nil)
 	if err == nil || !strings.Contains(err.Error(), `project "Banking"`) {

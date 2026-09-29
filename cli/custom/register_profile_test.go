@@ -158,7 +158,7 @@ func TestAnInForceProfileIsExportedForChildProcesses(t *testing.T) {
 	viper.Set("profile", "acme")
 	t.Setenv("ORQ_API_KEY", "")
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
 		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
@@ -179,13 +179,24 @@ func TestAnInForceProfileClearsAndAnnouncesAShadowedEnvironmentKey(t *testing.T)
 	bartolocli.Stderr = &out
 	t.Cleanup(func() { bartolocli.Stderr = prev })
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
 		t.Errorf("ORQ_API_KEY = %q, want the profile's key", got)
 	}
 	if !strings.Contains(out.String(), "ORQ_API_KEY") || !strings.Contains(out.String(), "acme") {
 		t.Errorf("no warning naming the shadowed variable and the winner: %q", out.String())
+	}
+
+	// A command that sends no request still swaps the key, silently.
+	out.Reset()
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+	applyProfileAPIKey(false)
+	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-profile" {
+		t.Errorf("quiet: ORQ_API_KEY = %q, want the profile's key", got)
+	}
+	if out.Len() != 0 {
+		t.Errorf("quiet: want no warning, got %q", out.String())
 	}
 }
 
@@ -198,9 +209,27 @@ func TestAKeylessProfileExportsNothingAndClearsNothing(t *testing.T) {
 	viper.Set("profile", "acme")
 	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
 
-	applyProfileAPIKey()
+	applyProfileAPIKey(true)
 
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-environment" {
 		t.Errorf("ORQ_API_KEY = %q, want the user's own key untouched", got)
+	}
+}
+
+func TestConnectStatusDoesNotWarnAboutCredentialPrecedence(t *testing.T) {
+	profileHarness(t, `{"profiles":{"acme":{"api_key":"sk-orq-profile","type":"apikey"}}}`)
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("ORQ_API_KEY", "sk-orq-environment")
+	viper.Set("profile", "acme")
+	root := buildRoot(t)
+	root.SetArgs([]string{"connect", "--status"})
+
+	var runErr error
+	_, stderr := captureOutput(t, func() { runErr = root.Execute() })
+	if runErr != nil {
+		t.Fatalf("connect --status: %v", runErr)
+	}
+	if strings.Contains(stderr, "ignoring ORQ_API_KEY") {
+		t.Errorf("connect --status printed a credential warning: %q", stderr)
 	}
 }

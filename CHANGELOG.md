@@ -117,6 +117,35 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: API errors name the fix.** A failed request used to print
+  `error calling operation: HTTP 403:` and the raw response body. It now prints
+  the status, the API's own message, any per-field validation problems, its
+  doc link (or the API reference when none was returned) and request id,
+  followed by one line on what to do for 401, 403, 429 and 5xx. Long proxy
+  responses are truncated. Only stderr text changed; exit codes are the same.
+
+- **Changed: "you are not logged in" and the missing-key error say to run
+  `orq auth login`.** The missing-key error used to point at `auth setup`,
+  which no longer exists.
+
+- **Changed: the profile-precedence warning** ("using the API key from profile
+  ..., ignoring ORQ_API_KEY") says how to use the environment key instead, and
+  is no longer printed by commands that send no request (`version`,
+  `auth profile`, `auth sessions`, `server`, `default-format`, `update`,
+  `completion`, `disconnect`, `connect --status` and the help commands).
+
+- **Added: "did you mean" inside a command group.** `orq agents get x` used to
+  print the whole `agents` help page and exit 0. It now fails (exit 1) with the
+  unknown name and suggests `retrieve`, and a typo such as `orq agents lst`
+  suggests `list`. `orq agents` and `orq agents help` still show the help.
+
+- **Changed: `orq doctor`'s `mcp` row** is one line naming every agent without
+  an MCP entry and one `orq connect <agents> mcp` command, instead of one
+  message per agent joined together; the `-o json` message text changed with
+  it (its `details` did not). `orq connect --status` names the command that
+  wires the agents it lists as unwired, keeping any capabilities you asked
+  about.
+
 ## [11.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.1) — 2026-09-28
 
 - **Fixed: a login session no longer gets stuck on `401 authz_stale`.** The

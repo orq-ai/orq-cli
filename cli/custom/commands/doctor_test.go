@@ -116,6 +116,7 @@ func TestCodingAgentsSummaryStates(t *testing.T) {
 func TestMCPCheckPassNamesEntryAndLoginCommand(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "") // a developer's own codex dir must not leak in
 
 	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -140,6 +141,7 @@ func TestMCPCheckReadsProjectScope(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
 	t.Chdir(project)
 
 	if err := os.Mkdir(filepath.Join(home, ".claude"), 0o755); err != nil {
@@ -158,6 +160,7 @@ func TestMCPCheckReadsProjectScope(t *testing.T) {
 func TestMCPCheckWarnsUnwiredAgentAndOmitsPi(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "") // a developer's own codex dir must not leak in
 
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
@@ -175,6 +178,40 @@ func TestMCPCheckWarnsUnwiredAgentAndOmitsPi(t *testing.T) {
 	}
 	if strings.Contains(check.Message, "pi") {
 		t.Errorf("warning reports pi even though it has no MCP support: %q", check.Message)
+	}
+}
+
+// A mixed machine gets one short row with one fix naming only the missing
+// agent. The structured details retain which agents were already present.
+func TestMCPCheckMixedNamesOnlyTheMissingAgent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"orq-workspace":{"type":"http","url":"https://api.orq.ai/v2/mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	check, ok := mcpCheck()
+	if !ok || check.Status != "warn" {
+		t.Fatalf("got ok=%v status=%q, want a warning", ok, check.Status)
+	}
+	for _, want := range []string{"orq connect codex mcp"} {
+		if !strings.Contains(check.Message, want) {
+			t.Errorf("missing %q in %q", want, check.Message)
+		}
+	}
+	if strings.Contains(check.Message, "connect claude") {
+		t.Errorf("fix re-wires the agent that is already wired: %q", check.Message)
+	}
+	if strings.Contains(check.Message, "claude MCP entry present") {
+		t.Errorf("warning includes the wired agent's separate login command: %q", check.Message)
+	}
+	present, ok := check.Details["present_agents"].([]string)
+	if !ok || len(present) != 1 || present[0] != "claude" {
+		t.Errorf("details.present_agents = %#v, want [claude]", check.Details["present_agents"])
 	}
 }
 
