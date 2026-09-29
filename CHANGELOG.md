@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.0.2](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.2) — 2026-09-29
+
 - **Changed: API errors name the fix.** A failed request used to print
   `error calling operation: HTTP 403:` and the raw response body. It now prints
   the status, the API's own message, any per-field validation problems, its
