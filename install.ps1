@@ -66,7 +66,7 @@ if ($Version -and $channelExplicit) {
 }
 
 # PowerShell 5.1 defaults to TLS 1.0/1.1, which GitHub and npm reject.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # --- Detect architecture ---------------------------------------------------
 # Only orq-win32-x64.exe is published. Windows on ARM runs x64 under emulation,
@@ -137,98 +137,138 @@ if (Test-Path $target) {
 }
 
 if (-not $alreadyCurrent) {
-  # --- Download ------------------------------------------------------------
-  $tmpFile = Join-Path ([IO.Path]::GetTempPath()) ("orq-cli-" + [Guid]::NewGuid().ToString('N') + '.exe')
-  try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
-  } catch {
-    Remove-Item $tmpFile -ErrorAction SilentlyContinue
-    Die "failed to download $downloadUrl : $($_.Exception.Message)"
-  }
-  if ((Get-Item $tmpFile).Length -eq 0) {
-    Remove-Item $tmpFile -ErrorAction SilentlyContinue
-    Die 'downloaded file is empty'
-  }
-
-  # --- Verify checksum -----------------------------------------------------
-  # Same host as the binary: catches corruption and truncation. A genuine 404
-  # (releases predating the .sha256 assets) is the only forgivable miss, and only
-  # for a pinned old release; on "latest" a missing checksum means a broken fetch.
-  $expected = $null
-  try {
-    $sumBody = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
-    $expected = ($sumBody -split '\s+')[0]
-  } catch {
-    $status = $null
-    if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
-    if ($status -eq 404) {
-      if (-not $versionPinned) {
-        Remove-Item $tmpFile -ErrorAction SilentlyContinue
-        Die 'no checksum published at the latest release; refusing to install unverified (pin an older release with -Version if intended)'
-      }
-      Warn "! installing UNVERIFIED: $Version publishes no .sha256"
-    } else {
-      Remove-Item $tmpFile -ErrorAction SilentlyContinue
-      Die "failed to fetch checksum ($checksumUrl returned HTTP $status)"
-    }
-  }
-
-  if ($expected) {
-    if ($expected -notmatch '^[0-9a-fA-F]{64}$') {
-      Remove-Item $tmpFile -ErrorAction SilentlyContinue
-      Die "checksum response is not a sha256 digest; a proxy or captive portal may be intercepting the request"
-    }
-    $actual = (Get-FileHash -Path $tmpFile -Algorithm SHA256).Hash
-    if ($actual -ne $expected.ToUpper()) {
-      Remove-Item $tmpFile -ErrorAction SilentlyContinue
-      Die "checksum mismatch for $asset`n  expected $expected`n  actual   $actual`nRefusing to install. Report at https://github.com/$Repo/issues"
-    }
-    Say 'ok: checksum verified (sha256)'
-  }
-
-  # --- Install -------------------------------------------------------------
   New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-  # On an upgrade keep the previous binary until the new one proves it runs.
+  # Temp file lives inside the install dir, not %TEMP%: a cross-volume Move-Item
+  # degrades to copy+delete (a crash mid-copy truncates orq.exe), so same-volume
+  # keeps the final move a true atomic rename.
+  $tmpFile = Join-Path $InstallDir (".orq-download-" + [Guid]::NewGuid().ToString('N') + '.exe')
   $previous = $null
-  if (Test-Path $target) {
-    $previous = "$target.previous"
-    Move-Item -Force $target $previous
-  }
+  # finally is the PowerShell counterpart to install.sh's EXIT/INT/TERM trap: on any
+  # error or Ctrl-C it drops the temp file and, if the swap left no orq.exe, restores
+  # the previous binary so the user never ends up with less than they started with.
   try {
-    Move-Item -Force $tmpFile $target
-  } catch {
-    if ($previous) { Move-Item -Force $previous $target }
-    Die "failed to move binary into $target : $($_.Exception.Message)"
-  }
+    # --- Download ----------------------------------------------------------
+    try {
+      Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
+    } catch {
+      Die "failed to download $downloadUrl : $($_.Exception.Message)"
+    }
+    if ((Get-Item $tmpFile).Length -eq 0) {
+      Die 'downloaded file is empty'
+    }
 
-  # Probe the installed binary; restore the previous one if it does not run.
-  $installedVersion = $null
-  try { $installedVersion = (& $target --version 2>$null | Select-Object -First 1) } catch { }
-  if ($installedVersion) {
-    if ($previous) { Remove-Item $previous -ErrorAction SilentlyContinue }
-    Say "ok: installed      $target  ($installedVersion)"
-  } elseif ($previous) {
-    Move-Item -Force $previous $target
-    Die 'the new binary did not run here, so the previous one was restored'
-  } else {
-    Die "the installed binary does not run on this machine; left at $target for inspection"
+    # --- Verify checksum ---------------------------------------------------
+    # Same host as the binary: catches corruption and truncation. A genuine 404
+    # (releases predating the .sha256 assets) is the only forgivable miss, and only
+    # for a pinned old release; on "latest" a missing checksum means a broken fetch.
+    $expected = $null
+    $checksumMissing = $false
+    try {
+      $sumBody = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+      $expected = ($sumBody -split '\s+')[0]
+    } catch {
+      $status = $null
+      if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+      if ($status -eq 404) {
+        if (-not $versionPinned) {
+          Die 'no checksum published at the latest release; refusing to install unverified (pin an older release with -Version if intended)'
+        }
+        Warn "! installing UNVERIFIED: $Version publishes no .sha256"
+        $checksumMissing = $true
+      } else {
+        $statusText = if ($status) { $status } else { '000' }
+        Die "failed to fetch checksum ($checksumUrl returned HTTP $statusText)"
+      }
+    }
+
+    # A 200 with an empty or whitespace body means the asset exists but was
+    # unreadable (proxy, CDN, captive portal), NOT that no checksum is published.
+    # install.sh refuses this (install.sh:408-412); do the same rather than fall
+    # through the empty-string-is-falsy check below and install unverified.
+    if (-not $checksumMissing -and [string]::IsNullOrWhiteSpace($expected)) {
+      Die "checksum fetch returned an empty body ($checksumUrl); refusing to install unverified"
+    }
+
+    if ($expected) {
+      if ($expected -notmatch '^[0-9a-fA-F]{64}$') {
+        Die 'checksum response is not a sha256 digest; a proxy or captive portal may be intercepting the request'
+      }
+      $actual = (Get-FileHash -Path $tmpFile -Algorithm SHA256).Hash
+      if ($actual -ne $expected.ToUpper()) {
+        Die "checksum mismatch for $asset`n  expected $expected`n  actual   $actual`nRefusing to install. Report at https://github.com/$Repo/issues"
+      }
+      Say 'ok: checksum verified (sha256)'
+    }
+
+    # --- Install -----------------------------------------------------------
+    # On an upgrade keep the previous binary until the new one proves it runs.
+    if (Test-Path $target) {
+      $previous = "$target.previous"
+      Move-Item -Force $target $previous
+    }
+    try {
+      Move-Item -Force $tmpFile $target
+    } catch {
+      Die "failed to move binary into $target : $($_.Exception.Message)"
+    }
+
+    # Probe the installed binary; restore the previous one if it does not run.
+    $installedVersion = $null
+    try { $installedVersion = (& $target --version 2>$null | Select-Object -First 1) } catch { }
+    if ($installedVersion) {
+      Say "ok: installed      $target  ($installedVersion)"
+    } elseif ($previous) {
+      Die 'the new binary did not run here; the previous one is being restored'
+    } else {
+      $previous = $null  # nothing to restore; leave it for inspection
+      Die "the installed binary does not run on this machine; left at $target for inspection"
+    }
+  } finally {
+    if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue }
+    # The swap left no orq.exe (mid-upgrade error or Ctrl-C): put the old one back.
+    if ($previous -and (Test-Path $previous)) {
+      if (-not (Test-Path $target)) {
+        Move-Item -Force $previous $target -ErrorAction SilentlyContinue
+      } else {
+        Remove-Item $previous -Force -ErrorAction SilentlyContinue
+      }
+    }
   }
 }
 
 # --- PATH ------------------------------------------------------------------
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-$onPath = ($userPath -split ';') -contains $InstallDir
-if ($onPath) {
-  # nothing to do
-} elseif ($NoModifyPath) {
-  Say '! PATH not updated (-NoModifyPath)'
-} else {
-  $newPath = if ([string]::IsNullOrEmpty($userPath)) { $InstallDir } else { "$userPath;$InstallDir" }
-  [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-  # Also update the current session so 'orq' resolves without a restart.
-  $env:Path = "$env:Path;$InstallDir"
-  Say "ok: PATH updated   (user) $InstallDir"
-  Say '      open a new terminal for the change to persist in other shells'
+# Edit the registry directly, not [Environment]::SetEnvironmentVariable('Path','User'):
+# the .NET helper reads the value with %VAR% tokens already expanded and writes it
+# back as REG_SZ, permanently flattening a user PATH stored as REG_EXPAND_SZ (e.g.
+# entries like %USERPROFILE%\bin). Reading raw and writing back with the original
+# value kind preserves it.
+$envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+if (-not $envKey) { $envKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment') }
+try {
+  $rawPath = ''
+  $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+  $existing = $envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  if ($null -ne $existing) {
+    $rawPath = [string]$existing
+    try { $kind = $envKey.GetValueKind('Path') } catch { }
+  }
+  # Trailing-slash-normalized, case-insensitive membership so a re-run does not append a dupe.
+  $want = $InstallDir.TrimEnd('\')
+  $onPath = @($rawPath -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }) -contains $want
+  if ($onPath) {
+    # nothing to do
+  } elseif ($NoModifyPath) {
+    Say '! PATH not updated (-NoModifyPath)'
+  } else {
+    $newRaw = if ([string]::IsNullOrEmpty($rawPath)) { $InstallDir } else { ($rawPath.TrimEnd(';') + ';' + $InstallDir) }
+    $envKey.SetValue('Path', $newRaw, $kind)
+    # Also update the current session so 'orq' resolves without a restart.
+    $env:Path = "$env:Path;$InstallDir"
+    Say "ok: PATH updated   (user) $InstallDir"
+    Say '      open a new terminal for the change to persist in other shells'
+  }
+} finally {
+  $envKey.Close()
 }
 
 # --- Setup -----------------------------------------------------------------

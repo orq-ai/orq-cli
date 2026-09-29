@@ -52,7 +52,10 @@ Tested under PowerShell 7: parses clean, the checksum digest regex accepts a rea
 sha256 and rejects an HTML captive-portal body, arch detection maps AMD64/ARM64/x86
 and rejects the rest, and the `-Version + -Channel` conflict, `-Help`, and bad-channel
 paths exit with the right codes. The network download path was not run locally; it
-needs a Windows runner (the repo already has a `windows-latest` CI job).
+needs a Windows runner. The repo has a `windows-latest` job in `ci.yml`, but it only
+runs `go test ./cli/custom/skills/`, and the `install.sh` check is a separate ubuntu
+`installer` job. Neither covers a PowerShell installer, so this needs a new pwsh step
+or job, not an extension of an existing gate.
 
 ### Rollout steps to ship it
 
@@ -62,8 +65,10 @@ needs a Windows runner (the repo already has a `windows-latest` CI job).
 2. Serve it at `https://cli.orq.ai/install.ps1`. The `cli.orq.ai` redirect that
    serves `install.sh` lives outside this repo; the same mechanism needs an
    `install.ps1` route before the one-liner can be advertised.
-3. Add a parse check to CI, mirroring the `dash -n install.sh` gate. On
-   `windows-latest`: `pwsh -NoProfile -Command "[System.Management.Automation.Language.Parser]::ParseFile('install.ps1',[ref]$null,[ref]$e)"`.
+3. Add a NEW pwsh parse/smoke step (the existing `windows-latest` job only runs the
+   skills go tests, so this is an addition, not an extension). Mirror the
+   `dash -n install.sh` gate with:
+   `pwsh -NoProfile -Command "$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('install.ps1',[ref]$null,[ref]$e);if($e){$e;exit 1}"`.
 4. Only then update the README install section to add:
    `irm https://cli.orq.ai/install.ps1 | iex`.
 
