@@ -434,10 +434,9 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	httpClient := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	httpClient := auth.NewHTTPClient(0)
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {

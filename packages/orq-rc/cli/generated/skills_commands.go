@@ -258,7 +258,7 @@ func registerskillsCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25); explicit 0 (or anything outside the range) is rejected by buf.validate.")
+		cmd.Flags().Int64("limit", 0, "Page size, 1–200. Unset uses the server default (25). Values outside the range, including 0, are rejected.")
 		cmd.Flags().String("starting-after", "", "Cursor for forward pagination. Set to the `skill_id` of the last item from the previous page.")
 		cmd.Flags().String("ending-before", "", "Cursor for backward pagination. Set to the `skill_id` of the first item from the previous page.")
 
