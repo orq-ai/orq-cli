@@ -328,7 +328,7 @@ func registerfeedbackCommands(root *cobra.Command) {
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-09-30T14:51:55.928Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"evaluation_type\": \"human_review\",\n  \"id\": \"id\",\n  \"reviewed_at\": \"2026-09-30T17:33:02.900Z\",\n  \"source\": \"orq\",\n  \"trace_id\": \"trace_id\",\n  \"type\": \"string\",\n  \"value\": \"value\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,

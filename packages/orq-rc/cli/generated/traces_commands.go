@@ -30,13 +30,13 @@ func registertracesCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "aggregate",
 			Short:   "Aggregate traces",
-			Long:    bartolocli.Markdown("Aggregate trace metrics using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Aggregate trace metrics using the structured trace filter contract.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `compute` (array)\n- `filter_operator` (string)\n- `filters` (array)\n- `from` (string)\n- `group_by` (array)\n- `limit` (integer)\n- `query` (string)\n- `to` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"compute\": [\n    {\n      \"metric\": \"metric\",\n      \"op\": \"op\"\n    }\n  ],\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"group_by\": [\n    \"group_by\"\n  ],\n  \"limit\": 0,\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"compute\": [\n    {\n      \"metric\": \"metric\",\n      \"op\": \"op\"\n    }\n  ],\n  \"filter_operator\": \"filter_operator\",\n  \"filters\": [\n    {\n      \"field\": \"field\",\n      \"op\": \"op\",\n      \"values\": [\n        \"values\"\n      ]\n    }\n  ],\n  \"from\": \"2024-01-01T00:00:00Z\",\n  \"group_by\": [\n    \"group_by\"\n  ],\n  \"limit\": 0,\n  \"query\": \"query\",\n  \"to\": \"2024-01-01T00:00:00Z\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -76,6 +76,12 @@ func registertracesCommands(root *cobra.Command) {
 							FlagName:    "limit",
 							Type:        "int64",
 							Description: "",
+						},
+						{
+							Name:        "query",
+							FlagName:    "query",
+							Type:        "string",
+							Description: "Free-text search with the same matching as SearchTracesRequest.query.",
 						},
 						{
 							Name:        "to",
@@ -142,6 +148,12 @@ func registertracesCommands(root *cobra.Command) {
 					FlagName:    "limit",
 					Type:        "int64",
 					Description: "",
+				},
+				{
+					Name:        "query",
+					FlagName:    "query",
+					Type:        "string",
+					Description: "Free-text search with the same matching as SearchTracesRequest.query.",
 				},
 				{
 					Name:        "to",
