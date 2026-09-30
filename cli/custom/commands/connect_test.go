@@ -3259,3 +3259,30 @@ func jsonPayload(t *testing.T, out string) string {
 	}
 	return out[i:]
 }
+
+// The fix the unwired line prints must repeat the capabilities asked about:
+// `orq connect` alone would wire everything, not what --status was scoped to.
+func TestConnectStatusHintKeepsTheNamedCapabilities(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ORQ_API_KEY", "")
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resetSetupMemos(t)
+
+	var out strings.Builder
+	prev := bartolocli.Stderr
+	bartolocli.Stderr = &out
+	t.Cleanup(func() { bartolocli.Stderr = prev })
+
+	cmd := NewConnectCommand()
+	cmd.SetArgs([]string{"--status", "mcp"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(out.String(), "`orq connect mcp`") {
+		t.Errorf("hint dropped the named capability:\n%s", out.String())
+	}
+}

@@ -38,7 +38,7 @@ func newWorkspaceListCommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
-				return errors.New("you are not logged in")
+				return auth.ErrNotLoggedIn
 			}
 			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
@@ -85,7 +85,7 @@ func newWorkspaceUseCommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
-				return errors.New("you are not logged in")
+				return auth.ErrNotLoggedIn
 			}
 			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()

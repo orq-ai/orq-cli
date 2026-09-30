@@ -27,7 +27,7 @@ func NewProjectsUseCommand() *cobra.Command {
 				return err
 			}
 			if session == nil {
-				return errors.New("you are not logged in")
+				return auth.ErrNotLoggedIn
 			}
 			if clear {
 				if len(args) > 0 {
