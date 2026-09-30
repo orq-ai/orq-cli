@@ -2693,6 +2693,46 @@ func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
 	}
 }
 
+func TestSetupConnectsOtelAndReportsItOnTheFinalScreen(t *testing.T) {
+	settings, calls := otelMachine(t)
+	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
+	var progress strings.Builder
+	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
+	if len(*calls) != 2 {
+		t.Fatalf("setup did not install the tracing plugin: calls=%v", *calls)
+	}
+	if len(results) != 1 || results[0].Agent != "claude" || results[0].Otel != settings {
+		t.Fatalf("setup omitted the tracing result: %+v", results)
+	}
+	if !setupComplete(true, results) {
+		t.Fatal("successful tracing install marked setup incomplete")
+	}
+	var screen strings.Builder
+	printFinalScreen(&reporter{w: &screen}, results, nil, true, opts)
+	if !strings.Contains(screen.String(), capOtel) || !strings.Contains(screen.String(), tilde(settings)) {
+		t.Fatalf("setup's final screen omitted tracing: %s", screen.String())
+	}
+}
+
+func TestSetupReportsOtelInstallFailure(t *testing.T) {
+	_, _ = otelMachine(t)
+	runAgentCommand = func(string, ...string) error { return errors.New("plugin install failed") }
+	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
+	var progress strings.Builder
+	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
+	if len(results) != 1 || !strings.Contains(results[0].OtelError, "plugin install failed") {
+		t.Fatalf("setup omitted tracing failure: %+v", results)
+	}
+	if setupComplete(true, results) {
+		t.Fatal("failed tracing install marked setup complete")
+	}
+	var screen strings.Builder
+	printFinalScreen(&reporter{w: &screen}, results, nil, false, opts)
+	if !strings.Contains(screen.String(), capOtel) || !strings.Contains(screen.String(), "plugin install failed") || strings.Contains(screen.String(), capGateway) {
+		t.Fatalf("setup's final screen misreported tracing failure: %s", screen.String())
+	}
+}
+
 func TestScopedDisconnectPreviewListsOnlyThatScope(t *testing.T) {
 	home, project := mcpMachine(t, ".claude")
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")

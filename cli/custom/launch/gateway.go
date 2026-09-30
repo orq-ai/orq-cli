@@ -72,7 +72,7 @@ type GatewayFlags struct {
 	DryRun   bool
 	Help     bool
 	// Router and Trace are only parsed for agents with Traceable set. Both
-	// default on there and are disabled with --no-gateway (or --no-router) and
+	// default on there and are disabled with --no-gateway and
 	// --no-otel. ParseArgv applies these defaults; the struct's zero value is off.
 	Router bool
 	Trace  bool

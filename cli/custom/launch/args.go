@@ -36,7 +36,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 		flags = append(flags, "--models")
 	}
 	if def.Traceable {
-		flags = append(flags, "--gateway", "--no-gateway", "--no-router", "--otel", "--no-otel")
+		flags = append(flags, "--gateway", "--no-gateway", "--otel", "--no-otel")
 	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
@@ -53,7 +53,7 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
 // --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h (and
-// --gateway/--no-gateway/--no-router/--otel/--no-otel for traceable agents) — are recognized
+// --gateway/--no-gateway/--otel/--no-otel for traceable agents) — are recognized
 // only at the FRONT of argv: the first arg the launcher doesn't own ends
 // launcher parsing and everything from there on belongs to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
@@ -152,7 +152,7 @@ scan:
 			flags.DryRun = true
 		case opts.AllowTrace && arg == "--gateway":
 			flags.Router = true
-		case opts.AllowTrace && (arg == "--no-gateway" || arg == "--no-router"):
+		case opts.AllowTrace && arg == "--no-gateway":
 			flags.Router = false
 		case opts.AllowTrace && arg == "--otel":
 			flags.Trace = true

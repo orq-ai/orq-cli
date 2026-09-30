@@ -50,7 +50,7 @@ func TestRunHelp(t *testing.T) {
 	if err != nil || code != 0 {
 		t.Fatalf("help: code=%d err=%v", code, err)
 	}
-	for _, want := range []string{"--gateway", "--no-gateway", "--no-router", "(default)"} {
+	for _, want := range []string{"--gateway", "--no-gateway", "(default)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help omits %q: %s", want, out)
 		}

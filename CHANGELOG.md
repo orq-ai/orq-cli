@@ -119,7 +119,7 @@ controls on surface changes, whichever side they originate from.
 
 - **Changed: `orq launch claude` routes through the AI Router by default
   without forcing a model.** Usage bills to the named orq workspace. Pass
-  `--no-gateway` (or `--no-router`) to use Claude Code's own Anthropic login
+  `--no-gateway` to use Claude Code's own Anthropic login
   for model calls; `--gateway` explicitly selects the default. `--model`
   still sets `ANTHROPIC_MODEL`, and nothing else does.
 - **Added: `orq launch claude` captures the session as an orq trace**, in the

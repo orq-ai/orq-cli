@@ -59,8 +59,9 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
+	routed := false
 	if ctx.Flags.Router {
-		routeThroughGateway(ctx, plan)
+		routed = routeThroughGateway(ctx, plan)
 	} else {
 		if ctx.Flags.Model != "" {
 			plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
@@ -93,7 +94,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		if err := wireTrace(ctx, plan); err != nil {
 			return fail(fmt.Errorf("session tracing: %w", err))
 		}
-		if ctx.Flags.Router {
+		if routed {
 			plan.Warnings = append(plan.Warnings,
 				"gateway routing records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
 		}
@@ -125,10 +126,6 @@ var loginOverrides = []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANT
 
 func noopNormalize(model string) string { return model }
 
-// routeThroughGateway points claude at the anthropic-native gateway path. Only
-// the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
-// claude's own default and any /model choice alone, and the tier variables
-// below are what turn its default aliases into gateway refs.
 // claudeProviderSwitches are the env switches that move claude off the
 // Anthropic API and onto a provider with its own endpoint variable. Read from
 // the claude 2.1.281 bundle, which keeps them in one list next to
@@ -143,7 +140,12 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_GATEWAY",
 }
 
-func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
+// routeThroughGateway points claude at the anthropic-native gateway path. Only
+// the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
+// claude's own default and any /model choice alone, and the tier variables
+// below turn its default aliases into gateway refs. It returns false when a
+// provider switch in the shell overrides the route.
+func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) bool {
 	getenv := ctx.Getenv
 
 	// Deliberately NOT ORQ_GATEWAY_URL: that is the OpenAI-shaped router URL
@@ -184,5 +186,5 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_OPUS_MODEL"), DefaultClaudeOpusModel)
 	plan.Env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
 	plan.Env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
-
+	return len(providerSwitches) == 0
 }

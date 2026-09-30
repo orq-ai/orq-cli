@@ -26,7 +26,6 @@ func TestClaudeLaunchRoutesByDefaultAndHonorsOptOut(t *testing.T) {
 		{[]string{"--no-otel"}, true},
 		{[]string{"--no-otel", "--gateway"}, true},
 		{[]string{"--no-otel", "--no-gateway"}, false},
-		{[]string{"--no-otel", "--no-router"}, false},
 	} {
 		flags, rest, err := ParseArgv(tc.args, ParseArgvOptions{AllowTrace: true})
 		if err != nil || len(rest) != 0 {
@@ -257,7 +256,7 @@ func TestRouterWarnsAboutProviderSwitches(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(map[string]string{
 		"CLAUDE_CODE_USE_BEDROCK": "1",
 		"CLAUDE_CODE_USE_VERTEX":  "true",
-	}, routerFlags(GatewayFlags{})))
+	}, routerFlags(GatewayFlags{Trace: true, DryRun: true})))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,6 +276,9 @@ func TestRouterWarnsAboutProviderSwitches(t *testing.T) {
 	}
 	if warningsContain(plan, "usage bills to") {
 		t.Errorf("provider switch defeated routing, but a warning still claims workspace billing: %v", plan.Warnings)
+	}
+	if warningsContain(plan, "twice") {
+		t.Errorf("provider switch defeated routing, but a warning still claims double counting: %v", plan.Warnings)
 	}
 }
 

@@ -182,14 +182,12 @@ func TestParseArgvTraceFlags(t *testing.T) {
 	if flags, _, _ := ParseArgv([]string{"--no-otel"}, ParseArgvOptions{AllowTrace: true}); flags.Trace {
 		t.Fatalf("--no-otel must turn tracing off: %+v", flags)
 	}
-	for _, off := range []string{"--no-gateway", "--no-router"} {
-		flags, rest, err := ParseArgv([]string{off}, ParseArgvOptions{AllowTrace: true})
-		if err != nil || len(rest) != 0 || flags.Router {
-			t.Fatalf("%s must turn routing off: flags=%+v rest=%v err=%v", off, flags, rest, err)
-		}
-		flags, _, err = ParseArgv([]string{off, "--gateway"}, ParseArgvOptions{AllowTrace: true})
-		if err != nil || !flags.Router {
-			t.Fatalf("--gateway must turn routing back on after %s: %+v err=%v", off, flags, err)
-		}
+	flags, rest, err = ParseArgv([]string{"--no-gateway"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || len(rest) != 0 || flags.Router {
+		t.Fatalf("--no-gateway must turn routing off: flags=%+v rest=%v err=%v", flags, rest, err)
+	}
+	flags, _, err = ParseArgv([]string{"--no-gateway", "--gateway"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || !flags.Router {
+		t.Fatalf("--gateway must turn routing back on: %+v err=%v", flags, err)
 	}
 }

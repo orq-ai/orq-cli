@@ -124,7 +124,6 @@ Flags:
   --gateway             Send model traffic through the orq.ai AI Router (default).
                         Usage bills to the orq workspace, not your subscription
   --no-gateway          Keep your own Anthropic login for model calls
-  --no-router           Alias for --no-gateway
 `)
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)

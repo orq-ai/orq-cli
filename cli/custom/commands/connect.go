@@ -1860,14 +1860,22 @@ func setupConnectStep(rep *reporter, client *auth.Client, state *authState, opts
 	if err != nil {
 		return nil, err
 	}
-	// The same leg connectSelected runs, for the same reason: setup offers mcp
-	// in its capability picker, so a setup that selected it and wrote no entry
-	// promises a wire it never made.
-	if hasCap(caps, capMCP) {
+	return connectSetupCapabilities(rep, opts, agents, results), nil
+}
+
+// connectSetupCapabilities runs the credential-independent legs after setup's
+// gateway work. Setup offers both in its picker, and its final screen must
+// report their outcomes alongside the gateway wire.
+func connectSetupCapabilities(rep *reporter, opts *setupOptions, agents []string, results []agentResult) []agentResult {
+	if hasCap(opts.caps, capMCP) {
 		mcpResults, _ := connectMCP(rep, opts, agents)
 		results = applyMCPResults(results, mcpResults)
 	}
-	return results, nil
+	if hasCap(opts.caps, capOtel) {
+		otelResults, _ := connectOtel(rep, opts, agents)
+		results = applyOtelResults(results, otelResults)
+	}
+	return results
 }
 
 // applyMCPResults folds the MCP leg into setup's per-agent results, so the final
@@ -1893,6 +1901,29 @@ func applyMCPResults(results []agentResult, mcp []mcpResult) []agentResult {
 		}
 		if !found {
 			results = append(results, agentResult{Agent: m.Agent, MCP: m.Path, MCPError: m.Error})
+		}
+	}
+	return results
+}
+
+// applyOtelResults preserves the gateway and MCP outcomes while adding the
+// tracing install to setup's final screen and setup_complete verdict. A skip
+// for an agent without a plugin mechanism is informational, like connect.
+func applyOtelResults(results []agentResult, otel []otelResult) []agentResult {
+	for _, o := range otel {
+		if o.Error == "" && o.Path == "" {
+			continue
+		}
+		found := false
+		for i := range results {
+			if results[i].Agent != o.Agent {
+				continue
+			}
+			found = true
+			results[i].Otel, results[i].OtelError = o.Path, o.Error
+		}
+		if !found {
+			results = append(results, agentResult{Agent: o.Agent, Otel: o.Path, OtelError: o.Error})
 		}
 	}
 	return results

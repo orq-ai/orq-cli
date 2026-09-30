@@ -169,7 +169,7 @@ func setupComplete(verified bool, agents []agentResult) bool {
 		return false
 	}
 	for _, a := range agents {
-		if a.Error != "" || a.Skipped != "" || a.MCPError != "" {
+		if a.Error != "" || a.Skipped != "" || a.MCPError != "" || a.OtelError != "" {
 			return false
 		}
 	}
@@ -188,8 +188,13 @@ type agentResult struct {
 	// capability was not requested. One field per capability, like Skills: the
 	// final screen labels each row with the capability that produced it, so a
 	// shared field would make it name the wrong one.
-	MCP   string `json:"mcp,omitempty"`
-	Error string `json:"error,omitempty"`
+	MCP string `json:"mcp,omitempty"`
+	// Otel is the persistent plugin path when setup selected tracing. An
+	// install failure needs its own field so it cannot overwrite a gateway or
+	// MCP failure on the same agent.
+	Otel      string `json:"otel,omitempty"`
+	OtelError string `json:"otel_error,omitempty"`
+	Error     string `json:"error,omitempty"`
 	// MCPError is an MCP write that was attempted and failed. Separate from
 	// Error because Error is the gateway's — the final screen renders it under
 	// that label — and one agent can lose both wires in the same run. Folding
@@ -2178,6 +2183,12 @@ func printFinalScreen(rep *reporter, agents []agentResult, links map[string]stri
 			rows = append(rows, capRow{paint(ansiRed, "✗"), capMCP, a.MCPError})
 		case a.MCP != "":
 			rows = append(rows, capRow{paint(ansiOK, "✓"), capMCP, tilde(a.MCP)})
+		}
+		switch {
+		case a.OtelError != "":
+			rows = append(rows, capRow{paint(ansiRed, "✗"), capOtel, a.OtelError})
+		case a.Otel != "":
+			rows = append(rows, capRow{paint(ansiOK, "✓"), capOtel, tilde(a.Otel)})
 		}
 		if len(rows) == 0 {
 			continue

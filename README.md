@@ -348,7 +348,7 @@ orq datasets delete <id> --force   # required in CI
 
 ## Launch
 
-`orq launch <agent>` starts a coding-agent CLI preconfigured to route model calls through the orq.ai AI Router — one command, no manual env or config wiring. Authenticate first with `orq auth login` (or export `ORQ_API_KEY`). Claude Code can use its own login for model calls with `--no-gateway` (also spelled `--no-router`).
+`orq launch <agent>` starts a coding-agent CLI preconfigured to route model calls through the orq.ai AI Router — one command, no manual env or config wiring. Authenticate first with `orq auth login` (or export `ORQ_API_KEY`). Claude Code can use its own login for model calls with `--no-gateway`.
 
 ```sh
 orq launch claude                 # Claude Code, with model calls through the orq AI Router
@@ -377,8 +377,8 @@ orq's skills are linked into the agent's skills directory under the directory yo
 
 `orq launch claude` routes Claude Code's model calls through the orq AI Router and picks no model for it, so a `/model` choice survives a restart. Gateway routing and session tracing are on, like MCP and skills:
 
-- Tracing turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so a session is never counted twice. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one. `--no-otel` leaves the session uncaptured. To capture the sessions you start yourself, install the plugin permanently with `orq connect claude otel`; the launcher then uses that copy.
-- `--gateway` explicitly selects the default routing through `<host>/v3/anthropic`, where usage bills to the workspace the launcher names. `--no-gateway` or `--no-router` keeps model calls on your own Anthropic login. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers let `/model opus|sonnet|haiku` resolve to gateway refs when routing is on.
+- Tracing turns on Claude Code's metrics and logs export to `<host>/v2/otel` and loads the `orq-trace` plugin for that session only, through `--plugin-dir`. The plugin ships inside the binary and writes the session's spans; Claude Code's own trace exporter stays off so it does not create duplicate session spans. The plugin itself is never installed into `~/.claude`, and its hooks need `node` on PATH. If you already have `orq-trace` installed and enabled, the launcher uses your copy instead of loading a second one. `--no-otel` leaves the session uncaptured. To capture the sessions you start yourself, install the plugin permanently with `orq connect claude otel`; the launcher then uses that copy.
+- `--gateway` explicitly selects the default routing through `<host>/v3/anthropic`, where usage bills to the workspace the launcher names. `--no-gateway` keeps model calls on your own Anthropic login. No model is forced; the three `ANTHROPIC_DEFAULT_*_MODEL` tiers let `/model opus|sonnet|haiku` resolve to gateway refs when routing is on.
 
 With default routing and tracing the same call is recorded twice, once as a router row and once in the session trace, with different trace ids, so summing cost across both double-counts. `--no-otel` keeps one copy.
 
@@ -394,7 +394,7 @@ With default routing and tracing the same call is recorded twice, once as a rout
 | `--no-mcp` | Do not wire the orq MCP server for this session |
 | `--no-skills` | Do not link orq's skills into the agent for this session |
 | `--gateway` | claude only: route model calls through the orq AI Router, onto workspace billing — the default |
-| `--no-gateway`, `--no-router` | claude only: keep model calls on your own Anthropic login |
+| `--no-gateway` | claude only: keep model calls on your own Anthropic login |
 | `--otel` | claude only: capture the session as a trace in your workspace — the default |
 | `--no-otel` | claude only: do not capture this session |
 | `-p, --prompt <text>` | One-shot prompt, mapped to the agent's own syntax |
