@@ -1,6 +1,9 @@
 package launch
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -224,5 +227,124 @@ func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
 	plan, _ = resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_API_KEY": "sk-ant"}, GatewayFlags{DryRun: true}))
 	if !warningsContain(plan, "ANTHROPIC_API_KEY") {
 		t.Fatalf("api key, warnings: %v", plan.Warnings)
+	}
+}
+
+// --router points claude at the gateway through ANTHROPIC_BASE_URL, which
+// claude does not read once a provider switch selects Bedrock, Vertex or any
+// of their siblings. A switch left in the shell would leave --router claiming
+// a route it does not take, so the session clears every one of them.
+func TestRouterClearsProviderSwitches(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(map[string]string{
+		"CLAUDE_CODE_USE_BEDROCK": "1",
+		"CLAUDE_CODE_USE_VERTEX":  "true",
+	}, routerFlags(GatewayFlags{})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range claudeProviderSwitches {
+		v, ok := plan.Env[k]
+		if !ok || v != "" {
+			t.Errorf("%s = %q (set %v), want an explicit empty value", k, v, ok)
+		}
+	}
+	// Silently undoing what the shell says is worse than saying so.
+	var said bool
+	for _, w := range plan.Warnings {
+		if strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") && strings.Contains(w, "CLAUDE_CODE_USE_VERTEX") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("no warning naming the switches that were unset: %v", plan.Warnings)
+	}
+}
+
+// Without --router claude stays on the user's own login, and a provider switch
+// there is their own arrangement: clearing it would move the session off the
+// provider they chose.
+func TestDefaultLaunchLeavesProviderSwitchesAlone(t *testing.T) {
+	plan, err := resolveClaude(claudeCtx(map[string]string{"CLAUDE_CODE_USE_BEDROCK": "1"}, GatewayFlags{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := plan.Env["CLAUDE_CODE_USE_BEDROCK"]; ok {
+		t.Errorf("a default launch touched the provider switch: %v", plan.Env)
+	}
+}
+
+// The gateway rejects a bare Anthropic model id, and a model can reach claude
+// from a settings file as easily as from a flag. Before this, a user whose
+// ~/.claude/settings.json pinned one got no warning and an opaque gateway
+// refusal instead.
+func TestRouterWarnsAboutAModelPinnedInSettings(t *testing.T) {
+	configDir := t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(configDir, "settings.json"), `{"model":"claude-sonnet-4-5"}`)
+
+	plan, err := resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, routerFlags(GatewayFlags{})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan.Warnings, func(w string) bool {
+		return strings.Contains(w, "claude-sonnet-4-5") && strings.Contains(w, "provider/")
+	}) {
+		t.Errorf("no prefix warning for the pinned model: %v", plan.Warnings)
+	}
+	// Warned about, never re-exported: claude reads its own settings.
+	if _, ok := plan.Env["ANTHROPIC_MODEL"]; ok {
+		t.Errorf("the pinned model was re-exported: %v", plan.Env)
+	}
+
+	// A project file outranks the user one, the way claude resolves them.
+	t.Chdir(t.TempDir())
+	write(filepath.Join(".claude", "settings.json"), `{"model":"anthropic/claude-sonnet-5"}`)
+	plan, err = resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, routerFlags(GatewayFlags{})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
+		t.Errorf("warned although the nearer settings file names a gateway ref: %v", plan.Warnings)
+	}
+}
+
+// The tier aliases are the common thing to pin, and the launch resolves them
+// itself through the three ANTHROPIC_DEFAULT_*_MODEL vars it sets, so they are
+// not models missing a prefix. A real run warned about "opus" before this.
+func TestRouterDoesNotWarnAboutATierAlias(t *testing.T) {
+	for _, alias := range []string{"opus", "sonnet", "haiku", "opusplan"} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"model":"`+alias+`"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		plan, err := resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": dir}, routerFlags(GatewayFlags{})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
+			t.Errorf("%s: warned about a tier alias: %v", alias, plan.Warnings)
+		}
+	}
+}
+
+// A settings file that does not parse, or that pins a tier object rather than
+// an id, must not invent a model to warn about.
+func TestSettingsModelIgnoresWhatItCannotRead(t *testing.T) {
+	for _, body := range []string{`{ this is not json`, `{"model":{"opus":"x"}}`, `{}`} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := claudeSettingsModel(env(map[string]string{"CLAUDE_CONFIG_DIR": dir})); got != "" {
+			t.Errorf("%s: model = %q, want none", body, got)
+		}
 	}
 }

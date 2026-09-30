@@ -171,13 +171,16 @@ jobs:
           fi
 
   windows:
-    name: skills on windows
-    # cli/custom/skills has a Windows-only half — LockFileEx in flock_windows.go,
+    name: skills and launch on windows
+    # cli/custom/skills has a Windows-only half: LockFileEx in flock_windows.go,
     # copies instead of symlinks, and the .orq-owned marker that stands in for
     # resolving one. None of it is compiled by the Linux job, so before this
-    # existed the first Windows user was the first execution. Only the skills
-    # package runs here: it is the part with an OS-specific implementation, and
-    # the rest of the CLI is covered by the stable job.
+    # existed the first Windows user was the first execution.
+    #
+    # cli/custom/launch joins it for the same reason: a traced session writes a
+    # plugin directory and then hands that path to node as an import specifier,
+    # which is where a Windows path stops being a URL. The rest of the CLI is
+    # covered by the stable job.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -185,7 +188,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: go test
-        run: go test ./cli/custom/skills/
+        run: go test ./cli/custom/skills/ ./cli/custom/launch/
 
   installer:
     name: install.sh runs under dash

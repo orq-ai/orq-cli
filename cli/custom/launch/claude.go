@@ -1,7 +1,9 @@
 package launch
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -99,6 +101,8 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 			plan.Warnings = append(plan.Warnings,
 				"--router records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
 		}
+	} else {
+		declineTrace(ctx, plan)
 	}
 
 	if url := mcpURL(ctx); url != "" && !persistedMCPConfigured("claude") {
@@ -129,6 +133,66 @@ func noopNormalize(model string) string { return model }
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
 // claude's own default and any /model choice alone, and the tier variables
 // below are what turn its default aliases into gateway refs.
+// claudeTierAliases are the model names claude resolves through the three
+// ANTHROPIC_DEFAULT_*_MODEL vars this launch sets, so they reach the gateway as
+// the refs below and not as themselves. Warning that they have no provider/
+// prefix would be a warning about a value the launch already resolved:
+// "opus" pinned in a settings file is the common case.
+var claudeTierAliases = map[string]bool{
+	"opus":     true,
+	"sonnet":   true,
+	"haiku":    true,
+	"opusplan": true,
+}
+
+// claudeProviderSwitches are the env switches that move claude off the
+// Anthropic API and onto a provider with its own endpoint variable. Read from
+// the claude 2.1.281 bundle, which keeps them in one list next to
+// ANTHROPIC_BEDROCK_BASE_URL and its siblings.
+var claudeProviderSwitches = []string{
+	"CLAUDE_CODE_USE_BEDROCK",
+	"CLAUDE_CODE_USE_VERTEX",
+	"CLAUDE_CODE_USE_FOUNDRY",
+	"CLAUDE_CODE_USE_ANTHROPIC_AWS",
+	"CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+	"CLAUDE_CODE_USE_MANTLE",
+	"CLAUDE_CODE_USE_GATEWAY",
+}
+
+// claudeSettingsModel returns the model pinned in claude's settings files, in
+// claude's own precedence order. It reports the first file that parses and
+// names one; an unreadable or surprising file means "nothing pinned", because
+// this feeds a warning and a warning invented from a guess is worse than none.
+// A non-string value (a tier alias object, say) is not a model id.
+func claudeSettingsModel(getenv func(string) string) string {
+	dirs := []string{
+		filepath.Join(".claude", "settings.local.json"),
+		filepath.Join(".claude", "settings.json"),
+	}
+	if dir := strings.TrimSpace(getenv("CLAUDE_CONFIG_DIR")); dir != "" {
+		dirs = append(dirs, filepath.Join(dir, "settings.json"))
+	} else if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".claude", "settings.json"))
+	}
+	for _, path := range dirs {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var settings struct {
+			Model json.RawMessage `json:"model"`
+		}
+		if json.Unmarshal(data, &settings) != nil {
+			continue
+		}
+		var model string
+		if json.Unmarshal(settings.Model, &model) == nil && model != "" {
+			return model
+		}
+	}
+	return ""
+}
+
 func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	getenv := ctx.Getenv
 
@@ -145,15 +209,35 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
 	}
 	// An inherited ANTHROPIC_MODEL is warned about but never re-exported: it
-	// already reaches claude on its own.
-	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL")); model != "" && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
+	// already reaches claude on its own, and so does a model pinned in a
+	// settings file. Either one reaches the gateway as a bare Anthropic id,
+	// which it rejects, so the warning has to read all three sources claude
+	// reads, in the order claude resolves them.
+	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), claudeSettingsModel(getenv)); model != "" &&
+		!claudeTierAliases[model] && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-4-6", model))
+			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-5", model))
 	}
 
 	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
 	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
 	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
+	// Each of these picks a provider whose own base URL claude reads instead of
+	// ANTHROPIC_BASE_URL, so one left in the shell makes --router a flag that
+	// says it routes and does not. They are cleared for the session, and an
+	// empty value is off rather than present: claude 2.1.281 accepts only
+	// 1, true, yes or on as the switch being set.
+	var providerSwitches []string
+	for _, k := range claudeProviderSwitches {
+		if getenv(k) != "" {
+			providerSwitches = append(providerSwitches, k)
+		}
+		plan.Env[k] = ""
+	}
+	if len(providerSwitches) > 0 {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"%s set in your shell would send claude to that provider instead of the orq.ai AI Router, so this session unsets it", strings.Join(providerSwitches, ", ")))
+	}
 	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
 	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
 	// Code reads the haiku tier below for its background calls.

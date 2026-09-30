@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -271,8 +272,12 @@ func TestTracePinsThePluginDestination(t *testing.T) {
 	if err != nil {
 		t.Skip("node not on PATH")
 	}
-	script := `const c = await import(process.argv[1] + "/src/config.js");
-const o = await import(process.argv[1] + "/src/otlp.js");
+	// A bare path is not a valid import specifier on Windows, where the plugin
+	// directory reads C:\..., so the specifier is built as a file URL.
+	script := `const { pathToFileURL } = await import("node:url");
+const root = pathToFileURL(process.argv[1]).href;
+const c = await import(root + "/src/config.js");
+const o = await import(root + "/src/otlp.js");
 console.log(o.getEndpoint() + " " + c.getApiKey());`
 	cmd := exec.Command(node, "--input-type=module", "-e", script, pluginDirArg(plan))
 	env := map[string]string{"HOME": home, "ORQ_PROFILE": "staging", "ORQ_TRACE_PROFILE": "staging"}
@@ -318,5 +323,44 @@ func TestTracePluginProbeTreatsBadJSONAsNotInstalled(t *testing.T) {
 		if pluginDirArg(plan) == "" {
 			t.Errorf("probe output %q: no --plugin-dir, so the session writes no spans: %v", out, plan.PreArgs)
 		}
+	}
+}
+
+// --no-otel has to reach a plugin the user installed to trace every session.
+// `orq connect otel` leaves orq-trace enabled in the user's claude config, and
+// its hooks start as soon as they find a key, which the launch supplies, so
+// without the plugin's own switch the flag would decline nothing.
+func TestNoOtelSwitchesOffAnInstalledPlugin(t *testing.T) {
+	installed := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace","enabled":true}]`
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false}, recordingProbe(new([]probeCall), installed, "")))
+
+	if got := plan.Env["ORQ_TRACE_DISABLED"]; got != "1" {
+		t.Errorf("ORQ_TRACE_DISABLED = %q, want 1", got)
+	}
+	// Nothing may turn telemetry on either, or the native exporter traces
+	// what the plugin was just told not to.
+	if plan.Env["CLAUDE_CODE_ENABLE_TELEMETRY"] != "" {
+		t.Errorf("--no-otel still enabled telemetry: %v", plan.Env)
+	}
+	if pluginDirArg(plan) != "" {
+		t.Errorf("--no-otel still loaded a plugin: %v", plan.PreArgs)
+	}
+	// The user who installed it expects every session captured, so say which
+	// session is not.
+	if !slices.ContainsFunc(plan.Notes, func(n string) bool { return strings.Contains(n, "--no-otel") }) {
+		t.Errorf("no note about the installed plugin being off: %v", plan.Notes)
+	}
+}
+
+// The switch is set whether or not a plugin is installed: the probe cannot run
+// in a dry run, and a user can install the plugin after this launch is planned.
+func TestNoOtelSetsTheSwitchWithoutProbing(t *testing.T) {
+	var calls []probeCall
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false, DryRun: true}, recordingProbe(&calls, "[]", "")))
+	if got := plan.Env["ORQ_TRACE_DISABLED"]; got != "1" {
+		t.Errorf("ORQ_TRACE_DISABLED = %q, want 1", got)
+	}
+	if len(calls) != 0 {
+		t.Errorf("a dry run ran claude: %v", calls)
 	}
 }

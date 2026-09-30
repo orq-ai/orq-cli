@@ -172,3 +172,24 @@ func writeTraceConfig(path, endpoint string) error {
 	}
 	return os.WriteFile(path, data, 0o600)
 }
+
+// declineTrace holds --no-otel against a plugin the user installed to run in
+// every session. `orq connect otel` leaves orq-trace enabled in the user's
+// claude config, and its hooks trace on their own as soon as they find a key,
+// which the launch puts in the env. Declining the capability has to reach
+// them, so the session carries the plugin's own switch; Claude Code strips
+// OTEL_* from the env its hooks run with, and this name is not OTEL_*.
+func declineTrace(ctx *AgentContext, plan *LaunchPlan) {
+	plan.Env["ORQ_TRACE_DISABLED"] = "1"
+	if ctx.Flags.DryRun {
+		return
+	}
+	// Worth saying only when there is an install to contradict: a user who ran
+	// `orq connect otel` expects every session captured.
+	installed, err := TracePluginInstalled(ctx.ExecProbe)
+	if err != nil || !installed {
+		return
+	}
+	plan.Notes = append(plan.Notes,
+		"the orq-trace plugin installed in your claude config is switched off for this session, because you passed --no-otel")
+}

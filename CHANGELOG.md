@@ -140,6 +140,22 @@ controls on surface changes, whichever side they originate from.
   `--status` like the other three, and `-o json` carries it under `otel`.
   Claude Code is the only agent with a plugin mechanism for it; the others
   report that rather than a wire.
+- **Changed: `--router` no longer loses to a provider switch in your shell.**
+  `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` and their siblings send
+  Claude Code to that provider, where the gateway URL is not read at all, so
+  `--router` claimed a route it did not take. They are now unset for the
+  session, and the warning names the one that was in the way. The missing
+  `provider/` prefix warning also reads a model pinned in a claude settings
+  file, not only `--model` and `ANTHROPIC_MODEL`.
+- **Changed (breaking): a bare `orq connect` now installs a plugin that traces
+  every later Claude Code session.** Naming no capability has always meant all
+  of them, and `otel` is now one of them, so `orq connect claude` writes the
+  `orq-trace` plugin into your claude config rather than into one session. It
+  keeps tracing sessions you start yourself, with no orq command involved,
+  until you run `orq disconnect claude otel`. To wire the rest and leave
+  tracing out, name what you want: `orq connect claude mcp skills`. A session
+  can still decline it one at a time with `orq launch claude --no-otel`, which
+  now also switches off an installed plugin for that session.
 - **Changed (breaking): the capability is spelled `otel`, not `tracing`.** The
   earlier spelling parsed and then refused itself with "not available yet", so
   `orq connect tracing` and `orq setup --capability tracing` are now errors that
