@@ -363,6 +363,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	complete := setupComplete(verified, agentResults)
 	result["setup_complete"] = complete
+	if err := persistUnselectedSetupKey(rep, authState, opts, complete); err != nil {
+		return err
+	}
 
 	printFinalScreen(rep, agentResults, links, complete, opts)
 
@@ -450,11 +453,9 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 		// name being selected, not on profileInForce() — the latter is false for a
 		// name with no entry, so it never created the profile the user asked for.
 		//
-		// With NO profile selected the key becomes a host-keyed api-key login;
-		// applyStoredAPIKeyLogin injects it on every later command. This replaces
-		// the earlier reliance on the shell env file, which resolveAPIKey skipped
-		// for a supplied key (it returns before writeShellEnvFile), so the key was
-		// persisted nowhere.
+		// With NO profile selected, the key becomes a host-keyed api-key login
+		// after setup succeeds. Saving it here would replace a working login even
+		// when verification or a later setup step fails.
 		//
 		// persistKey is false on connect: it must not replace a credential the user
 		// did not ask to replace, so there the key is used for this run only.
@@ -465,10 +466,7 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 			}
 			rep.ok("saved the key you passed to profile %s", bartoloProfileName())
 		case opts.persistKey:
-			if err := saveSuppliedAPIKeyLogin(key); err != nil {
-				return nil, err
-			}
-			rep.ok("saved the key you passed")
+			rep.ok("using the key you passed")
 		default:
 			rep.ok("api key from --api-key (not saved)")
 		}
@@ -835,6 +833,20 @@ func saveSuppliedAPIKeyLogin(key string) error {
 		Source:     auth.APIKeyLoginSource,
 		APIKey:     key,
 	})
+}
+
+// persistUnselectedSetupKey commits a supplied key only after setup has
+// verified it and completed every requested agent write. A failed run leaves
+// the previous host login in place for later commands.
+func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptions, complete bool) error {
+	if !complete || !opts.persistKey || state.suppliedKey == "" || bartoloProfileName() != "" {
+		return nil
+	}
+	if err := saveSuppliedAPIKeyLogin(state.suppliedKey); err != nil {
+		return err
+	}
+	rep.ok("saved the key you passed")
+	return nil
 }
 
 // saveGatewayKeyProfile records the minted key on the login it was minted

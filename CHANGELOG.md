@@ -123,8 +123,9 @@ controls on surface changes, whichever side they originate from.
   switches back. `--profile x --api-key` still saves to profile `x`, and a
   selected profile or user-supplied environment key takes precedence.
   `orq status` reports the credential in use, and
-  `orq auth logout` clears the stored login. `orq setup --api-key` also
-  persists the key when no profile is selected. Login JSON keeps its `profile`
+  `orq auth logout` clears the stored login. A successful `orq setup --api-key`
+  also persists the key when no profile is selected; a failed setup keeps the
+  previous login. Login JSON keeps its `profile`
   field, empty when none was selected.
 
 ## [10.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.0.0) — 2026-09-21

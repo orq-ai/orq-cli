@@ -419,15 +419,18 @@ func TestResolveAuthPersistsSuppliedKeyToSelectedProfile(t *testing.T) {
 	}
 }
 
-func TestResolveAuthPersistsSuppliedKeyWithoutProfile(t *testing.T) {
+func TestResolveAuthDefersUnselectedKeyUntilSetupCompletes(t *testing.T) {
 	credsHarness(t)
 	viper.Set("profile", "")
 	if err := auth.ClearSession(); err != nil {
 		t.Fatal(err)
 	}
-	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
-		apiKey: "sk-orq-login", persistKey: true,
-	})
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+	opts := &setupOptions{apiKey: "sk-orq-login", persistKey: true}
+	rep := &reporter{w: io.Discard}
+	state, err := resolveAuth(context.Background(), rep, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,8 +438,22 @@ func TestResolveAuthPersistsSuppliedKeyWithoutProfile(t *testing.T) {
 		t.Errorf("unselected key wrote a profile or did not resolve: state=%+v", state)
 	}
 	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Fatalf("resolveAuth replaced the previous login before setup completed: %+v, err = %v", login, err)
+	}
+	if err := persistUnselectedSetupKey(rep, state, opts, false); err != nil {
+		t.Fatal(err)
+	}
+	login, err = auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Fatalf("failed setup replaced the previous login: %+v, err = %v", login, err)
+	}
+	if err := persistUnselectedSetupKey(rep, state, opts, true); err != nil {
+		t.Fatal(err)
+	}
+	login, err = auth.ReadAPIKeyLogin()
 	if err != nil || login == nil || login.APIKey != "sk-orq-login" {
-		t.Errorf("host-keyed login = %+v, err = %v", login, err)
+		t.Errorf("successful setup did not save the supplied key: %+v, err = %v", login, err)
 	}
 }
 
@@ -458,6 +475,34 @@ func TestResolveAuthNonpersistentKeyLeavesStoredLoginUntouched(t *testing.T) {
 	login, err := auth.ReadAPIKeyLogin()
 	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
 		t.Errorf("nonpersistent key changed stored login: %+v, err = %v", login, err)
+	}
+}
+
+func TestFailedSetupLeavesPreviousAPIKeyLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	auth.SetServer(srv.URL, "test")
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{Use: "setup"}
+	cmd.Version = "test"
+	err := runSetup(cmd, &setupOptions{apiKey: "sk-orq-rejected", persistKey: true, noProject: true})
+	if err == nil {
+		t.Fatal("setup with a rejected key succeeded")
+	}
+	login, readErr := auth.ReadAPIKeyLogin()
+	if readErr != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Errorf("failed setup replaced the previous login: %+v, err = %v", login, readErr)
 	}
 }
 
