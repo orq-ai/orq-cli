@@ -22,9 +22,9 @@ function Build-Fake([string]$name, [string]$version, [string]$versionExit, [stri
 function Invoke-WebRequest {
   param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing)
   if ($Uri.EndsWith('.sha256')) {
-    return [pscustomobject]@{ Content = [Text.Encoding]::ASCII.GetBytes("$script:digest  orq-win32-x64.exe") }
+    return [pscustomobject]@{ Content = [Text.Encoding]::ASCII.GetBytes("$global:installerTestDigest  orq-win32-x64.exe") }
   }
-  Copy-Item $script:downloadFile $OutFile
+  Copy-Item $global:installerTestDownloadFile $OutFile
 }
 
 function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup) {
@@ -44,13 +44,13 @@ try {
   $setupBad = Build-Fake 'setup-bad' '2.0.0' '0' '13'
 
   # A byte[] checksum response is what Windows PowerShell 5.1 receives from GitHub.
-  $script:downloadFile = $good
-  $script:digest = (Get-FileHash $good -Algorithm SHA256).Hash
+  $global:installerTestDownloadFile = $good
+  $global:installerTestDigest = (Get-FileHash $good -Algorithm SHA256).Hash
   $freshDir = Join-Path $scratch 'fresh'
   Run-Installer $freshDir -fromText
   $freshTarget = Join-Path $freshDir 'orq.exe'
   Assert (Test-Path $freshTarget) 'scriptblock install did not create orq.exe'
-  Assert ((Get-FileHash $freshTarget).Hash -eq $script:digest) 'fresh install has wrong binary'
+  Assert ((Get-FileHash $freshTarget).Hash -eq $global:installerTestDigest) 'fresh install has wrong binary'
 
   # An executable that prints a version and exits nonzero must not replace the old one.
   $upgradeDir = Join-Path $scratch 'upgrade'
@@ -58,8 +58,8 @@ try {
   $upgradeTarget = Join-Path $upgradeDir 'orq.exe'
   Copy-Item $old $upgradeTarget
   $oldDigest = (Get-FileHash $upgradeTarget).Hash
-  $script:downloadFile = $bad
-  $script:digest = (Get-FileHash $bad -Algorithm SHA256).Hash
+  $global:installerTestDownloadFile = $bad
+  $global:installerTestDigest = (Get-FileHash $bad -Algorithm SHA256).Hash
   $upgradeError = $null
   try { Run-Installer $upgradeDir } catch { $upgradeError = $_ }
   Assert ($null -ne $upgradeError) 'nonzero version probe was accepted'
@@ -69,8 +69,8 @@ try {
   Assert (-not (Test-Path "$upgradeTarget.previous")) 'failed upgrade left a backup'
 
   # Setup errors must be visible to the caller after an otherwise valid install.
-  $script:downloadFile = $setupBad
-  $script:digest = (Get-FileHash $setupBad -Algorithm SHA256).Hash
+  $global:installerTestDownloadFile = $setupBad
+  $global:installerTestDigest = (Get-FileHash $setupBad -Algorithm SHA256).Hash
   $setupDir = Join-Path $scratch 'setup'
   $setupError = $null
   try { Run-Installer $setupDir -runSetup } catch { $setupError = $_ }
@@ -80,5 +80,6 @@ try {
 
   Write-Host 'PowerShell installer integration tests passed'
 } finally {
+  Remove-Variable installerTestDownloadFile, installerTestDigest -Scope Global -ErrorAction SilentlyContinue
   Remove-Item $scratch -Recurse -Force -ErrorAction SilentlyContinue
 }
