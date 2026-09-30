@@ -60,9 +60,10 @@ try {
   $oldDigest = (Get-FileHash $upgradeTarget).Hash
   $script:downloadFile = $bad
   $script:digest = (Get-FileHash $bad -Algorithm SHA256).Hash
-  $failed = $false
-  try { Run-Installer $upgradeDir } catch { $failed = $true }
-  Assert $failed 'nonzero version probe was accepted'
+  $upgradeError = $null
+  try { Run-Installer $upgradeDir } catch { $upgradeError = $_ }
+  Assert ($null -ne $upgradeError) 'nonzero version probe was accepted'
+  Assert ($upgradeError.Exception.Message -match 'previous one is being restored') "unexpected upgrade failure: $($upgradeError.Exception.Message)"
   Assert (Test-Path $upgradeTarget) 'failed upgrade removed orq.exe'
   Assert ((Get-FileHash $upgradeTarget).Hash -eq $oldDigest) 'failed upgrade did not restore the old binary'
   Assert (-not (Test-Path "$upgradeTarget.previous")) 'failed upgrade left a backup'
@@ -71,9 +72,10 @@ try {
   $script:downloadFile = $setupBad
   $script:digest = (Get-FileHash $setupBad -Algorithm SHA256).Hash
   $setupDir = Join-Path $scratch 'setup'
-  $failed = $false
-  try { Run-Installer $setupDir -runSetup } catch { $failed = ($_.Exception.Message -match 'setup exited 13') }
-  Assert $failed 'setup exit code was ignored'
+  $setupError = $null
+  try { Run-Installer $setupDir -runSetup } catch { $setupError = $_ }
+  Assert ($null -ne $setupError) 'setup exit code was ignored'
+  Assert ($setupError.Exception.Message -match 'setup exited 13') "unexpected setup failure: $($setupError.Exception.Message)"
   Assert (Test-Path (Join-Path $setupDir 'orq.exe')) 'setup failure removed the installed CLI'
 
   Write-Host 'PowerShell installer integration tests passed'
