@@ -155,7 +155,10 @@ controls on surface changes, whichever side they originate from.
   until you run `orq disconnect claude otel`. To wire the rest and leave
   tracing out, name what you want: `orq connect claude mcp skills`. A session
   can still decline it one at a time with `orq launch claude --no-otel`, which
-  now also switches off an installed plugin for that session.
+  now also switches off an installed plugin for that session. That switch
+  reaches orq-trace 0.5.0 and newer; against an older install the launch says
+  so and warns that the session is still traced, rather than reporting a
+  decline it cannot deliver.
 - **Changed: the capability is spelled `otel`, not `tracing`.** The
   earlier spelling parsed and then refused itself with "not available yet", so
   `orq connect tracing` and `orq setup --capability tracing` are now errors that

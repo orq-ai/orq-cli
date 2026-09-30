@@ -318,7 +318,7 @@ func TestRouterWarnsAboutAModelPinnedInSettings(t *testing.T) {
 // itself through the three ANTHROPIC_DEFAULT_*_MODEL vars it sets, so they are
 // not models missing a prefix. A real run warned about "opus" before this.
 func TestRouterDoesNotWarnAboutATierAlias(t *testing.T) {
-	for _, alias := range []string{"opus", "sonnet", "haiku", "opusplan"} {
+	for _, alias := range []string{"opus", "sonnet", "haiku", "opusplan", "sonnet[1m]", "opus[1m]", "opusplan[1m]"} {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"model":"`+alias+`"}`), 0o600); err != nil {
 			t.Fatal(err)
@@ -329,6 +329,21 @@ func TestRouterDoesNotWarnAboutATierAlias(t *testing.T) {
 		}
 		if slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
 			t.Errorf("%s: warned about a tier alias: %v", alias, plan.Warnings)
+		}
+	}
+}
+
+// `fable` and `best` are not tier aliases this launch resolves: it sets no
+// fable tier variable, so the model does reach the gateway as itself and the
+// warning is the right answer.
+func TestRouterStillWarnsAboutAnUnresolvedAlias(t *testing.T) {
+	for _, alias := range []string{"fable", "best"} {
+		plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_MODEL": alias}, routerFlags(GatewayFlags{})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
+			t.Errorf("%s: no warning about a model the launch does not resolve: %v", alias, plan.Warnings)
 		}
 	}
 }

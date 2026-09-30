@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -138,29 +139,67 @@ func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
 // rather than from here: a launch cannot assume the user's claude is on PATH,
 // and connect has already run it.
 func TracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
+	installed, _, err := tracePluginInstall(run)
+	return installed, err
+}
+
+// tracePluginInstall also reports the installed version, which decides whether
+// --no-otel can reach that copy: the switch it sets is read by the plugin from
+// traceSwitchVersion on, and an older install traces the session regardless.
+func tracePluginInstall(run func(string, ...string) (string, error)) (bool, string, error) {
 	if run == nil {
-		return false, nil
+		return false, "", nil
 	}
 	out, err := run("claude", "plugin", "list", "--json")
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	var plugins []struct {
 		ID      string `json:"id"`
 		Name    string `json:"name"`
+		Version string `json:"version"`
 		Enabled bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal([]byte(out), &plugins); err != nil {
-		return false, err
+		return false, "", err
 	}
 	for _, p := range plugins {
 		// Installed ids read orq-trace@<marketplace>; name is the fallback for
 		// a build that reports the plugin without one.
 		if p.Enabled && (p.Name == TracePluginName || strings.HasPrefix(p.ID, TracePluginName+"@")) {
-			return true, nil
+			return true, p.Version, nil
 		}
 	}
-	return false, nil
+	return false, "", nil
+}
+
+// traceSwitchVersion is the first orq-trace release whose hooks read
+// ORQ_TRACE_DISABLED. Below it, the switch is inert.
+const traceSwitchVersion = "0.5.0"
+
+// honoursTraceSwitch answers for a version string as `claude plugin list`
+// reports it. An unreadable or absent version counts as too old, because the
+// cost of guessing wrong is a session traced after the user declined.
+func honoursTraceSwitch(version string) bool {
+	want := strings.Split(traceSwitchVersion, ".")
+	got := strings.Split(strings.TrimPrefix(strings.TrimSpace(version), "v"), ".")
+	if len(got) < len(want) {
+		return false
+	}
+	for i := range want {
+		g, err := strconv.Atoi(strings.SplitN(got[i], "-", 2)[0])
+		if err != nil {
+			return false
+		}
+		w, err := strconv.Atoi(want[i])
+		if err != nil {
+			return false
+		}
+		if g != w {
+			return g > w
+		}
+	}
+	return true
 }
 
 func writeTraceConfig(path, endpoint string) error {
@@ -185,9 +224,25 @@ func declineTrace(ctx *AgentContext, plan *LaunchPlan) {
 		return
 	}
 	// Worth saying only when there is an install to contradict: a user who ran
-	// `orq connect otel` expects every session captured.
-	installed, err := TracePluginInstalled(ctx.ExecProbe)
+	// `orq connect otel` expects every session captured. The version decides
+	// which of the two things is true, and saying the wrong one is worse than
+	// saying nothing: an install that predates the switch keeps tracing the
+	// session, so promising it was switched off would be a false assurance
+	// about where the session content goes.
+	installed, version, err := tracePluginInstall(ctx.ExecProbe)
 	if err != nil || !installed {
+		return
+	}
+	if !honoursTraceSwitch(version) {
+		if version == "" {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+				"the orq-trace plugin installed in your claude config reports no version, so it may predate %s and ignore --no-otel; this session may still be traced, and updating the plugin makes the flag reliable",
+				traceSwitchVersion))
+			return
+		}
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"the orq-trace plugin installed in your claude config is %s, older than the %s that reads --no-otel, so this session is still traced; update the plugin to decline",
+			version, traceSwitchVersion))
 		return
 	}
 	plan.Notes = append(plan.Notes,

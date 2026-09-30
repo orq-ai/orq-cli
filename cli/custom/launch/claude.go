@@ -145,6 +145,16 @@ var claudeTierAliases = map[string]bool{
 	"opusplan": true,
 }
 
+// isClaudeTierAlias also accepts the `[1m]` spellings. The claude 2.1.281
+// bundle treats a canonical model name and its `[1m]` form as the same model,
+// and offers sonnet[1m], opus[1m], opusplan[1m] and fable[1m], so a suffixed
+// tier resolves the same way the bare one does. `fable` and `best` are left
+// out on purpose: this launch sets no fable tier variable, so a warning about
+// them is right.
+func isClaudeTierAlias(model string) bool {
+	return claudeTierAliases[strings.TrimSuffix(model, "[1m]")]
+}
+
 // claudeProviderSwitches are the env switches that move claude off the
 // Anthropic API and onto a provider with its own endpoint variable. Read from
 // the claude 2.1.281 bundle, which keeps them in one list next to
@@ -214,7 +224,7 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	// which it rejects, so the warning has to read all three sources claude
 	// reads, in the order claude resolves them.
 	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), claudeSettingsModel(getenv)); model != "" &&
-		!claudeTierAliases[model] && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
+		!isClaudeTierAlias(model) && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
 			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-5-5", model))
 	}

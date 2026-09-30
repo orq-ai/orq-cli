@@ -331,7 +331,7 @@ func TestTracePluginProbeTreatsBadJSONAsNotInstalled(t *testing.T) {
 // its hooks start as soon as they find a key, which the launch supplies, so
 // without the plugin's own switch the flag would decline nothing.
 func TestNoOtelSwitchesOffAnInstalledPlugin(t *testing.T) {
-	installed := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace","enabled":true}]`
+	installed := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace","version":"0.5.0","enabled":true}]`
 	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false}, recordingProbe(new([]probeCall), installed, "")))
 
 	if got := plan.Env["ORQ_TRACE_DISABLED"]; got != "1" {
@@ -349,6 +349,48 @@ func TestNoOtelSwitchesOffAnInstalledPlugin(t *testing.T) {
 	// session is not.
 	if !slices.ContainsFunc(plan.Notes, func(n string) bool { return strings.Contains(n, "--no-otel") }) {
 		t.Errorf("no note about the installed plugin being off: %v", plan.Notes)
+	}
+}
+
+// An installed copy older than the switch keeps tracing the session, so the
+// promise has to become a warning. Telling the user their session was switched
+// off when it was not is the one outcome worse than saying nothing.
+func TestNoOtelWarnsWhenTheInstalledPluginPredatesTheSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{"an older release", `"version":"0.4.1",`, "older than the 0.5.0"},
+		{"a version it does not report", ``, "reports no version"},
+		{"a version it cannot parse", `"version":"nightly",`, "older than the 0.5.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listing := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace",` + tc.version + `"enabled":true}]`
+			plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false}, recordingProbe(new([]probeCall), listing, "")))
+
+			if got := plan.Env["ORQ_TRACE_DISABLED"]; got != "1" {
+				t.Errorf("ORQ_TRACE_DISABLED = %q, want 1", got)
+			}
+			if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, tc.want) }) {
+				t.Errorf("no warning containing %q: %v", tc.want, plan.Warnings)
+			}
+			if slices.ContainsFunc(plan.Notes, func(n string) bool { return strings.Contains(n, "switched off") }) {
+				t.Errorf("promised the session was switched off anyway: %v", plan.Notes)
+			}
+		})
+	}
+}
+
+// A newer plugin honours the switch, so the note stands rather than the warning.
+func TestNoOtelTrustsANewerPlugin(t *testing.T) {
+	listing := `[{"id":"orq-trace@orq-claude-plugin","name":"orq-trace","version":"1.2.0","enabled":true}]`
+	plan := resolveTraced(t, traceCtx(GatewayFlags{Trace: false}, recordingProbe(new([]probeCall), listing, "")))
+	if !slices.ContainsFunc(plan.Notes, func(n string) bool { return strings.Contains(n, "--no-otel") }) {
+		t.Errorf("no note about the installed plugin being off: %v", plan.Notes)
+	}
+	if len(plan.Warnings) != 0 {
+		t.Errorf("warned about a plugin that honours the switch: %v", plan.Warnings)
 	}
 }
 
