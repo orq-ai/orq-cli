@@ -546,6 +546,9 @@ func gatewayKeyShadowsSessionCheck(inspect auth.SessionInspectResult) (doctorChe
 	}
 	check := doctorCheck{ID: "gateway_key_exported"}
 	switch {
+	case activeStoredAPIKeyLogin() != nil:
+		check.Status = "pass"
+		check.Message = "ORQ_API_KEY in this shell is the gateway-scoped key 'orq setup' exported; your API-key login takes precedence over it"
 	case inspect.Status != auth.StatusOK:
 		// No session to defer to, so the gateway key really is what every
 		// command authenticates with — and unsetting it leaves nothing behind.

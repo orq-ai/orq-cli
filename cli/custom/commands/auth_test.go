@@ -37,11 +37,12 @@ func TestBrowserLoginRefusesAProfile(t *testing.T) {
 	}
 }
 
-func TestAPIKeyLoginIsAllowedWithAProfileInForce(t *testing.T) {
+func TestAPIKeyLoginWritesSelectedProfile(t *testing.T) {
 	credsHarness(t)
 	ensureFormatter(t)
 	viper.Set("profile", "work")
-	t.Cleanup(func() { viper.Set("profile", "") })
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("profile", ""); viper.Set("output-format", "") })
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -51,25 +52,70 @@ func TestAPIKeyLoginIsAllowedWithAProfileInForce(t *testing.T) {
 	origServer, origSource := auth.Server(), auth.ServerSource()
 	auth.SetServer(srv.URL, "flag")
 	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
 
 	cmd := NewLoginCommand()
 	cmd.SetArgs([]string{"--api-key", "sk-orq-profile"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("API-key login with profile: %v", err)
 	}
-	// An api-key login is a login, not a profile: it is stored host-keyed, never
-	// written into the selected profile. Writing it under the profile
-	// is exactly the bug — the key would ride on a name the user did not intend
-	// it to, and a profile clear would silently drop the login.
-	if got := bartolocli.Creds.GetString("profiles.work.api_key"); got != "" {
-		t.Errorf("profiles.work.api_key = %q, want the api-key login NOT written into the profile", got)
+	if got := bartolocli.Creds.GetString("profiles.work.api_key"); got != "sk-orq-profile" {
+		t.Errorf("profiles.work.api_key = %q, want the supplied key", got)
 	}
 	login, err := auth.ReadAPIKeyLogin()
 	if err != nil {
 		t.Fatalf("ReadAPIKeyLogin: %v", err)
 	}
-	if login == nil || login.APIKey != "sk-orq-profile" {
-		t.Errorf("api-key login = %+v, want the supplied key stored host-keyed", login)
+	if login != nil {
+		t.Errorf("selected profile also created host-keyed login: %+v", login)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("login output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload["profile"] != "work" {
+		t.Errorf("login profile = %v, want work", payload["profile"])
+	}
+}
+
+func TestAPIKeyLoginWithoutProfileKeepsJSONProfileField(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	origServer, origSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(origServer, origSource) })
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+
+	cmd := NewLoginCommand()
+	cmd.SetArgs([]string{"--api-key", "sk-orq-login"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("API-key login without profile: %v", err)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-login" {
+		t.Fatalf("host-keyed login = %+v, err = %v", login, err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("login output is not JSON: %v\n%s", err, out.String())
+	}
+	if profile, exists := payload["profile"]; !exists || profile != "" {
+		t.Errorf("login profile field = %v (present: %t), want empty string", profile, exists)
 	}
 }
 
@@ -107,15 +153,89 @@ func TestWhoAmIReportsAPIKeyLogin(t *testing.T) {
 		t.Fatalf("whoami with an api-key login: %v", err)
 	}
 	var payload struct {
-		Method    string `json:"method"`
-		Workspace string `json:"workspace"`
-		APIKey    string `json:"api_key"`
+		Method          string `json:"method"`
+		Workspace       string `json:"workspace"`
+		APIKey          string `json:"api_key"`
+		APIKeyLoginFile string `json:"api_key_login_file"`
+		SessionFile     string `json:"session_file"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
 	}
 	if payload.Method != "api_key" || payload.Workspace != "acme" || payload.APIKey != maskToken("sk-orq-LOGIN") {
 		t.Errorf("whoami payload = %+v", payload)
+	}
+	if payload.APIKeyLoginFile != auth.APIKeyLoginFilePath() || payload.SessionFile != auth.SessionFilePath() {
+		t.Errorf("whoami credential file = %q, session file = %q", payload.APIKeyLoginFile, payload.SessionFile)
+	}
+}
+
+func TestWhoAmIReportsActiveAPIKeyLoginOverBrowserSession(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-LOGIN"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORQ_API_KEY", "sk-orq-LOGIN")
+
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Method          string `json:"method"`
+		APIKey          string `json:"api_key"`
+		APIKeyLoginFile string `json:"api_key_login_file"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Method != "api_key" || payload.APIKey != maskToken("sk-orq-LOGIN") || payload.APIKeyLoginFile != auth.APIKeyLoginFilePath() {
+		t.Errorf("whoami did not report the active API-key login: %+v", payload)
+	}
+}
+
+func TestWhoAmIReportsEnvironmentKeyOverStoredLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	for _, name := range APIKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", ""); ResetUserEnvAPIKey() })
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-STORED"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORQ_API_KEY", "sk-orq-EXPORTED")
+	SetUserEnvAPIKey("sk-orq-EXPORTED")
+
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Source          string `json:"source"`
+		APIKey          string `json:"api_key"`
+		APIKeyLoginFile string `json:"api_key_login_file"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Source != "ORQ_API_KEY" || payload.APIKey != maskToken("sk-orq-EXPORTED") || payload.APIKeyLoginFile != "" {
+		t.Errorf("whoami reported the stored login instead of the effective environment key: %+v", payload)
 	}
 }
 

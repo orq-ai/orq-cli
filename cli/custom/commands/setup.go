@@ -1042,8 +1042,8 @@ func bartoloProfileName() string {
 }
 
 // setupResultProfile names a bartolo profile only when the user selected one.
-// An explicit key persisted without a profile is made durable by the shell env
-// file, not a profile, so it reports "" — as do session and environment
+// An explicit key persisted without a profile is stored as a host-keyed login,
+// so it reports "" — as do session and environment
 // credentials, which are not profiles either.
 func setupResultProfile(opts *setupOptions) string {
 	return bartolocli.ActiveProfileName()
@@ -1108,7 +1108,11 @@ func warnLingeringAPIKeys() {
 	if explicitAPIKey {
 		var exported []string
 		for _, name := range APIKeyEnvVars {
-			if strings.TrimSpace(os.Getenv(name)) == "" {
+			value := strings.TrimSpace(os.Getenv(name))
+			if name == "ORQ_API_KEY" {
+				value = UserEnvAPIKey()
+			}
+			if value == "" {
 				continue
 			}
 			// A value bartolo imported from a dotenv file is warned about above, and 'unset' would not fix it.

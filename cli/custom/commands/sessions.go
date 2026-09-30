@@ -75,7 +75,11 @@ func warnIfActiveSessionShadowed(rows []auth.SessionListEntry) {
 	}
 	for _, r := range rows {
 		if r.Active && usableSessionStatus(r.Status) {
-			Warn("an explicit API key (ORQ_API_KEY or a credentials profile) takes precedence, so the active login is not what authenticates API calls until the key is unset")
+			if activeStoredAPIKeyLogin() != nil {
+				Warn("your API-key login takes precedence over the browser session until you log in through the browser again")
+			} else {
+				Warn("an explicit API key (ORQ_API_KEY or a credentials profile) takes precedence, so the active login is not what authenticates API calls until the key is unset")
+			}
 			return
 		}
 	}

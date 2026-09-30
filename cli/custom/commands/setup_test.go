@@ -401,6 +401,66 @@ func credsHarness(t *testing.T) {
 	})
 }
 
+func TestResolveAuthPersistsSuppliedKeyToSelectedProfile(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "new")
+	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
+		apiKey: "sk-orq-profile", persistKey: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-profile" || bartolocli.Creds.GetString("profiles.new.api_key") != "sk-orq-profile" {
+		t.Errorf("supplied key was not saved to the selected profile: state=%+v", state)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login != nil {
+		t.Errorf("selected profile also wrote a host-keyed login: %+v, %v", login, err)
+	}
+}
+
+func TestResolveAuthPersistsSuppliedKeyWithoutProfile(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "")
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
+		apiKey: "sk-orq-login", persistKey: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-login" || bartolocli.ProfileExists("default") {
+		t.Errorf("unselected key wrote a profile or did not resolve: state=%+v", state)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-login" {
+		t.Errorf("host-keyed login = %+v, err = %v", login, err)
+	}
+}
+
+func TestResolveAuthNonpersistentKeyLeavesStoredLoginUntouched(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "")
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
+		apiKey: "sk-orq-temporary", persistKey: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-temporary" {
+		t.Errorf("current run used %q, want temporary key", state.bearer)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Errorf("nonpersistent key changed stored login: %+v, err = %v", login, err)
+	}
+}
+
 func saveTestGatewayKey(t *testing.T, key, workspace string) {
 	t.Helper()
 	session, err := auth.ReadSession()

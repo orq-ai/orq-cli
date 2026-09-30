@@ -1,14 +1,80 @@
 package custom
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
 	"orq/cli/custom/auth"
+	"orq/cli/custom/commands"
 
 	bartolocli "github.com/orq-ai/bartolo/cli"
 	"github.com/spf13/viper"
 )
+
+func TestNamedAPIKeyLoginResolvesOnNextCommand(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	previousRoot := bartolocli.Root
+	previousProfile := viper.GetString("profile")
+	previousViperServer := viper.GetString("server")
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	previousExplicit := commands.UsingExplicitAPIKey()
+	t.Cleanup(func() {
+		bartolocli.Root = previousRoot
+		viper.Set("profile", previousProfile)
+		viper.Set("server", previousViperServer)
+		auth.SetServer(previousServer, previousSource)
+		commands.SetExplicitAPIKey(previousExplicit)
+	})
+	for _, name := range apiKeyEnvVars {
+		t.Setenv(name, "")
+	}
+	t.Setenv("ORQ_PROFILE", "")
+
+	nextCommand := false
+	nextRequests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if nextCommand {
+			nextRequests++
+			if got := r.Header.Get("Authorization"); got != "Bearer sk-orq-named" {
+				t.Errorf("next command Authorization = %q, want named profile key", got)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	root := buildRoot(t)
+	t.Cleanup(func() {
+		for _, name := range []string{"profile", "server"} {
+			flag := root.PersistentFlags().Lookup(name)
+			flag.Changed = false
+		}
+	})
+	root.SetArgs([]string{"--server", srv.URL, "--profile", "work", "auth", "login", "--api-key", "sk-orq-named"})
+	var loginErr error
+	captureOutput(t, func() { loginErr = root.Execute() })
+	if loginErr != nil {
+		t.Fatalf("login under --profile work: %v", loginErr)
+	}
+	if got := bartolocli.Creds.GetString("profiles.work.api_key"); got != "sk-orq-named" {
+		t.Fatalf("saved profile key = %q, want sk-orq-named", got)
+	}
+
+	nextCommand = true
+	root.SetArgs([]string{"--server", srv.URL, "--profile", "work", "models", "list"})
+	var listErr error
+	captureOutput(t, func() { listErr = root.Execute() })
+	if listErr != nil {
+		t.Fatalf("models list with saved profile: %v", listErr)
+	}
+	if nextRequests == 0 {
+		t.Error("next command made no authenticated request")
+	}
+}
 
 // apiKeyLoginHarness isolates HOME and credentials so a test can drive the
 // api-key login store and PreRun injection without touching the real ~/.orq or
@@ -16,6 +82,9 @@ import (
 func apiKeyLoginHarness(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer("", "default")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
 
 	creds, err := bartolocli.NewCredentialsFile(t.TempDir())
 	if err != nil {
@@ -62,7 +131,7 @@ func TestStoredAPIKeyLoginInjectsIntoEnvOnCleanEnvironment(t *testing.T) {
 		t.Fatalf("stored api-key login was not injected: ORQ_API_KEY = %q, want sk-orq-LOGIN", got)
 	}
 	// The key is ours, injected by us, so the "Using ORQ_API_KEY from
-	// environment" notice must stay silent and the session (if any) still wins.
+	// environment" notice must stay silent.
 	if !ownExportedKey() {
 		t.Error("an injected api-key login must be treated as own-exported so the env notice stays silent")
 	}
@@ -124,20 +193,21 @@ func TestAPIKeyLoginWritesNoDefaultProfile(t *testing.T) {
 	}
 }
 
-// When a browser session and an api-key login both exist for one host, the
-// session wins. applyStoredAPIKeyLogin still injects the login key, but because
-// that key is own-exported the invocation's explicitKey stays false, so the
-// session step is free to mint its workspace token over the top. This pins the
-// own-exported signal that keeps the session authoritative — the actual token
-// mint is a network call and out of scope for a unit test.
-func TestSessionOutranksStoredAPIKeyLogin(t *testing.T) {
+// The latest API-key login is active even when a browser session remains on
+// disk. A gateway key sourced from ~/.orq/env belongs to that older session
+// and must not keep the new login from taking effect.
+func TestStoredAPIKeyLoginOutranksBrowserSessionGatewayKey(t *testing.T) {
 	apiKeyLoginHarness(t)
 
 	// A browser session for this host, carrying a gateway key so ownExportedKeys
 	// has the session side to compare against.
+	urls := auth.ResolveURLs("")
 	session := &auth.Session{
 		Version:        1,
-		APIBaseURL:     auth.ResolveURLs("").APIBaseURL,
+		APIBaseURL:     urls.APIBaseURL,
+		V1BaseURL:      urls.V1BaseURL,
+		AuthBaseURL:    urls.AuthBaseURL,
+		ProfileBaseURL: urls.ProfileBaseURL,
 		RefreshToken:   "refresh-abc",
 		BootstrapToken: auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
 		GatewayKey:     "sk-orq-GATEWAY",
@@ -152,15 +222,13 @@ func TestSessionOutranksStoredAPIKeyLogin(t *testing.T) {
 		t.Fatalf("SaveAPIKeyLogin: %v", err)
 	}
 
-	applyStoredAPIKeyLogin()
+	t.Setenv("ORQ_API_KEY", "sk-orq-GATEWAY")
+	if !applyStoredAPIKeyLogin() {
+		t.Fatal("stored API-key login should be active after replacing the gateway key")
+	}
 
 	// The login key is injected (no profile, no user key to defer to)...
 	if got := os.Getenv("ORQ_API_KEY"); got != "sk-orq-LOGIN" {
 		t.Fatalf("stored api-key login was not injected: ORQ_API_KEY = %q", got)
-	}
-	// ...but it is own-exported, so explicitKey is false and the session token
-	// mint that follows in PreRun overrides it: the session wins.
-	if !ownExportedKey() {
-		t.Error("with a session present, the injected api-key login must stay own-exported so the session outranks it")
 	}
 }

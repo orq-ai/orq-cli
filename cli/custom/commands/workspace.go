@@ -137,12 +137,20 @@ func newWorkspaceUseCommand() *cobra.Command {
 			if wantsHumanView(cmd) {
 				success("Active workspace: %s (%s)", activeName, workspaceKey)
 				if shadowed {
-					Warn("an explicit API key takes precedence, so this switch will not affect API calls until it is unset")
+					if activeStoredAPIKeyLogin() != nil {
+						Warn("your API-key login takes precedence, so this switch will not affect API calls until you log in through the browser again")
+					} else {
+						Warn("an explicit API key takes precedence, so this switch will not affect API calls until it is unset")
+					}
 				}
 				return nil
 			}
 			if shadowed {
-				Warn("an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
+				if activeStoredAPIKeyLogin() != nil {
+					Warn("your API-key login takes precedence, so this workspace switch will not affect API calls until you log in through the browser again")
+				} else {
+					Warn("an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this workspace switch will not affect API calls until the key is unset")
+				}
 			}
 			return emit(report)
 		},

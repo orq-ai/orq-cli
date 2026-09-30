@@ -3,7 +3,8 @@ package commands
 import (
 	"errors"
 	"fmt"
-
+	"os"
+	"slices"
 	"strings"
 
 	"orq/cli/custom/auth"
@@ -61,6 +62,11 @@ func NewLoginCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The latest login selects the credential for this host. Keep the new
+			// browser session and drop an older API-key login that would shadow it.
+			if err := auth.ClearAPIKeyLogin(); err != nil {
+				return err
+			}
 
 			report := BuildIdentityReport(result.Session, &auth.NewClient(serverURL()).URLs)
 			if wantsHumanView(cmd) {
@@ -82,12 +88,10 @@ func NewLoginCommand() *cobra.Command {
 	return cmd
 }
 
-// apiKeyLogin verifies a pasted or flag-supplied key with one real API call,
-// then stores it as a host-keyed api-key login in the session store. PreRun
-// (installSessionPreRun → applyStoredAPIKeyLogin) injects it into ORQ_API_KEY on
-// every later command, so the login actually takes effect. It is not written as
-// a bartolo profile: a profile is a credential the user named and selected, and
-// nothing selects one here, so the key would have been unreachable.
+// apiKeyLogin verifies a pasted or flag-supplied key with an API call,
+// then stores it under a selected profile, or as a host-keyed api-key login
+// when no profile is selected. PreRun injects the host-keyed key into
+// ORQ_API_KEY on later commands. An unselected bartolo profile is unreachable.
 func apiKeyLogin(cmd *cobra.Command, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -107,28 +111,38 @@ func apiKeyLogin(cmd *cobra.Command, key string) error {
 		return fmt.Errorf("the key was not accepted by %s: %w", client.URLs.APIBaseURL, err)
 	}
 
-	login := &auth.APIKeyLogin{
-		APIBaseURL: client.URLs.APIBaseURL,
-		Source:     auth.APIKeyLoginSource,
-		APIKey:     key,
-	}
-	// Best-effort workspace provenance from the same key: it lets `orq status`
-	// name the workspace and setup's reuse check compare against it. A failure
-	// here is not a login failure — the key is already verified — so record what
-	// we can and move on.
-	if ws, err := client.KeyWorkspace(key); err == nil && ws != "" {
-		login.Workspaces = []map[string]any{{"key": ws}}
-	}
-	if err := auth.SaveAPIKeyLogin(login); err != nil {
-		return err
+	profile := bartoloProfileName()
+	if profile != "" {
+		if err := saveAPIKeyProfile(key); err != nil {
+			return err
+		}
+	} else {
+		login := &auth.APIKeyLogin{
+			APIBaseURL: client.URLs.APIBaseURL,
+			Source:     auth.APIKeyLoginSource,
+			APIKey:     key,
+		}
+		// Best-effort workspace provenance lets `orq status` name the workspace.
+		// The key is already verified, so a failed lookup does not fail login.
+		if ws, err := client.KeyWorkspace(key); err == nil && ws != "" {
+			login.Workspaces = []map[string]any{{"key": ws}}
+		}
+		if err := auth.SaveAPIKeyLogin(login); err != nil {
+			return err
+		}
 	}
 
 	if wantsHumanView(cmd) {
+		if profile != "" {
+			success("Signed in with an API key (profile: %s, %d projects visible)", profile, len(projects))
+			return nil
+		}
 		success("Signed in with an API key (%d projects visible)", len(projects))
 		return nil
 	}
 	return emit(map[string]any{
 		"method":   "api_key",
+		"profile":  profile,
 		"verified": true,
 	})
 }
@@ -354,14 +368,46 @@ func reportAPIKeyLogin(cmd *cobra.Command, login *auth.APIKeyLogin) error {
 		kv(9, "api_key", "%s", maskToken(login.APIKey))
 		return nil
 	}
+	// orqi reads session_file even from API-key status. It remains the browser
+	// session location; api_key_login_file identifies the credential reported here.
+	return emit(map[string]any{
+		"method":             "api_key",
+		"server":             server,
+		"workspace":          workspace,
+		"api_key":            maskToken(login.APIKey),
+		"session_file":       auth.SessionFilePath(),
+		"api_key_login_file": auth.APIKeyLoginFilePath(),
+		"identity":           nil,
+	})
+}
+
+func reportEnvironmentAPIKey(cmd *cobra.Command, key, source string) error {
+	server := auth.ResolveURLs(serverURL()).APIBaseURL
+	if wantsHumanView(cmd) {
+		success("Using API key from %s", source)
+		kv(9, "server", "%s", server)
+		kv(9, "api_key", "%s", maskToken(key))
+		return nil
+	}
 	return emit(map[string]any{
 		"method":       "api_key",
+		"source":       source,
 		"server":       server,
-		"workspace":    workspace,
-		"api_key":      maskToken(login.APIKey),
+		"api_key":      maskToken(key),
 		"session_file": auth.SessionFilePath(),
 		"identity":     nil,
 	})
+}
+
+func activeStoredAPIKeyLogin() *auth.APIKeyLogin {
+	if profileInForce() {
+		return nil
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || strings.TrimSpace(os.Getenv("ORQ_API_KEY")) != strings.TrimSpace(login.APIKey) {
+		return nil
+	}
+	return login
 }
 
 // NewStatusCommand is whoami under the name people reach for first, and the
@@ -402,11 +448,21 @@ func NewWhoAmICommand() *cobra.Command {
 					"identity":     nil,
 				})
 			}
+			// PreRun exports the active stored login into ORQ_API_KEY. When it
+			// outranks a browser session on the same host, report that login.
+			if login := activeStoredAPIKeyLogin(); login != nil {
+				return reportAPIKeyLogin(cmd, login)
+			}
 			session, err := auth.ReadSession()
 			if err != nil {
 				return err
 			}
 			if session == nil {
+				// A user-provided environment key outranks the stored login. Report
+				// the key the next request will use before looking at the store.
+				if key, source := ConfiguredCredential(); key != "" && slices.Contains(APIKeyEnvVars, source) {
+					return reportEnvironmentAPIKey(cmd, key, source)
+				}
 				// No browser session, but an `orq auth login --api-key`
 				// credential is still a login on this host. Report it rather than
 				// claiming the user is logged out. A corrupt credential file is
