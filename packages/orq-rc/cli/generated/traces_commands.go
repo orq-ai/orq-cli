@@ -388,6 +388,48 @@ func registertracesCommands(root *cobra.Command) {
 		var examples string
 
 		cmd := &cobra.Command{
+			Use:     "get-conversation trace-id",
+			Short:   "Get trace conversation",
+			Long:    bartolocli.Markdown("Return ordered OpenResponses items from the selected model-call span. Prefers spans with output outside evaluator subtrees unless `span_id` is given.\n\n## Arguments\n\n- `trace-id`"),
+			Example: examples,
+			Args:    cobra.MinimumNArgs(1),
+			RunE: func(cmd *cobra.Command, args []string) error {
+
+				bartolocli.MarkPassedFlags(cmd, params)
+
+				_, decoded, err := OpenapiTracesGetConversation(args[0], params)
+				if err != nil {
+					return bartolocli.OperationError(err)
+				}
+
+				if err := bartolocli.FormatList(decoded); err != nil {
+					return errors.Wrap(err, "formatting failed")
+				}
+
+				return nil
+
+			},
+		}
+		parent.AddCommand(cmd)
+
+		cmd.Flags().String("span-id", "", "Read the conversation from this span instead of the automatically selected one.")
+
+		bartolocli.SetCustomFlags(cmd)
+
+		if cmd.Flags().HasFlags() {
+			params.BindPFlags(cmd.Flags())
+		}
+
+	}()
+
+	func() {
+		parent := tracesCmd
+
+		params := viper.New()
+
+		var examples string
+
+		cmd := &cobra.Command{
 			Use:     "get-span trace-id span-id",
 			Short:   "Get trace span",
 			Long:    bartolocli.Markdown("Retrieve one hydrated span.\n\n## Arguments\n\n- `trace-id`\n- `span-id`"),

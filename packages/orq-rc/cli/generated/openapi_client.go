@@ -12023,6 +12023,54 @@ func OpenapiTracesGet(paramTraceId string, params *viper.Viper) (*gentleman.Resp
 	return resp, decoded, nil
 }
 
+// OpenapiTracesGetConversation Get trace conversation
+func OpenapiTracesGetConversation(paramTraceId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
+	handlerPath := "traces get-conversation trace-id"
+	server := bartolocli.ResolveServer()
+
+	url := server + "/v3/traces/{trace_id}/conversation"
+	if paramTraceId == "" {
+		return nil, nil, bartolocli.NewValueError(errors.Errorf("path parameter trace_id cannot be empty"))
+	}
+
+	url = strings.Replace(url, "{trace_id}", neturl.PathEscape(paramTraceId), 1)
+
+	req := bartolocli.Client.Get().URL(url)
+
+	paramSpanId := params.GetString("span-id")
+	if bartolocli.FlagPassed(params, "span-id") || paramSpanId != "" {
+		req = req.AddQuery("span_id", fmt.Sprintf("%v", paramSpanId))
+	}
+
+	bartolocli.HandleBefore(handlerPath, params, req)
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "request failed")
+	}
+
+	var decoded map[string]interface{}
+
+	if resp.StatusCode < 400 {
+		if err := bartolocli.UnmarshalResponse(resp, &decoded); err != nil {
+			return nil, nil, errors.Wrap(err, "unmarshalling response failed")
+		}
+	} else {
+		return nil, nil, bartolocli.ResponseError(resp)
+	}
+
+	after := bartolocli.HandleAfter(handlerPath, params, resp, decoded)
+	if after != nil {
+		replaced, ok := after.(map[string]interface{})
+		if !ok {
+			return nil, nil, errors.Errorf("after handler for %q returned %T, expected map[string]interface{}", handlerPath, after)
+		}
+		decoded = replaced
+	}
+
+	return resp, decoded, nil
+}
+
 // OpenapiTracesGetSpan Get trace span
 func OpenapiTracesGetSpan(paramTraceId string, paramSpanId string, params *viper.Viper) (*gentleman.Response, map[string]interface{}, error) {
 	handlerPath := "traces get-span trace-id span-id"
