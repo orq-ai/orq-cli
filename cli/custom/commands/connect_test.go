@@ -3020,6 +3020,36 @@ func TestStatusOtelWarnsOnAnUnreadableConfig(t *testing.T) {
 	}
 }
 
+// An enabled plugin is the one state --status exists to confirm, so it has to
+// read as wired, pointing at the file the agent records the install in.
+func TestStatusOtelReportsAnInstalledPlugin(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	row := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, tilde(settings)) {
+			row = l
+		}
+	}
+	if row == "" {
+		t.Fatalf("status listed no otel row for an installed plugin:\n%s", out)
+	}
+	if strings.Contains(row, "!") {
+		t.Errorf("an installed plugin carried the warn glyph: %q", row)
+	}
+}
+
 // `orq auth logout` clears the env file but leaves it on disk, holding only a
 // comment. A check that asks whether the file exists reads that as a key the
 // shell exports, and the install then says nothing about the one thing that

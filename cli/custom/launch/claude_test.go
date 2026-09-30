@@ -232,9 +232,9 @@ func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
 
 // --router points claude at the gateway through ANTHROPIC_BASE_URL, which
 // claude does not read once a provider switch selects Bedrock, Vertex or any
-// of their siblings. A switch left in the shell would leave --router claiming
-// a route it does not take, so the session clears every one of them.
-func TestRouterClearsProviderSwitches(t *testing.T) {
+// of their siblings. The switch is the user's own and stays in force, so
+// --router has to say it routes nothing rather than claim workspace billing.
+func TestRouterWarnsAboutProviderSwitches(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(map[string]string{
 		"CLAUDE_CODE_USE_BEDROCK": "1",
 		"CLAUDE_CODE_USE_VERTEX":  "true",
@@ -243,20 +243,18 @@ func TestRouterClearsProviderSwitches(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, k := range claudeProviderSwitches {
-		v, ok := plan.Env[k]
-		if !ok || v != "" {
-			t.Errorf("%s = %q (set %v), want an explicit empty value", k, v, ok)
+		if _, ok := plan.Env[k]; ok {
+			t.Errorf("%s overridden to %q; the shell's choice must stand", k, plan.Env[k])
 		}
 	}
-	// Silently undoing what the shell says is worse than saying so.
 	var said bool
 	for _, w := range plan.Warnings {
-		if strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") && strings.Contains(w, "CLAUDE_CODE_USE_VERTEX") {
+		if strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") && strings.Contains(w, "CLAUDE_CODE_USE_VERTEX") && strings.Contains(w, "routes nothing") {
 			said = true
 		}
 	}
 	if !said {
-		t.Errorf("no warning naming the switches that were unset: %v", plan.Warnings)
+		t.Errorf("no warning naming the switches that defeat --router: %v", plan.Warnings)
 	}
 }
 

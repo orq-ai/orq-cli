@@ -386,7 +386,7 @@ With `--router` the same call is recorded twice, once as a router row and once i
 
 | Flag | Description |
 |---|---|
-| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-5` |
+| `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-5-5` |
 | `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |

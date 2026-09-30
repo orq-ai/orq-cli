@@ -73,7 +73,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		// same mistake as passing one, so both get the warning.
 		if model := firstNonEmpty(ctx.Flags.Model, ctx.Getenv("ANTHROPIC_MODEL")); model != "" && !ShouldWarnMissingProviderPrefix(model, noopNormalize) {
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-				"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5", model))
+				"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5-5", model))
 		}
 		if ctx.Flags.BaseURL != "" {
 			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
@@ -216,27 +216,24 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), claudeSettingsModel(getenv)); model != "" &&
 		!claudeTierAliases[model] && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-5", model))
+			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-5-5", model))
 	}
 
 	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
 	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
 	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
 	// Each of these picks a provider whose own base URL claude reads instead of
-	// ANTHROPIC_BASE_URL, so one left in the shell makes --router a flag that
-	// says it routes and does not. They are cleared for the session, and an
-	// empty value is off rather than present: claude 2.1.281 accepts only
-	// 1, true, yes or on as the switch being set.
+	// ANTHROPIC_BASE_URL. One left in the shell is the user's own arrangement,
+	// so it stays in force, but --router then routes nothing and says so.
 	var providerSwitches []string
 	for _, k := range claudeProviderSwitches {
 		if getenv(k) != "" {
 			providerSwitches = append(providerSwitches, k)
 		}
-		plan.Env[k] = ""
 	}
 	if len(providerSwitches) > 0 {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"%s set in your shell would send claude to that provider instead of the orq.ai AI Router, so this session unsets it", strings.Join(providerSwitches, ", ")))
+			"%s set in your shell sends claude to that provider, so --router routes nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
 	}
 	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
 	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
