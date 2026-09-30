@@ -135,13 +135,6 @@ func TestAddCleanupRunsEveryCleanup(t *testing.T) {
 // different promise, and a command that says it will not start the agent
 // should not be rearranging the agent's config either.
 func TestDryRunReportsSessionSkillsWithoutInstallingThem(t *testing.T) {
-	// Same reason as the test above: nothing is linked on the copy-fallback
-	// platform, so there is no note to find and no home to protect. HOME is
-	// not the home Windows resolves either, which would make the second half
-	// of this test pass without asserting anything.
-	if runtime.GOOS == "windows" {
-		t.Skip("session skills are not installed on the copy-fallback platform")
-	}
 	for agent, rel := range realHomeSkillAgents() {
 		t.Run(agent, func(t *testing.T) {
 			home := t.TempDir()
