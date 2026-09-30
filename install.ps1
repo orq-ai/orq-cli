@@ -130,8 +130,9 @@ $expectedVersion = $Version -replace '^v', ''
 $alreadyCurrent = $false
 if (Test-Path $target) {
   try {
-    $current = (& $target --version 2>$null | Select-Object -First 1)
+    $currentOutput = & $target --version 2>$null
     $probeExit = $LASTEXITCODE
+    $current = @($currentOutput)[0]
     $currentVersion = if ($current) { ($current -split '\s+')[-1] } else { $null }
     if ($probeExit -eq 0 -and $currentVersion -eq $expectedVersion) {
       Say "ok: already up to date  ($current)"
@@ -225,8 +226,12 @@ if (-not $alreadyCurrent) {
 
     # Probe the installed binary; restore the previous one if it does not run.
     $installedVersion = $null
-    try { $installedVersion = (& $target --version 2>$null | Select-Object -First 1) } catch { }
-    $probeExit = $LASTEXITCODE
+    $probeExit = 1
+    try {
+      $versionOutput = & $target --version 2>$null
+      $probeExit = $LASTEXITCODE
+      $installedVersion = @($versionOutput)[0]
+    } catch { }
     if ($installedVersion -and $probeExit -eq 0) {
       $installHealthy = $true
       Say "ok: installed      $target  ($installedVersion)"
