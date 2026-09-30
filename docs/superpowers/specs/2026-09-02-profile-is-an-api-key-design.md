@@ -51,6 +51,11 @@ of a persisted `auth profile use` selection and is kept as is.
 with `--server`". `orq auth login --api-key K --profile x` writes bartolo profile `x`; without
 `--profile` it writes `default`, as today.
 
+**Update (RES-1524, 2026-09-30):** The unselected `default` write above was
+unreachable because bartolo does not select a profile implicitly. An API-key
+login without a selected profile now uses the host-keyed login store; an
+explicitly selected profile still receives the key.
+
 ### Sessions are per server
 
 `~/.orq/sessions/<host>.json`. The host comes from the session's own `apiBaseUrl`: lowercased,
