@@ -181,6 +181,10 @@ controls on surface changes, whichever side they originate from.
   earlier spelling parsed and then refused itself with "not available yet", so
   `orq connect tracing` and `orq setup --capability tracing` are now errors that
   name the capability list. Nothing was ever wired under the old name.
+- **Added: a Windows PowerShell installer script** that downloads and verifies
+  the x64 CLI release, keeps the previous binary if an upgrade fails, and adds
+  the install directory to the user PATH. The script is in this repository;
+  the `cli.orq.ai/install.ps1` endpoint is pending its separate hosting rollout.
 
 ## [11.0.2](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.2) — 2026-09-29
 

@@ -186,6 +186,7 @@ jobs:
     # skills warning in it, and the credential ones set HOME rather than
     # USERPROFILE, so on a Windows runner they would read and write the real
     # profile. Fixing those is its own change, not a line in this file.
+    # The installer tests below exercise native Windows PowerShell behavior.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -194,6 +195,12 @@ jobs:
           go-version-file: go.mod
       - name: go test
         run: go test ./cli/custom/skills/
+      - name: install.ps1 integration tests under Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\test-install-ps1.ps1
+      - name: install.ps1 integration tests under PowerShell 7
+        shell: pwsh
+        run: .\scripts\test-install-ps1.ps1
 
   installer:
     name: install.sh runs under dash

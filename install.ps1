@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  irm | iex installer for the orq.ai CLI on Windows (PowerShell).
+  PowerShell installer for the orq.ai CLI on Windows.
 
 .DESCRIPTION
   The Windows counterpart to install.sh. Downloads the single native binary
@@ -9,12 +9,12 @@
   ~/.orq/bin layout), adds that directory to the user PATH, and runs 'orq setup'.
 
 .EXAMPLE
-  irm https://cli.orq.ai/install.ps1 | iex
+  & ([scriptblock]::Create((irm https://cli.orq.ai/install.ps1)))
 
 .EXAMPLE
-  # With options, download first (a piped 'iex' cannot take script arguments):
-  #   irm https://cli.orq.ai/install.ps1 -OutFile install.ps1; .\install.ps1 -NoModifyPath
-  # or set the ORQ_CLI_* environment variables before the piped form.
+  # With options, download first:
+  #   irm https://cli.orq.ai/install.ps1 -OutFile install.ps1
+  #   powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoModifyPath
 
 .NOTES
   Env vars (flags win when both are given), matching install.sh:
@@ -41,7 +41,6 @@ Set-StrictMode -Version Latest
 $InstallerVersion = 'dev'
 
 $Repo = 'orq-ai/orq-cli'
-$PathMarker = 'orq cli'
 
 # Flags win over env; env wins over the default.
 if (-not $InstallDir) { $InstallDir = if ($env:ORQ_CLI_INSTALL_DIR) { $env:ORQ_CLI_INSTALL_DIR } else { Join-Path $HOME '.orq\bin' } }
@@ -52,11 +51,15 @@ $Quiet = ($env:ORQ_CLI_QUIET -eq '1')
 
 function Say  { param([string]$m) if (-not $Quiet) { Write-Host $m } }
 function Warn { param([string]$m) Write-Host $m -ForegroundColor Yellow }
-function Die  { param([string]$m) [Console]::Error.WriteLine("orq-cli installer: $m"); exit 1 }
+function Die  { param([string]$m) throw "orq-cli installer: $m" }
 
 if ($Help) {
-  Get-Help $PSCommandPath -Detailed
-  exit 0
+  if ($PSCommandPath) {
+    Get-Help $PSCommandPath -Detailed
+  } else {
+    Write-Host 'Usage: install.ps1 [-Version <tag>] [-Channel stable|rc] [-InstallDir <path>] [-NoModifyPath] [-NoSetup]'
+  }
+  return
 }
 
 # A pinned version names one exact release, leaving the channel nothing to resolve.
@@ -66,13 +69,13 @@ if ($Version -and $channelExplicit) {
 }
 
 # PowerShell 5.1 defaults to TLS 1.0/1.1, which GitHub and npm reject.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 # --- Detect architecture ---------------------------------------------------
 # Only orq-win32-x64.exe is published. Windows on ARM runs x64 under emulation,
 # so install the x64 binary there too rather than refuse.
-$archRaw = $env:PROCESSOR_ARCHITECTURE
-if ($archRaw -notin @('AMD64', 'ARM64', 'x86')) {
+$archRaw = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+if (-not [Environment]::Is64BitOperatingSystem -or $archRaw -notin @('AMD64', 'ARM64')) {
   Die "unsupported architecture: $archRaw (only x64, incl. ARM64 emulation, is published)"
 }
 if ($archRaw -eq 'ARM64') {
@@ -92,8 +95,9 @@ if (-not $Version) {
     } catch {
       Die "failed to fetch rc release metadata: $($_.Exception.Message)"
     }
-    if (-not $tags.rc) { Die 'no rc release is published; use -Version <version> for a known release' }
-    $Version = "v$($tags.rc)"
+    $rcTag = $tags.PSObject.Properties['rc']
+    if (-not $rcTag -or -not $rcTag.Value) { Die 'no rc release is published; use -Version <version> for a known release' }
+    $Version = "v$($rcTag.Value)"
   } else {
     try {
       $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers @{ 'User-Agent' = 'orq-cli-installer' }
@@ -127,8 +131,9 @@ $alreadyCurrent = $false
 if (Test-Path $target) {
   try {
     $current = (& $target --version 2>$null | Select-Object -First 1)
-    $currentVersion = ($current -split '\s+')[-1]
-    if ($currentVersion -eq $expectedVersion) {
+    $probeExit = $LASTEXITCODE
+    $currentVersion = if ($current) { ($current -split '\s+')[-1] } else { $null }
+    if ($probeExit -eq 0 -and $currentVersion -eq $expectedVersion) {
       Say "ok: already up to date  ($current)"
       $alreadyCurrent = $true
       $NoSetup = $true
@@ -143,15 +148,19 @@ if (-not $alreadyCurrent) {
   # keeps the final move a true atomic rename.
   $tmpFile = Join-Path $InstallDir (".orq-download-" + [Guid]::NewGuid().ToString('N') + '.exe')
   $previous = $null
-  # finally is the PowerShell counterpart to install.sh's EXIT/INT/TERM trap: on any
-  # error or Ctrl-C it drops the temp file and, if the swap left no orq.exe, restores
-  # the previous binary so the user never ends up with less than they started with.
+  $installHealthy = $false
+  # finally removes the temp file and restores the previous binary unless the
+  # new one has passed its version probe.
   try {
     # --- Download ----------------------------------------------------------
+    $savedProgressPreference = $ProgressPreference
     try {
+      $ProgressPreference = 'SilentlyContinue'
       Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
     } catch {
       Die "failed to download $downloadUrl : $($_.Exception.Message)"
+    } finally {
+      $ProgressPreference = $savedProgressPreference
     }
     if ((Get-Item $tmpFile).Length -eq 0) {
       Die 'downloaded file is empty'
@@ -164,11 +173,13 @@ if (-not $alreadyCurrent) {
     $expected = $null
     $checksumMissing = $false
     try {
-      $sumBody = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+      $sumContent = (Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing).Content
+      $sumBody = if ($sumContent -is [byte[]]) { [Text.Encoding]::ASCII.GetString($sumContent) } else { [string]$sumContent }
       $expected = ($sumBody -split '\s+')[0]
     } catch {
       $status = $null
-      if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+      $responseProperty = $_.Exception.PSObject.Properties['Response']
+      if ($responseProperty -and $responseProperty.Value) { $status = [int]$responseProperty.Value.StatusCode }
       if ($status -eq 404) {
         if (-not $versionPinned) {
           Die 'no checksum published at the latest release; refusing to install unverified (pin an older release with -Version if intended)'
@@ -183,7 +194,7 @@ if (-not $alreadyCurrent) {
 
     # A 200 with an empty or whitespace body means the asset exists but was
     # unreadable (proxy, CDN, captive portal), NOT that no checksum is published.
-    # install.sh refuses this (install.sh:408-412); do the same rather than fall
+    # install.sh refuses this (install.sh:427-432); do the same rather than fall
     # through the empty-string-is-falsy check below and install unverified.
     if (-not $checksumMissing -and [string]::IsNullOrWhiteSpace($expected)) {
       Die "checksum fetch returned an empty body ($checksumUrl); refusing to install unverified"
@@ -215,7 +226,9 @@ if (-not $alreadyCurrent) {
     # Probe the installed binary; restore the previous one if it does not run.
     $installedVersion = $null
     try { $installedVersion = (& $target --version 2>$null | Select-Object -First 1) } catch { }
-    if ($installedVersion) {
+    $probeExit = $LASTEXITCODE
+    if ($installedVersion -and $probeExit -eq 0) {
+      $installHealthy = $true
       Say "ok: installed      $target  ($installedVersion)"
     } elseif ($previous) {
       Die 'the new binary did not run here; the previous one is being restored'
@@ -225,12 +238,13 @@ if (-not $alreadyCurrent) {
     }
   } finally {
     if (Test-Path $tmpFile) { Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue }
-    # The swap left no orq.exe (mid-upgrade error or Ctrl-C): put the old one back.
+    # Keep the old binary until the new one has passed its probe.
     if ($previous -and (Test-Path $previous)) {
-      if (-not (Test-Path $target)) {
-        Move-Item -Force $previous $target -ErrorAction SilentlyContinue
-      } else {
+      if ($installHealthy) {
         Remove-Item $previous -Force -ErrorAction SilentlyContinue
+      } else {
+        if (Test-Path $target) { Remove-Item $target -Force }
+        Move-Item -Force $previous $target
       }
     }
   }
@@ -262,13 +276,32 @@ try {
   } else {
     $newRaw = if ([string]::IsNullOrEmpty($rawPath)) { $InstallDir } else { ($rawPath.TrimEnd(';') + ';' + $InstallDir) }
     $envKey.SetValue('Path', $newRaw, $kind)
-    # Also update the current session so 'orq' resolves without a restart.
-    $env:Path = "$env:Path;$InstallDir"
+    # Explorer and other running shells refresh their environment on this message.
+    if (-not ('OrqInstallerEnvironment' -as [type])) {
+      Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class OrqInstallerEnvironment {
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam,
+        string lParam, uint flags, uint timeout, out IntPtr result);
+}
+'@
+    }
+    $messageResult = [IntPtr]::Zero
+    $sent = [OrqInstallerEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [IntPtr]::Zero, 'Environment', 0x2, 5000, [ref]$messageResult)
+    if ($sent -eq [IntPtr]::Zero) { Warn '! PATH was saved, but Windows did not acknowledge the environment change; restart Explorer or sign in again' }
     Say "ok: PATH updated   (user) $InstallDir"
-    Say '      open a new terminal for the change to persist in other shells'
   }
 } finally {
   $envKey.Close()
+}
+
+# Make the installed command available in this PowerShell process as well.
+$processHasPath = @($env:Path -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }) -contains $want
+if (-not $NoModifyPath -and -not $processHasPath) {
+  $env:Path = "$env:Path;$InstallDir"
+  $processHasPath = $true
 }
 
 # --- Setup -----------------------------------------------------------------
@@ -278,15 +311,25 @@ if (-not $NoSetup) {
   if ($hasSetup) {
     Say ''
     Say '  Starting setup - press Ctrl-C to skip and run ''orq setup'' later.'
-    $env:ORQ_SETUP_FROM_INSTALLER = '1'
-    & $target setup
+    $priorSetupMarker = $env:ORQ_SETUP_FROM_INSTALLER
+    try {
+      $env:ORQ_SETUP_FROM_INSTALLER = '1'
+      & $target setup
+      $setupStatus = $LASTEXITCODE
+    } finally {
+      if ($null -eq $priorSetupMarker) { Remove-Item Env:ORQ_SETUP_FROM_INSTALLER -ErrorAction SilentlyContinue }
+      else { $env:ORQ_SETUP_FROM_INSTALLER = $priorSetupMarker }
+    }
+    if ($setupStatus -ne 0) {
+      Die "setup exited $setupStatus; the CLI is installed, rerun 'orq setup'"
+    }
   } else {
     Warn '! this release has no ''orq setup'' yet - skipping setup'
   }
 }
 
 Say ''
-if (-not $onPath) {
-  Say '  To use orq in this shell now:  $env:Path += ";' + $InstallDir + '"'
+if (-not $processHasPath) {
+  Say ('  To use orq in this shell now:  $env:Path += ";' + $InstallDir + '"')
 }
-Say '  Next:  orq setup'
+if ($NoSetup -or -not $hasSetup) { Say '  Next:  orq setup' }

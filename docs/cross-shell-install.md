@@ -43,19 +43,22 @@ at [`install.ps1`](../install.ps1) in this branch. It mirrors `install.sh`'s con
 - download the exe, verify the published `.sha256` with `Get-FileHash`, refuse on
   mismatch, refuse a missing checksum on "latest" (allow only on a pinned old release)
 - install to `$HOME\.orq\bin\orq.exe` (parity with the unix `~/.orq/bin`)
-- add the dir to the user `Path` via `[Environment]::SetEnvironmentVariable(..., 'User')`
-  unless `-NoModifyPath`
+- add the dir to the user `Path` by editing its raw registry value, preserving
+  `REG_EXPAND_SZ`, and notify running Windows applications of the change unless
+  `-NoModifyPath`
 - run `orq setup` unless `-NoSetup`
 - same env vars as install.sh: `ORQ_CLI_VERSION`, `ORQ_CLI_CHANNEL`, `ORQ_CLI_INSTALL_DIR`, `ORQ_CLI_QUIET`
 
-Tested under PowerShell 7: parses clean, the checksum digest regex accepts a real
-sha256 and rejects an HTML captive-portal body, arch detection maps AMD64/ARM64/x86
-and rejects the rest, and the `-Version + -Channel` conflict, `-Help`, and bad-channel
-paths exit with the right codes. The network download path was not run locally; it
-needs a Windows runner. The repo has a `windows-latest` job in `ci.yml`, but it only
-runs `go test ./cli/custom/skills/`, and the `install.sh` check is a separate ubuntu
-`installer` job. Neither covers a PowerShell installer, so this needs a new pwsh step
-or job, not an extension of an existing gate.
+Initial tests under PowerShell 7 showed that it parses cleanly, the checksum digest regex accepts a real
+sha256 and rejects an HTML captive-portal body, arch detection accepts 64-bit
+AMD64/ARM64 and rejects 32-bit Windows, and the `-Version + -Channel` conflict, `-Help`, and bad-channel
+paths exit with the right codes. A Windows PowerShell 5.1 review found that a
+GitHub `.sha256` response can arrive as bytes, and that `irm | iex` does not
+run a script parameter block in an isolated scope; the installer handles the
+byte response and uses a scriptblock invocation below. The `windows-latest` job
+in `ci.yml` now runs offline installer integration tests under Windows
+PowerShell 5.1 and PowerShell 7. The `install.sh` check remains a separate
+Ubuntu `installer` job.
 
 ### Rollout steps to ship it
 
@@ -65,12 +68,12 @@ or job, not an extension of an existing gate.
 2. Serve it at `https://cli.orq.ai/install.ps1`. The `cli.orq.ai` redirect that
    serves `install.sh` lives outside this repo; the same mechanism needs an
    `install.ps1` route before the one-liner can be advertised.
-3. Add a NEW pwsh parse/smoke step (the existing `windows-latest` job only runs the
-   skills go tests, so this is an addition, not an extension). Mirror the
-   `dash -n install.sh` gate with:
-   `pwsh -NoProfile -Command "$e=$null;[void][System.Management.Automation.Language.Parser]::ParseFile('install.ps1',[ref]$null,[ref]$e);if($e){$e;exit 1}"`.
+3. Keep the Windows PowerShell 5.1 and pwsh 7 integration tests green, and run
+   one live download on Windows before advertising the endpoint. Offline tests
+   cover the scriptblock form, checksum decoding, a fresh install, rollback
+   after a failed probe, and setup failure.
 4. Only then update the README install section to add:
-   `irm https://cli.orq.ai/install.ps1 | iex`.
+   `& ([scriptblock]::Create((irm https://cli.orq.ai/install.ps1)))`.
 
 Until step 2 is done, do not advertise the one-liner: it would 404.
 
