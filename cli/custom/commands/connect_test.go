@@ -2986,6 +2986,40 @@ func TestDisconnectOtelReportsAnUnreadableConfig(t *testing.T) {
 	}
 }
 
+// --status is read from the same file the install writes and the disconnect
+// reads, so a settings.json it cannot parse has to show there too. Listed as a
+// warn rather than dropped: a row left out reads as "otel is not wired here",
+// which is the one thing an unreadable file cannot establish.
+func TestStatusOtelWarnsOnAnUnreadableConfig(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	row := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, "settings.json") && !strings.Contains(l, "not valid JSON") {
+			row = l
+		}
+	}
+	if row == "" {
+		t.Fatalf("status listed no otel row for an unreadable config:\n%s", out)
+	}
+	if !strings.Contains(row, "!") {
+		t.Errorf("the otel row did not carry the warn glyph: %q", row)
+	}
+	if !strings.Contains(out, "is not valid JSON") {
+		t.Errorf("the warn glyph came with no cause:\n%s", out)
+	}
+}
+
 // `orq auth logout` clears the env file but leaves it on disk, holding only a
 // comment. A check that asks whether the file exists reads that as a key the
 // shell exports, and the install then says nothing about the one thing that

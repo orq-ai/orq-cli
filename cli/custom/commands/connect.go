@@ -420,6 +420,9 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		reportSkillsVersion(rep, agents)
 		reportBrokenSkillLinks(rep, agents)
 	}
+	if hasCap(caps, capOtel) {
+		reportUnreadableOtelConfigs(rep, agents)
+	}
 	isWired := map[string]bool{}
 	for _, w := range wired {
 		if w.agent != "" {
@@ -446,6 +449,26 @@ func runConnectStatus(opts *setupOptions, args []string) error {
 		rep.info("detected but not wired: %s", strings.Join(unwired, ", "))
 	}
 	return nil
+}
+
+// reportUnreadableOtelConfigs names why an otel row carries a warn glyph, the
+// way reportBrokenSkillLinks does for skills. The table has room for a state
+// but not a cause, and a warned row without one is a warning nobody can act
+// on.
+func reportUnreadableOtelConfigs(rep *reporter, agents []string) {
+	for _, id := range agents {
+		spec, ok := lookupAgent(id)
+		if !ok || spec.otelConfig == nil || spec.otelPresent == nil {
+			continue
+		}
+		path, err := spec.otelConfig(true)
+		if err != nil || path == "" {
+			continue
+		}
+		if _, err := spec.otelPresent(path); err != nil {
+			rep.warn("%-8s %-9s %v", id, capOtel, err)
+		}
+	}
 }
 
 // printWiredTable prints one row per capability, with the agent name on the
@@ -977,7 +1000,16 @@ func dryRunConnect(rep *reporter, opts *setupOptions, agents, caps []string) err
 			case spec.installOtel == nil || spec.otelConfig == nil:
 				rep.info("%-8s otel      no plugin mechanism in this agent to trace sessions with", id)
 			default:
-				if path, err := spec.otelConfig(true); err == nil && path != "" {
+				path, err := spec.otelConfig(true)
+				switch {
+				case err != nil:
+					// The real run fails on this rather than installing, so a
+					// preview that left the row out would promise a step that
+					// is not going to happen.
+					rep.warn("%-8s otel      %v", id, err)
+				case path == "":
+					rep.warn("%-8s otel      no config path for this agent", id)
+				default:
 					// The preview says what the run would do, and for an
 					// install that is already there the run installs nothing.
 					what := "installs " + launch.TracePluginRef
