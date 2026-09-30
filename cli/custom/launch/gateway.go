@@ -71,9 +71,9 @@ type GatewayFlags struct {
 	NoSkills bool
 	DryRun   bool
 	Help     bool
-	// Router and Trace are only parsed for agents with Traceable set. Trace
-	// defaults on there and is disabled with --no-otel; like MCP, the default
-	// is applied by ParseArgv, so the zero value of this struct is tracing off.
+	// Router and Trace are only parsed for agents with Traceable set. Both
+	// default on there and are disabled with --no-gateway (or --no-router) and
+	// --no-otel. ParseArgv applies these defaults; the struct's zero value is off.
 	Router bool
 	Trace  bool
 }

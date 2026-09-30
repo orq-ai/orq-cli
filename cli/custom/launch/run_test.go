@@ -44,9 +44,16 @@ func TestCompletionFlags(t *testing.T) {
 
 func TestRunHelp(t *testing.T) {
 	def := FindAgent("claude")
-	code, err := Run(def, []string{"-h"})
+	var code int
+	var err error
+	out := captureStdout(t, func() { code, err = Run(def, []string{"-h"}) })
 	if err != nil || code != 0 {
 		t.Fatalf("help: code=%d err=%v", code, err)
+	}
+	for _, want := range []string{"--gateway", "--no-gateway", "--no-router", "(default)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help omits %q: %s", want, out)
+		}
 	}
 }
 

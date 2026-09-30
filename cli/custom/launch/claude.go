@@ -1,9 +1,7 @@
 package launch
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -14,8 +12,8 @@ const (
 	DefaultClaudeGatewayURL = DefaultGatewayAPIBaseURL + "/v3/anthropic"
 
 	// Claude Code resolves /model opus|sonnet|haiku through these three. Left
-	// unset it sends the bare alias, which the gateway rejects for having no
-	// provider/ prefix, so a session could not switch tiers at all. No
+	// unset it sends the bare alias, which is not a model id the gateway can
+	// resolve, so a session could not switch tiers at all. No
 	// claude-haiku-5 exists yet; 4-5 is the current haiku.
 	DefaultClaudeOpusModel   = "anthropic/claude-opus-5"
 	DefaultClaudeSonnetModel = "anthropic/claude-sonnet-5"
@@ -31,17 +29,15 @@ func claudeAgent() AgentDef {
 		AllowModels: false,
 		Traceable:   true,
 		HelpRoute:   helpRoute("Anthropic", DefaultClaudeGatewayURL),
-		HelpModel:   "Model to start with (with --router, a gateway ref: provider/model_id)",
+		HelpModel:   "Model to start with (with gateway routing, a gateway ref: provider/model_id)",
 		Prompt:      nil, // claude's own -p passes through untouched
 		Resolve:     resolveClaude,
 	}
 }
 
-// resolveClaude leaves claude on the user's own login and adds the orq MCP
-// server, skills and session tracing, each of which --no-mcp, --no-skills and
-// --no-otel turn off. --router is the one capability that is opt-in, because it
-// moves model traffic onto the gateway and so onto workspace billing. MCP is a
-// --mcp-config PreArg pointing at a temp file; skills
+// resolveClaude routes claude through the gateway and adds the orq MCP server,
+// skills and session tracing. --no-gateway, --no-mcp, --no-skills and --no-otel
+// disable those capabilities. MCP is a --mcp-config PreArg pointing at a temp file; skills
 // are linked into ~/.claude/skills for the session rather than fetched as a
 // plugin, unless ORQ_SKILLS_URL pins a bundle, which is loaded with
 // --plugin-url instead.
@@ -73,12 +69,12 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		// same mistake as passing one, so both get the warning.
 		if model := firstNonEmpty(ctx.Flags.Model, ctx.Getenv("ANTHROPIC_MODEL")); model != "" && !ShouldWarnMissingProviderPrefix(model, noopNormalize) {
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-				"model %q is a gateway ref, but without --router claude talks to Anthropic directly, which expects e.g. claude-sonnet-5-5", model))
+				"model %q is a gateway ref, but with --no-gateway claude talks to Anthropic directly, which expects e.g. claude-sonnet-5-5", model))
 		}
 		if ctx.Flags.BaseURL != "" {
-			plan.Warnings = append(plan.Warnings, "--base-url only applies with --router; ignoring it")
+			plan.Warnings = append(plan.Warnings, "--base-url only applies with gateway routing; ignoring it")
 		}
-		// Without --router the launcher sets none of these, so whatever the
+		// Without gateway routing the launcher sets none of these, so whatever the
 		// shell exports reaches claude. Saying "your own login" while an
 		// inherited ANTHROPIC_BASE_URL bills someone else is the surprise this
 		// ticket is about, so name it.
@@ -90,7 +86,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		}
 		if len(inherited) > 0 {
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-				"%s set in your shell, so claude uses it rather than your own login; unset it or pass --router to route through orq deliberately", strings.Join(inherited, ", ")))
+				"%s set in your shell, so claude uses it rather than your own login; unset it to use your own login", strings.Join(inherited, ", ")))
 		}
 	}
 	if ctx.Flags.Trace {
@@ -99,7 +95,7 @@ func resolveClaude(ctx *AgentContext) (*LaunchPlan, error) {
 		}
 		if ctx.Flags.Router {
 			plan.Warnings = append(plan.Warnings,
-				"--router records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
+				"gateway routing records each model call twice, once in the AI Router and once in the session trace, so summed costs across both double-count; pass --no-otel to keep one copy")
 		}
 	} else {
 		declineTrace(ctx, plan)
@@ -133,28 +129,6 @@ func noopNormalize(model string) string { return model }
 // the model the user asked for is exported: an unset ANTHROPIC_MODEL leaves
 // claude's own default and any /model choice alone, and the tier variables
 // below are what turn its default aliases into gateway refs.
-// claudeTierAliases are the model names claude resolves through the three
-// ANTHROPIC_DEFAULT_*_MODEL vars this launch sets, so they reach the gateway as
-// the refs below and not as themselves. Warning that they have no provider/
-// prefix would be a warning about a value the launch already resolved:
-// "opus" pinned in a settings file is the common case.
-var claudeTierAliases = map[string]bool{
-	"opus":     true,
-	"sonnet":   true,
-	"haiku":    true,
-	"opusplan": true,
-}
-
-// isClaudeTierAlias also accepts the `[1m]` spellings. The claude 2.1.281
-// bundle treats a canonical model name and its `[1m]` form as the same model,
-// and offers sonnet[1m], opus[1m], opusplan[1m] and fable[1m], so a suffixed
-// tier resolves the same way the bare one does. `fable` and `best` are left
-// out on purpose: this launch sets no fable tier variable, so a warning about
-// them is right.
-func isClaudeTierAlias(model string) bool {
-	return claudeTierAliases[strings.TrimSuffix(model, "[1m]")]
-}
-
 // claudeProviderSwitches are the env switches that move claude off the
 // Anthropic API and onto a provider with its own endpoint variable. Read from
 // the claude 2.1.281 bundle, which keeps them in one list next to
@@ -167,40 +141,6 @@ var claudeProviderSwitches = []string{
 	"CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
 	"CLAUDE_CODE_USE_MANTLE",
 	"CLAUDE_CODE_USE_GATEWAY",
-}
-
-// claudeSettingsModel returns the model pinned in claude's settings files, in
-// claude's own precedence order. It reports the first file that parses and
-// names one; an unreadable or surprising file means "nothing pinned", because
-// this feeds a warning and a warning invented from a guess is worse than none.
-// A non-string value (a tier alias object, say) is not a model id.
-func claudeSettingsModel(getenv func(string) string) string {
-	dirs := []string{
-		filepath.Join(".claude", "settings.local.json"),
-		filepath.Join(".claude", "settings.json"),
-	}
-	if dir := strings.TrimSpace(getenv("CLAUDE_CONFIG_DIR")); dir != "" {
-		dirs = append(dirs, filepath.Join(dir, "settings.json"))
-	} else if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".claude", "settings.json"))
-	}
-	for _, path := range dirs {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var settings struct {
-			Model json.RawMessage `json:"model"`
-		}
-		if json.Unmarshal(data, &settings) != nil {
-			continue
-		}
-		var model string
-		if json.Unmarshal(settings.Model, &model) == nil && model != "" {
-			return model
-		}
-	}
-	return ""
 }
 
 func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
@@ -218,23 +158,12 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	if ctx.Flags.Model != "" {
 		plan.Env["ANTHROPIC_MODEL"] = ctx.Flags.Model
 	}
-	// An inherited ANTHROPIC_MODEL is warned about but never re-exported: it
-	// already reaches claude on its own, and so does a model pinned in a
-	// settings file. Either one reaches the gateway as a bare Anthropic id,
-	// which it rejects, so the warning has to read all three sources claude
-	// reads, in the order claude resolves them.
-	if model := firstNonEmpty(ctx.Flags.Model, getenv("ANTHROPIC_MODEL"), claudeSettingsModel(getenv)); model != "" &&
-		!isClaudeTierAlias(model) && ShouldWarnMissingProviderPrefix(model, noopNormalize) {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"model %q has no provider/ prefix; the gateway expects e.g. anthropic/claude-sonnet-5-5", model))
-	}
-
 	plan.Env["ANTHROPIC_BASE_URL"] = baseURL
 	plan.Env["ANTHROPIC_AUTH_TOKEN"] = ctx.Creds.APIKey
 	plan.Env["ANTHROPIC_API_KEY"] = "" // explicitly empty so claude uses the auth token
 	// Each of these picks a provider whose own base URL claude reads instead of
 	// ANTHROPIC_BASE_URL. One left in the shell is the user's own arrangement,
-	// so it stays in force, but --router then routes nothing and says so.
+	// so it stays in force, but gateway routing then routes nothing and says so.
 	var providerSwitches []string
 	for _, k := range claudeProviderSwitches {
 		if getenv(k) != "" {
@@ -243,7 +172,11 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	}
 	if len(providerSwitches) > 0 {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-			"%s set in your shell sends claude to that provider, so --router routes nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
+			"%s set in your shell sends claude to that provider, so gateway routing does nothing and nothing bills to orq; unset it to route through the orq.ai AI Router", strings.Join(providerSwitches, ", ")))
+	} else {
+		billed := firstNonEmpty(ctx.Creds.Workspace, "the workspace this API key belongs to")
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"gateway routing sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
 	}
 	// Tier aliases, so /model opus|sonnet|haiku resolves to a gateway ref.
 	// ANTHROPIC_SMALL_FAST_MODEL is deliberately not among them: current Claude
@@ -252,7 +185,4 @@ func routeThroughGateway(ctx *AgentContext, plan *LaunchPlan) {
 	plan.Env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_SONNET_MODEL"), DefaultClaudeSonnetModel)
 	plan.Env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = firstNonEmpty(getenv("ANTHROPIC_DEFAULT_HAIKU_MODEL"), DefaultClaudeHaikuModel)
 
-	billed := firstNonEmpty(ctx.Creds.Workspace, "the workspace this API key belongs to")
-	plan.Warnings = append(plan.Warnings, fmt.Sprintf(
-		"--router sends this session's model calls through the orq.ai AI Router; usage bills to %s, not your Claude subscription", billed))
 }

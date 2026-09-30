@@ -146,9 +146,9 @@ func flagStates() []struct {
 	}{
 		{GatewayFlags{}, ""},
 		{GatewayFlags{MCP: true}, "/--mcp"},
-		{GatewayFlags{MCP: true, Router: true, Trace: true, DryRun: true}, "/--router--otel"},
+		{GatewayFlags{MCP: true, Router: true, Trace: true, DryRun: true}, "/--gateway--otel"},
 		{GatewayFlags{MCP: true, Trace: true}, "/--otel"},
-		{GatewayFlags{MCP: true, Router: true, Trace: true}, "/--router--otel-real"},
+		{GatewayFlags{MCP: true, Router: true, Trace: true}, "/--gateway--otel-real"},
 	}
 }
 

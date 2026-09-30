@@ -1,9 +1,6 @@
 package launch
 
 import (
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -21,17 +18,43 @@ func routerFlags(f GatewayFlags) GatewayFlags {
 	return f
 }
 
-// The default launch leaves claude on the user's own login: nothing may point
-// it at the gateway, blank its API key, or pick a model for it. A Max
-// subscriber used to be moved onto workspace billing by this command.
-func TestClaudeDefaultDoesNotRoute(t *testing.T) {
+func TestClaudeLaunchRoutesByDefaultAndHonorsOptOut(t *testing.T) {
+	for _, tc := range []struct {
+		args       []string
+		wantRouter bool
+	}{
+		{[]string{"--no-otel"}, true},
+		{[]string{"--no-otel", "--gateway"}, true},
+		{[]string{"--no-otel", "--no-gateway"}, false},
+		{[]string{"--no-otel", "--no-router"}, false},
+	} {
+		flags, rest, err := ParseArgv(tc.args, ParseArgvOptions{AllowTrace: true})
+		if err != nil || len(rest) != 0 {
+			t.Fatalf("%v: flags=%+v rest=%v err=%v", tc.args, flags, rest, err)
+		}
+		plan, err := resolveClaude(claudeCtx(nil, flags))
+		if err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		if plan.Cleanup != nil {
+			plan.Cleanup()
+		}
+		_, routed := plan.Env["ANTHROPIC_BASE_URL"]
+		if routed != tc.wantRouter {
+			t.Errorf("%v: routed=%v, want %v", tc.args, routed, tc.wantRouter)
+		}
+	}
+}
+
+// --no-gateway leaves claude on the user's own login and picks no model.
+func TestClaudeNoGatewayDoesNotRoute(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(nil, GatewayFlags{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for k := range plan.Env {
 		if strings.HasPrefix(k, "ANTHROPIC_") {
-			t.Errorf("default launch exports %s=%q", k, plan.Env[k])
+			t.Errorf("--no-gateway launch exports %s=%q", k, plan.Env[k])
 		}
 	}
 	if plan.Env["ORQ_API_KEY"] != "orq-key" {
@@ -42,7 +65,7 @@ func TestClaudeDefaultDoesNotRoute(t *testing.T) {
 	}
 }
 
-func TestClaudeDefaultForwardsAnExplicitModel(t *testing.T) {
+func TestClaudeNoGatewayForwardsAnExplicitModel(t *testing.T) {
 	plan, _ := resolveClaude(claudeCtx(nil, GatewayFlags{Model: "opus"}))
 	if plan.Env["ANTHROPIC_MODEL"] != "opus" {
 		t.Fatalf("ANTHROPIC_MODEL: %q", plan.Env["ANTHROPIC_MODEL"])
@@ -115,16 +138,12 @@ func TestClaudeRouterModelFlag(t *testing.T) {
 	}
 }
 
-func TestClaudeRouterWarnsBareModel(t *testing.T) {
+func TestClaudeGatewayAcceptsBareModel(t *testing.T) {
 	plan, _ := resolveClaude(claudeCtx(nil, routerFlags(GatewayFlags{Model: "claude-sonnet-4-6"})))
-	var found bool
-	for _, w := range plan.Warnings {
-		found = found || strings.Contains(w, "provider/")
+	if plan.Env["ANTHROPIC_MODEL"] != "claude-sonnet-4-6" || warningsContain(plan, "provider/") {
+		t.Fatalf("bare model should reach the gateway unchanged: env=%v warnings=%v", plan.Env, plan.Warnings)
 	}
-	if !found {
-		t.Fatalf("warnings: %v", plan.Warnings)
-	}
-	// Without --router the bare id is exactly what Anthropic expects.
+	// With --no-gateway the bare id is what Anthropic expects too.
 	plan, _ = resolveClaude(claudeCtx(nil, GatewayFlags{Model: "claude-sonnet-4-6"}))
 	if len(plan.Warnings) != 0 {
 		t.Fatalf("warnings: %v", plan.Warnings)
@@ -132,17 +151,17 @@ func TestClaudeRouterWarnsBareModel(t *testing.T) {
 }
 
 // Gateway-prefixed tier refs sent to Anthropic directly would be rejected, so
-// they belong to --router only.
+// they are only set when gateway routing is on.
 func TestClaudeTiersOnlyWithRouter(t *testing.T) {
 	plan, _ := resolveClaude(claudeCtx(nil, GatewayFlags{}))
 	if _, set := plan.Env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; set {
-		t.Fatal("tier aliases exported without --router")
+		t.Fatal("tier aliases exported without gateway routing")
 	}
 }
 
 // Claude Code resolves /model opus|sonnet|haiku through three tier variables.
-// Unset, it sends the bare alias, which the gateway rejects for having no
-// provider/ prefix, so a launched session cannot switch tiers at all.
+// Unset, it sends the bare alias, which is not a gateway model id, so a
+// launched session cannot switch tiers at all.
 func TestClaudeWiresEveryModelTier(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(nil, routerFlags(GatewayFlags{})))
 	if err != nil {
@@ -161,7 +180,7 @@ func TestClaudeWiresEveryModelTier(t *testing.T) {
 			t.Errorf("%s = %q, want %q", tc.env, got, tc.want)
 		}
 		if !strings.Contains(got, "/") {
-			t.Errorf("%s = %q has no provider/ prefix; the gateway rejects bare ids", tc.env, got)
+			t.Errorf("%s = %q is not a gateway ref for a tier alias", tc.env, got)
 		}
 	}
 }
@@ -198,20 +217,20 @@ func TestClaudeWarnsBaseURLWithoutRouter(t *testing.T) {
 }
 
 // A gateway ref reaching Anthropic directly is rejected by Anthropic, and the
-// error it returns says nothing about --router.
+// error it returns says nothing about --no-gateway.
 func TestClaudeWarnsGatewayRefWithoutRouter(t *testing.T) {
 	plan, _ := resolveClaude(claudeCtx(nil, GatewayFlags{Model: "anthropic/claude-opus-5"}))
-	if !warningsContain(plan, "--router") {
+	if !warningsContain(plan, "--no-gateway") {
 		t.Fatalf("warnings: %v", plan.Warnings)
 	}
 	// Left over in the shell from a routed setup, it reaches claude the same way.
 	plan, _ = resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_MODEL": "anthropic/claude-opus-5"}, GatewayFlags{}))
-	if !warningsContain(plan, "--router") {
+	if !warningsContain(plan, "--no-gateway") {
 		t.Fatalf("inherited ref, warnings: %v", plan.Warnings)
 	}
 }
 
-// Without --router the launcher sets no Anthropic variables, so an inherited
+// Without gateway routing the launcher sets no Anthropic variables, so an inherited
 // ANTHROPIC_BASE_URL silently keeps billing someone other than the user's own
 // login, which is the surprise the flag split exists to remove.
 func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
@@ -230,10 +249,10 @@ func TestClaudeWarnsAboutInheritedAnthropicRouting(t *testing.T) {
 	}
 }
 
-// --router points claude at the gateway through ANTHROPIC_BASE_URL, which
+// Gateway routing points claude at the gateway through ANTHROPIC_BASE_URL, which
 // claude does not read once a provider switch selects Bedrock, Vertex or any
 // of their siblings. The switch is the user's own and stays in force, so
-// --router has to say it routes nothing rather than claim workspace billing.
+// the launch has to say it routes nothing rather than claim workspace billing.
 func TestRouterWarnsAboutProviderSwitches(t *testing.T) {
 	plan, err := resolveClaude(claudeCtx(map[string]string{
 		"CLAUDE_CODE_USE_BEDROCK": "1",
@@ -249,16 +268,19 @@ func TestRouterWarnsAboutProviderSwitches(t *testing.T) {
 	}
 	var said bool
 	for _, w := range plan.Warnings {
-		if strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") && strings.Contains(w, "CLAUDE_CODE_USE_VERTEX") && strings.Contains(w, "routes nothing") {
+		if strings.Contains(w, "CLAUDE_CODE_USE_BEDROCK") && strings.Contains(w, "CLAUDE_CODE_USE_VERTEX") && strings.Contains(w, "does nothing") {
 			said = true
 		}
 	}
 	if !said {
-		t.Errorf("no warning naming the switches that defeat --router: %v", plan.Warnings)
+		t.Errorf("no warning naming the switches that defeat gateway routing: %v", plan.Warnings)
+	}
+	if warningsContain(plan, "usage bills to") {
+		t.Errorf("provider switch defeated routing, but a warning still claims workspace billing: %v", plan.Warnings)
 	}
 }
 
-// Without --router claude stays on the user's own login, and a provider switch
+// Without gateway routing claude stays on the user's own login, and a provider switch
 // there is their own arrangement: clearing it would move the session off the
 // provider they chose.
 func TestDefaultLaunchLeavesProviderSwitchesAlone(t *testing.T) {
@@ -268,96 +290,5 @@ func TestDefaultLaunchLeavesProviderSwitchesAlone(t *testing.T) {
 	}
 	if _, ok := plan.Env["CLAUDE_CODE_USE_BEDROCK"]; ok {
 		t.Errorf("a default launch touched the provider switch: %v", plan.Env)
-	}
-}
-
-// The gateway rejects a bare Anthropic model id, and a model can reach claude
-// from a settings file as easily as from a flag. Before this, a user whose
-// ~/.claude/settings.json pinned one got no warning and an opaque gateway
-// refusal instead.
-func TestRouterWarnsAboutAModelPinnedInSettings(t *testing.T) {
-	configDir := t.TempDir()
-	write := func(path, body string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(filepath.Join(configDir, "settings.json"), `{"model":"claude-sonnet-4-5"}`)
-
-	plan, err := resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, routerFlags(GatewayFlags{})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.ContainsFunc(plan.Warnings, func(w string) bool {
-		return strings.Contains(w, "claude-sonnet-4-5") && strings.Contains(w, "provider/")
-	}) {
-		t.Errorf("no prefix warning for the pinned model: %v", plan.Warnings)
-	}
-	// Warned about, never re-exported: claude reads its own settings.
-	if _, ok := plan.Env["ANTHROPIC_MODEL"]; ok {
-		t.Errorf("the pinned model was re-exported: %v", plan.Env)
-	}
-
-	// A project file outranks the user one, the way claude resolves them.
-	t.Chdir(t.TempDir())
-	write(filepath.Join(".claude", "settings.json"), `{"model":"anthropic/claude-sonnet-5"}`)
-	plan, err = resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, routerFlags(GatewayFlags{})))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
-		t.Errorf("warned although the nearer settings file names a gateway ref: %v", plan.Warnings)
-	}
-}
-
-// The tier aliases are the common thing to pin, and the launch resolves them
-// itself through the three ANTHROPIC_DEFAULT_*_MODEL vars it sets, so they are
-// not models missing a prefix. A real run warned about "opus" before this.
-func TestRouterDoesNotWarnAboutATierAlias(t *testing.T) {
-	for _, alias := range []string{"opus", "sonnet", "haiku", "opusplan", "sonnet[1m]", "opus[1m]", "opusplan[1m]"} {
-		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"model":"`+alias+`"}`), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		plan, err := resolveClaude(claudeCtx(map[string]string{"CLAUDE_CONFIG_DIR": dir}, routerFlags(GatewayFlags{})))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
-			t.Errorf("%s: warned about a tier alias: %v", alias, plan.Warnings)
-		}
-	}
-}
-
-// `fable` and `best` are not tier aliases this launch resolves: it sets no
-// fable tier variable, so the model does reach the gateway as itself and the
-// warning is the right answer.
-func TestRouterStillWarnsAboutAnUnresolvedAlias(t *testing.T) {
-	for _, alias := range []string{"fable", "best"} {
-		plan, err := resolveClaude(claudeCtx(map[string]string{"ANTHROPIC_MODEL": alias}, routerFlags(GatewayFlags{})))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "provider/") }) {
-			t.Errorf("%s: no warning about a model the launch does not resolve: %v", alias, plan.Warnings)
-		}
-	}
-}
-
-// A settings file that does not parse, or that pins a tier object rather than
-// an id, must not invent a model to warn about.
-func TestSettingsModelIgnoresWhatItCannotRead(t *testing.T) {
-	for _, body := range []string{`{ this is not json`, `{"model":{"opus":"x"}}`, `{}`} {
-		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if got := claudeSettingsModel(env(map[string]string{"CLAUDE_CONFIG_DIR": dir})); got != "" {
-			t.Errorf("%s: model = %q, want none", body, got)
-		}
 	}
 }

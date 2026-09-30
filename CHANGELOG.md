@@ -117,12 +117,11 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
-- **Changed: `orq launch claude` keeps Claude Code on your own
-  login and model.** It no longer routes through the orq.ai AI Router, bills
-  the workspace, or forces `anthropic/claude-sonnet-5`. Scripts that relied on
-  the old routing must add `--router`, which restores it and names the
-  workspace that will be billed. `--model` still sets `ANTHROPIC_MODEL`, and
-  nothing else does.
+- **Changed: `orq launch claude` routes through the AI Router by default
+  without forcing a model.** Usage bills to the named orq workspace. Pass
+  `--no-gateway` (or `--no-router`) to use Claude Code's own Anthropic login
+  for model calls; `--gateway` explicitly selects the default. `--model`
+  still sets `ANTHROPIC_MODEL`, and nothing else does.
 - **Added: `orq launch claude` captures the session as an orq trace**, in the
   same way it wires MCP and skills: on unless you decline it. It turns on
   Claude Code's metrics and logs export and loads the bundled `orq-trace`
@@ -140,13 +139,13 @@ controls on surface changes, whichever side they originate from.
   `--status` like the other three, and `-o json` carries it under `otel`.
   Claude Code is the only agent with a plugin mechanism for it; the others
   report that rather than a wire.
-- **Changed: `--router` says when a provider switch in your shell defeats it.**
+- **Changed: gateway routing says when a provider switch in your shell defeats it.**
   `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` and their siblings send
   Claude Code to that provider, where the gateway URL is not read at all. They
-  stay in force, and `--router` now warns that it routes nothing rather than
-  claiming the session bills to the workspace. The missing `provider/` prefix
-  warning also reads a model pinned in a claude settings file, not only
-  `--model` and `ANTHROPIC_MODEL`.
+  stay in force, and launch warns that routing does nothing rather than
+  claiming the session bills to the workspace. Bare Anthropic model IDs are
+  accepted by the gateway, so launch no longer warns about a missing
+  `provider/` prefix.
 - **Changed: a bare `orq connect` now installs a plugin that traces
   every later Claude Code session.** Naming no capability has always meant all
   of them, and `otel` is now one of them, so `orq connect claude` writes the

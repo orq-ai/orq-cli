@@ -65,8 +65,7 @@ type AgentDef struct {
 	// advertising the flag for it promised a knob that did nothing.
 	FetchesModels bool
 	// Traceable agents capture the session into orq unless --no-otel declines
-	// it, and accept --router (send model traffic through the orq.ai AI
-	// Router). claude is
+	// it, and route through the gateway unless --no-gateway is set. claude is
 	// the only one today, and the help text for both flags is written for it:
 	// a second agent setting this has to move that copy onto AgentDef first.
 	Traceable bool

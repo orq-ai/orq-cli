@@ -93,7 +93,7 @@ func printAgentHelp(def *AgentDef) {
 	model := firstNonEmpty(def.HelpModel, "Gateway model (provider/model_id)")
 	headline := fmt.Sprintf("Launch %s preconfigured to route through %s.", def.Label, route)
 	if def.Traceable {
-		headline = fmt.Sprintf("Launch %s on your own login, with the orq MCP server, skills and session tracing.\nAdd --router to route it through %s instead.", def.Label, route)
+		headline = fmt.Sprintf("Launch %s through %s, with the orq MCP server, skills and session tracing.\nUse --no-gateway to keep your own Anthropic login for model calls.", def.Label, route)
 	}
 
 	fmt.Printf(`%s
@@ -109,7 +109,7 @@ Flags:
 	}
 	baseURLScope := ""
 	if def.Traceable {
-		baseURLScope = " (with --router)"
+		baseURLScope = " (with gateway routing)"
 	}
 	fmt.Printf("  --base-url <url>      Override the gateway base URL%s\n", baseURLScope)
 	if def.FetchesModels {
@@ -121,9 +121,10 @@ Flags:
                         metrics and logs export (default)
   --no-otel             Do not capture this session. To capture the sessions you
                         start yourself, outside orq launch, run 'orq connect otel'
-  --router              Send model traffic through the orq.ai AI Router instead of
-                        your own Anthropic login. Usage then bills to the orq
-                        workspace, not your subscription
+  --gateway             Send model traffic through the orq.ai AI Router (default).
+                        Usage bills to the orq workspace, not your subscription
+  --no-gateway          Keep your own Anthropic login for model calls
+  --no-router           Alias for --no-gateway
 `)
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
