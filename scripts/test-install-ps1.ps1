@@ -27,8 +27,9 @@ function Invoke-WebRequest {
   Copy-Item $global:installerTestDownloadFile $OutFile
 }
 
-function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup) {
-  $options = @{ Version = 'v2.0.0'; InstallDir = $dir; NoModifyPath = $true }
+function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup, [switch]$modifyPath) {
+  $options = @{ Version = 'v2.0.0'; InstallDir = $dir }
+  if (-not $modifyPath) { $options.NoModifyPath = $true }
   if (-not $runSetup) { $options.NoSetup = $true }
   if ($fromText) {
     & ([scriptblock]::Create((Get-Content $installer -Raw))) @options
@@ -77,6 +78,28 @@ try {
   Assert ($null -ne $setupError) 'setup exit code was ignored'
   Assert ($setupError.Exception.Message -match 'setup exited 13') "unexpected setup failure: $($setupError.Exception.Message)"
   Assert (Test-Path (Join-Path $setupDir 'orq.exe')) 'setup failure removed the installed CLI'
+
+  # A registry write must preserve the existing value kind and update this process.
+  $envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  if (-not $envKey) { $envKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment') }
+  $rawPathBefore = $envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  $kindBefore = if ($null -ne $rawPathBefore) { $envKey.GetValueKind('Path') } else { $null }
+  $processPathBefore = $env:Path
+  try {
+    $global:installerTestDownloadFile = $good
+    $global:installerTestDigest = (Get-FileHash $good -Algorithm SHA256).Hash
+    $pathDir = Join-Path $scratch 'path'
+    Run-Installer $pathDir -modifyPath
+    $rawPathAfter = [string]$envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Assert ($rawPathAfter.Split(';') -contains $pathDir) 'user PATH was not updated'
+    if ($null -ne $kindBefore) { Assert ($envKey.GetValueKind('Path') -eq $kindBefore) 'user PATH value kind changed' }
+    Assert ($env:Path.Split(';') -contains $pathDir) 'process PATH was not updated'
+  } finally {
+    if ($null -eq $rawPathBefore) { $envKey.DeleteValue('Path', $false) }
+    else { $envKey.SetValue('Path', $rawPathBefore, $kindBefore) }
+    $env:Path = $processPathBefore
+    $envKey.Close()
+  }
 
   Write-Host 'PowerShell installer integration tests passed'
 } finally {
