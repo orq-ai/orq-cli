@@ -30,13 +30,13 @@ func registerapiKeysCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a new API key",
-			Long:    bartolocli.Markdown("Mints a new API key in the workspace, bound to the single project in `projects` or to every project when omitted. The raw token is returned once in the `token` field and is never retrievable afterwards. Unknown body fields are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `constraints` (object)\n- `expiration` (string)\n- `name` (string, required)\n- `owner` (object)\n- `permission_mode` (string)\n- `project_scope` (object)\n- `projects` (array | null)\n- ... and 1 more fields\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
+			Long:    bartolocli.Markdown("Mints an opaque `sk-orq-` API key. Use `project_scope` to bind it to a single project and `permission_mode` with `access` to restrict permissions. A management key with API-key write access can create keys. The legacy `projects` field is also accepted. The raw token is returned once in the `token` field and is never retrievable afterwards. Unknown body fields are rejected.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `access` (object)\n- `constraints` (object)\n- `expiration` (string)\n- `name` (string, required)\n- `owner` (object)\n- `permission_mode` (string)\n- `project_scope` (object)\n- `projects` (array | null)\n\nRequired fields: `name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`). Timestamp fields (`format: date-time`) also accept a bare date or a relative value such as `24h`, `7d` or `now-24h`."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
 
 				bartolocli.MarkPassedFlags(cmd, params)
-				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"all\",\n  \"source\": \"workspace\"\n}") {
+				if bartolocli.PrintBodyExample(params, "{\n  \"name\": \"name\",\n  \"permission_mode\": \"all\"\n}") {
 					return nil
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[0:], params,
@@ -80,6 +80,9 @@ func registerapiKeysCommands(root *cobra.Command) {
 								"all",
 								"restricted",
 								"read_only",
+								"PERMISSION_MODE_ALL",
+								"PERMISSION_MODE_RESTRICTED",
+								"PERMISSION_MODE_READ_ONLY",
 							},
 						},
 						{
@@ -93,16 +96,6 @@ func registerapiKeysCommands(root *cobra.Command) {
 							FlagName:    "projects",
 							Type:        "string-slice",
 							Description: "Legacy single-project binding; prefer project_scope.",
-						},
-						{
-							Name:        "source",
-							FlagName:    "source",
-							Type:        "enum-string",
-							Description: "Origin of the key; router keys are minted for the AI router.",
-							Enum: []string{
-								"workspace",
-								"router",
-							},
 						},
 					},
 				)
@@ -167,6 +160,9 @@ func registerapiKeysCommands(root *cobra.Command) {
 						"all",
 						"restricted",
 						"read_only",
+						"PERMISSION_MODE_ALL",
+						"PERMISSION_MODE_RESTRICTED",
+						"PERMISSION_MODE_READ_ONLY",
 					},
 				},
 				{
@@ -180,16 +176,6 @@ func registerapiKeysCommands(root *cobra.Command) {
 					FlagName:    "projects",
 					Type:        "string-slice",
 					Description: "Legacy single-project binding; prefer project_scope.",
-				},
-				{
-					Name:        "source",
-					FlagName:    "source",
-					Type:        "enum-string",
-					Description: "Origin of the key; router keys are minted for the AI router.",
-					Enum: []string{
-						"workspace",
-						"router",
-					},
 				},
 			},
 		)
@@ -428,6 +414,9 @@ func registerapiKeysCommands(root *cobra.Command) {
 								"all",
 								"restricted",
 								"read_only",
+								"PERMISSION_MODE_ALL",
+								"PERMISSION_MODE_RESTRICTED",
+								"PERMISSION_MODE_READ_ONLY",
 							},
 						},
 						{
@@ -504,6 +493,9 @@ func registerapiKeysCommands(root *cobra.Command) {
 						"all",
 						"restricted",
 						"read_only",
+						"PERMISSION_MODE_ALL",
+						"PERMISSION_MODE_RESTRICTED",
+						"PERMISSION_MODE_READ_ONLY",
 					},
 				},
 				{

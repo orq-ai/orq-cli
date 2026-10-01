@@ -483,7 +483,7 @@ func registerevalsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "get id",
 			Short:   "Retrieve an Evaluator",
-			Long:    bartolocli.Markdown("Retrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata, enabled, and output_type.\n\n## Arguments\n\n- `id`"),
+			Long:    bartolocli.Markdown("Retrieve a single evaluator by ID with more detail than the list endpoint: full type-specific config, owner, domain_id, metadata and enabled.\n\n## Arguments\n\n- `id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
