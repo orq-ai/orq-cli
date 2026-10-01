@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.0) — 2026-10-01
+
 - **Changed: `orq launch claude` routes through the AI Router by default
   without forcing a model.** Usage bills to the named orq workspace. Pass
   `--no-gateway` to use Claude Code's own Anthropic login
