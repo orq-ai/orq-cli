@@ -26,7 +26,6 @@
 [CmdletBinding()]
 param(
   [string]$Version,
-  [ValidateSet('stable', 'rc')]
   [string]$Channel,
   [string]$InstallDir,
   [switch]$NoModifyPath,

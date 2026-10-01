@@ -57,7 +57,7 @@ try {
     $channelError = $null
     try { & $installer -Version v2.0.0 -NoSetup } catch { $channelError = $_ }
     Assert ($null -ne $channelError) 'invalid channel environment variable was accepted'
-    Assert ($channelError.Exception.Message -match 'unknown channel') 'invalid channel environment variable was accepted'
+    Assert ($channelError.Exception.Message -match 'unknown channel') "unexpected channel failure: $($channelError.Exception.Message)"
   } finally {
     if ($null -eq $priorChannel) { Remove-Item Env:ORQ_CLI_CHANNEL -ErrorAction SilentlyContinue }
     else { $env:ORQ_CLI_CHANNEL = $priorChannel }
