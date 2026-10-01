@@ -1524,7 +1524,7 @@ func registeragentsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "update agent-key",
 			Short:   "Update agent",
-			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- `memory_stores` (array)\n- ... and 11 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to update"),
+			Long:    bartolocli.Markdown("Partially update an existing agent configuration including models, instructions, tools, knowledge bases, and execution parameters.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `agent_plugins` (array | null)\n- `description` (string)\n- `display_name` (string)\n- `engine` (string)\n- `fallback_models` (array)\n- `instructions` (string)\n- `key` (string)\n- `knowledge_bases` (array)\n- ... and 12 more fields\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `agent-key` — The unique key of the agent to update"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -1535,6 +1535,12 @@ func registeragentsCommands(root *cobra.Command) {
 				}
 				body, err := bartolocli.GetBodyWithFlags(cmd, "application/json", args[1:], params,
 					[]bartolocli.BodyField{
+						{
+							Name:        "agent_plugins",
+							FlagName:    "agent-plugins",
+							Type:        "json",
+							Description: "",
+						},
 						{
 							Name:        "description",
 							FlagName:    "description",
@@ -1683,6 +1689,12 @@ func registeragentsCommands(root *cobra.Command) {
 		bartolocli.AddExampleFlag(cmd)
 		bartolocli.AddBodyFieldFlags(cmd,
 			[]bartolocli.BodyField{
+				{
+					Name:        "agent_plugins",
+					FlagName:    "agent-plugins",
+					Type:        "json",
+					Description: "",
+				},
 				{
 					Name:        "description",
 					FlagName:    "description",
