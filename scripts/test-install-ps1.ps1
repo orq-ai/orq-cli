@@ -28,6 +28,15 @@ function Invoke-WebRequest {
   Copy-Item $global:installerTestDownloadFile $OutFile
 }
 
+function Invoke-RestMethod {
+  param([string]$Uri, [hashtable]$Headers)
+  if ($Uri.EndsWith('/dist-tags')) {
+    if ($global:installerTestNoRc) { return [pscustomobject]@{ latest = '2.0.0' } }
+    return [pscustomobject]@{ latest = '2.0.0'; rc = '2.0.0' }
+  }
+  return [pscustomobject]@{ tag_name = 'v2.0.0' }
+}
+
 function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup, [switch]$modifyPath) {
   $options = @{ Version = 'v2.0.0'; InstallDir = $dir }
   if (-not $modifyPath) { $options.NoModifyPath = $true }
@@ -41,6 +50,7 @@ function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup, [swit
 
 try {
   $global:installerTestChecksumBody = $null
+  $global:installerTestNoRc = $false
   $good = Build-Fake 'good' '2.0.0' '0' '0'
   $old = Build-Fake 'old' '1.0.0' '0' '0'
   $bad = Build-Fake 'bad' '2.0.0' '9' '0'
@@ -86,6 +96,20 @@ try {
   $freshTarget = Join-Path $freshDir 'orq.exe'
   Assert (Test-Path $freshTarget) 'scriptblock install did not create orq.exe'
   Assert ((Get-FileHash $freshTarget).Hash -eq $global:installerTestDigest) 'fresh install has wrong binary'
+
+  # Stable and rc release discovery must lead to the same verified download.
+  $stableDir = Join-Path $scratch 'stable-resolution'
+  & $installer -InstallDir $stableDir -NoModifyPath -NoSetup
+  Assert (Test-Path (Join-Path $stableDir 'orq.exe')) 'stable release resolution did not install'
+  $rcDir = Join-Path $scratch 'rc-resolution'
+  & $installer -Channel rc -InstallDir $rcDir -NoModifyPath -NoSetup
+  Assert (Test-Path (Join-Path $rcDir 'orq.exe')) 'rc release resolution did not install'
+  $global:installerTestNoRc = $true
+  $noRcError = $null
+  try { & $installer -Channel rc -NoSetup } catch { $noRcError = $_ }
+  Assert ($null -ne $noRcError) 'missing rc dist-tag was accepted'
+  Assert ($noRcError.Exception.Message -match 'no rc release is published') 'missing rc dist-tag produced the wrong error'
+  $global:installerTestNoRc = $false
 
   # Corrupt and non-digest checksum bodies must not produce an executable.
   foreach ($body in @(('0' * 64), '<html>proxy</html>', '', '   ')) {
@@ -200,7 +224,7 @@ try {
 
   Write-Host 'PowerShell installer integration tests passed'
 } finally {
-  Remove-Variable installerTestDownloadFile, installerTestDigest, installerTestChecksumBody -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable installerTestDownloadFile, installerTestDigest, installerTestChecksumBody, installerTestNoRc, installerTestLockedTarget -Scope Global -ErrorAction SilentlyContinue
   Remove-Item $scratch -Recurse -Force -ErrorAction SilentlyContinue
 }
 
