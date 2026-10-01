@@ -1,11 +1,13 @@
 package launch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Run resolves and launches an agent, returning the child exit code.
@@ -13,6 +15,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	flags, passthrough, err := ParseArgv(argv, ParseArgvOptions{
 		Prompt:      def.Prompt,
 		AllowModels: def.AllowModels,
+		AllowTrace:  def.Traceable,
 	})
 	if err != nil {
 		// 1, not a distinct usage code: the stability contract defines 0 / 1 /
@@ -34,6 +37,14 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 1, err
 	}
 
+	// Before Resolve, so no resolver probes a binary that is not there and
+	// warns about the probe ahead of the real error.
+	if !flags.DryRun {
+		if _, err := exec.LookPath(def.Binary); err != nil {
+			return 1, fmt.Errorf("%s CLI not found on PATH. Install it: %s", def.Binary, def.InstallHint)
+		}
+	}
+
 	plan, err := def.Resolve(&AgentContext{
 		Creds:     creds,
 		Getenv:    os.Getenv,
@@ -46,7 +57,7 @@ func Run(def *AgentDef, argv []string) (int, error) {
 	if plan.Cleanup != nil {
 		defer plan.Cleanup()
 	}
-	reportCredentialNotices(def, creds)
+	reportCredentialNotices(def, creds, flags.Trace)
 	for _, w := range plan.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
@@ -58,15 +69,17 @@ func Run(def *AgentDef, argv []string) (int, error) {
 		return 0, nil
 	}
 
-	if _, err := exec.LookPath(def.Binary); err != nil {
-		return 1, fmt.Errorf("%s CLI not found on PATH. Install it: %s", def.Binary, def.InstallHint)
-	}
-
 	return RunChild(def.Binary, args, plan.Env)
 }
 
+// probeTimeout bounds a probe so a hung agent binary delays the launch
+// instead of blocking it.
+const probeTimeout = 10 * time.Second
+
 func hostExecProbe(binary string, args ...string) (string, error) {
-	out, err := exec.Command(binary, args...).Output()
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, binary, args...).Output()
 	if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) != 0 {
 		// Output() captures stderr on the error; without this the probe's
 		// real failure reason ends up as an opaque "exit status 1".
@@ -78,20 +91,40 @@ func hostExecProbe(binary string, args ...string) (string, error) {
 func printAgentHelp(def *AgentDef) {
 	route := firstNonEmpty(def.HelpRoute, "the orq.ai AI Router")
 	model := firstNonEmpty(def.HelpModel, "Gateway model (provider/model_id)")
-	fmt.Printf(`Launch %s preconfigured to route through %s.
+	headline := fmt.Sprintf("Launch %s preconfigured to route through %s.", def.Label, route)
+	if def.Traceable {
+		headline = fmt.Sprintf("Launch %s through %s, with the orq MCP server, skills and session tracing.\nUse --no-gateway to keep your own Anthropic login for model calls.", def.Label, route)
+	}
+
+	fmt.Printf(`%s
 
 Usage:
   orq launch %s [flags] [--] [agent args...]
 
 Flags:
   --model <id>          %s
-`, def.Label, route, def.Name, model)
+`, headline, def.Name, model)
 	if def.AllowModels {
 		fmt.Println("  --models <list>       Extra models: comma-separated or JSON array")
 	}
-	fmt.Println("  --base-url <url>      Override the gateway base URL")
+	baseURLScope := ""
+	if def.Traceable {
+		baseURLScope = " (with gateway routing)"
+	}
+	fmt.Printf("  --base-url <url>      Override the gateway base URL%s\n", baseURLScope)
 	if def.FetchesModels {
 		fmt.Println("  --no-fetch-models     Skip fetching the enabled-model catalog")
+	}
+	if def.Traceable {
+		fmt.Print(`  --otel                Capture the session as an orq trace: loads the orq-trace
+                        plugin for this session only and turns on Claude Code's
+                        metrics and logs export (default)
+  --no-otel             Do not capture this session. To capture the sessions you
+                        start yourself, outside orq launch, run 'orq connect otel'
+  --gateway             Send model traffic through the orq.ai AI Router (default).
+                        Usage bills to the orq workspace, not your subscription
+  --no-gateway          Keep your own Anthropic login for model calls
+`)
 	}
 	fmt.Print(`  --mcp                 Wire the orq MCP server (workspace tools) into the agent (default)
   --no-mcp              Do not make the orq MCP server available for this session
@@ -124,8 +157,8 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 	sort.Strings(keys)
 	for _, k := range keys {
 		v := plan.Env[k]
-		if v != "" && v == apiKey {
-			v = "<redacted>"
+		if apiKey != "" {
+			v = strings.ReplaceAll(v, apiKey, "<redacted>")
 		}
 		fmt.Printf("  %s=%s\n", k, v)
 	}
@@ -138,9 +171,13 @@ func printDryRun(def *AgentDef, args []string, plan *LaunchPlan, apiKey string) 
 }
 
 // reportCredentialNotices prints the auth surprises worth interrupting for.
-func reportCredentialNotices(def *AgentDef, creds *Credentials) {
+func reportCredentialNotices(def *AgentDef, creds *Credentials, traced bool) {
 	if creds.Kind == CredentialSessionToken {
-		fmt.Fprintln(os.Stderr, "Note: no durable API key for this workspace; the agent gets a login token that expires in about an hour. Run 'orq setup' to mint a 90-day key.")
+		expiry := "the agent gets a login token that expires in about an hour"
+		if traced {
+			expiry += ", and the trace export stops with it, leaving a trace that ends mid-session"
+		}
+		fmt.Fprintf(os.Stderr, "Note: no durable API key for this workspace; %s. Run 'orq setup' to mint a 90-day key.\n", expiry)
 	}
 	if creds.ShadowsSession {
 		fmt.Fprintln(os.Stderr, "Note: ORQ_API_KEY may not belong to the workspace 'orq auth login' selected; the key wins. Pass --model against that workspace's catalogue, or re-run 'orq setup' to mint a key for the one you logged into.")

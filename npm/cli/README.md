@@ -15,7 +15,7 @@ orq auth login
 orq prompts list
 orq agents list
 orq doctor
-orq launch claude        # launch Claude Code routed through the orq AI Router
+orq launch claude        # launch Claude Code on its own login, with orq MCP + skills
 orq launch codex --sandbox
 ```
 

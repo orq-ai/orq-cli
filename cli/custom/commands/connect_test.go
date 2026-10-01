@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -29,15 +30,15 @@ func TestPartitionConnectArgs(t *testing.T) {
 		caps    []string
 		wantErr bool
 	}{
-		"empty":          {args: nil},
-		"agents only":    {args: []string{"claude", "kimi"}, agents: []string{"claude", "kimi"}},
-		"caps only":      {args: []string{"gateway", "tracing"}, caps: []string{"gateway", "tracing"}},
-		"mixed":          {args: []string{"claude", "gateway"}, agents: []string{"claude"}, caps: []string{"gateway"}},
-		"tracing parses": {args: []string{"tracing"}, caps: []string{"tracing"}},
-		"case folded":    {args: []string{"Claude", "GATEWAY"}, agents: []string{"claude"}, caps: []string{"gateway"}},
-		"dedup":          {args: []string{"claude", "claude"}, agents: []string{"claude"}},
-		"garbage":        {args: []string{"clod"}, wantErr: true},
-		"flag-like":      {args: []string{"--gateway"}, wantErr: true},
+		"empty":        {args: nil},
+		"agents only":  {args: []string{"claude", "kimi"}, agents: []string{"claude", "kimi"}},
+		"caps only":    {args: []string{"gateway", "otel"}, caps: []string{"gateway", "otel"}},
+		"mixed":        {args: []string{"claude", "gateway"}, agents: []string{"claude"}, caps: []string{"gateway"}},
+		"tracing gone": {args: []string{"tracing"}, wantErr: true},
+		"case folded":  {args: []string{"Claude", "GATEWAY"}, agents: []string{"claude"}, caps: []string{"gateway"}},
+		"dedup":        {args: []string{"claude", "claude"}, agents: []string{"claude"}},
+		"garbage":      {args: []string{"clod"}, wantErr: true},
+		"flag-like":    {args: []string{"--gateway"}, wantErr: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			agents, caps, err := partitionConnectArgs(tc.args)
@@ -400,33 +401,6 @@ func TestConnectStatusOmitsWorkspaceColumnWithNoRecords(t *testing.T) {
 	})
 	if strings.Contains(out, "WORKSPACE") {
 		t.Errorf("WORKSPACE column rendered with no agent carrying a record:\n%s", out)
-	}
-}
-
-// tracing is vocabulary, not behaviour: it parses, says so, and alone it does
-// nothing at exit 0.
-func TestConnectTracingIsReservedNotImplemented(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Chdir(t.TempDir())
-	resetSetupMemos(t)
-
-	var out strings.Builder
-	rep := &reporter{w: &out}
-	caps := dropUnavailableCaps(rep, []string{"tracing", "gateway"})
-	if len(caps) != 1 || caps[0] != "gateway" {
-		t.Errorf("caps = %v, want [gateway]", caps)
-	}
-	if !strings.Contains(out.String(), "tracing is not available yet") {
-		t.Errorf("tracing was dropped without saying so:\n%s", out.String())
-	}
-	if !capsWereAllUnavailable([]string{"claude", "tracing"}) {
-		t.Error("unavailable-only detection missed the only-unavailable case")
-	}
-	if capsWereAllUnavailable([]string{"claude", "skills"}) {
-		t.Error("skills is built and must count as a real capability")
-	}
-	if capsWereAllUnavailable([]string{"claude", "tracing", "gateway"}) {
-		t.Error("unavailable-only detection swallowed a real capability")
 	}
 }
 
@@ -964,8 +938,11 @@ func TestConnectStatusAppliesTheSameFiltersAsConnect(t *testing.T) {
 		return out.String()
 	}
 
-	if got := run("tracing"); strings.Contains(got, "nothing wired") {
-		t.Errorf("--status tracing reported nothing wired on a wired machine:\n%s", got)
+	// Scoped to one capability, the answer is about that capability: the kimi
+	// gateway on this machine is not an otel wire and must not be reported as
+	// one.
+	if got := run("otel"); !strings.Contains(got, "nothing wired") {
+		t.Errorf("--status otel counted another capability's wire:\n%s", got)
 	}
 	if got := run("claude", "gateway"); strings.Contains(got, "not wired") {
 		t.Errorf("claude reported unwired for the gateway, promising a wire that cannot exist:\n%s", got)
@@ -1940,21 +1917,16 @@ func TestSetupRejectsAnUnknownCapabilityBeforeDoingAnything(t *testing.T) {
 	}
 }
 
-// `--capability tracing` parses but is not implemented. Accepting it silently
-// left setup reporting success having connected nothing at all.
-func TestSetupSaysTracingIsNotAvailable(t *testing.T) {
-	got := captureOutput(t, func() {
-		rep := newReporter(true)
-		caps, err := validateCapabilities([]string{"tracing"})
-		if err != nil {
-			t.Fatalf("tracing rejected outright: %v", err)
-		}
-		if left := dropUnavailableCaps(rep, caps); len(left) != 0 {
-			t.Errorf("tracing survived the availability filter: %v", left)
-		}
-	})
-	if !strings.Contains(got, "not available yet") {
-		t.Errorf("tracing was dropped silently:\n%s", got)
+// The capability is spelled after the flag that declines it (--no-otel), and
+// "tracing", which an earlier revision parsed and then refused, is gone. A
+// stale spelling that still parsed would connect nothing and say nothing.
+func TestSetupRejectsTheOldTracingSpelling(t *testing.T) {
+	if _, err := validateCapabilities([]string{"tracing"}); err == nil {
+		t.Error("tracing still parses as a capability")
+	}
+	caps, err := validateCapabilities([]string{"otel"})
+	if err != nil || len(caps) != 1 || caps[0] != capOtel {
+		t.Errorf("validateCapabilities(otel) = %v, %v", caps, err)
 	}
 }
 
@@ -2721,6 +2693,46 @@ func TestMCPResultsReachAnAgentWithNoGatewayRow(t *testing.T) {
 	}
 }
 
+func TestSetupConnectsOtelAndReportsItOnTheFinalScreen(t *testing.T) {
+	settings, calls := otelMachine(t)
+	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
+	var progress strings.Builder
+	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
+	if len(*calls) != 2 {
+		t.Fatalf("setup did not install the tracing plugin: calls=%v", *calls)
+	}
+	if len(results) != 1 || results[0].Agent != "claude" || results[0].Otel != settings {
+		t.Fatalf("setup omitted the tracing result: %+v", results)
+	}
+	if !setupComplete(true, results) {
+		t.Fatal("successful tracing install marked setup incomplete")
+	}
+	var screen strings.Builder
+	printFinalScreen(&reporter{w: &screen}, results, nil, true, opts)
+	if !strings.Contains(screen.String(), capOtel) || !strings.Contains(screen.String(), tilde(settings)) {
+		t.Fatalf("setup's final screen omitted tracing: %s", screen.String())
+	}
+}
+
+func TestSetupReportsOtelInstallFailure(t *testing.T) {
+	_, _ = otelMachine(t)
+	runAgentCommand = func(string, ...string) error { return errors.New("plugin install failed") }
+	opts := &setupOptions{caps: []string{capOtel}, finalScreen: true}
+	var progress strings.Builder
+	results := connectSetupCapabilities(&reporter{w: &progress}, opts, []string{"claude"}, nil)
+	if len(results) != 1 || !strings.Contains(results[0].OtelError, "plugin install failed") {
+		t.Fatalf("setup omitted tracing failure: %+v", results)
+	}
+	if setupComplete(true, results) {
+		t.Fatal("failed tracing install marked setup complete")
+	}
+	var screen strings.Builder
+	printFinalScreen(&reporter{w: &screen}, results, nil, false, opts)
+	if !strings.Contains(screen.String(), capOtel) || !strings.Contains(screen.String(), "plugin install failed") || strings.Contains(screen.String(), capGateway) {
+		t.Fatalf("setup's final screen misreported tracing failure: %s", screen.String())
+	}
+}
+
 func TestScopedDisconnectPreviewListsOnlyThatScope(t *testing.T) {
 	home, project := mcpMachine(t, ".claude")
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
@@ -2793,6 +2805,529 @@ func TestStatusCountsSharedSkillsAsWiredForEveryReader(t *testing.T) {
 	if strings.Contains(out, "not wired") {
 		t.Errorf("codex reads the shared directory and is wired:\n%s", out)
 	}
+}
+
+// otelMachine is an mcpMachine with the agent's plugin install stubbed: no test
+// may invoke claude, and CLAUDE_CONFIG_DIR keeps every read and write inside
+// the temp home even for a machine that has a real ~/.claude.
+func otelMachine(t *testing.T) (settings string, calls *[]string) {
+	t.Helper()
+	home, _ := mcpMachine(t, ".claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("ORQ_API_KEY", "sk-live")
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return filepath.Join("/usr/local/bin", name), nil
+	})
+	recorded := []string{}
+	orig := runAgentCommand
+	t.Cleanup(func() { runAgentCommand = orig })
+	settings = filepath.Join(home, ".claude", "settings.json")
+	// The stub records the install the way the real plugin manager does, so a
+	// test exercises the read-back rather than only the exit code. A stub that
+	// wrote nothing would let a connect that installs nothing still report ok.
+	runAgentCommand = func(name string, args ...string) error {
+		recorded = append(recorded, strings.Join(append([]string{name}, args...), " "))
+		if len(args) > 1 && args[1] == "install" {
+			if err := os.WriteFile(settings,
+				[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return settings, &recorded
+}
+
+// exportingShell gives the temp home the setup `orq setup` would have left: an
+// env file holding the key and a profile that sources it.
+func exportingShell(t *testing.T) shellSetup {
+	t.Helper()
+	sh := detectShell(viper.GetString("config-directory"))
+	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.EnvFile, []byte("export ORQ_API_KEY=sk-live\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return sh
+}
+
+// The install goes through the agent's own plugin manager, and the marketplace
+// is added first: `claude plugin install orq-trace@orq-claude-plugin` cannot
+// resolve a marketplace the agent has never heard of.
+func TestConnectOtelInstallsThePublishedPlugin(t *testing.T) {
+	settings, calls := otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if len(*calls) != 2 ||
+		!strings.Contains((*calls)[0], "plugin marketplace add "+launch.TraceMarketplaceRepo) ||
+		!strings.Contains((*calls)[1], "plugin install "+launch.TracePluginRef) {
+		t.Fatalf("install did not add the marketplace then install the plugin: %v", *calls)
+	}
+	if !strings.Contains(out, tilde(settings)) {
+		t.Errorf("the reported path is not the file the agent records the install in:\n%s", out)
+	}
+}
+
+// An install that is already there is reported, not repeated: `claude plugin
+// install` on an installed plugin is a no-op, but the run must not read as
+// having changed something.
+func TestConnectOtelIsIdempotent(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an installed plugin was installed again: %v", *calls)
+	}
+	if !strings.Contains(out, "already installed") {
+		t.Errorf("the existing install went unsaid:\n%s", out)
+	}
+}
+
+// The plugin posts with the ORQ_API_KEY the user's shell exports, so an install
+// into a shell that exports none is inert. Silence there reads as a finished
+// wire. The temp home of this test has no env file and no profile sourcing one,
+// which is exactly the machine the line is for.
+func TestConnectOtelSaysTheKeyIsMissing(t *testing.T) {
+	otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "ORQ_API_KEY") {
+		t.Errorf("an install with no key in the shell did not say so:\n%s", out)
+	}
+}
+
+// Uninstall runs only when the plugin is there: the agent exits non-zero when
+// asked to remove a plugin it does not have, which would report a failure for a
+// machine with nothing to remove.
+func TestDisconnectOtelRemovesOnlyWhatIsInstalled(t *testing.T) {
+	settings, calls := otelMachine(t)
+
+	c := NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("disconnect with nothing installed: %v", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("uninstall ran with no plugin installed: %v", *calls)
+	}
+
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c = NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("disconnect: %v", err)
+	}
+	if len(*calls) != 1 || !strings.Contains((*calls)[0], "plugin uninstall "+launch.TracePluginRef) {
+		t.Fatalf("uninstall did not run for the installed plugin: %v", *calls)
+	}
+}
+
+// An agent is detected from the config directory it left behind, which outlives
+// an uninstall, so a bare connect meets agents whose binary is gone. Reported as
+// a failure, that made `orq connect` exit non-zero on any machine with a
+// leftover ~/.claude and no claude, taking the skills and MCP legs down with it.
+// Caught by CI, whose runners have no coding agent installed.
+func TestConnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
+	_, calls := otelMachine(t)
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return "", exec.ErrNotFound
+	})
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("a missing agent binary failed the run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an absent agent was invoked anyway: %v", *calls)
+	}
+	if !strings.Contains(out, "not on PATH") {
+		t.Errorf("the skip went unexplained:\n%s", out)
+	}
+}
+
+// The same reading as the install side, on the way out: a machine whose claude
+// is gone still has the enabledPlugins entry in its settings, and disconnect
+// has no plugin manager to remove it with. Reported as a failure, that made
+// `orq disconnect` exit non-zero with nothing it could have done differently.
+func TestDisconnectOtelSkipsAnAgentThatIsNotInstalled(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	orqiFakeLookPathFunc(t, func(name string) (string, error) {
+		return "", exec.ErrNotFound
+	})
+
+	out := captureOutput(t, func() {
+		c := NewDisconnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--yes"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("a missing agent binary failed the run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("an absent agent was invoked anyway: %v", *calls)
+	}
+	if !strings.Contains(out, "nothing to remove") {
+		t.Errorf("the skip went unexplained:\n%s", out)
+	}
+}
+
+// A settings file that cannot be parsed is not a machine with nothing
+// installed: the plugin may well be enabled in there and keep tracing. Saying
+// so is the difference between a disconnect that failed and one that found
+// nothing.
+func TestDisconnectOtelReportsAnUnreadableConfig(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewDisconnectCommand()
+	c.SetArgs([]string{"claude", "otel", "--yes"})
+	if err := c.Execute(); err == nil {
+		t.Fatal("an unreadable settings file disconnected successfully")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("uninstall ran against a config that could not be read: %v", *calls)
+	}
+}
+
+// --status is read from the same file the install writes and the disconnect
+// reads, so a settings.json it cannot parse has to show there too. Listed as a
+// warn rather than dropped: a row left out reads as "otel is not wired here",
+// which is the one thing an unreadable file cannot establish.
+func TestStatusOtelWarnsOnAnUnreadableConfig(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	row := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, "settings.json") && !strings.Contains(l, "not valid JSON") {
+			row = l
+		}
+	}
+	if row == "" {
+		t.Fatalf("status listed no otel row for an unreadable config:\n%s", out)
+	}
+	if !strings.Contains(row, "!") {
+		t.Errorf("the otel row did not carry the warn glyph: %q", row)
+	}
+	if !strings.Contains(out, "is not valid JSON") {
+		t.Errorf("the warn glyph came with no cause:\n%s", out)
+	}
+}
+
+// An enabled plugin is the one state --status exists to confirm, so it has to
+// read as wired, pointing at the file the agent records the install in.
+func TestStatusOtelReportsAnInstalledPlugin(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		s := NewConnectCommand()
+		s.SetArgs([]string{"claude", "otel", "--status"})
+		if err := s.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	row := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "claude") && strings.Contains(l, "otel") && strings.Contains(l, tilde(settings)) {
+			row = l
+		}
+	}
+	if row == "" {
+		t.Fatalf("status listed no otel row for an installed plugin:\n%s", out)
+	}
+	if strings.Contains(row, "!") {
+		t.Errorf("an installed plugin carried the warn glyph: %q", row)
+	}
+}
+
+// `orq auth logout` clears the env file but leaves it on disk, holding only a
+// comment. A check that asks whether the file exists reads that as a key the
+// shell exports, and the install then says nothing about the one thing that
+// stops it working.
+func TestConnectOtelSaysTheKeyIsMissingAfterLogout(t *testing.T) {
+	otelMachine(t)
+	sh := detectShell(viper.GetString("config-directory"))
+	if err := os.MkdirAll(filepath.Dir(sh.EnvFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.EnvFile, []byte("# Cleared by 'orq auth logout'.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sh.Profile, []byte(sh.Line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "ORQ_API_KEY") {
+		t.Errorf("a cleared env file was read as a key the shell exports:\n%s", out)
+	}
+}
+
+// Status is the reader people check an install with, so the capability has to
+// show up there as wired, not only in the output of the run that installed it.
+func TestConnectStatusReportsTheInstalledPlugin(t *testing.T) {
+	settings, _ := otelMachine(t)
+	if err := os.WriteFile(settings,
+		[]byte(`{"enabledPlugins":{"`+launch.TracePluginRef+`":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--status"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("status: %v", err)
+		}
+	})
+	if strings.Contains(out, "nothing wired") {
+		t.Fatalf("an installed plugin is reported as nothing wired:\n%s", out)
+	}
+	if !strings.Contains(out, "otel") {
+		t.Errorf("status does not name the capability:\n%s", out)
+	}
+}
+
+// A dry run names the plugin it would install and runs the agent's plugin
+// manager not at all, like every other writer in this command.
+func TestConnectOtelDryRunInstallsNothing(t *testing.T) {
+	_, calls := otelMachine(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel", "--dry-run"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("dry run: %v", err)
+		}
+	})
+	if len(*calls) != 0 {
+		t.Errorf("a dry run invoked the agent: %v", *calls)
+	}
+	if !strings.Contains(out, launch.TracePluginRef) {
+		t.Errorf("the dry run does not say what it would install:\n%s", out)
+	}
+}
+
+// The installer's exit code is not the install: the agent records the entry
+// itself. A plugin manager that exits 0 and writes nothing this code can read
+// leaves `--status` contradicting the tick the same run printed, so the run has
+// to read it back and fail.
+func TestConnectOtelFailsWhenTheInstallLeavesNoRecord(t *testing.T) {
+	_, calls := otelMachine(t)
+	orig := runAgentCommand
+	t.Cleanup(func() { runAgentCommand = orig })
+	runAgentCommand = func(name string, args ...string) error {
+		*calls = append(*calls, strings.Join(append([]string{name}, args...), " "))
+		return nil // exits 0, records nothing
+	}
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err == nil {
+			t.Fatal("an install that recorded nothing reported success")
+		}
+	})
+	if !strings.Contains(out, "does not record") {
+		t.Errorf("the unverified install went unexplained:\n%s", out)
+	}
+}
+
+// The mirror of the missing-key tests: on the setup `orq setup` leaves behind,
+// the warning must not fire. Without this, always printing the nag passes every
+// other test in this file.
+func TestConnectOtelIsQuietWhenTheShellExportsTheKey(t *testing.T) {
+	otelMachine(t)
+	exportingShell(t)
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if strings.Contains(out, "cannot see where yours would come from") {
+		t.Errorf("a shell that exports the key was told it does not:\n%s", out)
+	}
+}
+
+// An unrecognised shell has no profile to name. The remedy has to be the line
+// to run, not a sentence that trails off into an empty path.
+func TestConnectOtelNamesTheLineWhenThereIsNoProfile(t *testing.T) {
+	otelMachine(t)
+	t.Setenv("SHELL", "/opt/homebrew/bin/nu")
+
+	out := captureOutput(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	if !strings.Contains(out, "in your shell") {
+		t.Errorf("no runnable remedy for a shell with no profile:\n%s", out)
+	}
+	if strings.Contains(out, "source it from \n") || strings.HasSuffix(strings.TrimSpace(out), "source it from") {
+		t.Errorf("the remedy trails off into an empty profile path:\n%s", out)
+	}
+}
+
+// A config that cannot be read is not a machine with nothing installed, and
+// connect has to answer it the way disconnect and --status now do. Three
+// verdicts on one file was the defect.
+func TestConnectOtelFailsOnAnUnreadableConfig(t *testing.T) {
+	settings, calls := otelMachine(t)
+	if err := os.WriteFile(settings, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := NewConnectCommand()
+	c.SetArgs([]string{"claude", "otel"})
+	if err := c.Execute(); err == nil {
+		t.Fatal("an unreadable settings file connected successfully")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("the agent ran against a config that could not be read: %v", *calls)
+	}
+}
+
+// `-o json` is the machine contract, so the otel leg has to carry the two facts
+// the human view prints: whether it installed or found the plugin there, and
+// whether the install will post at all.
+func TestConnectOtelJSONCarriesTheInstallFacts(t *testing.T) {
+	otelMachine(t)
+	exportingShell(t)
+
+	out := captureStdout(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+	var payload struct {
+		Otel []otelResult `json:"otel"`
+	}
+	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
+		t.Fatalf("otel payload is not JSON: %v\n%s", err, out)
+	}
+	if len(payload.Otel) != 1 {
+		t.Fatalf("expected one otel row, got %d:\n%s", len(payload.Otel), out)
+	}
+	row := payload.Otel[0]
+	if row.Agent != "claude" || row.Path == "" {
+		t.Errorf("otel row names no agent or no path: %+v", row)
+	}
+	if row.Already {
+		t.Errorf("a fresh install is reported as already installed: %+v", row)
+	}
+	if !row.ShellExportsKey {
+		t.Errorf("a shell that exports the key is reported as not: %+v", row)
+	}
+
+	// The second run finds it installed, which the payload has to distinguish.
+	out = captureStdout(t, func() {
+		c := NewConnectCommand()
+		c.SetArgs([]string{"claude", "otel"})
+		if err := c.Execute(); err != nil {
+			t.Fatalf("rerun: %v", err)
+		}
+	})
+	payload.Otel = nil
+	if err := json.Unmarshal([]byte(jsonPayload(t, out)), &payload); err != nil {
+		t.Fatalf("rerun payload is not JSON: %v\n%s", err, out)
+	}
+	if len(payload.Otel) != 1 || !payload.Otel[0].Already {
+		t.Errorf("a rerun over an existing install is not marked already installed:\n%s", out)
+	}
+}
+
+// Every agent whose spec can install the plugin has to be able to read it back
+// and remove it. Without this, a second traceable agent added to the registry
+// fails quietly: --status reports it unwired forever, or disconnect lists it,
+// takes the confirmation and removes nothing.
+func TestOtelRegistrySpecsAreComplete(t *testing.T) {
+	for _, spec := range agentRegistry() {
+		if spec.installOtel == nil {
+			continue
+		}
+		if spec.otelConfig == nil {
+			t.Errorf("%s installs the trace plugin but names no config to record it in", spec.ID)
+		}
+		if spec.otelPresent == nil {
+			t.Errorf("%s installs the trace plugin but cannot read the install back", spec.ID)
+		}
+		if spec.removeOtel == nil {
+			t.Errorf("%s installs the trace plugin but cannot remove it", spec.ID)
+		}
+	}
+}
+
+// jsonPayload slices the `-o json` body out of a captured report, which a
+// non-TTY run prints after the human lines.
+func jsonPayload(t *testing.T, out string) string {
+	t.Helper()
+	i := strings.Index(out, "{\n  \"coding_agents\"")
+	if i < 0 {
+		t.Fatalf("no json payload in the output:\n%s", out)
+	}
+	return out[i:]
 }
 
 // The fix the unwired line prints must repeat the capabilities asked about:

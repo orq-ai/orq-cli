@@ -18,6 +18,7 @@ type PromptMapping struct {
 type ParseArgvOptions struct {
 	Prompt      *PromptMapping
 	AllowModels bool
+	AllowTrace  bool // --otel/--no-otel and Claude's gateway flags
 }
 
 // CompletionFlags returns the launcher-owned flags matching toComplete for
@@ -34,6 +35,9 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 	if def.AllowModels {
 		flags = append(flags, "--models")
 	}
+	if def.Traceable {
+		flags = append(flags, "--gateway", "--no-gateway", "--otel", "--no-otel")
+	}
 	if def.Prompt != nil {
 		flags = append(flags, def.Prompt.Flags...)
 	}
@@ -48,7 +52,8 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 
 // ParseArgv is the one arg parser for all agents (subcommands run with
 // cobra DisableFlagParsing). Launcher-owned flags — --model/--models/
-// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h — are recognized
+// --base-url/--no-fetch-models/--mcp/--no-mcp/--no-skills/--dry-run/-h (and
+// --gateway/--no-gateway/--otel/--no-otel for traceable agents) — are recognized
 // only at the FRONT of argv: the first arg the launcher doesn't own ends
 // launcher parsing and everything from there on belongs to the agent verbatim.
 // This keeps agent flags that collide with ours (codex's -p profile) reachable:
@@ -57,7 +62,9 @@ func CompletionFlags(def *AgentDef, toComplete string) []string {
 // Prompt-mapped flags (-p/--prompt) expand to the agent's own syntax (e.g.
 // `run <text>`) and land at the front of the agent argv by construction.
 func ParseArgv(argv []string, opts ParseArgvOptions) (GatewayFlags, []string, error) {
-	flags := GatewayFlags{MCP: true}
+	// MCP, gateway routing and tracing are on for traceable agents. Apply those
+	// defaults here so the struct's zero value stays off for direct callers.
+	flags := GatewayFlags{MCP: true, Router: opts.AllowTrace, Trace: opts.AllowTrace}
 	var prompt []string
 
 	takeValue := func(arg string, i *int) (string, error) {
@@ -143,6 +150,14 @@ scan:
 			flags.NoSkills = true
 		case arg == "--dry-run":
 			flags.DryRun = true
+		case opts.AllowTrace && arg == "--gateway":
+			flags.Router = true
+		case opts.AllowTrace && arg == "--no-gateway":
+			flags.Router = false
+		case opts.AllowTrace && arg == "--otel":
+			flags.Trace = true
+		case opts.AllowTrace && arg == "--no-otel":
+			flags.Trace = false
 		case opts.Prompt != nil && slices.Contains(opts.Prompt.Flags, arg):
 			v, err := takeValue(arg, &i)
 			if err != nil {

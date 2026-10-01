@@ -162,3 +162,32 @@ func TestMergeEnv(t *testing.T) {
 		t.Fatalf("merge broken: %v", got)
 	}
 }
+
+func TestParseArgvTraceFlags(t *testing.T) {
+	flags, rest, err := ParseArgv([]string{"--otel", "--gateway", "--model", "opus"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || !flags.Trace || !flags.Router || flags.Model != "opus" || len(rest) != 0 {
+		t.Fatalf("%+v %v %v", flags, rest, err)
+	}
+	// Agents that cannot trace leave both flags to the agent, and get no
+	// tracing default they have no wiring for.
+	flags, rest, _ = ParseArgv([]string{"--no-otel"}, ParseArgvOptions{})
+	if flags.Trace || len(rest) != 1 || rest[0] != "--no-otel" {
+		t.Fatalf("%+v %v", flags, rest)
+	}
+	// Tracing is on unasked for a traceable agent, and --no-otel is the only
+	// way to leave the session uncaptured.
+	if flags, _, _ := ParseArgv(nil, ParseArgvOptions{AllowTrace: true}); !flags.Trace || !flags.Router {
+		t.Fatalf("tracing and gateway routing must default on: %+v", flags)
+	}
+	if flags, _, _ := ParseArgv([]string{"--no-otel"}, ParseArgvOptions{AllowTrace: true}); flags.Trace {
+		t.Fatalf("--no-otel must turn tracing off: %+v", flags)
+	}
+	flags, rest, err = ParseArgv([]string{"--no-gateway"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || len(rest) != 0 || flags.Router {
+		t.Fatalf("--no-gateway must turn routing off: flags=%+v rest=%v err=%v", flags, rest, err)
+	}
+	flags, _, err = ParseArgv([]string{"--no-gateway", "--gateway"}, ParseArgvOptions{AllowTrace: true})
+	if err != nil || !flags.Router {
+		t.Fatalf("--gateway must turn routing back on: %+v err=%v", flags, err)
+	}
+}
