@@ -172,12 +172,20 @@ jobs:
 
   windows:
     name: skills on windows
-    # cli/custom/skills has a Windows-only half — LockFileEx in flock_windows.go,
+    # cli/custom/skills has a Windows-only half: LockFileEx in flock_windows.go,
     # copies instead of symlinks, and the .orq-owned marker that stands in for
     # resolving one. None of it is compiled by the Linux job, so before this
-    # existed the first Windows user was the first execution. Only the skills
-    # package runs here: it is the part with an OS-specific implementation, and
-    # the rest of the CLI is covered by the stable job.
+    # existed the first Windows user was the first execution.
+    # Only the skills package runs here: it is the part with an OS-specific
+    # implementation, and the rest of the CLI is covered by the stable job.
+    # cli/custom/launch belongs here too, for the same reason: the plugin it
+    # installs runs its hooks as `node <plugin root>/hooks/x.js`, and a plugin
+    # root holding a space needs that path quoted, which is a Windows-only
+    # failure. It cannot go green yet. About a dozen of its tests assume a
+    # POSIX HOME, a 0600 config file, or a warning list without the Windows
+    # skills warning in it, and the credential ones set HOME rather than
+    # USERPROFILE, so on a Windows runner they would read and write the real
+    # profile. Fixing those is its own change, not a line in this file.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

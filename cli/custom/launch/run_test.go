@@ -44,9 +44,16 @@ func TestCompletionFlags(t *testing.T) {
 
 func TestRunHelp(t *testing.T) {
 	def := FindAgent("claude")
-	code, err := Run(def, []string{"-h"})
+	var code int
+	var err error
+	out := captureStdout(t, func() { code, err = Run(def, []string{"-h"}) })
 	if err != nil || code != 0 {
 		t.Fatalf("help: code=%d err=%v", code, err)
+	}
+	for _, want := range []string{"--gateway", "--no-gateway", "(default)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help omits %q: %s", want, out)
+		}
 	}
 }
 
@@ -125,4 +132,15 @@ func captureStdout(t *testing.T, fn func()) string {
 	w.Close()
 	os.Stdout = prev
 	return <-done
+}
+
+func TestDryRunRedactsAKeyInsideACompositeValue(t *testing.T) {
+	out := captureStdout(t, func() {
+		printDryRun(&AgentDef{Binary: "claude"}, nil, &LaunchPlan{Env: map[string]string{
+			"OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer sk-secret",
+		}}, "sk-secret")
+	})
+	if strings.Contains(out, "sk-secret") || !strings.Contains(out, "Authorization=Bearer <redacted>") {
+		t.Fatalf("dry-run output: %q", out)
+	}
 }

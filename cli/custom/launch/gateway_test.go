@@ -277,7 +277,7 @@ func TestOnPremAPIBaseDrivesEveryAgentsRouter(t *testing.T) {
 			plan, err := def.Resolve(&AgentContext{
 				Creds:  &Credentials{APIKey: "k", APIBaseURL: onprem, Kind: CredentialAPIKey},
 				Getenv: func(string) string { return "" },
-				Flags:  GatewayFlags{NoFetchModels: true},
+				Flags:  GatewayFlags{NoFetchModels: true, Router: agent == "claude"},
 			})
 			if err != nil {
 				t.Fatal(err)

@@ -117,6 +117,58 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed: `orq launch claude` routes through the AI Router by default
+  without forcing a model.** Usage bills to the named orq workspace. Pass
+  `--no-gateway` to use Claude Code's own Anthropic login
+  for model calls; `--gateway` explicitly selects the default. `--model`
+  still sets `ANTHROPIC_MODEL`, and nothing else does.
+- **Added: `orq launch claude` captures the session as an orq trace**, in the
+  same way it wires MCP and skills: on unless you decline it. It turns on
+  Claude Code's metrics and logs export and loads the bundled `orq-trace`
+  plugin for that session only, without installing anything into your claude
+  config. The hooks need `node` on PATH. `--no-otel` leaves the session
+  uncaptured, and `--otel` names the default explicitly.
+- **Fixed: the bundled `orq-trace` plugin redacts provider keys in tool text
+  and keeps queued traces with their original workspace.** Segmented keys,
+  bare JWTs and bearer tokens could otherwise reach a trace in plaintext;
+  after a send failure, a later session could replay the queue under another
+  workspace's key. Batches now carry a destination fingerprint and are only
+  retried there. Undeliverable batches produce a warning for each destination.
+- **Added: `otel`, a fourth `orq connect` capability**, so the sessions you
+  start yourself are traced too, not only the ones `orq launch` starts.
+  `orq connect claude otel` installs the `orq-trace` plugin through Claude
+  Code's own plugin manager, from the public `orq-claude-plugin` marketplace,
+  and `orq disconnect claude otel` uninstalls it and leaves the marketplace for
+  the other orq plugins. It writes no key: the plugin posts with the
+  `ORQ_API_KEY` your shell exports, and the command says so when your shell
+  exports none. Tracing is part of a bare `orq connect`, `orq setup` and
+  `--status` like the other three, and `-o json` carries it under `otel`.
+  Claude Code is the only agent with a plugin mechanism for it; the others
+  report that rather than a wire.
+- **Changed: gateway routing says when a provider switch in your shell defeats it.**
+  `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` and their siblings send
+  Claude Code to that provider, where the gateway URL is not read at all. They
+  stay in force, and launch warns that routing does nothing rather than
+  claiming the session bills to the workspace. Bare Anthropic model IDs are
+  accepted by the gateway, so launch no longer warns about a missing
+  `provider/` prefix.
+- **Changed: a bare `orq connect` now installs a plugin that traces
+  every later Claude Code session.** Naming no capability has always meant all
+  of them, and `otel` is now one of them, so `orq connect claude` writes the
+  `orq-trace` plugin into your claude config rather than into one session. It
+  keeps tracing sessions you start yourself, with no orq command involved,
+  until you run `orq disconnect claude otel`. To wire the rest and leave
+  tracing out, name what you want: `orq connect claude mcp skills`. A session
+  can still decline it one at a time with `orq launch claude --no-otel`, which
+  now also switches off an installed plugin for that session. That switch
+  reaches orq-trace 0.5.0 and newer; against an older install the launch says
+  so and warns that the session is still traced, rather than reporting a
+  decline it cannot deliver.
+- **Changed: the capability is spelled `otel`, not `tracing`.** The
+  earlier spelling parsed and then refused itself with "not available yet", so
+  `orq connect tracing` and `orq setup --capability tracing` are now errors that
+  name the capability list. Nothing was ever wired under the old name.
+
 ## [11.0.2](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.2) — 2026-09-29
 
 - **Changed: API errors name the fix.** A failed request used to print

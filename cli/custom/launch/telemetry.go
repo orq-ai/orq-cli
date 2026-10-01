@@ -1,0 +1,250 @@
+package launch
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+// tracePlugin is the orq-trace Claude Code plugin vendored from
+// orq-ai/assistant-plugins. Its SOURCE.json records the plugin ref separately
+// from the skills ref.
+//
+//go:embed all:assets/orq-trace
+var tracePlugin embed.FS
+
+// The plugin's published identity, shared with `orq connect otel`: one name
+// for the launcher's session copy, the marketplace install and the probe that
+// reads it back, so a persistent install and a session can never disagree
+// about which plugin they mean.
+const (
+	TracePluginName = "orq-trace"
+	// TraceMarketplace is the marketplace declared in orq-ai/assistant-plugins,
+	// which is what `claude plugin install` resolves TracePluginRef against.
+	TraceMarketplace     = "orq-claude-plugin"
+	TraceMarketplaceRepo = "orq-ai/assistant-plugins"
+	TracePluginRef       = TracePluginName + "@" + TraceMarketplace
+)
+
+var lookPath = exec.LookPath
+
+// otlpEndpoint is where both exporters post: Claude Code's own appends
+// /v1/metrics and /v1/logs, and the plugin, handed it through its session
+// profile, appends /v1/traces.
+func otlpEndpoint(apiBase string) string {
+	return firstNonEmpty(deriveFromAPIBase(apiBase, "/v2/otel"), DefaultGatewayAPIBaseURL+"/v2/otel")
+}
+
+// traceProfile is the only profile in the orq config a traced session's plugin
+// reads. It names the endpoint and no key, so the plugin takes the launch's
+// ORQ_API_KEY.
+const traceProfile = "orq-launch"
+
+// traceEnv returns the telemetry env for one traced session. Metrics and logs
+// come from Claude Code's own exporter; traces come only from the orq-trace
+// plugin, so OTEL_TRACES_EXPORTER=none is load-bearing: enabling both
+// double-counts every session. No OTEL_LOG_* content flags either: the plugin's
+// hooks already carry content, with local redaction, and shipping prompts
+// through two redaction stories is worse than shipping them once.
+func traceEnv(ctx *AgentContext, configPath string) map[string]string {
+	return map[string]string{
+		"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+		"OTEL_METRICS_EXPORTER":        "otlp",
+		"OTEL_LOGS_EXPORTER":           "otlp",
+		"OTEL_TRACES_EXPORTER":         "none",
+		"OTEL_EXPORTER_OTLP_PROTOCOL":  "http/json",
+		"OTEL_EXPORTER_OTLP_ENDPOINT":  otlpEndpoint(ctx.Creds.APIBaseURL),
+		"OTEL_EXPORTER_OTLP_HEADERS":   "Authorization=Bearer " + ctx.Creds.APIKey,
+		// Claude Code strips OTEL_* from the env its hooks run with, and the
+		// plugin's own derivation from a base URL breaks on non-production
+		// hosts. A session-only config whose profile outranks the user's shell
+		// and ~/.orq/config.json is the one channel that pins the destination.
+		"ORQ_CONFIG_PATH":   configPath,
+		"ORQ_TRACE_PROFILE": traceProfile,
+	}
+}
+
+// wireTrace turns telemetry on and loads the orq-trace plugin for this session
+// only, through --plugin-dir, so nothing is left in the user's claude config
+// to trace sessions they did not launch through orq. The plugin resolves its
+// key from the ORQ_API_KEY already in the plan.
+func wireTrace(ctx *AgentContext, plan *LaunchPlan) error {
+	configPath := filepath.Join("<session tempdir>", "orq-config.json")
+	var dir string
+	if !ctx.Flags.DryRun {
+		var err error
+		if dir, err = os.MkdirTemp("", "orq-claude-trace-"); err != nil {
+			return err
+		}
+		plan.AddCleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: the session trace directory is still on disk (%v); it holds a copy of the orq-trace plugin and the session's orq-config.json\n", err)
+			}
+		})
+		plan.TempDirs = append(plan.TempDirs, TempDir{HostPath: dir})
+		configPath = filepath.Join(dir, "orq-config.json")
+		if err := writeTraceConfig(configPath, otlpEndpoint(ctx.Creds.APIBaseURL)); err != nil {
+			return err
+		}
+	}
+	for k, v := range traceEnv(ctx, configPath) {
+		plan.Env[k] = v
+	}
+	if _, err := lookPath("node"); err != nil {
+		plan.Warnings = append(plan.Warnings,
+			"node is not on PATH; the orq-trace hooks run on node, so this session will export metrics and logs but no trace")
+	}
+	if ctx.Flags.DryRun {
+		plan.Notes = append(plan.Notes,
+			"a real run loads the orq-trace plugin for the session with --plugin-dir, or uses your installed copy if claude has one enabled")
+		return nil
+	}
+
+	// A second copy of the hooks would write every span twice.
+	installed, err := TracePluginInstalled(ctx.ExecProbe)
+	if err != nil {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"could not read your installed claude plugins (%v); if orq-trace is installed and enabled there, this session writes every span twice", err))
+	}
+	if installed {
+		plan.Warnings = append(plan.Warnings,
+			"using the orq-trace plugin already installed in your claude config instead of loading the one this CLI ships")
+		return nil
+	}
+	pluginDir := filepath.Join(dir, TracePluginName)
+	src, err := fs.Sub(tracePlugin, "assets/orq-trace")
+	if err != nil {
+		return err
+	}
+	if err := os.CopyFS(pluginDir, src); err != nil {
+		return err
+	}
+	plan.PreArgs = append(plan.PreArgs, "--plugin-dir", pluginDir)
+	return nil
+}
+
+// TracePluginInstalled reports whether the user has orq-trace installed and
+// enabled through a marketplace. A failure to tell counts as not installed, so
+// the session still gets a trace, and is returned so the caller can say the
+// check did not happen.
+//
+// Exported because `orq connect otel` installs what this reads, and both name
+// the plugin through TracePluginRef. It answers the question from settings.json
+// rather than from here: a launch cannot assume the user's claude is on PATH,
+// and connect has already run it.
+func TracePluginInstalled(run func(string, ...string) (string, error)) (bool, error) {
+	installed, _, err := tracePluginInstall(run)
+	return installed, err
+}
+
+// tracePluginInstall also reports the installed version, which decides whether
+// --no-otel can reach that copy: the switch it sets is read by the plugin from
+// traceSwitchVersion on, and an older install traces the session regardless.
+func tracePluginInstall(run func(string, ...string) (string, error)) (bool, string, error) {
+	if run == nil {
+		return false, "", nil
+	}
+	out, err := run("claude", "plugin", "list", "--json")
+	if err != nil {
+		return false, "", err
+	}
+	var plugins []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Version string `json:"version"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal([]byte(out), &plugins); err != nil {
+		return false, "", err
+	}
+	for _, p := range plugins {
+		// Installed ids read orq-trace@<marketplace>; name is the fallback for
+		// a build that reports the plugin without one.
+		if p.Enabled && (p.Name == TracePluginName || strings.HasPrefix(p.ID, TracePluginName+"@")) {
+			return true, p.Version, nil
+		}
+	}
+	return false, "", nil
+}
+
+// traceSwitchVersion is the first orq-trace release whose hooks read
+// ORQ_TRACE_DISABLED. Below it, the switch is inert.
+const traceSwitchVersion = "0.5.0"
+
+// honoursTraceSwitch answers for a version string as `claude plugin list`
+// reports it. An unreadable or absent version counts as too old, because the
+// cost of guessing wrong is a session traced after the user declined.
+func honoursTraceSwitch(version string) bool {
+	want := strings.Split(traceSwitchVersion, ".")
+	got := strings.Split(strings.TrimPrefix(strings.TrimSpace(version), "v"), ".")
+	if len(got) < len(want) {
+		return false
+	}
+	for i := range want {
+		g, err := strconv.Atoi(strings.SplitN(got[i], "-", 2)[0])
+		if err != nil {
+			return false
+		}
+		w, err := strconv.Atoi(want[i])
+		if err != nil {
+			return false
+		}
+		if g != w {
+			return g > w
+		}
+	}
+	return true
+}
+
+func writeTraceConfig(path, endpoint string) error {
+	data, err := json.Marshal(map[string]any{
+		"profiles": map[string]any{traceProfile: map[string]string{"otlp_endpoint": endpoint}},
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// declineTrace holds --no-otel against a plugin the user installed to run in
+// every session. `orq connect otel` leaves orq-trace enabled in the user's
+// claude config, and its hooks trace on their own as soon as they find a key,
+// which the launch puts in the env. Declining the capability has to reach
+// them, so the session carries the plugin's own switch; Claude Code strips
+// OTEL_* from the env its hooks run with, and this name is not OTEL_*.
+func declineTrace(ctx *AgentContext, plan *LaunchPlan) {
+	plan.Env["ORQ_TRACE_DISABLED"] = "1"
+	if ctx.Flags.DryRun {
+		return
+	}
+	// Worth saying only when there is an install to contradict: a user who ran
+	// `orq connect otel` expects every session captured. The version decides
+	// which of the two things is true, and saying the wrong one is worse than
+	// saying nothing: an install that predates the switch keeps tracing the
+	// session, so promising it was switched off would be a false assurance
+	// about where the session content goes.
+	installed, version, err := tracePluginInstall(ctx.ExecProbe)
+	if err != nil || !installed {
+		return
+	}
+	if !honoursTraceSwitch(version) {
+		if version == "" {
+			plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+				"the orq-trace plugin installed in your claude config reports no version, so it may predate %s and ignore --no-otel; this session may still be traced, and updating the plugin makes the flag reliable",
+				traceSwitchVersion))
+			return
+		}
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf(
+			"the orq-trace plugin installed in your claude config is %s, older than the %s that reads --no-otel, so this session is still traced; update the plugin to decline",
+			version, traceSwitchVersion))
+		return
+	}
+	plan.Notes = append(plan.Notes,
+		"the orq-trace plugin installed in your claude config is switched off for this session, because you passed --no-otel")
+}

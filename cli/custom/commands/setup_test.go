@@ -2999,8 +2999,8 @@ func TestSetupDefaultCapabilitiesIncludeSkills(t *testing.T) {
 	if !hasCap(caps, capGateway) {
 		t.Errorf("defaults = %v, want gateway included", caps)
 	}
-	if hasCap(caps, capTracing) {
-		t.Errorf("defaults = %v, want tracing excluded while it is unbuilt", caps)
+	if !hasCap(caps, capOtel) {
+		t.Errorf("defaults = %v, want otel included", caps)
 	}
 }
 
@@ -3036,17 +3036,16 @@ func TestSetupExplicitCapabilitiesWinOverDefaults(t *testing.T) {
 	}
 }
 
-// The explicit flag wins over the defaults, but not over availability: it used
-// to pass `tracing` straight through, leaving setup to complete "successfully"
-// having connected nothing and never having said why.
-func TestSetupExplicitCapabilitiesStillDropTheUnavailable(t *testing.T) {
-	opts := &setupOptions{noInput: true, caps: []string{capTracing}}
+// An explicit capability reaches the connect legs as given: nothing between
+// the flag and the wiring filters it any more.
+func TestSetupExplicitOtelSurvives(t *testing.T) {
+	opts := &setupOptions{noInput: true, caps: []string{capOtel}}
 	caps, err := resolveCapabilities(newReporter(true), opts)
 	if err != nil {
 		t.Fatalf("resolveCapabilities: %v", err)
 	}
-	if len(caps) != 0 {
-		t.Errorf("caps = %v, want tracing dropped as unavailable", caps)
+	if len(caps) != 1 || caps[0] != capOtel {
+		t.Errorf("caps = %v, want the explicit [otel] untouched", caps)
 	}
 }
 
