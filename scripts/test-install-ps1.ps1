@@ -88,7 +88,7 @@ try {
   Assert ((Get-FileHash $freshTarget).Hash -eq $global:installerTestDigest) 'fresh install has wrong binary'
 
   # Corrupt and non-digest checksum bodies must not produce an executable.
-  foreach ($body in @(('0' * 64), '<html>proxy</html>')) {
+  foreach ($body in @(('0' * 64), '<html>proxy</html>', '', '   ')) {
     $global:installerTestChecksumBody = $body
     $badSumDir = Join-Path $scratch ("bad-sum-" + [Guid]::NewGuid().ToString('N'))
     $sumError = $null
@@ -114,6 +114,30 @@ try {
   Assert (Test-Path $upgradeTarget) 'failed upgrade removed orq.exe'
   Assert ((Get-FileHash $upgradeTarget).Hash -eq $oldDigest) 'failed upgrade did not restore the old binary'
   Assert ((Get-Content "$upgradeTarget.previous" -Raw).Trim() -eq 'stale backup') 'failed upgrade touched a stale backup'
+
+  # If the new executable is locked, report where the recoverable old one remains.
+  $lockedDir = Join-Path $scratch 'locked-upgrade'
+  New-Item -ItemType Directory -Path $lockedDir | Out-Null
+  $global:installerTestLockedTarget = Join-Path $lockedDir 'orq.exe'
+  Copy-Item $old $global:installerTestLockedTarget
+  function Remove-Item {
+    [CmdletBinding()]
+    param([Parameter(Position = 0)][string]$Path, [switch]$Force, [switch]$Recurse)
+    if ($Path -eq $global:installerTestLockedTarget) { throw 'simulated locked executable' }
+    Microsoft.PowerShell.Management\Remove-Item @PSBoundParameters
+  }
+  try {
+    $lockedError = $null
+    try { Run-Installer $lockedDir } catch { $lockedError = $_ }
+  } finally {
+    Microsoft.PowerShell.Management\Remove-Item Function:Remove-Item
+  }
+  $backups = @(Get-ChildItem $lockedDir -Filter '.orq-previous-*.exe')
+  Assert ($null -ne $lockedError) 'locked upgrade did not report a restore failure'
+  Assert ($backups.Count -eq 1) 'locked upgrade did not retain the previous binary'
+  Assert ($lockedError.Exception.Message.Contains($backups[0].FullName)) 'restore failure did not name the previous binary'
+  Assert ((Get-FileHash $backups[0].FullName).Hash -eq $oldDigest) 'locked upgrade corrupted the previous binary'
+  Remove-Variable installerTestLockedTarget -Scope Global
 
   # Setup errors must be visible to the caller after an otherwise valid install.
   $global:installerTestDownloadFile = $setupBad
@@ -166,6 +190,7 @@ try {
     Run-Installer $expandedDir -modifyPath
     $rawPathAfter = [string]$envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     Assert ($rawPathAfter -eq $rawExpanded) 'expanded user PATH entry was duplicated'
+    Assert ($envKey.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::ExpandString) 'expanded user PATH value kind changed'
   } finally {
     if ($null -eq $rawPathBefore) { $envKey.DeleteValue('Path', $false) }
     else { $envKey.SetValue('Path', $rawPathBefore, $kindBefore) }

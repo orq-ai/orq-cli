@@ -77,7 +77,7 @@ jobs:
           # resolver honours `type!:` on the subject only, so a wrapped body
           # line cannot cut a major.
           git log --full-history -z --format='%s%n%b' "${stable_tag:+$stable_tag..}HEAD" -- \
-            VERSION cli/custom npm scripts install.sh \
+            VERSION cli/custom npm scripts install.sh install.ps1 \
             openapi.yaml .bartolo.json go.mod go.sum cmd/orq cmd/release-version > "$commits_file"
           stable_resolved="$(go run ./cmd/release-version \
             --channel stable --version "$file_version" \
@@ -114,7 +114,7 @@ jobs:
             # ships to nobody. cmd/release-version ships to nobody either, but
             # it decides what both channels publish - leaving it out is how a
             # fix to it waits for an unrelated commit to take effect.
-            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.sh$|cmd/release-version/)'
+            SHARED='^(VERSION$|cli/custom/|npm/|scripts/|install\.(sh|ps1)$|cmd/release-version/)'
 
             stable=false
             prerelease=false

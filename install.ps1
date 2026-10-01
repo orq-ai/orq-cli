@@ -198,7 +198,7 @@ if (-not $alreadyCurrent) {
 
     # A 200 with an empty or whitespace body means the asset exists but was
     # unreadable (proxy, CDN, captive portal), NOT that no checksum is published.
-    # install.sh refuses this (install.sh:427-432); do the same rather than fall
+    # The Unix installer refuses this too; do the same rather than fall
     # through the empty-string-is-falsy check below and install unverified.
     if (-not $checksumMissing -and [string]::IsNullOrWhiteSpace($expected)) {
       Die "checksum fetch returned an empty body ($checksumUrl); refusing to install unverified"
@@ -219,8 +219,9 @@ if (-not $alreadyCurrent) {
     # On an upgrade keep the previous binary until the new one proves it runs.
     if (Test-Path $target) {
       # A unique name cannot collide with a backup left by an older run.
-      $previous = Join-Path $InstallDir ('.orq-previous-' + [Guid]::NewGuid().ToString('N') + '.exe')
-      Move-Item -Force $target $previous
+      $backup = Join-Path $InstallDir ('.orq-previous-' + [Guid]::NewGuid().ToString('N') + '.exe')
+      Move-Item -Force $target $backup
+      $previous = $backup
     }
     try {
       Move-Item -Force $tmpFile $target
@@ -252,8 +253,12 @@ if (-not $alreadyCurrent) {
       if ($installHealthy) {
         Remove-Item $previous -Force -ErrorAction SilentlyContinue
       } else {
-        if (Test-Path $target) { Remove-Item $target -Force }
-        Move-Item -Force $previous $target
+        try {
+          if (Test-Path $target) { Remove-Item $target -Force }
+          Move-Item -Force $previous $target
+        } catch {
+          Die "could not restore the previous binary from $previous to $target : $($_.Exception.Message)"
+        }
       }
     }
   }

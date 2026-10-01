@@ -61,6 +61,15 @@ jobs:
           # not linted here; they carry their own shellcheck disable directives
           # for whoever adds that step.
           "$RUNNER_TEMP/actionlint/actionlint" .github/workflows/*.yml
+      - name: staged installer release assets
+        run: |
+          set -euo pipefail
+          staged="$(mktemp -d)"
+          trap 'rm -rf "$staged"' EXIT
+          ./scripts/stage-installers.sh v5.0.0 "$staged"
+          grep -Fx 'INSTALLER_VERSION="v5.0.0"' "$staged/install.sh"
+          grep -Fx "\$InstallerVersion = 'v5.0.0'" "$staged/install.ps1"
+          ( cd "$staged" && shasum -a 256 -c install.sh.sha256 install.ps1.sha256 )
 
   stable:
     name: build, vet, test, surface (stable module)

@@ -17,12 +17,14 @@ shell is one step only, the PATH edit at the end (`profile_for_shell`):
 | Windows / PowerShell | not supported, installer exits and points to npm | - |
 
 So the ticket's "supports only zsh" is not accurate for the unix side: bash and fish
-already work. The two real gaps are:
+have PATH handling. The remaining gaps are:
 
 1. Windows has no native installer. `install.sh` hard-exits on `MINGW*/MSYS*/CYGWIN*/Windows_NT`
    and tells the user to run `npm install -g @orq-ai/cli`. npm requires Node.
 2. Niche shells (nushell, elvish, pwsh on macOS/Linux, tcsh, ksh) get no PATH edit,
    only the printed manual line.
+3. On macOS, bash falls back to `~/.bashrc` when `~/.bash_profile` is absent.
+   A login bash shell does not read that fallback, so its PATH is not updated.
 
 ## Windows: feasible now, nothing to build in the pipeline
 
@@ -61,9 +63,9 @@ Ubuntu job running under `dash`.
 
 ### Rollout steps to ship it
 
-1. Publish `install.ps1` as a release asset, the same way `install.sh` is
-   (`release-pipeline.yml` stamps `INSTALLER_VERSION` and uploads `install.sh` +
-   `.sha256`; add `install.ps1` alongside).
+1. The release pipeline now stamps and uploads `install.ps1` with its `.sha256`
+   alongside `install.sh`. This takes effect when a release is cut from the
+   merged change.
 2. Serve it at `https://cli.orq.ai/install.ps1`. The `cli.orq.ai` redirect that
    serves `install.sh` lives outside this repo; the same mechanism needs an
    `install.ps1` route before the one-liner can be advertised.
@@ -86,6 +88,6 @@ identified.
 
 ## Recommendation
 
-- Ship the PowerShell installer (prototype + rollout steps above). This closes the
-  only real gap. Effort is small because the binary and checksum assets already exist.
+- Ship the PowerShell installer (prototype + rollout steps above). Effort is small
+  because the binary and checksum assets already exist.
 - Leave the extra POSIX shells as manual-PATH; extend `profile_for_shell` on demand.
