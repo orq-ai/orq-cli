@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -190,6 +191,31 @@ export async function deleteQueuedFile(filePath) {
 
 const STALE_SESSION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_QUEUE_MS = 60 * 60 * 1000; // 1 hour
+
+const UNDELIVERABLE_WARN_MS = 60 * 60 * 1000;
+
+// True at most once an hour per destination, across processes. Every hook is
+// its own node process, so the marker's mtime is the shared rate limit. Hashing
+// the destination keeps endpoint details out of the filename. If the marker
+// cannot be written, warn again rather than lose the spans in silence.
+export async function shouldWarnUndeliverable(destination, now = Date.now()) {
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify([destination.endpoint, destination.key]))
+    .digest("hex")
+    .slice(0, 16);
+  const marker = path.join(STATE_ROOT, `orq_undeliverable_warn_${fingerprint}`);
+  try {
+    const stat = await fs.stat(marker);
+    if (now - stat.mtimeMs < UNDELIVERABLE_WARN_MS) {
+      return false;
+    }
+  } catch {
+    // No marker yet, or it cannot be read: fall through and warn.
+  }
+  await ensureDirs().catch(() => {});
+  await fs.writeFile(marker, `${new Date(now).toISOString()}\n`).catch(() => {});
+  return true;
+}
 
 export async function pruneStaleFiles() {
   const now = Date.now();

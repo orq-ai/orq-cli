@@ -128,6 +128,12 @@ controls on surface changes, whichever side they originate from.
   plugin for that session only, without installing anything into your claude
   config. The hooks need `node` on PATH. `--no-otel` leaves the session
   uncaptured, and `--otel` names the default explicitly.
+- **Fixed: the bundled `orq-trace` plugin redacts provider keys in tool text
+  and keeps queued traces with their original workspace.** Segmented keys,
+  bare JWTs and bearer tokens could otherwise reach a trace in plaintext;
+  after a send failure, a later session could replay the queue under another
+  workspace's key. Batches now carry a destination fingerprint and are only
+  retried there. Undeliverable batches produce a warning for each destination.
 - **Added: `otel`, a fourth `orq connect` capability**, so the sessions you
   start yourself are traced too, not only the ones `orq launch` starts.
   `orq connect claude otel` installs the `orq-trace` plugin through Claude

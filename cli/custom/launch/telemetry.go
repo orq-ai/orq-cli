@@ -12,9 +12,9 @@ import (
 	"strings"
 )
 
-// tracePlugin is the orq-trace Claude Code plugin, vendored from
-// orq-ai/assistant-plugins by scripts/vendor-skills.sh at the same ref as the
-// skills.
+// tracePlugin is the orq-trace Claude Code plugin vendored from
+// orq-ai/assistant-plugins. Its SOURCE.json records the plugin ref separately
+// from the skills ref.
 //
 //go:embed all:assets/orq-trace
 var tracePlugin embed.FS
