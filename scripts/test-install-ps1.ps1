@@ -22,7 +22,8 @@ function Build-Fake([string]$name, [string]$version, [string]$versionExit, [stri
 function Invoke-WebRequest {
   param([string]$Uri, [string]$OutFile, [switch]$UseBasicParsing)
   if ($Uri.EndsWith('.sha256')) {
-    return [pscustomobject]@{ Content = [Text.Encoding]::ASCII.GetBytes("$global:installerTestDigest  orq-win32-x64.exe") }
+    $body = if ($null -ne $global:installerTestChecksumBody) { $global:installerTestChecksumBody } else { "$global:installerTestDigest  orq-win32-x64.exe" }
+    return [pscustomobject]@{ Content = [Text.Encoding]::ASCII.GetBytes($body) }
   }
   Copy-Item $global:installerTestDownloadFile $OutFile
 }
@@ -39,10 +40,43 @@ function Run-Installer([string]$dir, [switch]$fromText, [switch]$runSetup, [swit
 }
 
 try {
+  $global:installerTestChecksumBody = $null
   $good = Build-Fake 'good' '2.0.0' '0' '0'
   $old = Build-Fake 'old' '1.0.0' '0' '0'
   $bad = Build-Fake 'bad' '2.0.0' '9' '0'
   $setupBad = Build-Fake 'setup-bad' '2.0.0' '0' '13'
+
+  $argumentError = $null
+  try { & $installer -Version v2.0.0 -Channel rc -NoSetup } catch { $argumentError = $_ }
+  Assert ($null -ne $argumentError) 'version and channel flags were accepted together'
+  Assert ($argumentError.Exception.Message -match 'cannot be combined') 'version and channel flags were accepted together'
+
+  $priorChannel = $env:ORQ_CLI_CHANNEL
+  try {
+    $env:ORQ_CLI_CHANNEL = 'unknown'
+    $channelError = $null
+    try { & $installer -Version v2.0.0 -NoSetup } catch { $channelError = $_ }
+    Assert ($null -ne $channelError) 'invalid channel environment variable was accepted'
+    Assert ($channelError.Exception.Message -match 'unknown channel') 'invalid channel environment variable was accepted'
+  } finally {
+    if ($null -eq $priorChannel) { Remove-Item Env:ORQ_CLI_CHANNEL -ErrorAction SilentlyContinue }
+    else { $env:ORQ_CLI_CHANNEL = $priorChannel }
+  }
+
+  $priorArchitecture = $env:PROCESSOR_ARCHITECTURE
+  $priorArchitectureW6432 = $env:PROCESSOR_ARCHITEW6432
+  try {
+    $env:PROCESSOR_ARCHITECTURE = 'unsupported'
+    Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
+    $architectureError = $null
+    try { & $installer -Version v2.0.0 -NoSetup } catch { $architectureError = $_ }
+    Assert ($null -ne $architectureError) 'unsupported architecture was accepted'
+    Assert ($architectureError.Exception.Message -match 'unsupported architecture') 'unsupported architecture was accepted'
+  } finally {
+    $env:PROCESSOR_ARCHITECTURE = $priorArchitecture
+    if ($null -eq $priorArchitectureW6432) { Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue }
+    else { $env:PROCESSOR_ARCHITEW6432 = $priorArchitectureW6432 }
+  }
 
   # A byte[] checksum response is what Windows PowerShell 5.1 receives from GitHub.
   $global:installerTestDownloadFile = $good
@@ -53,12 +87,24 @@ try {
   Assert (Test-Path $freshTarget) 'scriptblock install did not create orq.exe'
   Assert ((Get-FileHash $freshTarget).Hash -eq $global:installerTestDigest) 'fresh install has wrong binary'
 
+  # Corrupt and non-digest checksum bodies must not produce an executable.
+  foreach ($body in @(('0' * 64), '<html>proxy</html>')) {
+    $global:installerTestChecksumBody = $body
+    $badSumDir = Join-Path $scratch ("bad-sum-" + [Guid]::NewGuid().ToString('N'))
+    $sumError = $null
+    try { Run-Installer $badSumDir } catch { $sumError = $_ }
+    Assert ($null -ne $sumError) 'invalid checksum was accepted'
+    Assert (-not (Test-Path (Join-Path $badSumDir 'orq.exe'))) 'invalid checksum installed a binary'
+  }
+  $global:installerTestChecksumBody = $null
+
   # An executable that prints a version and exits nonzero must not replace the old one.
   $upgradeDir = Join-Path $scratch 'upgrade'
   New-Item -ItemType Directory -Path $upgradeDir | Out-Null
   $upgradeTarget = Join-Path $upgradeDir 'orq.exe'
   Copy-Item $old $upgradeTarget
   $oldDigest = (Get-FileHash $upgradeTarget).Hash
+  Set-Content "$upgradeTarget.previous" 'stale backup'
   $global:installerTestDownloadFile = $bad
   $global:installerTestDigest = (Get-FileHash $bad -Algorithm SHA256).Hash
   $upgradeError = $null
@@ -67,7 +113,7 @@ try {
   Assert ($upgradeError.Exception.Message -match 'previous one is being restored') "unexpected upgrade failure: $($upgradeError.Exception.Message)"
   Assert (Test-Path $upgradeTarget) 'failed upgrade removed orq.exe'
   Assert ((Get-FileHash $upgradeTarget).Hash -eq $oldDigest) 'failed upgrade did not restore the old binary'
-  Assert (-not (Test-Path "$upgradeTarget.previous")) 'failed upgrade left a backup'
+  Assert ((Get-Content "$upgradeTarget.previous" -Raw).Trim() -eq 'stale backup') 'failed upgrade touched a stale backup'
 
   # Setup errors must be visible to the caller after an otherwise valid install.
   $global:installerTestDownloadFile = $setupBad
@@ -75,8 +121,12 @@ try {
   $setupDir = Join-Path $scratch 'setup'
   $setupError = $null
   try { Run-Installer $setupDir -runSetup } catch { $setupError = $_ }
-  Assert ($null -ne $setupError) 'setup exit code was ignored'
-  Assert ($setupError.Exception.Message -match 'setup exited 13') "unexpected setup failure: $($setupError.Exception.Message)"
+  if ([Console]::IsInputRedirected) {
+    Assert ($null -eq $setupError) "non-interactive setup was run: $setupError"
+  } else {
+    Assert ($null -ne $setupError) 'setup exit code was ignored'
+    Assert ($setupError.Exception.Message -match 'setup exited 13') "unexpected setup failure: $($setupError.Exception.Message)"
+  }
   Assert (Test-Path (Join-Path $setupDir 'orq.exe')) 'setup failure removed the installed CLI'
 
   # A registry write must preserve the existing value kind and update this process.
@@ -88,12 +138,34 @@ try {
   try {
     $global:installerTestDownloadFile = $good
     $global:installerTestDigest = (Get-FileHash $good -Algorithm SHA256).Hash
+
+    # A broadcast failure must leave a usable install after the registry write.
+    function Add-Type { throw 'simulated Add-Type failure' }
+    try {
+      $broadcastDir = Join-Path $scratch 'broadcast-failure'
+      Run-Installer $broadcastDir -modifyPath
+      Assert (Test-Path (Join-Path $broadcastDir 'orq.exe')) 'broadcast failure aborted install'
+    } finally {
+      Remove-Item Function:Add-Type
+      if ($null -eq $rawPathBefore) { $envKey.DeleteValue('Path', $false) }
+      else { $envKey.SetValue('Path', $rawPathBefore, $kindBefore) }
+      $env:Path = $processPathBefore
+    }
+
     $pathDir = Join-Path $scratch 'path'
     Run-Installer $pathDir -modifyPath
     $rawPathAfter = [string]$envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     Assert ($rawPathAfter.Split(';') -contains $pathDir) 'user PATH was not updated'
     if ($null -ne $kindBefore) { Assert ($envKey.GetValueKind('Path') -eq $kindBefore) 'user PATH value kind changed' }
     Assert ($env:Path.Split(';') -contains $pathDir) 'process PATH was not updated'
+
+    # Expand tokens before comparing an existing user PATH entry.
+    $expandedDir = Join-Path $scratch 'expanded-path'
+    $rawExpanded = '%USERPROFILE%' + $expandedDir.Substring($env:USERPROFILE.Length)
+    $envKey.SetValue('Path', $rawExpanded, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    Run-Installer $expandedDir -modifyPath
+    $rawPathAfter = [string]$envKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    Assert ($rawPathAfter -eq $rawExpanded) 'expanded user PATH entry was duplicated'
   } finally {
     if ($null -eq $rawPathBefore) { $envKey.DeleteValue('Path', $false) }
     else { $envKey.SetValue('Path', $rawPathBefore, $kindBefore) }
@@ -103,9 +175,9 @@ try {
 
   Write-Host 'PowerShell installer integration tests passed'
 } finally {
-  Remove-Variable installerTestDownloadFile, installerTestDigest -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable installerTestDownloadFile, installerTestDigest, installerTestChecksumBody -Scope Global -ErrorAction SilentlyContinue
   Remove-Item $scratch -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# The setup-failure case leaves LASTEXITCODE=13; the test itself passed.
+# Native probes may leave LASTEXITCODE nonzero after an expected failure.
 exit 0

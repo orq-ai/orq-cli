@@ -62,6 +62,10 @@ if ($Help) {
   return
 }
 
+if ($Channel -notin @('stable', 'rc')) {
+  Die "unknown channel: $Channel (expected 'stable' or 'rc')"
+}
+
 # A pinned version names one exact release, leaving the channel nothing to resolve.
 # Only an explicit -Channel flag conflicts; an ambient ORQ_CLI_CHANNEL is config.
 if ($Version -and $channelExplicit) {
@@ -215,7 +219,8 @@ if (-not $alreadyCurrent) {
     # --- Install -----------------------------------------------------------
     # On an upgrade keep the previous binary until the new one proves it runs.
     if (Test-Path $target) {
-      $previous = "$target.previous"
+      # A unique name cannot collide with a backup left by an older run.
+      $previous = Join-Path $InstallDir ('.orq-previous-' + [Guid]::NewGuid().ToString('N') + '.exe')
       Move-Item -Force $target $previous
     }
     try {
@@ -235,10 +240,10 @@ if (-not $alreadyCurrent) {
     if ($installedVersion -and $probeExit -eq 0) {
       $installHealthy = $true
       Say "ok: installed      $target  ($installedVersion)"
+      if ($checksumMissing) { Warn '! this binary was NOT checksum-verified' }
     } elseif ($previous) {
       Die 'the new binary did not run here; the previous one is being restored'
     } else {
-      $previous = $null  # nothing to restore; leave it for inspection
       Die "the installed binary does not run on this machine; left at $target for inspection"
     }
   } finally {
@@ -271,9 +276,9 @@ try {
     $rawPath = [string]$existing
     try { $kind = $envKey.GetValueKind('Path') } catch { }
   }
-  # Trailing-slash-normalized, case-insensitive membership so a re-run does not append a dupe.
+  # Compare expanded entries so a raw %USERPROFILE% path is recognized.
   $want = $InstallDir.TrimEnd('\')
-  $onPath = @($rawPath -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }) -contains $want
+  $onPath = @($rawPath -split ';' | Where-Object { $_ } | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') }) -contains $want
   if ($onPath) {
     # nothing to do
   } elseif ($NoModifyPath) {
@@ -282,8 +287,9 @@ try {
     $newRaw = if ([string]::IsNullOrEmpty($rawPath)) { $InstallDir } else { ($rawPath.TrimEnd(';') + ';' + $InstallDir) }
     $envKey.SetValue('Path', $newRaw, $kind)
     # Explorer and other running shells refresh their environment on this message.
-    if (-not ('OrqInstallerEnvironment' -as [type])) {
-      Add-Type -TypeDefinition @'
+    try {
+      if (-not ('OrqInstallerEnvironment' -as [type])) {
+        Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class OrqInstallerEnvironment {
@@ -292,10 +298,13 @@ public static class OrqInstallerEnvironment {
         string lParam, uint flags, uint timeout, out IntPtr result);
 }
 '@
+      }
+      $messageResult = [IntPtr]::Zero
+      $sent = [OrqInstallerEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [IntPtr]::Zero, 'Environment', 0x2, 5000, [ref]$messageResult)
+      if ($sent -eq [IntPtr]::Zero) { Warn '! PATH was saved, but Windows did not acknowledge the environment change; restart Explorer or sign in again' }
+    } catch {
+      Warn "! PATH was saved, but Windows could not broadcast the change: $($_.Exception.Message); restart Explorer or sign in again"
     }
-    $messageResult = [IntPtr]::Zero
-    $sent = [OrqInstallerEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [IntPtr]::Zero, 'Environment', 0x2, 5000, [ref]$messageResult)
-    if ($sent -eq [IntPtr]::Zero) { Warn '! PATH was saved, but Windows did not acknowledge the environment change; restart Explorer or sign in again' }
     Say "ok: PATH updated   (user) $InstallDir"
   }
 } finally {
@@ -314,19 +323,24 @@ if (-not $NoSetup) {
   # Only if this release ships 'orq setup'.
   $hasSetup = (& $target --help 2>$null | Select-String -Pattern '^\s+setup\s' -Quiet)
   if ($hasSetup) {
-    Say ''
-    Say '  Starting setup - press Ctrl-C to skip and run ''orq setup'' later.'
-    $priorSetupMarker = $env:ORQ_SETUP_FROM_INSTALLER
-    try {
-      $env:ORQ_SETUP_FROM_INSTALLER = '1'
-      & $target setup
-      $setupStatus = $LASTEXITCODE
-    } finally {
-      if ($null -eq $priorSetupMarker) { Remove-Item Env:ORQ_SETUP_FROM_INSTALLER -ErrorAction SilentlyContinue }
-      else { $env:ORQ_SETUP_FROM_INSTALLER = $priorSetupMarker }
-    }
-    if ($setupStatus -ne 0) {
-      Die "setup exited $setupStatus; the CLI is installed, rerun 'orq setup'"
+    if ([Console]::IsInputRedirected) {
+      Warn '! setup needs an interactive terminal; run orq setup later'
+      $NoSetup = $true
+    } else {
+      Say ''
+      Say '  Starting setup - press Ctrl-C to skip and run ''orq setup'' later.'
+      $priorSetupMarker = $env:ORQ_SETUP_FROM_INSTALLER
+      try {
+        $env:ORQ_SETUP_FROM_INSTALLER = '1'
+        & $target setup
+        $setupStatus = $LASTEXITCODE
+      } finally {
+        if ($null -eq $priorSetupMarker) { Remove-Item Env:ORQ_SETUP_FROM_INSTALLER -ErrorAction SilentlyContinue }
+        else { $env:ORQ_SETUP_FROM_INSTALLER = $priorSetupMarker }
+      }
+      if ($setupStatus -ne 0) {
+        Die "setup exited $setupStatus; the CLI is installed, rerun 'orq setup'"
+      }
     }
   } else {
     Warn '! this release has no ''orq setup'' yet - skipping setup'
