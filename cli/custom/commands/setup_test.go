@@ -343,12 +343,15 @@ func TestWriteAPIKeyProfileWritesAResolvableType(t *testing.T) {
 			}
 			dir := t.TempDir()
 			viper.Set("config-directory", dir)
-			t.Cleanup(func() { viper.Set("config-directory", "") })
+			// saveAPIKeyProfile only writes a named, selected profile now
+			//: there is no `default` fallback, so select one.
+			viper.Set("profile", "named")
+			t.Cleanup(func() { viper.Set("config-directory", ""); viper.Set("profile", "") })
 
 			if err := saveAPIKeyProfile("a-key"); err != nil {
 				t.Fatalf("saveAPIKeyProfile: %v", err)
 			}
-			written := bartolocli.Creds.GetString("profiles.default.type")
+			written := bartolocli.Creds.GetString("profiles.named.type")
 			if _, ok := bartolocli.AuthHandlers[written]; !ok {
 				t.Errorf("wrote type %q, which resolves to no handler", written)
 			}
@@ -396,6 +399,111 @@ func credsHarness(t *testing.T) {
 		viper.Set("profile", prevProfile)
 		auth.SetServer(origServer, origSource)
 	})
+}
+
+func TestResolveAuthPersistsSuppliedKeyToSelectedProfile(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "new")
+	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
+		apiKey: "sk-orq-profile", persistKey: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-profile" || bartolocli.Creds.GetString("profiles.new.api_key") != "sk-orq-profile" {
+		t.Errorf("supplied key was not saved to the selected profile: state=%+v", state)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login != nil {
+		t.Errorf("selected profile also wrote a host-keyed login: %+v, %v", login, err)
+	}
+}
+
+func TestResolveAuthDefersUnselectedKeyUntilSetupCompletes(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "")
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+	opts := &setupOptions{apiKey: "sk-orq-login", persistKey: true}
+	rep := &reporter{w: io.Discard}
+	state, err := resolveAuth(context.Background(), rep, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-login" || bartolocli.ProfileExists("default") {
+		t.Errorf("unselected key wrote a profile or did not resolve: state=%+v", state)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Fatalf("resolveAuth replaced the previous login before setup completed: %+v, err = %v", login, err)
+	}
+	if err := persistUnselectedSetupKey(rep, state, opts, false); err != nil {
+		t.Fatal(err)
+	}
+	login, err = auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Fatalf("failed setup replaced the previous login: %+v, err = %v", login, err)
+	}
+	if err := persistUnselectedSetupKey(rep, state, opts, true); err != nil {
+		t.Fatal(err)
+	}
+	login, err = auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-login" {
+		t.Errorf("successful setup did not save the supplied key: %+v, err = %v", login, err)
+	}
+}
+
+func TestResolveAuthNonpersistentKeyLeavesStoredLoginUntouched(t *testing.T) {
+	credsHarness(t)
+	viper.Set("profile", "")
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := resolveAuth(context.Background(), &reporter{w: io.Discard}, &setupOptions{
+		apiKey: "sk-orq-temporary", persistKey: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.bearer != "sk-orq-temporary" {
+		t.Errorf("current run used %q, want temporary key", state.bearer)
+	}
+	login, err := auth.ReadAPIKeyLogin()
+	if err != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Errorf("nonpersistent key changed stored login: %+v, err = %v", login, err)
+	}
+}
+
+func TestFailedSetupLeavesPreviousAPIKeyLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	auth.SetServer(srv.URL, "test")
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-existing"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{Use: "setup"}
+	cmd.Version = "test"
+	err := runSetup(cmd, &setupOptions{apiKey: "sk-orq-rejected", persistKey: true, noProject: true})
+	if err == nil {
+		t.Fatal("setup with a rejected key succeeded")
+	}
+	login, readErr := auth.ReadAPIKeyLogin()
+	if readErr != nil || login == nil || login.APIKey != "sk-orq-existing" {
+		t.Errorf("failed setup replaced the previous login: %+v, err = %v", login, readErr)
+	}
 }
 
 func saveTestGatewayKey(t *testing.T, key, workspace string) {

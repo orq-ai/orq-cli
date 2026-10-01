@@ -117,6 +117,17 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Fixed:** `orq auth login --api-key` now keeps an unselected API key in the
+  host-keyed login store, so later commands can use it without an environment
+  variable. It wins over an older browser session; a later browser login
+  switches back. `--profile x --api-key` still saves to profile `x`, and a
+  selected profile or user-supplied environment key takes precedence.
+  `orq status` reports the credential in use, and
+  `orq auth logout` clears the stored login. A successful `orq setup --api-key`
+  also persists the key when no profile is selected; a failed setup keeps the
+  previous login. Login JSON keeps its `profile`
+  field, empty when none was selected.
+
 ## [11.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.0) — 2026-10-01
 
 - **Changed: `orq launch claude` routes through the AI Router by default

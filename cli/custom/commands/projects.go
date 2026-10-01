@@ -88,6 +88,10 @@ func NewProjectsUseCommand() *cobra.Command {
 // nothing: the key carries its own scope and outranks the session.
 func warnIfShadowed() {
 	if explicitAPIKey {
+		if activeStoredAPIKeyLogin() != nil {
+			Warn("your API-key login takes precedence over the browser session, so this project switch will not affect API calls until you log in through the browser again")
+			return
+		}
 		Warn("an explicit API key (ORQ_API_KEY or a credentials profile) is configured and takes precedence over the session, so this project switch will not affect API calls until the key is unset")
 	}
 }

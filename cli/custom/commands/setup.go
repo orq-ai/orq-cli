@@ -368,6 +368,9 @@ func runSetup(cmd *cobra.Command, opts *setupOptions) error {
 	}
 	complete := setupComplete(verified, agentResults)
 	result["setup_complete"] = complete
+	if err := persistUnselectedSetupKey(rep, authState, opts, complete); err != nil {
+		return err
+	}
 
 	printFinalScreen(rep, agentResults, links, complete, opts)
 
@@ -446,12 +449,30 @@ func resolveAuth(ctx context.Context, rep *reporter, opts *setupOptions) (*authS
 	// did not ask to replace, and blanks its recorded workspace, which disables
 	// the mismatch guard permanently.
 	if key := strings.TrimSpace(opts.apiKey); key != "" {
-		if opts.persistKey {
+		// Persist the key the same way `orq auth login --api-key` now does, so it
+		// resolves on the next command instead of vanishing when the process exits.
+		//
+		// A profile SELECTED by name (--profile / ORQ_PROFILE / `orq auth profile
+		// use`) is written as that named profile, whether or not it existed yet:
+		// `orq setup --profile new --api-key` is meant to create it. Keyed on the
+		// name being selected, not on profileInForce() — the latter is false for a
+		// name with no entry, so it never created the profile the user asked for.
+		//
+		// With NO profile selected, the key becomes a host-keyed api-key login
+		// after setup succeeds. Saving it here would replace a working login even
+		// when verification or a later setup step fails.
+		//
+		// persistKey is false on connect: it must not replace a credential the user
+		// did not ask to replace, so there the key is used for this run only.
+		switch {
+		case opts.persistKey && bartoloProfileName() != "":
 			if err := saveAPIKeyProfile(key); err != nil {
 				return nil, err
 			}
+			rep.ok("saved the key you passed to profile %s", bartoloProfileName())
+		case opts.persistKey:
 			rep.ok("using the key you passed")
-		} else {
+		default:
 			rep.ok("api key from --api-key (not saved)")
 		}
 		return &authState{apiBase: apiBaseFromEnv(), bearer: key, suppliedKey: key}, nil
@@ -791,15 +812,47 @@ func profileSourcesEnvFile(sh shellSetup) bool {
 
 // saveAPIKeyProfile stores a key the user brought as a bartolo profile: key,
 // handler type and the resolved server, nothing of ours. bartolo resolves it
-// from here on.
+// from here on. Only ever writes a named, selected profile — an unselected one
+// is unreachable, so a caller with no profile in force must not reach here.
 func saveAPIKeyProfile(key string) error {
 	name := bartoloProfileName()
+	if name == "" {
+		return errors.New("cannot save an API-key profile without a selected profile (--profile / ORQ_PROFILE / `orq auth profile use`)")
+	}
 	bartolocli.Creds.Set("profiles."+name+".api_key", key)
 	bartolocli.Creds.Set("profiles."+name+".type", BartoloAuthType())
 	if server := auth.Server(); server != "" {
 		bartolocli.Creds.Set("profiles."+name+".server", server)
 	}
 	return saveCreds()
+}
+
+// saveSuppliedAPIKeyLogin stores a key `orq setup --api-key` was given, with no
+// profile selected, as a host-keyed api-key login — the same store and shape
+// `orq auth login --api-key` writes. applyStoredAPIKeyLogin injects it on every
+// later command, so the key the user passed is durable and actually resolves,
+// rather than living only for this process. The server travels with it so a key
+// set up against one host never authenticates a call to another.
+func saveSuppliedAPIKeyLogin(key string) error {
+	return auth.SaveAPIKeyLogin(&auth.APIKeyLogin{
+		APIBaseURL: auth.ResolveURLs(serverURL()).APIBaseURL,
+		Source:     auth.APIKeyLoginSource,
+		APIKey:     key,
+	})
+}
+
+// persistUnselectedSetupKey commits a supplied key only after setup has
+// verified it and completed every requested agent write. A failed run leaves
+// the previous host login in place for later commands.
+func persistUnselectedSetupKey(rep *reporter, state *authState, opts *setupOptions, complete bool) error {
+	if !complete || !opts.persistKey || state.suppliedKey == "" || bartoloProfileName() != "" {
+		return nil
+	}
+	if err := saveSuppliedAPIKeyLogin(state.suppliedKey); err != nil {
+		return err
+	}
+	rep.ok("saved the key you passed")
+	return nil
 }
 
 // saveGatewayKeyProfile records the minted key on the login it was minted
@@ -997,26 +1050,21 @@ func rootProfileFlag() *pflag.Flag {
 	return bartolocli.Root.PersistentFlags().Lookup("profile")
 }
 
-// bartoloProfileName is the profile an API-key write lands in: the one in
-// force, else `default`.
+// bartoloProfileName is the profile an API-key write lands in: the one the user
+// selected explicitly (--profile, ORQ_PROFILE, `orq auth profile use`), or ""
+// when none is. There is no `default` fallback: a browser or api-key login is
+// not a profile, and writing one under a name nothing selects left the key
+// unreachable — bartolo does not resolve an unselected profile.
 func bartoloProfileName() string {
-	if name := bartolocli.ActiveProfileName(); name != "" {
-		return name
-	}
-	return "default"
+	return bartolocli.ActiveProfileName()
 }
 
-// setupResultProfile names a bartolo profile only when one is genuinely part
-// of this run. An explicit key persisted without a profile writes `default`;
-// session and environment credentials have no profile and report "".
+// setupResultProfile names a bartolo profile only when the user selected one.
+// An explicit key persisted without a profile is stored as a host-keyed login,
+// so it reports "" — as do session and environment
+// credentials, which are not profiles either.
 func setupResultProfile(opts *setupOptions) string {
-	if name := bartolocli.ActiveProfileName(); name != "" {
-		return name
-	}
-	if opts != nil && opts.persistKey && strings.TrimSpace(opts.apiKey) != "" {
-		return "default"
-	}
-	return ""
+	return bartolocli.ActiveProfileName()
 }
 
 // shellEnvFileNames are the shell-integration files `orq setup` writes under
@@ -1078,7 +1126,11 @@ func warnLingeringAPIKeys() {
 	if explicitAPIKey {
 		var exported []string
 		for _, name := range APIKeyEnvVars {
-			if strings.TrimSpace(os.Getenv(name)) == "" {
+			value := strings.TrimSpace(os.Getenv(name))
+			if name == "ORQ_API_KEY" {
+				value = UserEnvAPIKey()
+			}
+			if value == "" {
 				continue
 			}
 			// A value bartolo imported from a dotenv file is warned about above, and 'unset' would not fix it.

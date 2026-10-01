@@ -579,3 +579,54 @@ func TestMigrateSaysNothingWhenThereIsNoGatewayKeyToDrop(t *testing.T) {
 		t.Errorf("a revoke hint was printed for a profile with no key: %q", out.String())
 	}
 }
+
+// An `orq auth login --api-key` credential (<host>.apikey.json) shares the
+// apiBaseUrl tag with a session and ends in .json, so the session-migration scan
+// used to decode it as a Session and rename it to <host>.json — clobbering the
+// browser session's name and hiding the key from ReadAPIKeyLogin. It must be
+// left untouched, even when a real session for the same host is being renamed
+// beside it.
+func TestMigrateLeavesAPIKeyLoginFileAlone(t *testing.T) {
+	dir := layoutHarness(t, `{}`, map[string]*Session{
+		// A pre-host-named session for the same host, so migration is doing real
+		// work in this directory and the api-key file sits right beside its churn.
+		"default.json": sessionOn("https://api.example", "acme"),
+	})
+	// ReadAPIKeyLogin resolves the file for auth.Server(); point it at the host
+	// the api-key file below is written for.
+	SetServer("https://api.example", "test")
+
+	host := SessionHost("https://api.example")
+	apiKeyPath := filepath.Join(dir, "sessions", host+apiKeyLoginSuffix)
+	raw, _ := json.Marshal(&APIKeyLogin{
+		Version:    1,
+		APIBaseURL: "https://api.example",
+		Source:     APIKeyLoginSource,
+		APIKey:     "sk-orq-LOGIN",
+	})
+	if err := os.WriteFile(apiKeyPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MigrateLayout(dir); err != nil {
+		t.Fatalf("MigrateLayout: %v", err)
+	}
+
+	// The api-key file is still at its own name, not folded into <host>.json.
+	if _, err := os.Stat(apiKeyPath); err != nil {
+		t.Fatalf("api-key login file was moved or removed by migration: %v", err)
+	}
+	// And it still reads back through its own accessor with the key intact.
+	login, err := ReadAPIKeyLogin()
+	if err != nil {
+		t.Fatalf("ReadAPIKeyLogin after migration: %v", err)
+	}
+	if login == nil || login.APIKey != "sk-orq-LOGIN" {
+		t.Fatalf("api-key login lost in migration: %+v", login)
+	}
+	// The session was still migrated to its host name, so the api-key file did
+	// not block the migration it sits beside.
+	if _, err := os.Stat(filepath.Join(dir, "sessions", host+".json")); err != nil {
+		t.Fatalf("session was not migrated to its host name: %v", err)
+	}
+}

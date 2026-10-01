@@ -36,9 +36,9 @@ func hasInteractiveTTY() bool {
 	return isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stderr.Fd())
 }
 
-// explicitAPIKey records whether the USER configured an API key (env var or
-// credentials profile), snapshotted by the custom package's PreRun BEFORE it
-// injects the session token into ORQ_API_KEY. Reading the env after that
+// explicitAPIKey records whether an API key outranks the browser session:
+// a user env key, a selected profile, or the active stored API-key login.
+// PreRun computes it before any session token is injected. Reading the env after that
 // injection always finds a key, which made every `workspace use` warn about a
 // shadow that did not exist. A single snapshot also removes the duplicated
 // apiKeyConfigured logic this package used to carry (import-cycle workaround)
