@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.1) — 2026-10-01
+
 - **Fixed:** `orq auth login --api-key` now keeps an unselected API key in the
   host-keyed login store, so later commands can use it without an environment
   variable. It wins over an older browser session; a later browser login
