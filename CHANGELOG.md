@@ -128,6 +128,219 @@ controls on surface changes, whichever side they originate from.
   previous login. Login JSON keeps its `profile`
   field, empty when none was selected.
 
+## [11.0.2](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.2) — 2026-09-29
+
+- **Changed: API errors name the fix.** A failed request used to print
+  `error calling operation: HTTP 403:` and the raw response body. It now prints
+  the status, the API's own message, any per-field validation problems, its
+  doc link (or the API reference when none was returned) and request id,
+  followed by one line on what to do for 401, 403, 429 and 5xx. Long proxy
+  responses are truncated. Only stderr text changed; exit codes are the same.
+
+- **Changed: "you are not logged in" and the missing-key error say to run
+  `orq auth login`.** The missing-key error used to point at `auth setup`,
+  which no longer exists.
+
+- **Changed: the profile-precedence warning** ("using the API key from profile
+  ..., ignoring ORQ_API_KEY") says how to use the environment key instead, and
+  is no longer printed by commands that send no request (`version`,
+  `auth profile`, `auth sessions`, `server`, `default-format`, `update`,
+  `completion`, `disconnect`, `connect --status` and the help commands).
+
+- **Added: "did you mean" inside a command group.** `orq agents get x` used to
+  print the whole `agents` help page and exit 0. It now fails (exit 1) with the
+  unknown name and suggests `retrieve`, and a typo such as `orq agents lst`
+  suggests `list`. `orq agents` and `orq agents help` still show the help.
+
+- **Changed: `orq doctor`'s `mcp` row** is one line naming every agent without
+  an MCP entry and one `orq connect <agents> mcp` command, instead of one
+  message per agent joined together; the `-o json` message text changed with
+  it (its `details` did not). `orq connect --status` names the command that
+  wires the agents it lists as unwired, keeping any capabilities you asked
+  about.
+
+## [11.0.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.1) — 2026-09-28
+
+- **Fixed: a login session no longer gets stuck on `401 authz_stale`.** The
+  platform invalidates workspace tokens when the workspace's project, team or
+  membership setup changes, well before the token expires. The CLI kept
+  sending the cached token until it expired, so every command after
+  `orq projects create` failed for up to 30
+  minutes. A request that gets `authz_stale` now fetches a fresh token and is
+  retried once. Concurrent refreshes for different workspace/project slots
+  preserve both replacements. An explicit API key (`ORQ_API_KEY` you set
+  yourself, or a credentials profile) is never retried.
+
+- **Changed: `orq status` / `orq auth whoami` check the credential in force with
+  the server.** A rejected token turns `authenticated` false and adds
+  `auth_error` to `-o json` output. A failed check that cannot establish the
+  credential's validity adds `auth_check_error` instead. The terminal view
+  prints a warning. Previously `authenticated` was always `true` when a
+  session file existed.
+
+## [11.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.0.0) — 2026-09-25
+
+- **Added: `orq traces thread --tool-max-chars <n>`** cuts what each tool
+  call returned, and nothing else, the way `--max-chars` cuts a block; `0` is
+  no cap. Unset, it follows `--max-chars`, so the default render is unchanged.
+  The arguments on an assistant's tool call stay as `--max-chars` cuts them.
+
+- **Changed: `orq traces thread` reads each Anthropic `tool_result` as a tool
+  turn.** The Anthropic Messages API records tool results inside a user turn,
+  next to whatever the user typed. Each result now renders as a `tool` turn of
+  its own, answering its call and named after the tool, followed by the user
+  turn with what remains; a user turn that held only results is gone. So
+  `-i tool`, `-x tool` and `--tool-max-chars` reach the results and never the
+  user's words, and `-i user` no longer shows tool output.
+
+- **Added: `orq traces thread --exclude` / `-x`**, the complement of
+  `--include`. `-x tool` is shorthand for `-i system,user,assistant,reasoning`:
+  each tool result becomes `[omitted: N characters]`. It cannot be combined
+  with `--include`.
+
+- **Changed: `orq traces thread --include` no longer deletes the turns it
+  leaves out.** A message whose role was not selected keeps its place, showing
+  its role and `[omitted: N characters]` instead of its content, so a reader
+  can still see that a tool returned something. N counts the characters the
+  span recorded, not the labels a render adds; a marker for content the span
+  did not record, or redacted, stays in place instead. Under `-i reasoning`
+  every message's body becomes that stub. Reasoning left out of a turn that
+  still shows its body is dropped without one. A message that held only
+  reasoning, with reasoning left out, is a stub instead of `[content
+  unavailable]`. In `-o json` a stub is a part `{"type": "omitted",
+  "omitted_chars": N}`, and a stubbed assistant turn keeps its tool calls'
+  `id` and `name` with `arguments` null, so a result still pairs with its
+  call.
+
+- **Changed: `orq traces thread` counts repeated reasoning markers.** A model
+  that reasoned several times between two actions, with the reasoning recorded
+  encrypted, rendered one `[encrypted]` line per item. A run of identical
+  markers now renders once, as `[encrypted: 4 items]`; in `-o json` it is one
+  `state` part with a `count`.
+
+- **Removed: `orq traces thread --reasoning`.** `-x reasoning` does what
+  `--reasoning=false` did, and `-i`/`-x` now cover every part of the
+  conversation with one mechanism. A script passing `--reasoning=false` fails
+  with an unknown-flag error; replace it with `-x reasoning`.
+
+- **Changed: `orq traces thread -o json|yaml|toon` honours an explicit
+  `--max-chars` or `--tool-max-chars`.** It used to ignore both silently.
+  Without either flag the structured thread is still emitted whole. A cut part
+  keeps the `[truncated: N more characters]` marker in its text and reports
+  the count in `truncated_chars`. A `json` part that needs cutting keeps its
+  type with the cut encoding in `text` and `value` null, and cut tool-call
+  arguments move to `arguments_text` with `arguments` null, so a `value` or
+  `arguments` present is always the recorded value; one recorded as a string
+  stays a string, cut. Every format is cut by the same pass, so xml, markdown
+  and the structured formats agree on what went.
+
+## [10.3.1](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.1) — 2026-09-23
+
+- **Fixed: `orq traces thread` on Claude Code traces.** Given only a trace id it
+  read the newest tool-execution span, one `Bash` result, instead of the
+  conversation. Selection now tries model-call spans first, the main loop's
+  before a subagent's, and tool executions last. The spans it reads also lost
+  most of their content: OTel GenAI `text` parts, which carry their text under
+  `content`, rendered as nothing, and `tool_call_response` parts rendered as
+  unsupported. Both now render, in the default render and in `-o json`. The same
+  rules read an `agent` or `model` role as the assistant, `human` as the user,
+  and a tool message whose body is a bare `output`. A part the command cannot
+  read now counts as dropped content, so selection keeps looking for a span
+  that kept it, as it already did for content the collector dropped; `--spans`
+  notes such a span as holding parts the command does not recognise rather than
+  blaming the collector. When no span reads whole, that search stops after 25
+  reads with a warning instead of reading every span in the trace. Anthropic
+  server tools (`server_tool_use`, `web_search_tool_result`) read as tool calls
+  and results.
+
+  Tool results render as the tool returned them. A result the gateway recorded
+  JSON-encoded a second time, as it does for server tools such as
+  `orq:subagent` and `orq:advisor`, rendered as a quoted string of escapes; a
+  tool's JSON holding a field named like `truncated` rendered as a truncation
+  marker in place of the result; and a returned list of records split into one
+  part per record. Each now renders as one value. A result is the tool's own
+  data: only a recognised content list, such as MCP's `[{"type":"text"}]`, is
+  read as parts, so a record with its own `type` or `text` field renders whole,
+  even when its type resembles a content part.
+
+## [10.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.3.0) — 2026-09-22
+
+- **Changed: `orq server use` accepts any host, not only a generated one.**
+  `orq server use my.orq.ai` used to fail with `could not match server
+  "my.orq.ai"` because `use` matched only the servers listed in the OpenAPI
+  document, and a self-hosted deployment is never in that list. An argument
+  that matches nothing there is now persisted as the default server, with a
+  missing scheme filled in as `https://` and no warning about having done so. A
+  numeric argument is still an index into the generated list, so `orq server
+  use 9` still reports an out-of-range index. For a person the command now
+  answers `Now talking to https://my.orq.ai.` instead of a `persisted: true`
+  record; `-o json` and the other serializations are unchanged.
+
+- **Changed: a rejected login session says what to do and where it happened.**
+  Commands that resolve a workspace token (`orq launch`, `orq auth whoami`,
+  `orq workspace use`, and the rest) answered a dead session with the API's
+  bare `Invalid refresh token!`. They now add one unindented line naming the
+  server and the remedy: `Your login for https://my.orq.ai has expired or was
+  revoked — run 'orq auth login'.` The server is named because a session minted against a
+  different host — after `--server`, `ORQ_SERVER` or `orq server use` — is the
+  case that is otherwise invisible.
+
+## [10.1.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.1.0) — 2026-09-22
+
+- **Added: `orq auth profile remove <name>`** (aliases `rm`, `delete`) deletes a
+  stored profile from `credentials.json`. Until now the only way to drop one was
+  editing that file by hand — the file holding live API keys. It removes the
+  profile and nothing else: no server-side key is revoked, and no browser login
+  is touched, since a login belongs to a server rather than to a profile. An
+  unknown name fails with `unknown profile "<name>"` and changes nothing on
+  disk. `-o json` returns `removed_profile` and `selection_cleared`.
+
+  Removing the profile that `orq auth profile use` selected also clears that
+  selection, so `orq auth profile current` reports no active profile rather than
+  one that no longer exists. A `--profile` flag or an `ORQ_PROFILE` naming the
+  removed profile is left alone: it belongs to the caller and outranks the
+  stored choice anyway.
+
+  Like the other profile-management commands, `remove` keeps working while the
+  selected profile is unknown — deleting the broken profile is one of the ways
+  out of that state.
+
+- **Changed: `--columns` accepts one array projection,** such as
+  `--columns 'settings.tools[].key'`, which renders that field from every
+  element of the array. Exactly one `[]` is allowed per selector and a field
+  must follow it; `--jmespath` remains the way to index or filter. Errors for a
+  column no row carries are more specific: projecting through something that is
+  not an array says so and names the prefix, and a selector containing `[` that
+  does not resolve explains the rule rather than only reporting the miss. No
+  previously accepted `--columns` value changes meaning, and `-o json` is
+  unaffected.
+
+- **Changed: `orq auth sessions` says how to use another login.** The table
+  lists logins from other hosts without ever saying that the host is what
+  selects one, so a usable login elsewhere now comes with a line naming it and
+  the way to reach it. Which way depends on what chose the current host: with a
+  persisted default it is `orq server set <that server>`, but under `ORQ_SERVER`
+  or a profile-bound server that command would be outranked, so the line names
+  those instead. `--server <that server>` is offered throughout for one call.
+  The command's help adds the rest: logins are per host, and `orq switch` moves
+  workspace and project inside one rather than between them.
+
+- **Changed: `orq auth setup` now runs the `orq setup` wizard.** It used to be
+  bartolo's generic credentials wizard — choose an auth type, name a profile,
+  paste a key — which since the profile rework opened by demanding a profile
+  name, even though this CLI puts nobody on a profile by default. The path
+  still resolves, hidden, so muscle memory lands on the real wizard, and it now
+  takes `orq setup`'s flags on top of the global ones. `--profile` still names
+  the credential the wizard authenticates with, and is where a key passed with
+  `--api-key` is saved (it is the global flag now; the local one only shadowed
+  it) — a bare run signs you in instead of creating the profile bartolo's
+  wizard would have. `--type` is gone: it chose a bartolo auth handler, and
+  this CLI has only ever registered one. Neither removal is breaking, because
+  the old command prompted from its first line and was refused under
+  `--no-input`, so no script could reach either flag. To write a key to a named
+  profile without the wizard, use `orq auth profile add <name>`; to sign in,
+  use `orq auth login`.
+
 ## [10.0.0](https://github.com/orq-ai/orq-cli/releases/tag/v10.0.0) — 2026-09-21
 
 - **Changed (breaking): `orq traces conversation` is `orq traces thread`

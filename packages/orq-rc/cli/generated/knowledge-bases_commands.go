@@ -29,7 +29,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "create",
-			Short:   "Create a knowledge",
+			Short:   "Create a knowledge base",
 			Long:    bartolocli.Markdown("Creates an internal or external knowledge base. Internal knowledge bases embed and index uploaded content; external knowledge bases query the configured external retrieval API.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `embedding_model` (string)\n- `external_config` (object)\n- `key` (string, required)\n- `path` (string, required)\n- `retrieval_settings` (object)\n- `type` (string)\n\nRequired fields: `key`, `path`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
@@ -263,7 +263,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "description",
 							FlagName:    "description",
 							Type:        "string-nullable",
-							Description: "The description of the knowledge base",
+							Description: "The description of the datasource",
 						},
 						{
 							Name:        "display_name",
@@ -281,7 +281,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "id",
 							FlagName:    "id",
 							Type:        "string",
-							Description: "Compatibility fields used by the former datasource shell/legacy route.",
+							Description: "Optional datasource ID. When omitted, the server generates one.",
 						},
 						{
 							Name:        "metadata",
@@ -329,7 +329,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "description",
 					FlagName:    "description",
 					Type:        "string-nullable",
-					Description: "The description of the knowledge base",
+					Description: "The description of the datasource",
 				},
 				{
 					Name:        "display_name",
@@ -347,7 +347,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "id",
 					FlagName:    "id",
 					Type:        "string",
-					Description: "Compatibility fields used by the former datasource shell/legacy route.",
+					Description: "Optional datasource ID. When omitted, the server generates one.",
 				},
 				{
 					Name:        "metadata",
@@ -375,7 +375,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete knowledge-id",
-			Short:   "Deletes a knowledge",
+			Short:   "Delete a knowledge base",
 			Long:    bartolocli.Markdown("Deletes a knowledge base. Deleting a knowledge base will delete all the datasources and chunks associated with it.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -537,7 +537,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "delete-datasource knowledge-id datasource-id",
-			Short:   "Deletes a datasource",
+			Short:   "Delete a datasource",
 			Long:    bartolocli.Markdown("Deletes a datasource from a knowledge base. Deleting a datasource will remove it from the knowledge base and all associated chunks. This action is irreversible and cannot be undone.\n\n## Arguments\n\n- `knowledge-id`\n- `datasource-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(2),
@@ -763,7 +763,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		}
 		parent.AddCommand(cmd)
 
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 200, and the default is 10")
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `starting_after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `ending_before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("q", "", "Search query to find datasources by name.")
@@ -944,7 +944,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 		cmd.Flags().String("starting-after", "", "A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, ending with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `starting_after=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the next page of the list.")
 		cmd.Flags().String("ending-before", "", "A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 20 objects, starting with `01JJ1HDHN79XAS7A01WB3HYSDB`, your subsequent call can include `ending_before=01JJ1HDHN79XAS7A01WB3HYSDB` in order to fetch the previous page of the list.")
 		cmd.Flags().String("q", "", "Search query to find datasources by name.")
-		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 10")
+		cmd.Flags().Int64("limit", 0, "A limit on the number of objects to be returned. Limit can range between 1 and 50, and the default is 50")
 		cmd.Flags().String("status", "", "Filter datasources by status.")
 
 		bartolocli.SetCustomFlags(cmd)
@@ -1046,7 +1046,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "retrieve knowledge-id",
-			Short:   "Retrieves a knowledge base",
+			Short:   "Retrieve a knowledge base",
 			Long:    bartolocli.Markdown("Retrieve a knowledge base with the settings.\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),
@@ -1270,7 +1270,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 							Name:        "filter_by",
 							FlagName:    "filter-by",
 							Type:        "json",
-							Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+							Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information.",
 						},
 						{
 							Name:        "query",
@@ -1353,7 +1353,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 					Name:        "filter_by",
 					FlagName:    "filter-by",
 					Type:        "json",
-					Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/docs/knowledge/api#knowledge-base-search) for more information.",
+					Description: "The metadata filter to apply to the search. Check the [Searching a Knowledge Base](https://docs.orq.ai/ai-studio/ai-engineering/knowledge-bases#search-a-knowledge-base) for more information.",
 				},
 				{
 					Name:        "query",
@@ -1494,7 +1494,7 @@ func registerknowledgeBasesCommands(root *cobra.Command) {
 
 		cmd := &cobra.Command{
 			Use:     "update knowledge-id",
-			Short:   "Updates a knowledge",
+			Short:   "Update a knowledge base",
 			Long:    bartolocli.Markdown("Updates a knowledge base. Omitted optional fields retain their current values.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `description` (string | null)\n- `domain_id` (string)\n- `embedding_model` (string)\n- `external_config` (object)\n- `path` (string)\n- `retrieval_settings` (object)\n- `settings` (object)\n- `type` (string)\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`).\n\n## Arguments\n\n- `knowledge-id`"),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(1),

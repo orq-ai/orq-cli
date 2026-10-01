@@ -32,7 +32,7 @@ func registerclassifyCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Classify",
-			Long:    bartolocli.Markdown("**Beta.** Runs typed classification questions (`noul`, `choice`, `score`) against the native classify model `typesafe/jev-latest` or a chat model that supports classify, such as `anthropic/claude-haiku-4-5`, `google-ai/gemini-3.8-flash` or `zai/glm-5.3-flash`. Chat models answer through one structured-output call and their probabilities are model-reported rather than calibrated. The request and response follow the TypeSafe classification contract; `model` in the response echoes the request and `usage` carries the computed cost like the Responses API. This endpoint currently does not apply PII plugins or guardrails.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- `questions` (object, required)\n- `retry` (object)\n- `state` (anyOf, required)\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("**Beta.** Runs typed classification questions (`noul`, `choice`, `score`) against the native classify model `typesafe/jev-latest` or a chat model that supports classify. Chat models answer through one structured-output call and their probabilities are model-reported rather than calibrated. The request and response follow the TypeSafe classification contract; `model` in the response echoes the request and `usage` carries the computed cost like the Responses API. This endpoint currently does not apply PII plugins or guardrails.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `identity` (object)\n- `metadata` (object)\n- `model` (string, required)\n- `name` (string)\n- `questions` (object, required)\n- `retry` (object)\n- `state` (anyOf, required)\n\nRequired fields: `model`, `questions`, `state`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -59,7 +59,7 @@ func registerclassifyCommands(root *cobra.Command) {
 							Name:        "model",
 							FlagName:    "model",
 							Type:        "string",
-							Description: "ID of the model to use: the native classify model typesafe/jev-latest, or a chat model that supports classify such as anthropic/claude-haiku-4-5, google-ai/gemini-3.8-flash or zai/glm-5.3-flash.",
+							Description: "ID of the model to use: the native classify model typesafe/jev-latest, or a chat model that supports classify.",
 						},
 						{
 							Name:        "name",
@@ -125,7 +125,7 @@ func registerclassifyCommands(root *cobra.Command) {
 					Name:        "model",
 					FlagName:    "model",
 					Type:        "string",
-					Description: "ID of the model to use: the native classify model typesafe/jev-latest, or a chat model that supports classify such as anthropic/claude-haiku-4-5, google-ai/gemini-3.8-flash or zai/glm-5.3-flash.",
+					Description: "ID of the model to use: the native classify model typesafe/jev-latest, or a chat model that supports classify.",
 				},
 				{
 					Name:        "name",

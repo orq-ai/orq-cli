@@ -16,6 +16,10 @@ import (
 	bartolocli "github.com/orq-ai/bartolo/cli"
 )
 
+// ErrNotLoggedIn is returned by every command that needs a browser login and
+// finds none. The text names the fix, since it is the whole error a person sees.
+var ErrNotLoggedIn = errors.New("you are not logged in; run `orq auth login`")
+
 type Client struct {
 	URLs       URLs
 	HTTPClient *http.Client
@@ -35,7 +39,7 @@ type Client struct {
 func NewClient(apiBase string) *Client {
 	return &Client{
 		URLs:       ResolveURLs(apiBase),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: NewHTTPClient(30 * time.Second),
 	}
 }
 
@@ -87,8 +91,15 @@ func TokenCacheKey(workspaceKey, projectID string) string {
 // TokenCacheKeyWorkspace returns the workspace a cache key belongs to,
 // whichever project it is scoped to.
 func TokenCacheKeyWorkspace(cacheKey string) string {
-	key, _, _ := strings.Cut(cacheKey, "#")
+	key, _ := ParseTokenCacheKey(cacheKey)
 	return key
+}
+
+// ParseTokenCacheKey splits a WorkspaceTokens cache key back into the
+// workspace/project pair TokenCacheKey built it from.
+func ParseTokenCacheKey(cacheKey string) (workspaceKey, projectID string) {
+	workspaceKey, projectID, _ = strings.Cut(cacheKey, "#")
+	return workspaceKey, projectID
 }
 
 func (c *Client) tokenKey(workspaceKey string) string {
@@ -382,7 +393,7 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 		AccessToken string `json:"access_token"`
 	}
 	if err := c.jsonRequest(http.MethodPost, c.URLs.AuthBaseURL+"/access-token", "", body, &resp); err != nil {
-		return StoredAccessToken{}, err
+		return StoredAccessToken{}, withRefreshTokenRemedy(err, c.URLs.APIBaseURL)
 	}
 	exp, err := decodeJWTExpiry(resp.AccessToken)
 	if err != nil {
@@ -392,6 +403,33 @@ func (c *Client) ExchangeAccessToken(refreshToken, workspaceKey string) (StoredA
 		Token:     resp.AccessToken,
 		ExpiresAt: formatISO(exp),
 	}, nil
+}
+
+// withRefreshTokenRemedy appends the one fix for a refresh token the server
+// refuses. The API answers a session that expired, was revoked by a logout
+// elsewhere, or belongs to another host with a bare "Invalid refresh token!",
+// which names no next step — and every command that resolves a workspace token
+// hits it, so the remedy belongs here rather than at each call site. The
+// server is named because "belongs to another host" is the case the user
+// cannot otherwise see: --server, ORQ_SERVER and `orq server use` all move the
+// call away from the host the session was minted on. The APIError is preserved
+// so Unauthorized() still reads the status.
+func withRefreshTokenRemedy(err error, server string) error {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return err
+	}
+	if apiErr.Status != http.StatusUnauthorized && !strings.Contains(strings.ToLower(apiErr.Msg), "refresh token") {
+		return err
+	}
+	where := strings.TrimSpace(server)
+	if where == "" {
+		where = "this server"
+	}
+	return &APIError{
+		Status: apiErr.Status,
+		Msg:    apiErr.Msg + fmt.Sprintf("\nYour login for %s has expired or was revoked — run 'orq auth login'.", where),
+	}
 }
 
 func (c *Client) Logout(refreshToken string) error {
@@ -738,7 +776,7 @@ func (c *Client) UseWorkspace(workspaceKey string) (*Session, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	session, err = c.RefreshProfile(session)
 	if err != nil {
@@ -773,7 +811,7 @@ func (c *Client) WhoAmI() (*Session, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	return c.RefreshProfile(session)
 }
@@ -790,7 +828,7 @@ func (c *Client) GetActiveWorkspaceAccessToken() (*ActiveAccessToken, error) {
 		return nil, err
 	}
 	if session == nil {
-		return nil, errors.New("you are not logged in")
+		return nil, ErrNotLoggedIn
 	}
 	session, err = c.RefreshProfile(session)
 	if err != nil {
@@ -896,7 +934,7 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 400 {
-		return &APIError{Status: res.StatusCode, Msg: describeAPIError(res.StatusCode, raw)}
+		return &APIError{Status: res.StatusCode, Msg: DescribeAPIError(res.StatusCode, raw)}
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -906,10 +944,12 @@ func (c *Client) jsonRequest(method, url, bearer string, body any, out any) erro
 	return nil
 }
 
-// describeAPIError turns an error response into something actionable. A bare
+// DescribeAPIError turns an error response into something actionable. A bare
 // "Request body failed validation." tells the user nothing, so any per-field
-// detail the API returned is appended.
-func describeAPIError(status int, raw []byte) string {
+// detail the API returned is appended, then the doc link and the request id
+// support needs to find the failure. commands.ExplainAPIError uses it for
+// bartolo's generated commands, so both clients read the body the same way.
+func DescribeAPIError(status int, raw []byte) string {
 	// The API returns per-field problems under details.issues; older/other
 	// endpoints use a flat issues/errors array. Handle all three.
 	type issue struct {
@@ -922,13 +962,14 @@ func describeAPIError(status int, raw []byte) string {
 		Error     string  `json:"error"`
 		Detail    string  `json:"detail"`
 		RequestID string  `json:"request_id"`
+		DocURL    string  `json:"doc_url"`
 		Issues    []issue `json:"issues"`
 		Errors    []issue `json:"errors"`
 		Details   struct {
 			Issues []issue `json:"issues"`
 		} `json:"details"`
 	}
-	_ = json.Unmarshal(raw, &body)
+	parsed := json.Unmarshal(raw, &body) == nil
 
 	summary := firstNonEmpty(body.Message, body.Error, body.Detail)
 	if summary == "" {
@@ -944,23 +985,24 @@ func describeAPIError(status int, raw []byte) string {
 		}
 		details = append(details, line)
 	}
-	if len(details) > 0 && body.RequestID != "" {
-		details = append(details, "request_id: "+body.RequestID)
-	}
-	if len(details) > 0 {
-		return summary + "\n  " + strings.Join(details, "\n  ")
-	}
-
-	// Nothing structured to show: fall back to the raw payload, which at least
-	// lets the user report what happened.
+	// A proxy or older endpoint may not return structured fields at all. Keep
+	// a bounded copy of its response rather than flooding the terminal.
 	trimmed := strings.TrimSpace(string(raw))
-	if trimmed != "" && trimmed != "{}" && summary == fmt.Sprintf("request failed with status %d", status) {
+	if !parsed && trimmed != "" {
 		if len(trimmed) > 400 {
 			trimmed = trimmed[:400] + "…"
 		}
-		return summary + "\n  " + trimmed
+		details = append(details, trimmed)
 	}
-	return summary
+	docURL := body.DocURL
+	if docURL == "" {
+		docURL = "https://docs.orq.ai/reference"
+	}
+	details = append(details, "docs: "+docURL)
+	if body.RequestID != "" {
+		details = append(details, "request_id: "+body.RequestID)
+	}
+	return summary + "\n  " + strings.Join(details, "\n  ")
 }
 
 func joinPathMessage(path []any, message string) string {

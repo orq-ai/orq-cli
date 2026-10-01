@@ -232,3 +232,32 @@ func TestStoredAPIKeyLoginOutranksBrowserSessionGatewayKey(t *testing.T) {
 		t.Fatalf("stored api-key login was not injected: ORQ_API_KEY = %q", got)
 	}
 }
+
+// An agent may carry a workspace token from an older browser session in its
+// environment. That session token also defers to the latest API-key login.
+func TestStoredAPIKeyLoginOutranksBrowserSessionToken(t *testing.T) {
+	apiKeyLoginHarness(t)
+	urls := auth.ResolveURLs("")
+	session := &auth.Session{
+		Version:        1,
+		APIBaseURL:     urls.APIBaseURL,
+		V1BaseURL:      urls.V1BaseURL,
+		AuthBaseURL:    urls.AuthBaseURL,
+		ProfileBaseURL: urls.ProfileBaseURL,
+		RefreshToken:   "refresh-abc",
+		BootstrapToken: auth.StoredAccessToken{Token: "boot", ExpiresAt: "2099-01-01T00:00:00Z"},
+		WorkspaceTokens: map[string]auth.StoredAccessToken{
+			auth.TokenCacheKey("acme", ""): {Token: "session-token", ExpiresAt: "2099-01-01T00:00:00Z"},
+		},
+	}
+	if err := auth.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-LOGIN"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORQ_API_KEY", "session-token")
+	if !applyStoredAPIKeyLogin() || os.Getenv("ORQ_API_KEY") != "sk-orq-LOGIN" {
+		t.Fatalf("stored login did not replace the old session token: %q", os.Getenv("ORQ_API_KEY"))
+	}
+}

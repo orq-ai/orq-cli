@@ -64,6 +64,11 @@ type Session struct {
 	GatewayKeyExpiresAt string `json:"gatewayKeyExpiresAt,omitempty"`
 	GatewayWorkspace    string `json:"gatewayWorkspace,omitempty"`
 	GatewayProject      string `json:"gatewayProject,omitempty"`
+
+	// StaleTokens maps the hash of a workspace token replaced after an
+	// authz_stale answer to the WorkspaceTokens slot it held, so anything still
+	// carrying the old token can find its replacement (see CurrentToken).
+	StaleTokens map[string]StaleToken `json:"staleTokens,omitempty"`
 }
 
 type SessionInspectStatus string
@@ -280,6 +285,7 @@ func saveSessionTo(path string, s *Session) error {
 	// field is shared with the caller unchanged.
 	written := *s
 	written.WorkspaceTokens = pruneExpiredWorkspaceTokens(s.WorkspaceTokens)
+	written.StaleTokens = pruneStaleTokens(s.StaleTokens)
 	data, err := json.MarshalIndent(written, "", "  ")
 	if err != nil {
 		return err

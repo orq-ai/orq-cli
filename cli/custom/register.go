@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -56,6 +58,7 @@ var profileExemptCommands = map[string]bool{
 	"auth profile current": true,
 	"auth profile use":     true,
 	"auth profile clear":   true,
+	"auth profile remove":  true, // deleting the broken profile is the fix for an unknown one
 	"doctor":               true,
 	"update":               true, // updating must work without a credential; it touches no orq API
 	"orqi":                 true, // installs and launches orqi; touches no orq API
@@ -69,9 +72,9 @@ var profileExemptCommands = map[string]bool{
 // through bartolo's own TTY check, which knows nothing about --no-input.
 // Refusing them up front keeps the "--no-input never prompts" promise honest.
 //
-// Keyed by command PATH, not name: orq's own `setup` is a different command
-// from bartolo's `auth setup`, honors --no-input itself, and is meant to run
-// headless in CI. Matching on the bare name refused it.
+// Keyed by command PATH, not name, matching commandPath(cmd) below: an entry
+// then names one bartolo command rather than every command sharing a leaf
+// name. orq's own commands honor --no-input themselves and never belong here.
 //
 // The map is a workaround with a scheduled death: bartolo already has the
 // right non-interactive behaviour on every one of these paths, it just gates
@@ -81,10 +84,6 @@ var profileExemptCommands = map[string]bool{
 // delete the map, `wizard` and the guard in installSessionPreRun together.
 // RES-1571.
 var interactiveWizardCommands = map[string]wizard{
-	// No predicate: bartolo's auth setup is a wizard from its first line.
-	"auth setup": {
-		hint: "use `orq auth login` or set ORQ_API_KEY instead",
-	},
 	// Prompts only for a key it was not given, so the CI form (a key argument
 	// or --api-key-file, usually under a job-wide ORQ_NO_INPUT) keeps working.
 	"auth profile add": {
@@ -140,6 +139,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	registerGlobalFlags()
 	installSessionPreRun()
 	installAPIKeyUsageNotice()
+	installStaleTokenRetry()
 	registerCommands(root, traceAPI)
 	// Help presentation: runs last so it sees the complete tree.
 	applyCommandGroups(root)
@@ -147,7 +147,8 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	appendHelpFooter(root)
 	installUpdateNoticeHelp(root)
 	improveArgErrors(root)
-	explainNotFoundScope(root)
+	configureSubcommandSuggestions(root)
+	explainAPIErrors(root)
 }
 
 func registerGlobalFlags() {
@@ -222,10 +223,19 @@ func installSessionPreRun() {
 		if err := auth.MigrateLayout(viper.GetString("config-directory")); err != nil {
 			return fmt.Errorf("could not migrate ~/.orq: %w", err)
 		}
+		// An agent `orq launch` started with a session token keeps that token
+		// in ORQ_API_KEY after the session replaced it as stale; send the
+		// replacement instead of paying a 401 on every invocation.
+		if key := os.Getenv("ORQ_API_KEY"); key != "" {
+			if current := auth.CurrentToken(key); current != key {
+				os.Setenv("ORQ_API_KEY", current)
+				commands.SetUserEnvAPIKey(current)
+			}
+		}
 		if err := rejectUnknownProfile(cmd); err != nil {
 			return err
 		}
-		applyProfileAPIKey()
+		applyProfileAPIKey(!credentialIrrelevant(cmd))
 		// An `orq auth login --api-key` credential is injected here, before the
 		// precedence below reads the environment, so a stored api-key login is
 		// the credential every later command authenticates with — the login the
@@ -241,7 +251,7 @@ func installSessionPreRun() {
 		// missing, which bartolo refuses to reach past rather than falling
 		// back. Otherwise: a sourced gateway key written by this CLI defers to
 		// its session; every user-supplied env key remains authoritative.
-		explicitKey := profileInForce() || storedLoginActive || (apiKeyConfigured() && !ownExportedKey())
+		explicitKey := profileInForce() || storedLoginActive || (apiKeyConfigured() && !ownExportedKey() && !auth.IsSessionMinted(configuredAPIKey()))
 		commands.SetExplicitAPIKey(explicitKey)
 		override := strings.TrimSpace(viper.GetString("workspace"))
 		// Warn about a shadowed --workspace before anything else, so the no-op
@@ -382,7 +392,7 @@ func profileInForce() bool {
 // The other key variables are cleared, not left beside it: bartolo ranks them
 // itself, and leaving a losing key in the environment lets a child pick a
 // credential the parent already decided against.
-func applyProfileAPIKey() {
+func applyProfileAPIKey(announce bool) {
 	if !profileInForce() {
 		return
 	}
@@ -400,11 +410,11 @@ func applyProfileAPIKey() {
 		}
 		os.Unsetenv(envVar)
 	}
-	if len(shadowed) > 0 {
+	if len(shadowed) > 0 && announce {
 		// Say it once, and say which key won: silently swapping credentials is
 		// the failure this whole ordering exists to prevent.
-		name, source, _ := commands.ProfileSelection()
-		commands.Warn("using the API key from profile %q (selected by %s); %s set but the profile takes precedence", name, source, strings.Join(shadowed, " and "))
+		name, source, drop := commands.ProfileSelection()
+		commands.Warn("using the API key from profile %q (selected by %s), ignoring %s. To use the environment key instead, %s", name, source, strings.Join(shadowed, " and "), drop)
 	}
 	os.Setenv(apiKeyEnvVars[0], key)
 }
@@ -456,7 +466,7 @@ func applyStoredAPIKeyLogin() bool {
 		gatewayKey = strings.TrimSpace(session.GatewayKey)
 	}
 	for _, envVar := range apiKeyEnvVars {
-		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key && v != gatewayKey {
+		if v := strings.TrimSpace(os.Getenv(envVar)); v != "" && v != key && v != gatewayKey && !auth.IsSessionMinted(v) {
 			// A key the user put in the environment themselves outranks the
 			// stored login; do not displace it.
 			return false
@@ -464,6 +474,34 @@ func applyStoredAPIKeyLogin() bool {
 	}
 	os.Setenv(apiKeyEnvVars[0], key)
 	return true
+}
+
+// quietCredentialCommands never use the selected orq credential, so which key
+// would win says nothing about what they do. Printing it there made the note
+// appear on every `orq version`. status, whoami and doctor are left out: they
+// are where a person goes to find out which credential is in use.
+var quietCredentialCommands = []string{
+	"version", "help", "help-config", "help-input", "default-format", "completion",
+	"__complete", "__completeNoDesc", "man-pages",
+	"auth profile", "auth sessions", "server", "update", "disconnect",
+}
+
+func credentialIrrelevant(cmd *cobra.Command) bool {
+	path := commandPath(cmd)
+	if path == "connect" {
+		// Status reads only the agents' local config. Flags are parsed before
+		// PreRun, so this mode can be classified without re-parsing argv.
+		status, _ := cmd.Flags().GetBool("status")
+		if status {
+			return true
+		}
+	}
+	for _, quiet := range quietCredentialCommands {
+		if path == quiet || strings.HasPrefix(path, quiet+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // rejectUnknownProfile errors when a profile is selected but credentials.json
@@ -550,6 +588,20 @@ func configureAPIKeyUsageNotice(cmd *cobra.Command, explicitKey bool) {
 		return
 	}
 	pendingAPIKeyUsageNotice = newAPIKeyUsageNotice(key, source)
+}
+
+// installStaleTokenRetry gives generated commands the auth.StaleRetryTransport
+// retry on 401 authz_stale (RES-1636). gentleman builds a fresh http.Client per
+// request, so the transport is wrapped once per request, never stacked.
+func installStaleTokenRetry() {
+	if bartolocli.Client != nil {
+		bartolocli.Client.UseRequest(staleTokenRetryMiddleware)
+	}
+}
+
+func staleTokenRetryMiddleware(ctx *gentlemancontext.Context, h gentlemancontext.Handler) {
+	ctx.Client.Transport = &auth.StaleRetryTransport{Base: ctx.Client.Transport}
+	h.Next(ctx)
 }
 
 func installAPIKeyUsageNotice() {
@@ -740,11 +792,14 @@ func registerCommands(root *cobra.Command, traceAPI commands.TraceAPI) {
 	renamePreviewModelsList(root)
 	replaceDoctor(root)
 	attachAuthSubcommands(root)
-	addHiddenAuthAliases(root)
+	// whoami is deliberately absent: `orq status` carries it as an alias, and a
+	// second root command of the same name would shadow it.
+	addHiddenAliases(root, commands.NewLoginCommand, commands.NewLogoutCommand)
 	root.AddCommand(commands.NewWorkspaceCommand())
 	root.AddCommand(commands.NewStatusCommand())
 	root.AddCommand(commands.NewSwitchCommand())
 	attachProjectsUse(root)
+	widenServerUse(root)
 	attachTracesThread(root, traceAPI)
 	applyDefaultTimeWindow(root)
 	root.AddCommand(commands.NewManPagesCommand())
@@ -909,6 +964,65 @@ func renamePreviewModelsList(root *cobra.Command) {
 	}
 }
 
+// widenServerUse lets `orq server use my.orq.ai` mean what it reads like.
+// Bartolo's `use` only matches the generated server list — one entry, the
+// hosted default — so every self-hosted host, which is the only reason anyone
+// changes servers, died on "could not match server". On a miss the argument is
+// handed to the sibling `set`, which persists it. A numeric argument is left
+// alone: that is an index, and a bad index must stay an index error rather
+// than become the URL "https://9".
+//
+// The host is normalized here rather than downstream so bartolo's
+// scheme-was-guessed WARN never fires, and for a person the machine-shaped
+// "persisted: true" record is replaced by one sentence. `-o json` and the
+// other serializations keep bartolo's output: that is the script contract.
+func widenServerUse(root *cobra.Command) {
+	server := childCommand(root, "server")
+	if server == nil {
+		return
+	}
+	use, set := childCommand(server, "use"), childCommand(server, "set")
+	if use == nil || set == nil || use.RunE == nil || set.RunE == nil {
+		return
+	}
+	use.Use = "use <index|url|description|host>"
+	use.Short = "Select a generated server, or persist any host as the default"
+	matchGenerated := use.RunE
+	use.RunE = func(cmd *cobra.Command, args []string) error {
+		target := args[0]
+		_, isIndex := strconv.Atoi(target)
+		if isIndex != nil {
+			if normalized, _, err := bartolocli.NormalizeServerURL(target); err == nil {
+				target = normalized
+			}
+		}
+		args = []string{target}
+
+		persist := func() error {
+			if err := matchGenerated(cmd, args); err == nil || isIndex == nil {
+				return err
+			}
+			return set.RunE(cmd, args)
+		}
+
+		if commands.MachineFormatRequested(cmd) {
+			return persist()
+		}
+		// bartolo's own record of the write goes nowhere: what a person needs
+		// is the host they are now pointed at, which ResolveServer reads back
+		// from the config the write just updated.
+		restore := bartolocli.Stdout
+		bartolocli.Stdout = io.Discard
+		err := persist()
+		bartolocli.Stdout = restore
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(bartolocli.Stdout, "Now talking to %s.\n", bartolocli.ResolveServer())
+		return nil
+	}
+}
+
 func childCommand(parent *cobra.Command, name string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
@@ -955,38 +1069,26 @@ func attachAuthSubcommands(root *cobra.Command) {
 		}
 		root.AddCommand(authParent)
 	}
-	// Bartolo's `auth setup` command ships with a `login` alias for the
-	// API-key wizard. Strip it so our OAuth `auth login` subcommand is the
-	// one cobra resolves.
-	if setup := childCommand(authParent, "setup"); setup != nil {
-		setup.Aliases = removeString(setup.Aliases, "login")
-	}
+	// Bartolo's generic `auth setup` prompts for a profile name — this CLI
+	// leaves you on none by default — and ships a `login` alias that shadows
+	// our OAuth one. `orq setup` under the same path keeps the spelling
+	// working for whoever types it.
+	authParent.RemoveCommand(childCommand(authParent, "setup")) // nil-safe
+	addHiddenAliases(authParent, commands.NewSetupCommand)
 	authParent.AddCommand(commands.NewLoginCommand())
 	authParent.AddCommand(commands.NewLogoutCommand())
 	authParent.AddCommand(commands.NewWhoAmICommand())
 	authParent.AddCommand(commands.NewSessionsCommand())
 }
 
-func removeString(slice []string, target string) []string {
-	out := slice[:0]
-	for _, s := range slice {
-		if s != target {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func addHiddenAuthAliases(root *cobra.Command) {
-	// whoami is deliberately absent: `orq status` carries it as an alias, and a
-	// second root command of the same name would shadow it.
-	for _, factory := range []func() *cobra.Command{
-		commands.NewLoginCommand,
-		commands.NewLogoutCommand,
-	} {
+// addHiddenAliases mounts a second copy of each command on parent, out of the
+// help. A copy rather than the command itself: cobra gives a command one
+// parent, so sharing the instance would move it out of its own tree.
+func addHiddenAliases(parent *cobra.Command, factories ...func() *cobra.Command) {
+	for _, factory := range factories {
 		alias := factory()
 		alias.Hidden = true
-		root.AddCommand(alias)
+		parent.AddCommand(alias)
 	}
 }
 
@@ -1075,15 +1177,58 @@ func improveArgErrors(cmd *cobra.Command) {
 	}
 }
 
-// explainNotFoundScope appends the active project to every "not found" a
-// command returns. A read by id answers within one project, so an id recorded
-// in a sibling project comes back as a bare 404 that reads as "this does not
-// exist" — the one thing it does not mean. Applied to the whole tree, so the
-// generated operations carry it too.
-func explainNotFoundScope(cmd *cobra.Command) {
+// configureSubcommandSuggestions adds the spelling people reach for first and
+// gives nested groups the same edit-distance default cobra applies at the root.
+// Groups deliberately remain non-runnable: bare group help then stays ahead of
+// PersistentPreRunE and gains no extra runnable form in its usage text.
+func configureSubcommandSuggestions(cmd *cobra.Command) {
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == "retrieve" && !slices.Contains(sub.SuggestFor, "get") {
+			sub.SuggestFor = append(sub.SuggestFor, "get")
+		}
+		configureSubcommandSuggestions(sub)
+	}
+	if cmd.HasParent() && cmd.HasAvailableSubCommands() && cmd.SuggestionsMinimumDistance <= 0 {
+		// SuggestionsFor does not default this; cobra's findSuggestions does,
+		// and only for the root.
+		cmd.SuggestionsMinimumDistance = 2
+	}
+}
+
+// unknownSubcommand validates a group invocation before cobra runs persistent
+// pre-runs. Cobra checks unknown commands only at the root; a nested,
+// non-runnable group otherwise prints help and exits 0 for any trailing word.
+// ParseFlags removes flags wherever they appear, leaving the first positional
+// as the word to validate. Execute parses the same flags again afterwards.
+func unknownSubcommand(root *cobra.Command, args []string) error {
+	cmd, rest, err := root.Find(args)
+	if err != nil || cmd == root || cmd.Runnable() || !cmd.HasAvailableSubCommands() {
+		return nil
+	}
+	if err := cmd.ParseFlags(rest); err != nil {
+		return nil // let cobra render its canonical flag error
+	}
+	positionals := cmd.Flags().Args()
+	if len(positionals) == 0 || positionals[0] == "help" {
+		return nil
+	}
+	word := positionals[0]
+	msg := fmt.Sprintf("unknown command %q for %q", word, cmd.CommandPath())
+	if suggestions := cmd.SuggestionsFor(word); len(suggestions) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+	return bartolocli.NewUsageError(fmt.Errorf("%s\n\nRun '%s --help' for usage.", msg, cmd.CommandPath()))
+}
+
+// explainAPIErrors rewrites every API error for a person (ExplainAPIError) and
+// appends the active project to a "not found". A read by id answers within one
+// project, so an id from a sibling project comes back as a bare 404 that reads
+// as "this does not exist", which is the one thing it does not mean. Applied to
+// the whole tree, so the generated operations carry it too.
+func explainAPIErrors(cmd *cobra.Command) {
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
-			err := run(c, args)
+			err := commands.ExplainAPIError(run(c, args))
 			hint := commands.NotFoundScopeHint(err)
 			// A command that already named the scope itself — `traces thread`
 			// names the project holding the trace — needs no second copy.
@@ -1094,7 +1239,7 @@ func explainNotFoundScope(cmd *cobra.Command) {
 		}
 	}
 	for _, sub := range cmd.Commands() {
-		explainNotFoundScope(sub)
+		explainAPIErrors(sub)
 	}
 }
 

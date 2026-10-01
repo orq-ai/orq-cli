@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -119,6 +120,42 @@ func TestAPIKeyLoginWithoutProfileKeepsJSONProfileField(t *testing.T) {
 	}
 }
 
+func statusKeyProbe(t *testing.T, status int, keepSession bool) {
+	t.Helper()
+	var session *auth.Session
+	if keepSession {
+		var err error
+		session, err = auth.ReadSession()
+		if err != nil || session == nil {
+			t.Fatalf("ReadSession: %v, session=%v", err, session)
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/projects" {
+			t.Errorf("unexpected status probe path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if status == http.StatusOK {
+			fmt.Fprint(w, `{"data":[],"has_more":false}`)
+		} else {
+			fmt.Fprint(w, `{"message":"key revoked"}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	previousServer, previousSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+	if session != nil {
+		urls := auth.ResolveURLs(srv.URL)
+		session.APIBaseURL, session.V1BaseURL = urls.APIBaseURL, urls.V1BaseURL
+		session.AuthBaseURL, session.ProfileBaseURL = urls.AuthBaseURL, urls.ProfileBaseURL
+		if err := auth.SaveSession(session); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // After an api-key login with no browser session, `orq status` must report the
 // login, not claim the user is logged out.
 func TestWhoAmIReportsAPIKeyLogin(t *testing.T) {
@@ -135,6 +172,7 @@ func TestWhoAmIReportsAPIKeyLogin(t *testing.T) {
 	if err := auth.ClearSession(); err != nil {
 		t.Fatal(err)
 	}
+	statusKeyProbe(t, http.StatusOK, false)
 	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{
 		APIBaseURL: auth.ResolveURLs("").APIBaseURL,
 		APIKey:     "sk-orq-LOGIN",
@@ -158,15 +196,48 @@ func TestWhoAmIReportsAPIKeyLogin(t *testing.T) {
 		APIKey          string `json:"api_key"`
 		APIKeyLoginFile string `json:"api_key_login_file"`
 		SessionFile     string `json:"session_file"`
+		Authenticated   bool   `json:"authenticated"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
 	}
-	if payload.Method != "api_key" || payload.Workspace != "acme" || payload.APIKey != maskToken("sk-orq-LOGIN") {
+	if payload.Method != "api_key" || payload.Workspace != "acme" || payload.APIKey != maskToken("sk-orq-LOGIN") || !payload.Authenticated {
 		t.Errorf("whoami payload = %+v", payload)
 	}
 	if payload.APIKeyLoginFile != auth.APIKeyLoginFilePath() || payload.SessionFile != auth.SessionFilePath() {
 		t.Errorf("whoami credential file = %q, session file = %q", payload.APIKeyLoginFile, payload.SessionFile)
+	}
+}
+
+func TestWhoAmIReportsRejectedStoredAPIKeyLogin(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+	if err := auth.ClearSession(); err != nil {
+		t.Fatal(err)
+	}
+	statusKeyProbe(t, http.StatusUnauthorized, false)
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-REVOKED"}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Authenticated bool   `json:"authenticated"`
+		AuthError     string `json:"auth_error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Authenticated || !strings.Contains(payload.AuthError, "key revoked") {
+		t.Errorf("payload = %+v, want the rejected key reported", payload)
 	}
 }
 
@@ -176,6 +247,7 @@ func TestWhoAmIReportsActiveAPIKeyLoginOverBrowserSession(t *testing.T) {
 	viper.Set("profile", "")
 	viper.Set("output-format", "json")
 	t.Cleanup(func() { viper.Set("output-format", "") })
+	statusKeyProbe(t, http.StatusOK, true)
 	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-LOGIN"}); err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +285,7 @@ func TestWhoAmIReportsEnvironmentKeyOverStoredLogin(t *testing.T) {
 	if err := auth.ClearSession(); err != nil {
 		t.Fatal(err)
 	}
+	statusKeyProbe(t, http.StatusOK, false)
 	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-STORED"}); err != nil {
 		t.Fatal(err)
 	}
@@ -236,6 +309,42 @@ func TestWhoAmIReportsEnvironmentKeyOverStoredLogin(t *testing.T) {
 	}
 	if payload.Source != "ORQ_API_KEY" || payload.APIKey != maskToken("sk-orq-EXPORTED") || payload.APIKeyLoginFile != "" {
 		t.Errorf("whoami reported the stored login instead of the effective environment key: %+v", payload)
+	}
+}
+
+func TestWhoAmIReportsEnvironmentKeyOverStoredLoginAndSession(t *testing.T) {
+	credsHarness(t)
+	ensureFormatter(t)
+	viper.Set("profile", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", ""); ResetUserEnvAPIKey() })
+	statusKeyProbe(t, http.StatusOK, true)
+	if err := auth.SaveAPIKeyLogin(&auth.APIKeyLogin{APIKey: "sk-orq-STORED"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ORQ_API_KEY", "sk-orq-EXPORTED")
+	SetUserEnvAPIKey("sk-orq-EXPORTED")
+	previousExplicit := explicitAPIKey
+	SetExplicitAPIKey(true)
+	t.Cleanup(func() { SetExplicitAPIKey(previousExplicit) })
+	var out bytes.Buffer
+	previous := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = previous })
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Source          string `json:"source"`
+		APIKey          string `json:"api_key"`
+		APIKeyLoginFile string `json:"api_key_login_file"`
+		Authenticated   bool   `json:"authenticated"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Source != "ORQ_API_KEY" || payload.APIKey != maskToken("sk-orq-EXPORTED") || payload.APIKeyLoginFile != "" || !payload.Authenticated {
+		t.Errorf("whoami did not report the effective environment key: %+v", payload)
 	}
 }
 
@@ -385,6 +494,16 @@ func TestLogoutCleanupErrorReportsSurvivingGatewayKey(t *testing.T) {
 func TestWhoAmIStructuredOutputForAPIKeyProfile(t *testing.T) {
 	credsHarness(t)
 	ensureFormatter(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer sk-orq-profile-secret" {
+			t.Errorf("profile probe used %q", r.Header.Get("Authorization"))
+		}
+		fmt.Fprint(w, `{"data":[],"has_more":false}`)
+	}))
+	t.Cleanup(srv.Close)
+	oldServer, oldSource := auth.Server(), auth.ServerSource()
+	auth.SetServer(srv.URL, "flag")
+	t.Cleanup(func() { auth.SetServer(oldServer, oldSource) })
 	viper.Set("profile", "work")
 	viper.Set("output-format", "json")
 	t.Cleanup(func() { viper.Set("profile", ""); viper.Set("output-format", "") })
@@ -402,21 +521,132 @@ func TestWhoAmIStructuredOutputForAPIKeyProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	var payload struct {
-		Profile     string `json:"profile"`
-		Server      string `json:"server"`
-		APIKey      string `json:"api_key"`
-		SessionFile string `json:"session_file"`
-		Identity    any    `json:"identity"`
+		Profile       string `json:"profile"`
+		Server        string `json:"server"`
+		APIKey        string `json:"api_key"`
+		SessionFile   string `json:"session_file"`
+		Identity      any    `json:"identity"`
+		Authenticated bool   `json:"authenticated"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
 		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
 	}
-	if payload.Profile != "work" || payload.Server == "" || payload.APIKey != maskToken("sk-orq-profile-secret") || payload.Identity != nil {
+	if payload.Profile != "work" || payload.Server != srv.URL || payload.APIKey != maskToken("sk-orq-profile-secret") || payload.Identity != nil || !payload.Authenticated {
 		t.Errorf("whoami payload = %+v", payload)
 	}
 	// orqi reads session_file off this payload (RES-1500), and a profile in
 	// force does not make the session file stop existing.
 	if payload.SessionFile == "" {
 		t.Errorf("whoami payload has no session_file: %+v", payload)
+	}
+}
+
+// A profile that loads fine says nothing about the workspace token, so a
+// server that rejects that token has to turn `authenticated` false (RES-1636).
+func TestWhoAmIReportsRejectedWorkspaceToken(t *testing.T) {
+	switchTestEnv(t)
+	ensureFormatter(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "ProfileService") {
+			fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","workspaces":[{"key":"ws"}]}}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"message":"token revoked"}`)
+	}))
+	t.Cleanup(srv.Close)
+	switchSession(t, srv.URL, "ws", []string{"ws"}, "", "")
+	viper.Set("output-format", "json")
+	t.Cleanup(func() { viper.Set("output-format", "") })
+
+	var out bytes.Buffer
+	origStdout := bartolocli.Stdout
+	bartolocli.Stdout = &out
+	t.Cleanup(func() { bartolocli.Stdout = origStdout })
+
+	if err := NewWhoAmICommand().Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Authenticated bool   `json:"authenticated"`
+		AuthError     string `json:"auth_error"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+	}
+	if payload.Authenticated || !strings.Contains(payload.AuthError, "token revoked") {
+		t.Errorf("payload = %+v, want authenticated false with the server's message", payload)
+	}
+}
+
+func TestWhoAmIProbesCredentialInForce(t *testing.T) {
+	for _, tc := range []struct {
+		name, exportedKey, injectedKey string
+		status                         int
+		wantBearer                     string
+		wantAuthenticated              bool
+		wantCheckError                 bool
+	}{
+		{name: "session succeeds", status: http.StatusOK, wantBearer: "tok-ws", wantAuthenticated: true},
+		{name: "server unavailable", status: http.StatusServiceUnavailable, wantBearer: "tok-ws", wantAuthenticated: true, wantCheckError: true},
+		{name: "probe route forbidden", status: http.StatusForbidden, wantBearer: "tok-ws", wantAuthenticated: true, wantCheckError: true},
+		{name: "pre-run scoped token", injectedKey: "tok-ws-scoped", status: http.StatusOK, wantBearer: "tok-ws-scoped", wantAuthenticated: true},
+		{name: "explicit key wins", exportedKey: "user-key", status: http.StatusOK, wantBearer: "user-key", wantAuthenticated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			switchTestEnv(t)
+			ensureFormatter(t)
+			previousExplicit := explicitAPIKey
+			SetExplicitAPIKey(tc.exportedKey != "")
+			SetUserEnvAPIKey(tc.exportedKey)
+			t.Cleanup(func() { explicitAPIKey = previousExplicit; ResetUserEnvAPIKey() })
+			envKey := tc.exportedKey
+			if tc.injectedKey != "" {
+				envKey = tc.injectedKey
+			}
+			t.Setenv("ORQ_API_KEY", envKey)
+			var gotBearer string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if strings.Contains(r.URL.Path, "ProfileService") {
+					fmt.Fprint(w, `{"profile":{"id":"u1","email":"a@b.c","workspaces":[{"key":"ws"}]}}`)
+					return
+				}
+				gotBearer = r.Header.Get("Authorization")
+				w.WriteHeader(tc.status)
+				if tc.status == http.StatusOK {
+					fmt.Fprint(w, `{"data":[],"has_more":false}`)
+				} else {
+					fmt.Fprint(w, `{"message":"temporarily unavailable"}`)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			previousServer, previousSource := auth.Server(), auth.ServerSource()
+			auth.SetServer(srv.URL, "flag")
+			t.Cleanup(func() { auth.SetServer(previousServer, previousSource) })
+			switchSession(t, srv.URL, "ws", []string{"ws"}, "", "")
+			viper.Set("output-format", "json")
+			t.Cleanup(func() { viper.Set("output-format", "") })
+			var out bytes.Buffer
+			previousStdout := bartolocli.Stdout
+			bartolocli.Stdout = &out
+			t.Cleanup(func() { bartolocli.Stdout = previousStdout })
+			if err := NewWhoAmICommand().Execute(); err != nil {
+				t.Fatal(err)
+			}
+			var payload struct {
+				Authenticated  bool   `json:"authenticated"`
+				AuthError      string `json:"auth_error"`
+				AuthCheckError string `json:"auth_check_error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+				t.Fatalf("whoami output is not JSON: %v\n%s", err, out.String())
+			}
+			if gotBearer != "Bearer "+tc.wantBearer || payload.Authenticated != tc.wantAuthenticated ||
+				(payload.AuthCheckError != "") != tc.wantCheckError || payload.AuthError != "" {
+				t.Errorf("bearer=%q payload=%+v", gotBearer, payload)
+			}
+		})
 	}
 }

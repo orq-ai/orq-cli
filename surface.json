@@ -1290,6 +1290,14 @@
       ]
     },
     {
+      "path": "orq auth profile remove",
+      "use": "remove \u003cname\u003e",
+      "aliases": [
+        "rm",
+        "delete"
+      ]
+    },
+    {
       "path": "orq auth profile use",
       "use": "use \u003cname\u003e",
       "aliases": [
@@ -1306,14 +1314,37 @@
     {
       "path": "orq auth setup",
       "use": "setup",
+      "hidden": true,
       "flags": [
         {
-          "name": "profile",
+          "name": "api-key",
           "type": "string"
         },
         {
-          "name": "type",
-          "type": "string"
+          "name": "capability",
+          "type": "stringSlice"
+        },
+        {
+          "name": "global",
+          "type": "bool"
+        },
+        {
+          "name": "interactive",
+          "shorthand": "i",
+          "type": "bool"
+        },
+        {
+          "name": "local",
+          "type": "bool"
+        },
+        {
+          "name": "no-project",
+          "type": "bool"
+        },
+        {
+          "name": "yes",
+          "shorthand": "y",
+          "type": "bool"
         }
       ]
     },
@@ -7764,7 +7795,7 @@
     },
     {
       "path": "orq server use",
-      "use": "use \u003cindex|url|description\u003e"
+      "use": "use \u003cindex|url|description|host\u003e"
     },
     {
       "path": "orq setup",
@@ -8896,6 +8927,11 @@
       "use": "thread trace-id [span-id]",
       "flags": [
         {
+          "name": "exclude",
+          "shorthand": "x",
+          "type": "stringSlice"
+        },
+        {
           "name": "include",
           "shorthand": "i",
           "type": "stringSlice"
@@ -8914,16 +8950,16 @@
           "type": "string"
         },
         {
-          "name": "reasoning",
-          "type": "bool"
-        },
-        {
           "name": "slice",
           "type": "string"
         },
         {
           "name": "spans",
           "type": "bool"
+        },
+        {
+          "name": "tool-max-chars",
+          "type": "int"
         }
       ]
     },

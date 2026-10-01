@@ -434,10 +434,9 @@ func probeURL(parent context.Context, id, method, url, bearer string) doctorChec
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	httpClient := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	httpClient := auth.NewHTTPClient(0)
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	res, err := httpClient.Do(req)
 	if err != nil {
@@ -508,16 +507,17 @@ func mcpCheck() (doctorCheck, bool) {
 		},
 	}
 	var messages []string
-	for _, id := range present {
-		messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
-	}
 	if len(missing) > 0 {
 		check.Status = "warn"
-		for _, id := range missing {
-			messages = append(messages, fmt.Sprintf("%s detected without an MCP entry — run 'orq connect %s mcp'", id, id))
-		}
+		// One line and one command for all of them: a message per agent
+		// wrapped the checklist row across the screen. The command names only
+		// the missing agents, so running it leaves the wired ones alone.
+		messages = append(messages, fmt.Sprintf("no MCP entry for %s — run 'orq connect %s mcp'", strings.Join(missing, ", "), strings.Join(missing, " ")))
 	} else {
 		check.Status = "pass"
+		for _, id := range present {
+			messages = append(messages, fmt.Sprintf("%s MCP entry present — %s", id, mcpLoginLine(id)))
+		}
 	}
 	check.Message = strings.Join(messages, "; ")
 	return check, true

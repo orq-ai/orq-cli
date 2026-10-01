@@ -785,7 +785,7 @@ func TestRenderThreadMarkdownEscapesStructuralMetadata(t *testing.T) {
 		Messages: []ThreadMessage{{Index: 0, Role: "assistant\n## forged", Name: "name\n## forged", ToolCalls: []ThreadToolCall{{Name: "tool\n## forged", ID: "id`x", Arguments: "ok"}}}},
 	}
 	var out bytes.Buffer
-	if err := RenderThreadMarkdown(&out, thread, 0); err != nil {
+	if err := RenderThreadMarkdown(&out, thread); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "\n## forged") || strings.Contains(out.String(), "\n### forged") {
@@ -962,7 +962,7 @@ func TestTracesThreadOmitsReasoningOnRequest(t *testing.T) {
 	if !strings.Contains(kept, "step by step") {
 		t.Fatalf("Markdown = %q, want the reasoning by default", kept)
 	}
-	dropped, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--reasoning=false")
+	dropped, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "reasoning")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1582,4 +1582,238 @@ func TestTracesThreadKeepsLookingPastASpanWithNoReply(t *testing.T) {
 			t.Fatalf("selected %q, want the span holding the reply", span.SpanID)
 		}
 	}
+}
+
+// A Claude Code trace interleaves tool-execution spans with the model calls,
+// and runs subagents under agent spans. The newest, deepest span is a tool
+// call; the conversation is the main loop's last model call.
+func TestTracesThreadReadsTheMainModelCallNotAToolOrSubagentSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "session"}},
+		spans: map[string]map[string]any{
+			"main":     loadThreadFixture(t, "claude-code.json"),
+			"subchat":  conversationalSpan("the subagent's task"),
+			"subtool":  conversationalSpan("a tool span must not win"),
+			"maintool": conversationalSpan("a tool span must not win"),
+			"resp":     conversationalSpan("an older Responses call"),
+			"exec":     conversationalSpan("a tool span must not win"),
+		},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "session", "type": "trace", "has_detail": true, "started_at": "2026-09-22T12:00:00Z"},
+			map[string]any{"span_id": "main", "type": "span.chat_completion", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:05Z"},
+			map[string]any{"span_id": "maintool", "type": "span.agent_tool_execution", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:06Z"},
+			map[string]any{"span_id": "agent", "type": "span.agent", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:07Z"},
+			map[string]any{"span_id": "subchat", "type": "span.chat_completion", "parent_span_id": "agent", "has_detail": true, "started_at": "2026-09-22T12:00:08Z"},
+			map[string]any{"span_id": "subtool", "type": "span.agent_tool_execution", "parent_span_id": "agent", "has_detail": true, "started_at": "2026-09-22T12:00:09Z"},
+			map[string]any{"span_id": "resp", "type": "span.responses", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:01Z"},
+			map[string]any{"span_id": "exec", "type": "span.tool", "parent_span_id": "session", "has_detail": true, "started_at": "2026-09-22T12:00:10Z"},
+		}}},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Spans []ThreadSpan `json:"spans"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	order := []string{}
+	for _, span := range payload.Spans {
+		order = append(order, span.SpanID)
+	}
+	if want := []string{"main", "resp", "subchat", "agent", "session", "subtool", "exec", "maintool"}; fmt.Sprint(order) != fmt.Sprint(want) {
+		t.Fatalf("try order = %v, want %v", order, want)
+	}
+	if !payload.Spans[0].Selected {
+		t.Fatalf("selected = %+v, want the main model call", payload.Spans)
+	}
+}
+
+func TestThreadSpanTier(t *testing.T) {
+	for spanType, want := range map[string]int{
+		"span.chat_completion":      threadTierModelCall,
+		"span.completion":           threadTierModelCall,
+		"span.responses":            threadTierModelCall,
+		"span.agent":                threadTierOther,
+		"trace":                     threadTierOther,
+		"span.tool":                 threadTierTool,
+		"span.agent_tool_execution": threadTierTool,
+	} {
+		if got := threadSpanTier(spanType); got != want {
+			t.Errorf("threadSpanTier(%q) = %d, want %d", spanType, got, want)
+		}
+	}
+}
+
+// A span the collector kept whole but holding a part this command has no rule
+// for is noted as such, and no stored response is fetched for it: the gap is
+// on this side, not the collector's.
+func TestTracesThreadNotesUnrecognisedPartsWithoutAStoredLookup(t *testing.T) {
+	span := storedResponseSpan("resp_1", 1)
+	span["span"].(map[string]any)["attributes"] = map[string]any{
+		"gen_ai.response.id": "resp_1",
+		"gen_ai.input":       []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "hologram", "data": "?"}}}},
+		"gen_ai.output":      map[string]any{"role": "assistant", "content": "answer"},
+	}
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{"leading_span_id": "llm"}},
+		spans: map[string]map[string]any{"llm": span},
+		pages: map[string]map[string]any{"": {"data": []any{
+			map[string]any{"span_id": "llm", "type": "span.chat_completion", "has_detail": true},
+		}}},
+		responses: map[string]map[string]any{"resp_1": storedResponsePayload("q", "a")},
+	}
+	out, err := runTracesThread(t, traceAPI(fake), "trace-1", "--spans", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.respCalls) != 0 {
+		t.Fatalf("stored response fetched: %v", fake.respCalls)
+	}
+	if !strings.Contains(out, threadNoteUnrecognised) {
+		t.Fatalf("output lacks the unrecognised note: %s", out)
+	}
+}
+
+// Once no span reads whole, the search for a better sibling stops after
+// threadSpanReadLimit reads and renders the fullest seen.
+func TestTracesThreadCapsTheSearchForAWholeSpan(t *testing.T) {
+	fake := &fakeTraceAPI{
+		trace: map[string]any{"trace": map[string]any{}},
+		spans: map[string]map[string]any{},
+		pages: map[string]map[string]any{"": {"data": []any{}}},
+	}
+	data := []any{}
+	for i := range threadSpanReadLimit + 10 {
+		id := fmt.Sprintf("s%02d", i)
+		fake.spans[id] = map[string]any{"span": map[string]any{"attributes": map[string]any{
+			"gen_ai.input": []any{map[string]any{"role": "user", "content": "only a prompt"}},
+		}}}
+		data = append(data, map[string]any{"span_id": id, "type": "span.chat_completion", "has_detail": true, "started_at": fmt.Sprintf("2026-09-22T12:00:%02dZ", i)})
+	}
+	fake.pages[""]["data"] = data
+	if _, err := runTracesThread(t, traceAPI(fake), "trace-1", "-o", "json"); err != nil {
+		t.Fatal(err)
+	}
+	spanReads := 0
+	for _, call := range fake.getCalls {
+		if strings.HasPrefix(call, "span:") {
+			spanReads++
+		}
+	}
+	if spanReads != threadSpanReadLimit+1 {
+		t.Fatalf("read %d spans, want %d", spanReads, threadSpanReadLimit+1)
+	}
+}
+
+func toolResultSpan(result string) map[string]any {
+	return map[string]any{"span": map[string]any{"attributes": map[string]any{"gen_ai.input": []any{
+		map[string]any{"role": "user", "content": "look it up"},
+		map[string]any{"role": "assistant", "content": strings.Repeat("a", defaultThreadMaxChars+30), "reasoning_content": "think first", "tool_calls": []any{map[string]any{
+			"id": "call_1", "type": "function", "function": map[string]any{"name": "search", "arguments": `{"q":"x"}`},
+		}}},
+		map[string]any{"role": "tool", "tool_call_id": "call_1", "content": result},
+		map[string]any{"role": "assistant", "reasoning_content": "only thinking"},
+	}}}}
+}
+
+func TestTracesThreadToolResultCapAndStubs(t *testing.T) {
+	// Longer than the default cap, so "uncut" cannot pass by fitting under it.
+	result := strings.Repeat("r", defaultThreadMaxChars+500)
+	fake := &fakeTraceAPI{spans: map[string]map[string]any{"chosen": toolResultSpan(result)}}
+	stub := fmt.Sprintf("[omitted: %d characters]", len(result))
+	t.Run("exclude tool leaves a stub and the call", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "tool")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "rrrr") || !strings.Contains(out, stub) || !strings.Contains(out, `name="search"`) {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("include leaves the same stub", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-i", "user,assistant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, `role="tool"`) || !strings.Contains(out, stub) {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("include and exclude together are refused", func(t *testing.T) {
+		_, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-i", "user", "-x", "tool")
+		if err == nil || !strings.Contains(err.Error(), "use one") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("-x reasoning,tool stubs a reasoning-only turn", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "-x", "reasoning,tool")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "think first") || strings.Contains(out, "only thinking") || !strings.Contains(out, "[omitted: 13 characters]") {
+			t.Fatalf("reasoning survived or went unstubbed: %q", out)
+		}
+		if strings.Contains(out, "rrrr") || !strings.Contains(out, stub) {
+			t.Fatalf("-x tool lost next to -x reasoning: %q", out)
+		}
+	})
+	t.Run("tool-max-chars cuts only the result", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "markdown", "trace-1", "chosen", "--tool-max-chars", "10", "--max-chars", "20")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", len(result)-10)) || !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", defaultThreadMaxChars+10)) {
+			t.Fatalf("markdown = %q", out)
+		}
+	})
+	t.Run("tool-max-chars follows max-chars when not given", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "trace-1", "chosen", "--max-chars", "100")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, fmt.Sprintf("[truncated: %d more characters]", len(result)-100)) {
+			t.Fatalf("xml = %q", out)
+		}
+	})
+	t.Run("json stays whole unless asked", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "truncated") || !strings.Contains(out, result) || !strings.Contains(out, strings.Repeat("a", defaultThreadMaxChars+30)) {
+			t.Fatalf("json was cut without being asked")
+		}
+	})
+	t.Run("json tool-max-chars cuts only the result", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--tool-max-chars", "10")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, len(result)-10)) || !strings.Contains(out, strings.Repeat("a", defaultThreadMaxChars+30)) {
+			t.Fatalf("json = %q", out)
+		}
+	})
+	t.Run("yaml and toon take the same cut", func(t *testing.T) {
+		for _, format := range []string{"yaml", "toon"} {
+			out, err := runTracesThread(t, traceAPI(fake), "-o", format, "trace-1", "chosen", "--tool-max-chars", "10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, fmt.Sprintf("%d", len(result)-10)) || strings.Contains(out, result) {
+				t.Fatalf("%s = %q", format, out)
+			}
+		}
+	})
+	t.Run("json max-chars cuts both, tool output following it", func(t *testing.T) {
+		out, err := runTracesThread(t, traceAPI(fake), "-o", "json", "trace-1", "chosen", "--max-chars", "10")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, len(result)-10)) || !strings.Contains(out, fmt.Sprintf(`"truncated_chars": %d`, defaultThreadMaxChars+20)) {
+			t.Fatalf("json = %q", out)
+		}
+	})
 }

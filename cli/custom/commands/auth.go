@@ -352,6 +352,7 @@ func reportAPIKeyLogin(cmd *cobra.Command, login *auth.APIKeyLogin) error {
 	if server == "" {
 		server = auth.ResolveURLs(serverURL()).APIBaseURL
 	}
+	check := checkCredential(auth.NewClient(server).WithContext(cmd.Context()).ProbeToken(login.APIKey))
 	workspace := ""
 	for _, w := range login.Workspaces {
 		if k, ok := w["key"].(string); ok && strings.TrimSpace(k) != "" {
@@ -366,11 +367,12 @@ func reportAPIKeyLogin(cmd *cobra.Command, login *auth.APIKeyLogin) error {
 			kv(9, "workspace", "%s", workspace)
 		}
 		kv(9, "api_key", "%s", maskToken(login.APIKey))
+		check.warn()
 		return nil
 	}
 	// orqi reads session_file even from API-key status. It remains the browser
 	// session location; api_key_login_file identifies the credential reported here.
-	return emit(map[string]any{
+	out := map[string]any{
 		"method":             "api_key",
 		"server":             server,
 		"workspace":          workspace,
@@ -378,25 +380,43 @@ func reportAPIKeyLogin(cmd *cobra.Command, login *auth.APIKeyLogin) error {
 		"session_file":       auth.SessionFilePath(),
 		"api_key_login_file": auth.APIKeyLoginFilePath(),
 		"identity":           nil,
-	})
+		"authenticated":      check.Authenticated,
+	}
+	if check.AuthError != "" {
+		out["auth_error"] = check.AuthError
+	}
+	if check.CheckError != "" {
+		out["auth_check_error"] = check.CheckError
+	}
+	return emit(out)
 }
 
 func reportEnvironmentAPIKey(cmd *cobra.Command, key, source string) error {
 	server := auth.ResolveURLs(serverURL()).APIBaseURL
+	check := checkCredential(auth.NewClient(server).WithContext(cmd.Context()).ProbeToken(key))
 	if wantsHumanView(cmd) {
 		success("Using API key from %s", source)
 		kv(9, "server", "%s", server)
 		kv(9, "api_key", "%s", maskToken(key))
+		check.warn()
 		return nil
 	}
-	return emit(map[string]any{
-		"method":       "api_key",
-		"source":       source,
-		"server":       server,
-		"api_key":      maskToken(key),
-		"session_file": auth.SessionFilePath(),
-		"identity":     nil,
-	})
+	out := map[string]any{
+		"method":        "api_key",
+		"source":        source,
+		"server":        server,
+		"api_key":       maskToken(key),
+		"session_file":  auth.SessionFilePath(),
+		"identity":      nil,
+		"authenticated": check.Authenticated,
+	}
+	if check.AuthError != "" {
+		out["auth_error"] = check.AuthError
+	}
+	if check.CheckError != "" {
+		out["auth_check_error"] = check.CheckError
+	}
+	return emit(out)
 }
 
 func activeStoredAPIKeyLogin() *auth.APIKeyLogin {
@@ -427,10 +447,16 @@ func NewWhoAmICommand() *cobra.Command {
 		Short: "Show the current authenticated user and workspace",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if profileInForce() {
-				key := maskToken(bartolocli.GetProfile()["api_key"])
+				rawKey := strings.TrimSpace(bartolocli.GetProfile()["api_key"])
+				key := maskToken(rawKey)
+				apiBase := auth.ResolveURLs(serverURL()).APIBaseURL
+				check := credentialCheck{Authenticated: rawKey != ""}
+				if rawKey != "" {
+					check = checkCredential(auth.NewClient(apiBase).WithContext(cmd.Context()).ProbeToken(rawKey))
+				}
 				if wantsHumanView(cmd) {
 					success("Using API-key profile %s", bartolocli.ActiveProfileName())
-					kv(9, "server", "%s", auth.ResolveURLs(serverURL()).APIBaseURL)
+					kv(9, "server", "%s", apiBase)
 					if key == "" {
 						// The profile exists but carries no key, so every request
 						// will fail; say that rather than print a blank field.
@@ -438,20 +464,34 @@ func NewWhoAmICommand() *cobra.Command {
 						return nil
 					}
 					kv(9, "api_key", "%s", key)
+					check.warn()
 					return nil
 				}
-				return emit(map[string]any{
-					"profile":      bartolocli.ActiveProfileName(),
-					"server":       auth.ResolveURLs(serverURL()).APIBaseURL,
-					"api_key":      key,
-					"session_file": auth.SessionFilePath(),
-					"identity":     nil,
-				})
+				out := map[string]any{
+					"profile":       bartolocli.ActiveProfileName(),
+					"server":        apiBase,
+					"api_key":       key,
+					"session_file":  auth.SessionFilePath(),
+					"identity":      nil,
+					"authenticated": check.Authenticated,
+				}
+				if check.AuthError != "" {
+					out["auth_error"] = check.AuthError
+				}
+				if check.CheckError != "" {
+					out["auth_check_error"] = check.CheckError
+				}
+				return emit(out)
 			}
 			// PreRun exports the active stored login into ORQ_API_KEY. When it
 			// outranks a browser session on the same host, report that login.
 			if login := activeStoredAPIKeyLogin(); login != nil {
 				return reportAPIKeyLogin(cmd, login)
+			}
+			if explicitAPIKey {
+				if key, source := ConfiguredCredential(); key != "" && slices.Contains(APIKeyEnvVars, source) {
+					return reportEnvironmentAPIKey(cmd, key, source)
+				}
 			}
 			session, err := auth.ReadSession()
 			if err != nil {
@@ -476,7 +516,7 @@ func NewWhoAmICommand() *cobra.Command {
 				if login != nil {
 					return reportAPIKeyLogin(cmd, login)
 				}
-				return errors.New("you are not logged in")
+				return auth.ErrNotLoggedIn
 			}
 			client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
 			session, err = client.WhoAmI()
@@ -484,8 +524,11 @@ func NewWhoAmICommand() *cobra.Command {
 				return err
 			}
 			report := BuildIdentityReport(session, &client.URLs)
+			check := checkCredential(probeCredentialInForce(cmd, session))
+			report.Authenticated, report.AuthError, report.AuthCheckError = check.Authenticated, check.AuthError, check.CheckError
 			if wantsHumanView(cmd) {
 				printIdentity(report, "Signed in as")
+				check.warn()
 				noteOtherLogins(cmd)
 				return nil
 			}
@@ -494,6 +537,60 @@ func NewWhoAmICommand() *cobra.Command {
 	}
 	DeprecatedAPIBaseFlag(cmd)
 	return cmd
+}
+
+// probeCredentialInForce sends one workspace-scoped request with the key the
+// next command will send: the explicit key when one outranks the session,
+// otherwise the session token the root pre-run put in ORQ_API_KEY (minted here
+// when the pre-run did not run). The profile fetch WhoAmI already made uses the
+// bootstrap token, which the server's authz check does not cover. An
+// authz_stale answer is refreshed by the client's transport before it counts.
+func probeCredentialInForce(cmd *cobra.Command, session *auth.Session) error {
+	client := auth.NewClient(sessionAPIBase(session)).WithContext(cmd.Context())
+	bearer := strings.TrimSpace(os.Getenv("ORQ_API_KEY"))
+	if explicitAPIKey {
+		bearer, _ = ConfiguredCredential()
+	}
+	if bearer == "" {
+		if session.ActiveWorkspaceKey == nil || *session.ActiveWorkspaceKey == "" {
+			return nil
+		}
+		var err error
+		bearer, err = client.WithProject(session.ActiveProjectID).WorkspaceToken(session, *session.ActiveWorkspaceKey)
+		if err != nil {
+			return err
+		}
+	}
+	return client.ProbeToken(bearer)
+}
+
+// credentialCheck is what a probe says about the credential. Only a 401 means
+// the server rejected it; a timeout, 5xx or 403 says nothing about the key, so
+// it leaves Authenticated alone and is reported as a failed check instead.
+type credentialCheck struct {
+	Authenticated bool
+	AuthError     string
+	CheckError    string
+}
+
+func checkCredential(err error) credentialCheck {
+	switch {
+	case err == nil:
+		return credentialCheck{Authenticated: true}
+	case auth.Unauthorized(err):
+		return credentialCheck{AuthError: err.Error()}
+	default:
+		return credentialCheck{Authenticated: true, CheckError: err.Error()}
+	}
+}
+
+func (c credentialCheck) warn() {
+	switch {
+	case c.AuthError != "":
+		Warn("the server rejected this credential: %s", c.AuthError)
+	case c.CheckError != "":
+		Warn("could not verify the credential with the server: %s", c.CheckError)
+	}
 }
 
 // printIdentity renders the friendly "who am I" block: a green headline plus an
