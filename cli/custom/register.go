@@ -138,6 +138,7 @@ func Register(root *cobra.Command, traceAPI commands.TraceAPI) {
 	root.SilenceUsage = true
 	registerGlobalFlags()
 	installSessionPreRun()
+	installHumanFormatter()
 	installAPIKeyUsageNotice()
 	installStaleTokenRetry()
 	registerCommands(root, traceAPI)

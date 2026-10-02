@@ -117,6 +117,16 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Changed:** human output (TOON and tables) shows Unix-epoch timestamps as
+  UTC RFC 3339, e.g. `2026-05-04T00:00:00Z` instead of `1777852800`. This
+  covers `created` and `deprecation` in `orq model-catalog`, `created` in
+  `orq models list`, `created_at` and `completed_at` in `orq responses`, and
+  `created` in chat, completions and images responses. `-o json` and `-o yaml`
+  still print the API's value.
+- **Changed:** human output shows `context_window` as a compact token count:
+  `128K`, `1.5M`, and the raw number below 1000. `-o json` and `-o yaml` still
+  print the API's value.
+
 ## [11.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.1) — 2026-10-01
 
 - **Fixed:** `orq auth login --api-key` now keeps an unselected API key in the
