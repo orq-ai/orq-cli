@@ -117,6 +117,8 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+## [11.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.3.0) — 2026-10-02
+
 - **Changed:** human output (TOON and tables) shows Unix-epoch timestamps as
   UTC RFC 3339, e.g. `2026-05-04T00:00:00Z` instead of `1777852800`. This
   covers `created` and `deprecation` in `orq model-catalog`, `created` in
