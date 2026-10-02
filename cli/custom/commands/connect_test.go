@@ -2313,7 +2313,7 @@ func TestConnectDryRunPreviewsThePathItWouldWrite(t *testing.T) {
 // arithmetic in reportUnwirableAgents is the load-bearing part, and only the
 // all-unreachable case was covered.
 func TestPartlyUnwirableAgentsAreKept(t *testing.T) {
-	mcpMachine(t, ".claude", ".pi/agent")
+	mcpMachine(t, ".claude", ".pi/agent", ".omp/agent")
 	cases := []struct {
 		agent string
 		caps  []string
@@ -2325,6 +2325,10 @@ func TestPartlyUnwirableAgentsAreKept(t *testing.T) {
 		{"pi", []string{capGateway, capSkills, capMCP}, true},
 		{"claude", []string{capGateway}, false},
 		{"claude", []string{capGateway, capMCP}, true},
+		// omp has both a gateway provider config and an MCP config.
+		{"omp", []string{capMCP}, true},
+		{"omp", []string{capGateway}, true},
+		{"omp", []string{capGateway, capSkills, capMCP}, true},
 	}
 	for _, tc := range cases {
 		got := reportUnwirableAgents(newReporter(true), []string{tc.agent}, tc.caps)
