@@ -144,7 +144,7 @@ func registerdatasetsCommands(root *cobra.Command) {
 		cmd := &cobra.Command{
 			Use:     "create",
 			Short:   "Create a dataset",
-			Long:    bartolocli.Markdown("Creates a new dataset in the project bound to the API key, or in the workspace default project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
+			Long:    bartolocli.Markdown("Creates a new dataset in the project bound to the API key, or in the workspace default project.\n\nRequest body: `application/json`. Provide it via stdin or CLI shorthand.\nRun `help-input` for body syntax details.\n\nTop-level fields:\n- `display_name` (string, required)\n- `path` (string)\n\nRequired fields: `display_name`\n\nAll top-level body fields are exposed as flags for this command. Scalar, nullable scalar (pass `null` for JSON null), enum, repeatable list (`--field a --field b`), and string map (`--field key=value`) fields use typed flags. Nested objects, arrays of objects, and polymorphic unions accept a JSON string (e.g. `--field '{\"k\":1}'`)."),
 			Example: examples,
 			Args:    cobra.MinimumNArgs(0),
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -160,6 +160,12 @@ func registerdatasetsCommands(root *cobra.Command) {
 							FlagName:    "display-name",
 							Type:        "string",
 							Description: "Human-readable dataset name.",
+						},
+						{
+							Name:        "path",
+							FlagName:    "path",
+							Type:        "string",
+							Description: "Project path where the dataset should be stored, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Omit to use the API key project or the workspace default project.",
 						},
 					},
 				)
@@ -190,6 +196,12 @@ func registerdatasetsCommands(root *cobra.Command) {
 					FlagName:    "display-name",
 					Type:        "string",
 					Description: "Human-readable dataset name.",
+				},
+				{
+					Name:        "path",
+					FlagName:    "path",
+					Type:        "string",
+					Description: "Project path where the dataset should be stored, in the format `project/folder/subfolder`. With a project-scoped API key the path is relative to that project. Omit to use the API key project or the workspace default project.",
 				},
 			},
 		)
