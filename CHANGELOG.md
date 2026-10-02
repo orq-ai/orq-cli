@@ -117,6 +117,13 @@ controls on surface changes, whichever side they originate from.
 
 ## Unreleased
 
+- **Added:** `orq launch omp` and `orq connect omp` support omp (oh-my-pi).
+  Launch routes a session's model calls through the AI Router, wires the orq
+  MCP server, and links orq's skills for that session only. Connect persists
+  the same three: the `orq` provider in `~/.omp/agent/models.yml`, the orq MCP
+  server in `~/.omp/agent/mcp.json`, and the skills links. Override the
+  gateway URL with `ORQ_OMP_BASE_URL`.
+
 ## [11.3.0](https://github.com/orq-ai/orq-cli/releases/tag/v11.3.0) — 2026-10-02
 
 - **Changed:** human output (TOON and tables) shows Unix-epoch timestamps as
