@@ -124,8 +124,9 @@ controls on surface changes, whichever side they originate from.
   `created` in chat, completions and images responses. `-o json` and `-o yaml`
   still print the API's value.
 - **Changed:** human output shows `context_window` as a compact token count:
-  `128K`, `1.5M`, and the raw number below 1000. `-o json` and `-o yaml` still
-  print the API's value.
+  the raw number below 1000, whole thousands below a million (`262144` shows
+  as `262K`), and millions with one decimal above (`1.5M`). `-o json` and
+  `-o yaml` still print the API's value.
 
 ## [11.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.1) — 2026-10-01
 

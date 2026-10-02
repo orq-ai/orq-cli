@@ -58,23 +58,25 @@ func isEpochKey(k string) bool {
 	return strings.HasSuffix(k, "_at")
 }
 
-// compactCount renders n as 512, 1.5K, 128K, 1M: one decimal, truncated.
+// compactCount renders n as 512, 128K, 1.5M: whole thousands rounded half up
+// below a million, one truncated decimal above.
 func compactCount(n int64) string {
-	unit, suffix := int64(1), ""
-	switch {
-	case n >= 1_000_000:
-		unit, suffix = 1_000_000, "M"
-	case n >= 1000:
-		unit, suffix = 1000, "K"
-	default:
+	if n < 1000 {
 		return strconv.FormatInt(n, 10)
 	}
-	tenths := n / (unit / 10)
+	if n < 999_500 {
+		return strconv.FormatInt((n+500)/1000, 10) + "K"
+	}
+	if n < 1_000_000 {
+		// Rounds up to a thousand K, which reads as 1M.
+		return "1M"
+	}
+	tenths := n / 100_000
 	s := strconv.FormatInt(tenths/10, 10)
 	if d := tenths % 10; d != 0 {
 		s += "." + strconv.FormatInt(d, 10)
 	}
-	return s + suffix
+	return s + "M"
 }
 
 func wholeNumber(v any) (int64, bool) {
