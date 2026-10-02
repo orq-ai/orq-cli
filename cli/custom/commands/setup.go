@@ -1603,10 +1603,8 @@ func reportLocalSkillsNotes(rep *reporter, agents []string, targets []skills.Tar
 			rep.info("add %s to .gitignore — the links point into ~/.orq and mean nothing to anyone else", strings.Join(rels, " and "))
 		}
 	}
-	for _, id := range []string{"pi", "omp"} {
-		if slices.Contains(agents, id) {
-			rep.info("%-8s %-9s %s loads project skills only for a trusted project — approve it in %s once", id, capSkills, id, id)
-		}
+	if slices.Contains(agents, "pi") {
+		rep.info("%-8s %-9s pi loads project skills only for a trusted project — approve it in pi once", "pi", capSkills)
 	}
 }
 
