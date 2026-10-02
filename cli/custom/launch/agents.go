@@ -95,6 +95,7 @@ func Agents() []AgentDef {
 		kiloAgent(),
 		kimiAgent(),
 		piAgent(),
+		ompAgent(),
 		copilotAgent(),
 		geminiAgent(),
 	}

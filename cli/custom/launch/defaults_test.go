@@ -27,7 +27,7 @@ func TestVendorAgentsDefaultToTheirOwnVendor(t *testing.T) {
 func TestNoDefaultIsASizeVariant(t *testing.T) {
 	for agent, model := range map[string]string{
 		"codex": DefaultCodexModel, "kimi": DefaultKimiModel,
-		"opencode": DefaultOpenCodeModel, "pi": DefaultPiModel,
+		"opencode": DefaultOpenCodeModel, "pi": DefaultPiModel, "omp": DefaultOmpModel,
 	} {
 		for _, suffix := range []string{"-mini", "-nano", "-small", "-lite", "-micro", "-tiny", "-flash"} {
 			if strings.HasSuffix(model, suffix) {

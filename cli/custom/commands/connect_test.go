@@ -2313,7 +2313,7 @@ func TestConnectDryRunPreviewsThePathItWouldWrite(t *testing.T) {
 // arithmetic in reportUnwirableAgents is the load-bearing part, and only the
 // all-unreachable case was covered.
 func TestPartlyUnwirableAgentsAreKept(t *testing.T) {
-	mcpMachine(t, ".claude", ".pi/agent")
+	mcpMachine(t, ".claude", ".pi/agent", ".omp/agent")
 	cases := []struct {
 		agent string
 		caps  []string
@@ -2325,6 +2325,10 @@ func TestPartlyUnwirableAgentsAreKept(t *testing.T) {
 		{"pi", []string{capGateway, capSkills, capMCP}, true},
 		{"claude", []string{capGateway}, false},
 		{"claude", []string{capGateway, capMCP}, true},
+		// omp has both a gateway provider config and an MCP config.
+		{"omp", []string{capMCP}, true},
+		{"omp", []string{capGateway}, true},
+		{"omp", []string{capGateway, capSkills, capMCP}, true},
 	}
 	for _, tc := range cases {
 		got := reportUnwirableAgents(newReporter(true), []string{tc.agent}, tc.caps)
@@ -2586,7 +2590,7 @@ func TestStatusShowsSkillsScopeAndHidesOtherDirectories(t *testing.T) {
 // The whole local-install summary in one place, so the warning, the
 // gitignore line and the pi line are reviewed in a diff rather than by hand.
 func TestLocalSkillsSummaryGolden(t *testing.T) {
-	_, project := mcpMachine(t, ".claude", ".pi/agent", ".kimi-code")
+	_, project := mcpMachine(t, ".claude", ".pi/agent", ".omp/agent", ".kimi-code")
 	t.Setenv("ORQ_API_KEY", "sk-orq-TEST")
 	if err := os.MkdirAll(filepath.Join(project, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -2598,7 +2602,7 @@ func TestLocalSkillsSummaryGolden(t *testing.T) {
 	t.Chdir(sub)
 	out := captureOutput(t, func() {
 		c := NewConnectCommand()
-		c.SetArgs([]string{"claude", "pi", "kimi", "skills", "--local"})
+		c.SetArgs([]string{"claude", "pi", "omp", "kimi", "skills", "--local"})
 		if err := c.Execute(); err != nil {
 			t.Fatalf("connect: %v", err)
 		}
@@ -2612,6 +2616,9 @@ func TestLocalSkillsSummaryGolden(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "omp loads project skills") {
+		t.Errorf("omp has no project-trust gating, yet the note names it:\n%s", out)
 	}
 	if strings.Contains(out, "trust_level") {
 		t.Errorf("a skills run printed codex's MCP trust line:\n%s", out)

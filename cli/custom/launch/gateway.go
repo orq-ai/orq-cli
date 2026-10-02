@@ -1,5 +1,5 @@
 // Package launch starts coding-agent CLIs (claude, codex, opencode, kilo,
-// kimi, pi) preconfigured to route model calls through the orq.ai AI Router.
+// kimi, pi, omp) preconfigured to route model calls through the orq.ai AI Router.
 //
 // Shared core for every `orq launch <agent>` command. Agents differ only in
 // how they serialize provider config and launch their CLI; resolving the

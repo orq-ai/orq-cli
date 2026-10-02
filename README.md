@@ -91,7 +91,7 @@ An interactive `orq setup` ends by offering to connect the agents it detects, so
 
 Between signing in and creating the key, setup asks which project to work in. It skips itself automatically at zero or one project — there is nothing to choose — and never offers to create one. `--project <id|key|name>` pre-answers it for a non-interactive run; `--no-project` skips it and leaves the session unscoped. An `--api-key` run skips it entirely, since there is no session for a project choice to narrow.
 
-Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`. `claude` is not offered persistent gateway wiring: it has no provider config and routes purely through environment variables, so `orq launch claude` routes its model calls for that session. It also receives `skills`, `mcp` and `otel`.
+Supported coding agents: `codex`, `opencode`, `kimi`, `kilo`, `pi`, `omp`. `claude` is not offered persistent gateway wiring: it has no provider config and routes purely through environment variables, so `orq launch claude` routes its model calls for that session. It also receives `skills`, `mcp` and `otel`.
 
 Connect handles four capabilities: `gateway`, `otel`, `skills` and `mcp`. Name none and it writes the ones the agent can take. `orq connect claude mcp` writes the orq MCP server's URL into the agent's own config and **nothing else** — no key, no header, no bearer variable — and the agent logs in to that server itself; the command prints its login step. `pi` has no MCP support at all and says so rather than reporting a wire. `orq connect claude otel` installs the `orq-trace` plugin through Claude Code's own plugin manager, from the public `orq-claude-plugin` marketplace, so every session Claude Code runs is captured as a trace in your workspace and `claude plugin update` keeps it current. It writes no key either: the plugin posts with the `ORQ_API_KEY` your shell exports, and the command says so when your shell exports none. `orq disconnect claude otel` uninstalls the plugin and leaves the marketplace, which the other orq plugins share. `--global` (the default) writes machine-wide, `--local` writes to this project: `mcp` goes into the agent's project config file (`.mcp.json`, `.codex/config.toml`, `opencode.json`, `kilo.json`, `.kimi-code/mcp.json`), and `skills` into `./.claude/skills` for Claude Code and `./.agents/skills` for every other agent — the two directories `npx skills` uses, anchored at the directory you run from. Add the directories it writes to `.gitignore`; connect names them, and the links point into `~/.orq`. `gateway` and `otel` are machine-wide whatever the flag says. `--local` is refused from your home directory, where the config it would produce would follow you into every session started from home. A bare `orq disconnect` removes both scopes; a local install made from another directory is counted and left for a `--local` run from there. Codex loads its project config only for a repository marked trusted in `~/.codex/config.toml`; connect prints the line to add.
 
@@ -101,7 +101,7 @@ in the current global or local view. `orq doctor` shows the same version in its
 skills check, and `orq doctor -o json` returns the full value at
 `checks[id=skills].details.version`.
 
-**Connect also registers orq as a model provider** for kimi, codex, opencode, kilo and pi, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
+**Connect also registers orq as a model provider** for kimi, codex, opencode, kilo, pi and omp, so their own LLM calls can route through the orq AI Gateway and show up in your traces. The provider is registered as an **available option, never the agent's default** — setup cannot guarantee `ORQ_API_KEY` is exported in every future shell, and an agent whose default points at a provider with no credential fails on every run. The exception is kimi, which fills its `default_model` only when the config has none. `orq launch <agent>` remains the way to get orq as the default for a session.
 
 | Agent | Connect writes | Route through orq by |
 |---|---|---|
@@ -110,6 +110,7 @@ skills check, and `orq doctor -o json` returns the full value at
 | `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
 | `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
 | `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
+| `omp` | `providers.orq` merged into `$PI_CODING_AGENT_DIR/models.yml` (default `~/.omp/agent/`), and the `orq-workspace` MCP entry into `$PI_CODING_AGENT_DIR/mcp.json` | `omp --model orq/<model>`, or the model picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 | `copilot` | nothing — copilot's BYOK provider is env-only, one model per session | `orq launch copilot` |
 | `gemini` | nothing — gemini reads a config home, not a provider registry | `orq launch gemini` |
@@ -359,6 +360,7 @@ orq launch opencode               # OpenCode
 orq launch kilo                   # Kilo CLI (OpenCode fork)
 orq launch kimi                   # Kimi Code
 orq launch pi                     # Pi Coding Agent
+orq launch omp                    # oh-my-pi (omp)
 orq launch copilot                # GitHub Copilot CLI
 orq launch gemini                 # Gemini CLI
 ```
@@ -369,7 +371,7 @@ The agent CLI itself must be installed — each subcommand prints an install hin
 
 Agents stay pinned to whatever `orq connect` wired them against. `orq connect --status` names that workspace per agent, and `orq doctor` says so too when it differs from your active one, with the commands to move it.
 
-The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. A launched omp session starts with a fresh agent directory, so a login made through `orq connect omp mcp` is not visible to it: the orq MCP entry authenticates per session — run `/mcp` inside it once. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
 orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 
@@ -387,7 +389,7 @@ With default routing and tracing the same call is recorded twice, once as a rout
 | Flag | Description |
 |---|---|
 | `--model <id>` | Gateway model id, e.g. `anthropic/claude-sonnet-5-5` |
-| `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi) |
+| `--models <list>` | Extra model ids: comma-separated or JSON array (opencode, kilo, kimi, pi, omp) |
 | `--base-url <url>` | Override the gateway base URL |
 | `--no-fetch-models` | Skip fetching the enabled-model catalog |
 | `--mcp` | Wire the orq MCP server (workspace tools) into the agent — the default |
@@ -426,6 +428,7 @@ Sandboxed execution is not available in this version.
 | `ORQ_OPENCODE_BASE_URL` / `OPENCODE_MODEL` / `OPENCODE_MODELS` | opencode + kilo overrides |
 | `ORQ_KIMI_BASE_URL` / `KIMI_MODEL` / `KIMI_MODELS` | kimi overrides |
 | `ORQ_PI_BASE_URL` / `PI_MODEL` / `PI_MODELS` | pi overrides |
+| `ORQ_OMP_BASE_URL` | omp override |
 | `ORQ_COPILOT_BASE_URL` / `COPILOT_MODEL` | copilot overrides |
 | `ORQ_GEMINI_BASE_URL` / `GEMINI_MODEL` | gemini overrides (Gemini-native endpoint) |
 
@@ -563,7 +566,7 @@ That one host also drives everything `orq setup` writes and `orq launch` injects
 
 | Derived from `--server` | Used by |
 |---|---|
-| `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi, copilot |
+| `<host>/v3/router` | model calls for codex, opencode, kilo, kimi, pi, omp, copilot |
 | `<host>/v3/anthropic` | model calls for claude (Anthropic-native API) |
 | `<host>/v3/google` | model calls for gemini (Gemini-native API) |
 | `<host>/v2/mcp` | the orq MCP server, wired per session by `orq launch` and persistently by `orq connect mcp` |

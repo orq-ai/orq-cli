@@ -63,8 +63,9 @@ func resolvePi(ctx *AgentContext) (*LaunchPlan, error) {
 	}
 
 	// No MCP wiring: pi has no built-in MCP support by design (extensions
-	// only, e.g. third-party pi-mcp-adapter). Reuse mcpURL() here when pi
-	// grows a native config surface.
+	// only, e.g. third-party pi-mcp-adapter); it is the one agent without
+	// it. omp, which shares pi's lineage, does take MCP and always gets the
+	// session entry (see resolveOmp).
 	//
 	// Skills do not go in here: pi is a sharedReader whose only skills target
 	// is ~/.agents/skills (cli/custom/skills/targets.go), not

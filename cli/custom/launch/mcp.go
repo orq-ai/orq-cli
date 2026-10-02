@@ -141,9 +141,9 @@ var PersistedMCPHook func(agent string) bool
 // it. Unset hook means "cannot tell", which has to answer false — writing the
 // session entry is the recoverable mistake, suppressing it is not.
 //
-// kimi never asks: launch points KIMI_CODE_HOME at a fresh temp dir, so no
-// persisted file is on its search path and the session entry must always be
-// written. pi has no MCP support at all.
+// kimi and omp never ask: launch points their agent dir at a fresh temp dir,
+// so no persisted file is on its search path and the session entry must
+// always be written. pi has no MCP support at all.
 func persistedMCPConfigured(agent string) bool {
 	if PersistedMCPHook == nil {
 		return false
