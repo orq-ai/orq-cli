@@ -110,7 +110,7 @@ skills check, and `orq doctor -o json` returns the full value at
 | `opencode` | `provider` blocks merged into `~/.config/opencode/opencode.json` | picking an **Orq AI Gateway** model in the picker |
 | `kilo` | `provider` blocks merged into `~/.config/kilo/kilo.json` | picking an **Orq AI Gateway** model in the picker |
 | `pi` | an `orq` provider merged into `$PI_CODING_AGENT_DIR/models.json` (default `~/.pi/agent/`) | `pi --model orq/<model>`, or the `/model` picker |
-| `omp` | `providers.orq` merged into `~/.omp/agent/models.yml`, and the `orq-workspace` MCP entry into `~/.omp/agent/mcp.json` | `omp --model orq/<model>`, or the model picker |
+| `omp` | `providers.orq` merged into `$PI_CODING_AGENT_DIR/models.yml` (default `~/.omp/agent/`), and the `orq-workspace` MCP entry into `$PI_CODING_AGENT_DIR/mcp.json` | `omp --model orq/<model>`, or the model picker |
 | `claude` | nothing — claude has no provider concept, only all-or-nothing env routing | `orq launch claude` |
 | `copilot` | nothing — copilot's BYOK provider is env-only, one model per session | `orq launch copilot` |
 | `gemini` | nothing — gemini reads a config home, not a provider registry | `orq launch gemini` |
@@ -371,7 +371,7 @@ The agent CLI itself must be installed — each subcommand prints an install hin
 
 Agents stay pinned to whatever `orq connect` wired them against. `orq connect --status` names that workspace per agent, and `orq doctor` says so too when it differs from your active one, with the commands to move it.
 
-The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
+The [orq MCP server](https://my.orq.ai/v2/mcp) is wired by default, per session, using the agent's native mechanism; `--no-mcp` declines. No credential is written — the agent authenticates to that server itself — and the wire is skipped when `orq connect` has already written a persistent entry for that agent, so a session entry cannot shadow it. Point elsewhere with `ORQ_MCP_URL`. Exception: pi has no built-in MCP support (extensions only), so nothing is wired there. A launched omp session starts with a fresh agent directory, so a login made through `orq connect omp mcp` is not visible to it: the orq MCP entry authenticates per session — run `/mcp` inside it once. MCP tool calls share the free plan's daily request quota with model calls; `--no-mcp` is how you keep the quota for model calls.
 
 orq's skills are linked into the agent's skills directory under the directory you launch from (`./.claude/skills`, `./.agents/skills`) **for the session only**, and under your home directory when launched from there; nothing is installed permanently. Opt out with `--no-skills`. `ORQ_SKILLS_URL` pins your own plugin zip instead, which claude then fetches with `--plugin-url`.
 

@@ -181,6 +181,26 @@ func TestOmpWriterKeepsCommentsAndOrderAndReplacesOurBlock(t *testing.T) {
 	}
 }
 
+func TestOmpWriterKeepsACommentOnlyFilesComments(t *testing.T) {
+	ompHome(t)
+	path := ompModelsPath(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("# user comment one\n# user comment two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeOmpProviderYAML(path, ompRouter, "", openCodeModels(), ""); err != nil {
+		t.Fatal(err)
+	}
+	got := string(mustRead(t, path))
+	for _, keep := range []string{"# user comment one", "# user comment two", "providers:", "orq:"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("lost %q:\n%s", keep, got)
+		}
+	}
+}
+
 func TestOmpRemoverKeepsCommentsAndOrder(t *testing.T) {
 	ompHome(t)
 	path := ompModelsPath(t)
