@@ -123,10 +123,14 @@ controls on surface changes, whichever side they originate from.
   `orq models list`, `created_at` and `completed_at` in `orq responses`, and
   `created` in chat, completions and images responses. `-o json` and `-o yaml`
   still print the API's value.
-- **Changed:** human output shows `context_window` as a compact token count:
-  the raw number below 1000, whole thousands below a million (`262144` shows
-  as `262K`), and millions with one decimal above (`1.5M`). `-o json` and
-  `-o yaml` still print the API's value.
+- **Changed:** human output shows context sizes and token limits
+  (`context_window`, `max_input_tokens`, `max_output_tokens`,
+  `extended_context_threshold`, budget `token_limit`) as compact counts: the
+  raw number below 1000, whole thousands below a million (`262144` shows as
+  `262K`), and millions with one decimal above (`1.5M`). Usage token counts
+  (`prompt_tokens`, `total_tokens`, `reasoning_tokens`, ...) show with one
+  decimal (`31.4K`, `1.3M`). `-o json` and `-o yaml` still print the API's
+  value.
 
 ## [11.1.1](https://github.com/orq-ai/orq-cli/releases/tag/v11.1.1) — 2026-10-01
 

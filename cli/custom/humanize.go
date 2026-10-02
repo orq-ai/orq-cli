@@ -11,8 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Human output shows epoch-second fields as UTC RFC 3339 and context_window
-// as a compact token count (128K, 1M); -o json/yaml keep the API's value.
+// Human output shows epoch-second fields as UTC RFC 3339, token sizes and
+// limits as compact counts (128K, 1M) and usage token counts with one decimal
+// (31.4K, 1.3M); -o json/yaml keep the API's value.
 
 const (
 	minEpochSeconds = 1_000_000_000
@@ -30,9 +31,15 @@ func humanize(v any) any {
 					continue
 				}
 			}
-			if k == "context_window" {
-				if n, ok := wholeNumber(val); ok && n >= 0 {
+			if sizeKeys[k] {
+				if n, ok := wholeNumber(val); ok && n >= 1000 {
 					out[k] = compactCount(n)
+					continue
+				}
+			}
+			if usageKeys[k] {
+				if n, ok := wholeNumber(val); ok && n >= 1000 {
+					out[k] = compactUsage(n)
 					continue
 				}
 			}
@@ -48,6 +55,37 @@ func humanize(v any) any {
 	default:
 		return v
 	}
+}
+
+var sizeKeys = map[string]bool{
+	"context_window":             true,
+	"max_input_tokens":           true,
+	"max_output_tokens":          true,
+	"extended_context_threshold": true,
+	"token_limit":                true,
+}
+
+var usageKeys = map[string]bool{
+	"prompt_tokens":                         true,
+	"completion_tokens":                     true,
+	"total_tokens":                          true,
+	"input_tokens":                          true,
+	"output_tokens":                         true,
+	"reasoning_tokens":                      true,
+	"cached_tokens":                         true,
+	"audio_tokens":                          true,
+	"text_tokens":                           true,
+	"image_tokens":                          true,
+	"cache_creation_tokens":                 true,
+	"cache_write_tokens":                    true,
+	"accepted_prediction_tokens":            true,
+	"rejected_prediction_tokens":            true,
+	"prompt_cached_tokens":                  true,
+	"prompt_audio_tokens":                   true,
+	"completion_reasoning_tokens":           true,
+	"completion_audio_tokens":               true,
+	"completion_accepted_prediction_tokens": true,
+	"completion_rejected_prediction_tokens": true,
 }
 
 func isEpochKey(k string) bool {
@@ -77,6 +115,24 @@ func compactCount(n int64) string {
 		s += "." + strconv.FormatInt(d, 10)
 	}
 	return s + "M"
+}
+
+// compactUsage renders n as 512, 31.4K, 1.3M: one decimal rounded half up,
+// trailing .0 trimmed.
+func compactUsage(n int64) string {
+	if n < 1000 {
+		return strconv.FormatInt(n, 10)
+	}
+	unit, suffix := int64(100), "K"
+	if n >= 999_950 {
+		unit, suffix = 100_000, "M"
+	}
+	tenths := (n + unit/2) / unit
+	s := strconv.FormatInt(tenths/10, 10)
+	if d := tenths % 10; d != 0 {
+		s += "." + strconv.FormatInt(d, 10)
+	}
+	return s + suffix
 }
 
 func wholeNumber(v any) (int64, bool) {
