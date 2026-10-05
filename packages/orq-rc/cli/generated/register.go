@@ -79,4 +79,5 @@ func Register(root *cobra.Command) {
 	registersubmitFeedbackCommands(root)
 	registertelemetryCommands(root)
 	registerviewsCommands(root)
+	registerwebsearchCommands(root)
 }
