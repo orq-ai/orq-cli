@@ -262,6 +262,16 @@ Persist a new default:
 orq default-format json
 ```
 
+### Superset worktrees
+
+Setup runs `go mod download` and `make build`; the run action is `make build`.
+Teardown archives modified tracked files and untracked, non-ignored files to
+`$HOME/.superset/archive/orq-cli/<worktree>-<timestamp>` (or
+`SUPERSET_ARCHIVE_ROOT`), then removes rebuildable `bin/`. Ignored files,
+including credentials, are excluded. Archive write failures stop teardown before
+cleanup. Try the scripts in a disposable git worktree; invoking teardown directly
+does not verify that Superset runs the hook during workspace deletion.
+
 `orq traces thread` is the one command where `-o` takes a different set of
 formats: `xml` (the default, a readable render), `markdown`, `json`, `yaml`
 and `toon`. It refuses `-o table` — a conversation is nested (messages holding
