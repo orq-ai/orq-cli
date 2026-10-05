@@ -2617,8 +2617,13 @@ func TestLocalSkillsSummaryGolden(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "omp loads project skills") {
-		t.Errorf("omp has no project-trust gating, yet the note names it:\n%s", out)
+	if n := strings.Count(out, "loads project skills only for a trusted project"); n != 1 {
+		t.Errorf("want exactly one pi project-skills note, got %d in:\n%s", n, out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "omp") && strings.Contains(line, "project skills") {
+			t.Errorf("omp has no project-trust gating, yet a skills line names it:\n%s", line)
+		}
 	}
 	if strings.Contains(out, "trust_level") {
 		t.Errorf("a skills run printed codex's MCP trust line:\n%s", out)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -32,19 +33,6 @@ func TestWriteOmpConfigDir(t *testing.T) {
 	cleanup()
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("cleanup left %s behind: %v", dir, err)
-	}
-}
-
-func TestOmpSessionMCPConfig(t *testing.T) {
-	var doc struct {
-		MCPServers map[string]map[string]any `json:"mcpServers"`
-	}
-	if err := json.Unmarshal([]byte(ompSessionMCPConfig("https://mcp.example/v2/mcp")), &doc); err != nil {
-		t.Fatal(err)
-	}
-	entry := doc.MCPServers[MCPServerName]
-	if len(entry) != 2 || entry["type"] != "http" || entry["url"] != "https://mcp.example/v2/mcp" {
-		t.Fatalf("entry must be exactly {type,url}: %v", entry)
 	}
 }
 
@@ -155,5 +143,72 @@ func TestOmpResolveNoMCP(t *testing.T) {
 	dir := plan.Env["PI_CODING_AGENT_DIR"]
 	if got := strings.Join(dirEntries(t, dir), ","); got != "models.yml" {
 		t.Fatalf("with MCP off the temp dir holds %s, want only models.yml", got)
+	}
+}
+
+// The session dir overlays the user's agent dir: their logins (agent.db,
+// where omp keys the MCP OAuth credential by URL), settings and sessions are
+// linked in, while models.yml and mcp.json are the session's own and the
+// user's copies are left byte-for-byte alone — including after cleanup.
+func TestOmpSessionOverlaysTheUsersAgentDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	user := t.TempDir()
+	files := map[string]string{"agent.db": "db", "config.yml": "theme: dark\n", "models.yml": "providers: {}\n", "mcp.json": `{"mcpServers":{"other":{}}}`}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(user, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(user, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx := sessionSkillsCtx(GatewayFlags{MCP: true})
+	ctx.Getenv = env(map[string]string{"PI_CODING_AGENT_DIR": user})
+	plan, err := ompAgent().Resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := plan.Env["PI_CODING_AGENT_DIR"]
+	if dir == user {
+		t.Fatal("session runs in the user's own dir")
+	}
+	for _, name := range []string{"agent.db", "config.yml", "sessions"} {
+		if target, err := os.Readlink(filepath.Join(dir, name)); err != nil || target != filepath.Join(user, name) {
+			t.Errorf("%s: link %q, %v", name, target, err)
+		}
+	}
+	for _, name := range []string{"models.yml", "mcp.json"} {
+		info, err := os.Lstat(filepath.Join(dir, name))
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			t.Errorf("%s is not the session's own file: %v, %v", name, info, err)
+		}
+	}
+	plan.Cleanup()
+	for name, body := range files {
+		if got, err := os.ReadFile(filepath.Join(user, name)); err != nil || string(got) != body {
+			t.Errorf("user's %s = %q, %v", name, got, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(user, "sessions")); err != nil {
+		t.Errorf("cleanup removed the user's sessions dir: %v", err)
+	}
+}
+
+func TestOmpSessionDoesNotOverlayAPiOwnedDir(t *testing.T) {
+	pi := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pi, "models.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := sessionSkillsCtx(GatewayFlags{})
+	ctx.Getenv = env(map[string]string{"PI_CODING_AGENT_DIR": pi})
+	plan, err := ompAgent().Resolve(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Cleanup()
+	if got := strings.Join(dirEntries(t, plan.Env["PI_CODING_AGENT_DIR"]), ","); got != "models.yml" {
+		t.Fatalf("pi's dir was overlaid: %s", got)
 	}
 }

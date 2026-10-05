@@ -1,9 +1,11 @@
 package launch
 
 import (
-	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -30,9 +32,9 @@ func ompAgent() AgentDef {
 	}
 }
 
-// resolveOmp mirrors resolvePi: a models.yml declaring the orq gateway as a
-// provider, written into a fresh temp dir used as PI_CODING_AGENT_DIR so the
-// user's real ~/.omp/agent is never touched. apiKey uses omp's $ENV_VAR
+// resolveOmp points PI_CODING_AGENT_DIR at a fresh temp dir so the user's
+// real models.yml and mcp.json are never touched; everything else in their
+// agent dir is symlinked in (overlayOmpAgentDir). apiKey uses omp's $ENV_VAR
 // interpolation — the key itself stays out of the file.
 func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	resolved, err := ResolveGatewayConfig(ResolveInput{
@@ -52,7 +54,6 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 		return nil, err
 	}
 
-	// Same schema as pi's models.json; written verbatim (JSON is valid YAML).
 	config, err := BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)
 	if err != nil {
 		return nil, err
@@ -61,12 +62,17 @@ func resolveOmp(ctx *AgentContext) (*LaunchPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := overlayOmpAgentDir(ctx, dir); err != nil {
+		cleanup()
+		return nil, err
+	}
 
-	// The temp dir shadows the user's persisted mcp.json, so the session
-	// entry is always written (like kimi); persistedMCPConfigured is not
-	// consulted.
+	// The session mcp.json replaces the user's, so the entry is always
+	// written (like kimi); persistedMCPConfigured is not consulted. The
+	// OAuth login survives: omp keys it by server URL in agent.db, which
+	// the overlay links in.
 	if url := mcpURL(ctx); url != "" {
-		if err := os.WriteFile(filepath.Join(dir, "mcp.json"), []byte(ompSessionMCPConfig(url)), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "mcp.json"), []byte(httpMCPConfigJSON(url)), 0o600); err != nil {
 			cleanup()
 			return nil, err
 		}
@@ -103,16 +109,49 @@ func writeOmpConfigDir(modelsJSON string) (dir string, cleanup func(), err error
 	return dir, cleanup, nil
 }
 
-// ompSessionMCPConfig is the mcp.json written into the session agent dir. omp
-// authenticates this remote through its own OAuth flow; no headers.
-func ompSessionMCPConfig(url string) string {
-	encoded, _ := json.Marshal(map[string]any{
-		"mcpServers": map[string]any{
-			MCPServerName: map[string]any{
-				"type": "http",
-				"url":  url,
-			},
-		},
-	})
-	return string(encoded)
+// overlayOmpAgentDir symlinks every entry of the user's omp agent dir into
+// the session dir except models.yml and mcp.json, which the session owns:
+// writing them through a link would rewrite the user's files. Logins
+// (agent.db), settings, extensions and sessions stay the user's own, and
+// omp's writes to them land in the real dir. A missing dir, or one pi owns,
+// is left out — pi's files are not omp's state.
+func overlayOmpAgentDir(ctx *AgentContext, sessionDir string) error {
+	src := strings.TrimSpace(ctx.Getenv("PI_CODING_AGENT_DIR"))
+	if src == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		src = filepath.Join(home, ".omp", "agent")
+	}
+	if OmpPiOwned(src) {
+		return nil
+	}
+	entries, err := os.ReadDir(src)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read omp agent dir: %w", err)
+	}
+	for _, e := range entries {
+		if name := e.Name(); name != "models.yml" && name != "mcp.json" {
+			if err := os.Symlink(filepath.Join(src, name), filepath.Join(sessionDir, name)); err != nil {
+				return fmt.Errorf("link %s into the omp session dir: %w", name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// OmpPiOwned reports a directory that belongs to pi: it holds models.json but
+// no models.yml. PI_CODING_AGENT_DIR is read by both agents, so a machine
+// that points it at pi's directory must not be offered omp, nor have omp's
+// files dropped into it, nor have pi's files overlaid into an omp session.
+func OmpPiOwned(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "models.json")); err != nil {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(dir, "models.yml"))
+	return errors.Is(err, os.ErrNotExist)
 }

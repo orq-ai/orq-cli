@@ -91,6 +91,14 @@ func TestOmpRefusesAPiOwnedDir(t *testing.T) {
 		t.Error("models.yml was written into pi's dir")
 	}
 
+	err = writeOmpMCP(filepath.Join(dir, "mcp.json"), ompRouter)
+	if err == nil || !strings.Contains(err.Error(), "PI_CODING_AGENT_DIR") {
+		t.Fatalf("mcp err = %v, want one naming PI_CODING_AGENT_DIR", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "mcp.json")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Error("mcp.json was written into pi's dir")
+	}
+
 	// A models.yml alongside makes it omp-writable again.
 	if err := os.WriteFile(filepath.Join(dir, "models.yml"), []byte("providers: {}\n"), 0o600); err != nil {
 		t.Fatal(err)

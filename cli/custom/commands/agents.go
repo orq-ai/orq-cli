@@ -203,7 +203,7 @@ func agentRegistry() []agentSpec {
 			removeProvider:  removeOmpProvider,
 			providerPresent: ompProviderPresent,
 			mcpConfig:       ompPath("mcp.json"),
-			writeMCP:        writeMCPJSON("mcpServers", ompMCPEntry),
+			writeMCP:        writeOmpMCP,
 			mcpPresent:      jsonProviderPresentAt("mcpServers", launch.MCPServerName),
 			removeMCP:       func(p string) (bool, error) { return removeJSONKeys(p, "mcpServers", launch.MCPServerName) },
 			mcpLogin:        "run /mcp in omp",
@@ -218,6 +218,16 @@ func lookupAgent(id string) (agentSpec, bool) {
 		}
 	}
 	return agentSpec{}, false
+}
+
+// mcpLoginFor returns the manual login step an agent's MCP entry leaves
+// behind, or "" when the agent is unknown or has none.
+func mcpLoginFor(id string) string {
+	spec, ok := lookupAgent(id)
+	if !ok {
+		return ""
+	}
+	return spec.mcpLogin
 }
 
 func agentIDs() []string {

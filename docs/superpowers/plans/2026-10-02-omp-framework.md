@@ -12,8 +12,8 @@
 
 ## Decisions taken (from the adversarial review of the first draft)
 
-- **D1 — Launch wires MCP, kimi-style.** `orq launch omp` writes a session `mcp.json` (orq-workspace http entry, no headers) into the temp agent dir. The temp-dir redirect hides the user's persisted `mcp.json`, so a user who ran `orq connect omp mcp` would otherwise launch omp with no orq tools; kimi solves the same problem the same way (`launch/mcp.go`, `kimi.go:74-78`). Cost: one launch step; the OAuth credential still lives in the user's own store, untouched.
-- **D2 — `PI_CODING_AGENT_DIR` ownership.** omp and pi share that variable (omp has none of its own — verified). A dir holding `models.json` but no `models.yml` is pi-owned: `ompDetect` returns false for it and `writeOmpProviderYAML` refuses with an error naming the variable. A dir holding `models.yml`, or a missing dir, is omp-writable. Cost: one detection rule and its test.
+- **D1 — Launch wires MCP, kimi-style, over an overlay of the user's agent dir.** `orq launch omp` writes a session `mcp.json` (orq-workspace http entry, no headers) and `models.yml` into the temp agent dir, and symlinks every other entry of the user's agent dir into it (`overlayOmpAgentDir`). Those two files are the session's own — written through a link they would rewrite the user's files. Everything else stays the user's: omp keys the MCP OAuth credential by server URL in `agent.db`, so a login made once (`/mcp`, or after `orq connect omp mcp`) carries across launches, and settings, other-provider logins, extensions and sessions are the user's real ones. A pi-owned or missing dir is not overlaid. Cost: one launch step and the overlay; the user's other providers and other MCP servers are not visible in a launched session.
+- **D2 — `PI_CODING_AGENT_DIR` ownership.** omp and pi share that variable (omp has none of its own — verified). A dir holding `models.json` but no `models.yml` is pi-owned: `ompDetect` returns false for it, and `writeOmpProviderYAML` and `writeOmpMCP` both refuse it with an error naming the variable. A dir holding `models.yml`, or a missing dir, is omp-writable. The rule is presence-based: a pi dir pi has not yet written `models.json` into is indistinguishable from an empty dir, so `orq connect omp` can claim it — no presence-based rule can tell the two apart, and refusing any pre-existing dir without `models.yml` would also refuse a genuine omp dir that already holds `mcp.json` or settings but no provider yet. Cost: one detection rule and its test.
 - **D3 — omp-local `yaml.Node` helpers.** The JSON helpers (`readJSONConfig`, `removeJSONKeys`, …) stay as they are; the YAML writer and remover are new functions in `cli/custom/commands/omp.go`. Parametrising the JSON helpers over a codec would touch ~6 shipped callers for reuse the node-based approach cannot deliver anyway. Cost: two parallel helper families.
 - **No second models builder.** `BuildPiModelsJSON`'s output is JSON text, and JSON is valid YAML: launch writes it to `models.yml` as-is, and connect parses it back with `yaml.v3` to splice the `providers.orq` node. Verified: Bun's built-in YAML parser — the one omp loads `models.yml` with (`config/config-file.ts:5`, `import { JSONC, YAML } from "bun"`) — parses the exact JSON shape `BuildPiModelsJSON` emits.
 
@@ -22,14 +22,14 @@
 - Do not edit `cli/generated/`. Changes under `cli/custom/` must compile for both the root stable module and `packages/orq-rc`.
 - No new dependencies: `go.yaml.in/yaml/v3` is already direct (`go.mod:17`).
 - No credential ever lands in a config file: the provider block carries `apiKey: "$ORQ_API_KEY"` (omp resolves `$VAR` config values from `process.env` at request time — `src/config/resolve-config-value.ts:105-107`, wired through `authStorage.keys.setResolver`), and the MCP entry carries no headers.
-- omp honors `PI_CODING_AGENT_DIR` for the agent dir (verified: `pi-utils/src/dirs.ts` — env override in default mode, default `~/.omp/agent`, named profiles derive their own dir and ignore the override). Every path resolver must honor it in the same order, or detection and writes disagree on a redirected machine.
+- omp honors `PI_CODING_AGENT_DIR` for the agent dir (verified: `pi-utils/src/dirs.ts` — env override in default mode, default `~/.omp/agent`, named profiles derive their own dir and ignore the override). Every path resolver must honor it in the same order, or detection and writes disagree on a redirected machine. Named profiles are a non-goal: `ompPath`/`ompDetect` resolve the default dir (env override, then `~/.omp/agent`) and know nothing about profiles, so a session running under a named omp profile does not see what `orq connect omp` writes — the README states the same.
 - omp reads no model env vars (verified: `src/config/model-resolver.ts` has no `$env`/`process.env` reads; only `PI_SMO_L_MODEL`/`PI_SLOW_MODEL` exist, for the smol/slow roles). `ResolveGatewayConfig` gets `ModelEnvKey: ""` and `ModelsEnvKey: ""` — unlike pi, which passes `PI_MODEL`/`PI_MODELS`.
 - omp accepts `--provider <id>` and `provider/modelId` selectors (verified: `src/cli/flag-tables.ts:134`, `src/config/model-resolver.ts:788`), so `PreArgs{"--provider", "orq", "--model", <gateway model>}` works with slashed gateway ids.
 - `models.yml` schema (verified: `src/config/models-config-schema-bundle.ts`): `providers.<name>` with `baseUrl?`, `apiKey?`, `api?` (`"openai-completions"` | `"openai-responses"` | …), `models[]` with `id` (required), `name?`, `api?`, `input?`, `contextWindow?`, `maxTokens?`.
 - `mcp.json` schema (verified: `src/config/mcp-schema.json:190-225`): top-level `mcpServers` map; an http entry requires exactly `{type: "http", url}`; read from `<agentDir>/mcp.json` at user level (`src/discovery/builtin.ts:219-224`).
-- omp reads skills from `.agent/skills` and `.agents/skills`, project walk-up plus user home (verified: `src/discovery/agents.ts:177`) — it is a sharedReader, and it reads project skills like pi does, so the setup trust-note condition must include it.
+- omp reads skills from `.agent/skills` and `.agents/skills`, project walk-up plus user home (verified: `src/discovery/agents.ts:177`) — it is a sharedReader. Unlike pi, omp has no project-trust gating, so the pi-only setup trust note does not apply to it (`connect_test.go` asserts omp is not named).
 - YAML edits go through `yaml.Node`: never round-trip a user's `models.yml` through `map[string]any` (that strips comments and reorders keys). The remover deletes a file only if we created it (no prior `.orq-bak`) and it is empty, and refuses a malformed file rather than overwriting it — the same rules `removeJSONKeys` (`cli/custom/commands/agents.go:1155-1196`) enforces for JSON.
-- No `surface.json` change is expected: launch agents are help text, not command-tree entries. Confirm with `go run ./cmd/surface-dump -check` before committing.
+- `surface.json` gains `orq launch omp`: a launch agent is a command-tree entry, not help text. Refresh with `go run ./cmd/surface-dump -write` and commit the delta (the PR's `72f2082b` did exactly that).
 - Conventional commits; conventional PR title; `CHANGELOG.md` `**Added:**` entry under `## Unreleased`.
 
 ---
@@ -53,8 +53,8 @@ Every fact in Global Constraints was pinned against the installed omp source (`~
 - Modify: `cli/custom/launch/agents.go` (register `ompAgent()` in `Agents()`), `cli/custom/launch/mcp.go` and `cli/custom/launch/pi.go` (update the two comments that say pi has no MCP support), `cli/custom/skills/targets.go` (add `"omp": true` to `sharedReaders`)
 
 **Interfaces:**
-- Consumes: `ResolveGatewayConfig`/`ResolveInput`, `ModelInfo`, `ResponsesModelSet`, `BuildPiModelsJSON`, `mcpURL`, `maybeInstallSessionSkills`, `appendModelWarnings`, `appendCapWarning`; `kimiMCPConfig` (`mcp.go:274-285`) and `kimi.go:74-78` as the MCP pattern to mirror.
-- Produces: `DefaultOmpModel = "openai/gpt-5.6-terra"`, `OmpProvider = "orq"`, `ompAgent() AgentDef`, `resolveOmp(*AgentContext) (*LaunchPlan, error)`, `writeOmpConfigDir(modelsJSON string) (dir string, cleanup func(), err error)`, `ompSessionMCPConfig(url string) string`.
+- Consumes: `ResolveGatewayConfig`/`ResolveInput`, `ModelInfo`, `ResponsesModelSet`, `BuildPiModelsJSON`, `mcpURL`, `maybeInstallSessionSkills`, `appendModelWarnings`, `appendCapWarning`; `httpMCPConfigJSON` (`launch/mcp.go`) for the session-entry payload and `kimi.go:74-78` as the temp-dir session-entry pattern.
+- Produces: `DefaultOmpModel = "openai/gpt-5.6-terra"`, `OmpProvider = "orq"`, `ompAgent() AgentDef`, `resolveOmp(*AgentContext) (*LaunchPlan, error)`, `writeOmpConfigDir(modelsJSON string) (dir string, cleanup func(), err error)`.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -62,13 +62,13 @@ Every fact in Global Constraints was pinned against the installed omp source (`~
   - `resolveOmp`: plan `Env` = `ORQ_API_KEY`, `ORQ_SERVER`, `PI_CODING_AGENT_DIR` (the temp dir); `PreArgs` = `--provider orq --model <gateway model>`; `TempDirs` holds the dir. With `--no-mcp`, no `mcp.json` lands in the dir; without it, `mcp.json` holds the orq-workspace http entry and no headers. Session skills never land under the temp dir (omp is a sharedReader; the redirect only moves config) — assert the temp dir contains only `models.yml` and `mcp.json`.
   - `go.yaml.in/yaml/v3` parses the written `models.yml` and finds `providers.orq.models` with the gateway model ids — the Go-side proof that JSON content in a `.yml` is valid YAML for any YAML consumer.
 
-- [ ] **Step 2: Implement `writeOmpConfigDir` and `ompSessionMCPConfig`**
+- [ ] **Step 2: Implement `writeOmpConfigDir`**
 
-  `writeOmpConfigDir` mirrors `writePiConfigDir` (`pi.go:166-177`), writing the JSON string to `models.yml`. `ompSessionMCPConfig` mirrors `kimiMCPConfig`: the full `mcp.json` document with `mcpServers.orq-workspace` = `{"type": "http", "url": url}`.
+  `writeOmpConfigDir` mirrors `writePiConfigDir` (`pi.go:166-177`), writing the JSON string to `models.yml`. The session `mcp.json` entry comes from `httpMCPConfigJSON` (`launch/mcp.go`): the full document with `mcpServers.orq-workspace` = `{"type": "http", "url": url}` — the same payload claude's `--mcp-config` and copilot's `--additional-mcp-config` take.
 
 - [ ] **Step 3: Implement `resolveOmp` and the `AgentDef`**
 
-  `AgentDef{Name: "omp", Binary: "omp", Label: "omp", InstallHint: "npm install -g @oh-my-pi/pi-coding-agent (https://omp.sh)", FetchesModels: true, AllowModels: true, Prompt: -p/--prompt mapping identical to pi's, Resolve: resolveOmp}`. `resolveOmp` mirrors `resolvePi` (`pi.go:38-88`) with these differences: `BaseURLEnvKey: "ORQ_OMP_BASE_URL"`, `ModelEnvKey: ""`, `ModelsEnvKey: ""` (Task 0: omp reads no model env); no second builder — `BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)` output goes to `writeOmpConfigDir` verbatim; and after the dir is written, `if url := mcpURL(ctx); url != ""`, write `ompSessionMCPConfig(url)` to `<dir>/mcp.json` (0600) — the kimi pattern: the temp dir shadows the user's persisted `mcp.json`, so the session entry must always be written. Then `maybeInstallSessionSkills(ctx, plan, "omp")` plus pi's warnings (`appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")`, `appendCapWarning(plan, resolved)`).
+  `AgentDef{Name: "omp", Binary: "omp", Label: "omp", InstallHint: "npm install -g @oh-my-pi/pi-coding-agent (https://omp.sh)", FetchesModels: true, AllowModels: true, Prompt: -p/--prompt mapping identical to pi's, Resolve: resolveOmp}`. `resolveOmp` mirrors `resolvePi` (`pi.go:38-88`) with these differences: `BaseURLEnvKey: "ORQ_OMP_BASE_URL"`, `ModelEnvKey: ""`, `ModelsEnvKey: ""` (Task 0: omp reads no model env); no second builder — `BuildPiModelsJSON(resolved.BaseURL, resolved.GatewayModels, resolved.Infos)` output goes to `writeOmpConfigDir` verbatim; and after the dir is written, `if url := mcpURL(ctx); url != ""`, write `httpMCPConfigJSON(url)` to `<dir>/mcp.json` (0600) — the kimi pattern: the temp dir shadows the user's persisted `mcp.json`, so the session entry must always be written. Then `maybeInstallSessionSkills(ctx, plan, "omp")` plus pi's warnings (`appendModelWarnings(plan, resolved, noopNormalize, "openai/gpt-5-mini")`, `appendCapWarning(plan, resolved)`).
 
 - [ ] **Step 4: Register and run focused tests**
 
@@ -78,7 +78,7 @@ Every fact in Global Constraints was pinned against the installed omp source (`~
 
 **Files:**
 - Create: `cli/custom/commands/omp.go`, `cli/custom/commands/omp_test.go`
-- Modify: `cli/custom/commands/agents.go` (register the `omp` `agentSpec`; add the `mcpLogin` field to `agentSpec`), `cli/custom/commands/connect.go` (replace the `mcpLoginLine` switch with the spec field), `cli/custom/commands/setup.go:1606` (trust note), and the test files in the Step 5 audit list.
+- Modify: `cli/custom/commands/agents.go` (register the `omp` `agentSpec`; add the `mcpLogin` field to `agentSpec`) and `cli/custom/commands/connect.go` (replace the `mcpLoginLine` switch with the spec field), plus the test files in the Step 5 audit list. `setup.go` stays untouched: its trust note is pi-only (omp has no project-trust gate), which the Step 5 audit below asserts.
 
 **Interfaces:**
 - Consumes: `detectPath`, `writeConfigFile`, `jsonProviderPresentAt`, `removeJSONKeys`, `writeMCPJSON`, `launch.BuildPiModelsJSON`, `launchCatalog`, `launch.MCPServerName`.
@@ -104,7 +104,7 @@ Every fact in Global Constraints was pinned against the installed omp source (`~
 
   Visit every site below; prefer deriving the table from `Agents()`/`agentRegistry()` where the test's purpose is registry completeness, otherwise add the omp row:
   - `cli/custom/commands/setup_test.go:88` — `TestAgentRegistryIsComplete` asserts the exact list `claude, codex, opencode, kimi, kilo, pi`; it fails as soon as the spec registers.
-  - `cli/custom/commands/setup.go:1606` — the trust-note condition `slices.Contains(agents, "pi")`; omp reads project skills too (Task 0), so it belongs in the note.
+  - `cli/custom/commands/setup.go:1606` — the trust-note condition `slices.Contains(agents, "pi")` stays pi-only: the note documents pi's project-trust gate and omp has none (its `isProjectTrusted` is unconditionally true), so omp must not be named in it — `connect_test.go` asserts exactly that.
   - `cli/custom/commands/agents_test.go:1635` — `provSection` maps agent to config section with no YAML branch; the round-trip test cannot cover omp until it has one.
   - `cli/custom/commands/connect_test.go:2315` — pi capability cases; add omp rows where the table is per-agent (MCP login line, scope awareness).
   - `cli/custom/launch/run_test.go:18,71`, `cli/custom/launch/gateway_test.go:274`, `cli/custom/launch/defaults_test.go:29-30` (`DefaultOmpModel`), `cli/custom/launch/session_skills_test.go:50-51` (sharedReader → real-home path), `cli/custom/skills/skills_test.go:287,295` (shared readers).
