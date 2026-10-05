@@ -264,7 +264,8 @@ orq default-format json
 
 ### Superset worktrees
 
-Setup runs `go mod download` and `make build`; the run action is `make build`.
+Setup runs `go mod download` and `make build`; the run action runs `make build`
+and exits without launching the CLI.
 Teardown archives modified tracked files and untracked, non-ignored files to
 `$HOME/.superset/archive/orq-cli/<worktree>-<timestamp>` (or
 `SUPERSET_ARCHIVE_ROOT`), then removes rebuildable `bin/`. Ignored files,
