@@ -713,8 +713,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 						{
 							Name:        "inputs",
 							FlagName:    "inputs",
-							Type:        "json",
-							Description: "",
+							Type:        "string-map",
+							Description: "Structured variables passed to the prompt or workflow.",
 						},
 						{
 							Name:        "messages",
@@ -755,8 +755,8 @@ func registerdatasetsCommands(root *cobra.Command) {
 				{
 					Name:        "inputs",
 					FlagName:    "inputs",
-					Type:        "json",
-					Description: "",
+					Type:        "string-map",
+					Description: "Structured variables passed to the prompt or workflow.",
 				},
 				{
 					Name:        "messages",
